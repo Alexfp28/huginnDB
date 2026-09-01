@@ -12,12 +12,15 @@
 //! {
 //!   "mcpServers": {
 //!     "huginndb": {
-//!       "command": "huginndb-mcp",
-//!       "args": ["--connections", "<profile-id>"]
+//!       "command": "huginndb-mcp"
 //!     }
 //!   }
 //! }
 //! ```
+//!
+//! No arguments: which connections are reachable is picked in the app under
+//! Settings → MCP and re-read per call. `--connections <id>,<id>` still pins an
+//! explicit set for one client when that is wanted.
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

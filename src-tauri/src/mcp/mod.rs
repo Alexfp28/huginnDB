@@ -23,9 +23,15 @@
 //!   require at least `data`; DDL requires `full`. A global `--read-only`
 //!   kill-switch forces read-only regardless of saved policy. (The old
 //!   `--allow-writes` flag is deprecated and inert.)
-//! * **Opt-in per profile.** Nothing is reachable until the user names a
-//!   profile id via `--connections id1,id2`. An empty allowlist exposes
-//!   nothing.
+//! * **Opt-in per profile.** Nothing is reachable until the user ticks a
+//!   connection in the app's Settings → MCP, which sets
+//!   [`crate::state::ConnectionProfile::mcp_exposed`]; like the write policy,
+//!   it is re-read from disk per call, so the choice takes effect without
+//!   restarting the MCP client. A `--connections id1,id2` argument still pins
+//!   an explicit set for one client, and wins when present.
+//! * **Addressed by name.** Every tool takes the connection's *name* or its
+//!   profile id ([`Huginn::canonical_connection`]); the uuid is an internal
+//!   identity the user never chose and should not have to see.
 //! * **Lazy pools.** No database is touched until a tool call names a
 //!   connection; the pool is then opened via [`crate::db::pool::open_pool`]
 //!   (password from the keychain) and cached in the shared [`AppState`]. It is
@@ -89,11 +95,35 @@ const POOL_IDLE_TTL: Duration = Duration::from_secs(300);
 /// How often the idle-pool sweep runs.
 const POOL_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Which of the two statement tools a call arrived through.
+///
+/// `run_query` and `run_write` share one executor and differ only in the tier
+/// they admit — see [`Huginn::run_statement`] for why they are two tools.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StatementKind {
+    Read,
+    Write,
+}
+
 /// Runtime configuration parsed from the process arguments.
 struct Config {
-    /// Profile ids the client is allowed to reach. Opt-in: empty means
-    /// nothing is exposed.
-    allowed: HashSet<String>,
+    /// Profile ids pinned on the command line with `--connections`, or `None`
+    /// when the flag was absent and exposure is therefore the *app's* to
+    /// decide (`ConnectionProfile::mcp_exposed`, ticked in Settings → MCP and
+    /// re-read fresh on every call).
+    ///
+    /// Three states, all load-bearing. `None` defers to disk — the normal case
+    /// now, and what lets the client's command be a bare `huginndb-mcp` with no
+    /// uuids in it. `Some(set)` pins exactly that set for the life of the
+    /// process: an argument the user typed outranks a checkbox, and every
+    /// pre-1.21 client config keeps behaving exactly as it did. `Some(empty)`
+    /// — `--connections ""` — is an explicit "expose nothing", which is *not*
+    /// the same as `None` and must not collapse into it.
+    ///
+    /// Opt-in survives either way: a profile is exposed only if the user ticked
+    /// it or named it, and `mcp_exposed` defaults to `false` on every profile
+    /// that predates the field.
+    pinned: Option<HashSet<String>>,
     /// Global read-only kill-switch (`--read-only`). When set, every
     /// connection is forced to [`McpWritePolicy::ReadOnly`] regardless of its
     /// saved per-connection policy — a way to expose the sidecar in a
@@ -116,12 +146,26 @@ struct Config {
 }
 
 impl Config {
+    /// Whether `profile` is reachable through this server.
+    ///
+    /// The exposure rule, in one place: a `--connections` list the user typed
+    /// wins outright, and otherwise the answer is the profile's own
+    /// `mcp_exposed` flag from Settings → MCP. Lives on `Config` rather than on
+    /// `Huginn` because [`serve`] has to answer the same question for its
+    /// startup banner and the bridge handshake, before any `Huginn` exists.
+    fn exposes(&self, profile: &crate::state::ConnectionProfile) -> bool {
+        match &self.pinned {
+            Some(ids) => ids.contains(&profile.id),
+            None => profile.mcp_exposed,
+        }
+    }
+
     /// Parse `--connections a,b,c`, `--read-only`, `--max-rows N`, and the
     /// deprecated `--allow-writes` from `argv` (program name at index 0).
     /// Accepts both `--flag value` and `--flag=value`, mirroring the desktop
     /// CLI parser.
     fn from_args(argv: &[String]) -> Self {
-        let mut allowed = HashSet::new();
+        let mut pinned: Option<HashSet<String>> = None;
         let mut read_only = false;
         let mut max_rows = DEFAULT_MAX_ROWS;
         let mut max_connections = DEFAULT_MAX_CONNECTIONS;
@@ -141,8 +185,13 @@ impl Config {
             match flag {
                 "--connections" | "--connection" => {
                     if let Some(v) = value(&mut iter) {
+                        // Seeing the flag at all pins the set, even when the
+                        // value is empty: `--connections ""` means "expose
+                        // nothing", which has to stay distinguishable from
+                        // omitting the flag and deferring to the app.
+                        let set = pinned.get_or_insert_with(HashSet::new);
                         for id in v.split(',').map(str::trim).filter(|s| !s.is_empty()) {
-                            allowed.insert(id.to_string());
+                            set.insert(id.to_string());
                         }
                     }
                 }
@@ -178,7 +227,7 @@ impl Config {
         }
 
         Config {
-            allowed,
+            pinned,
             read_only,
             max_rows,
             max_connections,
@@ -221,13 +270,17 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Connection {
-        /// Profile id of a database exposed to this server (see
-        /// `list_connections`).
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Tables {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// For MongoDB only: the database to list collections from, when the
         /// connection has no database bound; see [`Table::schema`]. Ignored
@@ -238,6 +291,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Table {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace. Omit for the driver default (Postgres
         /// `public`, MySQL current database, SQLite `main`). For MongoDB,
@@ -251,6 +307,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Query {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// A single read-only statement: SQL (SELECT / WITH / SHOW / EXPLAIN
         /// / PRAGMA) for Postgres/MySQL/SQLite, or mongosh syntax
@@ -266,6 +325,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Browse {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace. For MongoDB, this is the **database name** —
         /// required when the connection has no database bound; see
@@ -286,6 +348,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Privileges {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// User/role as returned by `list_users` (MySQL: `user@host`).
         pub user: String,
@@ -293,6 +358,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct PulseMetrics {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Canonical metric name from Pulse's catalogue (`pulse_health`'s
         /// reply lists which ones this connection's engine reports), e.g.
@@ -304,6 +372,9 @@ mod args {
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct PulseExplain {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// One runnable statement to EXPLAIN — a `pulse_top_queries` row's
         /// own `sample` field in practice. Must be read-only and a single
@@ -376,6 +447,9 @@ mod args {
     /// Arguments for the `insert_row` write tool.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct InsertRow {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace (see [`Table::schema`]; MongoDB database name).
         #[serde(default)]
@@ -393,6 +467,9 @@ mod args {
     /// single row addressed by the full primary key.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct UpdateCell {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         #[serde(default)]
         pub schema: Option<String>,
@@ -416,6 +493,9 @@ mod args {
     /// `pk_value_rows` is one full-PK tuple, parallel to `pk_columns`.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct DeleteRows {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         #[serde(default)]
         pub schema: Option<String>,
@@ -439,6 +519,9 @@ mod args {
     /// its own note).
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct SaveView {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace. Omit for the driver default. For MongoDB this is
         /// the **database name** — required when the connection has no database
@@ -478,6 +561,9 @@ mod args {
     /// Arguments for the `drop_view` write tool.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct DropView {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// Schema / namespace; the **database name** for MongoDB. See
         /// [`Table::schema`].
@@ -500,6 +586,9 @@ mod args {
     /// by the tool body.
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct CreateIndex {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// MongoDB database to target on a multi-database connection. See
         /// [`Table::schema`].
@@ -552,6 +641,9 @@ mod args {
     /// Arguments for the `drop_index` write tool (MongoDB only).
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct DropIndex {
+        /// The connection to work on: its **name** as shown in HuginnDB
+        /// (matched case-insensitively), or its profile id. Both are reported
+        /// by `list_connections`; prefer the name.
         pub connection_id: String,
         /// MongoDB database to target on a multi-database connection. See
         /// [`Table::schema`].
@@ -625,6 +717,169 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 }
 
 /// Map a backend [`crate::error::AppError`] onto an MCP error.
+/// Every tool that can change a database. The write half of the surface.
+///
+/// Kept as one list because three separate places need exactly it and would
+/// otherwise each keep their own copy: the `--read-only` gate below, and the
+/// two tests that pin down their annotations.
+const WRITE_TOOLS: [&str; 8] = [
+    "run_write",
+    "insert_row",
+    "update_cell",
+    "delete_rows",
+    "save_view",
+    "drop_view",
+    "create_index",
+    "drop_index",
+];
+
+/// Remove every write tool from the surface, for a process started with
+/// `--read-only`.
+///
+/// The flag already forces each connection to [`McpWritePolicy::ReadOnly`], so
+/// these eight could only ever answer with a refusal. Taking them off
+/// `tools/list` instead says the same thing earlier and cheaper: the model
+/// never spends a turn discovering that this deployment does not write, and
+/// nothing in the client's context suggests it might. `ToolRouter::call`
+/// refuses a disabled route as well, so this is a gate rather than a
+/// presentation trick.
+///
+/// **This is the only thing allowed to vary the tool surface, and `--read-only`
+/// is the only input allowed to vary it.** A client fetches `tools/list` once,
+/// at startup, and caches it for the session — while exposure and per-connection
+/// write policy are deliberately re-read on every call so they can change under
+/// a running client (gotcha #58). Deriving the surface, or a tool's annotations,
+/// from those would go stale in the unsafe direction the moment a connection was
+/// raised to `data`: the client would keep believing no write was possible and
+/// an auto-approving mode would skip the confirmation the user thought they had.
+/// The policy gate would still hold; the prompt would not. `--read-only` cannot
+/// go stale, because it is a process argument fixed for the life of this
+/// sidecar.
+fn disable_write_tools(router: &mut ToolRouter<Huginn>) {
+    for name in WRITE_TOOLS {
+        router.disable_route(name);
+    }
+}
+
+/// Resolve a client-supplied connection reference — a profile **id or name** —
+/// to the canonical id, among the connections `config` exposes.
+///
+/// Names are accepted because the id is a uuid the user never chose and should
+/// never have to see: `list_connections` reports both, and asking a model to
+/// copy a uuid across every subsequent call only invited it to get one
+/// character wrong. The id stays the identity — names are neither unique nor
+/// stable, and a rename must not silently repoint a saved reference — so an id
+/// always wins over a name that happens to equal it, and an ambiguous name is
+/// an error naming the candidates rather than a guess.
+///
+/// Resolution is scoped to *exposed* connections throughout: a name must not be
+/// able to reach a profile the user did not expose, and — the more useful half
+/// — a reference naming a real but unexposed connection is told exactly that,
+/// with the fix that applies to how this server was started, instead of
+/// "unknown connection".
+fn resolve_connection(
+    config: &Config,
+    reference: &str,
+    profiles: &[crate::state::ConnectionProfile],
+) -> Result<String, ErrorData> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return Err(ErrorData::invalid_params(
+            "connection_id is required: pass the name or id of a connection from \
+             `list_connections`"
+                .to_string(),
+            None,
+        ));
+    }
+    let exposed: Vec<&crate::state::ConnectionProfile> =
+        profiles.iter().filter(|p| config.exposes(p)).collect();
+
+    if let Some(p) = exposed.iter().find(|p| p.id == reference) {
+        return Ok(p.id.clone());
+    }
+    let by_name: Vec<&&crate::state::ConnectionProfile> = exposed
+        .iter()
+        .filter(|p| p.name.eq_ignore_ascii_case(reference))
+        .collect();
+    match by_name.as_slice() {
+        [one] => return Ok(one.id.clone()),
+        [] => {}
+        many => {
+            let candidates = many
+                .iter()
+                .map(|p| format!("{:?} (id {}, host {})", p.name, p.id, p.host))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "{reference:?} matches {} exposed connections — pass the id instead: \
+                     {candidates}",
+                    many.len()
+                ),
+                None,
+            ));
+        }
+    }
+
+    // Known but not exposed is a different problem with a different fix, and by
+    // far the likelier of the two.
+    if let Some(p) = profiles
+        .iter()
+        .find(|p| p.id == reference || p.name.eq_ignore_ascii_case(reference))
+    {
+        return Err(ErrorData::invalid_params(
+            if config.pinned.is_some() {
+                format!(
+                    "connection {:?} exists but this MCP server was started with an explicit \
+                     --connections list that does not include it (id {})",
+                    p.name, p.id
+                )
+            } else {
+                format!(
+                    "connection {:?} exists but is not exposed to MCP — tick it in HuginnDB → \
+                     Settings → MCP (id {})",
+                    p.name, p.id
+                )
+            },
+            None,
+        ));
+    }
+    Err(ErrorData::invalid_params(
+        format!(
+            "unknown connection {reference:?}. Exposed: {}",
+            summarize_names(&exposed)
+        ),
+        None,
+    ))
+}
+
+/// Render an exposed-connection list for an error message, bounded.
+///
+/// Names, not ids: the whole point of accepting a name is that the caller need
+/// never see a uuid, so the recovery hint must not hand it one. Capped because
+/// this goes into a model's context on every miss, and a machine with forty
+/// exposed connections would spend more of it on the apology than on the work.
+fn summarize_names(exposed: &[&crate::state::ConnectionProfile]) -> String {
+    const MAX: usize = 10;
+    if exposed.is_empty() {
+        return "none — tick the connections you want reachable in HuginnDB → Settings → MCP"
+            .to_string();
+    }
+    let mut names: Vec<&str> = exposed.iter().map(|p| p.name.as_str()).collect();
+    names.sort_unstable();
+    let shown = names
+        .iter()
+        .take(MAX)
+        .map(|n| format!("{n:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if names.len() > MAX {
+        format!("{shown}, and {} more", names.len() - MAX)
+    } else {
+        shown
+    }
+}
+
 fn to_err(e: crate::error::AppError) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
 }
@@ -698,11 +953,15 @@ impl Huginn {
         config: Arc<Config>,
         bridge: Option<Arc<crate::bridge::client::BridgeClient>>,
     ) -> Self {
+        let mut tool_router = Self::tool_router();
+        if config.read_only {
+            disable_write_tools(&mut tool_router);
+        }
         Self {
             state,
             config,
             bridge,
-            tool_router: Self::tool_router(),
+            tool_router,
         }
     }
 
@@ -762,9 +1021,19 @@ impl Huginn {
     /// the OS keychain, and caches the pool in the shared [`AppState`] with no
     /// keepalive heartbeat (a short-lived headless process doesn't need one).
     async fn ensure_connected(&self, id: &str) -> AppResult<()> {
-        if !self.config.allowed.contains(id) {
+        // Second line of defence. Every tool canonicalises its argument through
+        // `canonical_connection` first, which already resolves only among
+        // exposed profiles — but that is a convention a new tool can forget,
+        // and this is the gate, so it re-asks the question against disk here
+        // where no caller can skip it.
+        if !self
+            .all_profiles()
+            .iter()
+            .any(|p| p.id == id && self.is_exposed(p))
+        {
             return Err(crate::error::AppError::InvalidInput(format!(
-                "connection {id:?} is not exposed to this MCP server (pass --connections {id})"
+                "connection {id:?} is not exposed to this MCP server (tick it in HuginnDB → \
+                 Settings → MCP, or pass --connections {id})"
             )));
         }
         // With the bridge up, pool ownership belongs to the desktop app: ask it
@@ -932,6 +1201,141 @@ impl Huginn {
         ok_json(&out)
     }
 
+    /// Every profile on this machine, read **fresh from `profiles.json`** with
+    /// the startup snapshot as a fallback — see [`Self::write_policy`] for why
+    /// the disk is the authority while this process is running.
+    fn all_profiles(&self) -> Vec<crate::state::ConnectionProfile> {
+        crate::store::load_profiles().unwrap_or_else(|_| self.state.profiles.read().clone())
+    }
+
+    /// Whether this server may reach `profile` at all.
+    ///
+    /// The exposure gate, and the one place that knows the two sources rank:
+    /// a `--connections` list the user typed wins outright, and otherwise the
+    /// answer is the profile's own `mcp_exposed`, ticked in Settings → MCP.
+    fn is_exposed(&self, profile: &crate::state::ConnectionProfile) -> bool {
+        self.config.exposes(profile)
+    }
+
+    /// Resolve a client-supplied connection reference — a profile **id or
+    /// name** — to the canonical id every layer below this one speaks.
+    ///
+    /// Thin wrapper: the rules live in the free [`resolve_connection`] so they
+    /// can be tested without an [`AppState`] and without reading the real
+    /// `profiles.json` (gotcha #52 — a test that reaches this function's own
+    /// disk read is a test whose answer depends on the developer's saved
+    /// connections).
+    fn canonical_connection(&self, reference: &str) -> Result<String, ErrorData> {
+        resolve_connection(&self.config, reference, &self.all_profiles())
+    }
+
+    /// The body behind `run_query` and `run_write`.
+    ///
+    /// One statement executor, two tools, and the split is the whole point:
+    /// a client's permission rules key on the **tool name**, so while reads and
+    /// writes shared one name there was no way to say "let the SELECTs run,
+    /// ask me about the rest". The tool's annotation had the same problem from
+    /// the other side — a single name spanning both tiers can only be
+    /// annotated as the more dangerous of the two, which put write-shaped
+    /// friction in front of the tool that serves nearly every read.
+    ///
+    /// Splitting by tier makes both annotations honest **constants**:
+    /// `run_query` is `readOnlyHint`, `run_write` is `destructiveHint`, and
+    /// neither can go stale the way a policy-derived hint would (that trap is
+    /// documented in the `Unreleased` CHANGELOG entry and gotcha #59).
+    ///
+    /// Enforcement runs in **both** directions. Refusing writes on `run_query`
+    /// is the obvious half; refusing *reads* on `run_write` is what stops a
+    /// model routing everything through the write tool and quietly undoing the
+    /// split — the caller is told which tool to use instead, since being
+    /// pointed at the cheaper tool is a better answer than silently obliging.
+    ///
+    /// Neither refusal replaces the policy gate: `require_class` below still
+    /// re-reads `mcp_write` from disk on every call, and it is what actually
+    /// decides whether a write is allowed to happen.
+    async fn run_statement(
+        &self,
+        mut a: args::Query,
+        kind: StatementKind,
+    ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
+            .await?;
+
+        // Classify the statement into its required tier. `classify_statement`
+        // picks the grammar from the statement *text*, which is deliberate:
+        // this used to derive "is this Mongo?" from `self.state.connections`,
+        // and that map is empty whenever the app is serving the shared pool —
+        // so every bridged Mongo statement was classified by the SQL keyword
+        // heuristic instead. See `crate::db::classify` for the two bugs that
+        // caused.
+        let class = crate::db::classify::classify_statement(&a.sql);
+
+        match (kind, class) {
+            (StatementKind::Read, StmtClass::Read) => {}
+            (StatementKind::Read, _) => {
+                return Err(ErrorData::invalid_params(
+                    "run_query only runs read-only statements. This one writes — call \
+                     `run_write` instead (it needs the connection's MCP write policy to \
+                     allow it)."
+                        .to_string(),
+                    None,
+                ));
+            }
+            (StatementKind::Write, StmtClass::Read) => {
+                return Err(ErrorData::invalid_params(
+                    "run_write only runs statements that change the database. This one is \
+                     read-only — call `run_query` instead, which needs no write permission."
+                        .to_string(),
+                    None,
+                ));
+            }
+            (StatementKind::Write, _) => {}
+        }
+
+        // Refuse a whole-relation UPDATE/DELETE outright, regardless of tier —
+        // a classic AI footgun. Both grammars are covered: the caller can opt in
+        // with `WHERE 1=1`, or `{_id: {$exists: true}}` on MongoDB.
+        if crate::db::classify::is_unfiltered_write(&a.sql) {
+            return Err(ErrorData::invalid_params(
+                "run_write refused a whole-relation UPDATE/DELETE with no predicate. \
+                 Add one — `WHERE 1=1` on SQL, or `{_id: {$exists: true}}` on MongoDB, \
+                 if you really mean every row."
+                    .to_string(),
+                None,
+            ));
+        }
+
+        // Policy is a property of the *profile* (`ConnectionProfile::mcp_write`),
+        // not of the resolved pool: for Mongo, `target` may be the synthetic
+        // per-database id `<connection_id>::db::<name>` (see
+        // `resolve_mongo_target`), which is never a key in `profiles.json` — a
+        // `write_policy` lookup against it would always miss and silently fall
+        // back to `ReadOnly`, regardless of the connection's real setting.
+        self.require_class(&a.connection_id, class)?;
+
+        // Reads are not audited; writes append to mcp-audit.log.
+        let value = self
+            .call(
+                BridgeRequest::RunStatement {
+                    connection_id: target,
+                    policy_id: a.connection_id.clone(),
+                    sql: a.sql.clone(),
+                },
+                class != StmtClass::Read,
+            )
+            .await
+            .map_err(to_err)?;
+        let mut result: crate::commands::query::QueryResult =
+            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
+        truncate_rows(&mut result, self.config.max_rows);
+        ok_json(&result)
+    }
+
     /// The write policy in force for `connection_id`, read **fresh from
     /// `profiles.json`** so a change made in the desktop app (Settings → MCP)
     /// takes effect without restarting the MCP client. Falls back to the
@@ -980,10 +1384,18 @@ impl Huginn {
         ))
     }
 
-    #[tool(description = "List the databases this server is allowed to reach \
-                          (profile id, name, driver, host, database, whether a \
-                          pool is currently open, and the MCP write policy in \
-                          force: read-only / data / full).")]
+    #[tool(
+        title = "List exposed connections",
+        annotations(read_only_hint = true, open_world_hint = false),
+        description = "List the databases this server is allowed to reach \
+                      (name, profile id, driver, host, database, whether a \
+                      pool is currently open, and the MCP write policy in \
+                      force: read-only / data / full). Every other tool \
+                      accepts either the name or the id; prefer the name. \
+                      An empty list means the user has not exposed any \
+                      connection yet — they do that in HuginnDB under \
+                      Settings → MCP."
+    )]
     async fn list_connections(&self) -> Result<CallToolResult, ErrorData> {
         #[derive(serde::Serialize)]
         struct Conn {
@@ -1003,12 +1415,9 @@ impl Huginn {
         // `write_policy` (which re-reads profiles.json) without holding the
         // `profiles` read-lock across the call.
         let ids: Vec<crate::state::ConnectionProfile> = self
-            .state
-            .profiles
-            .read()
-            .iter()
-            .filter(|p| self.config.allowed.contains(&p.id))
-            .cloned()
+            .all_profiles()
+            .into_iter()
+            .filter(|p| self.is_exposed(p))
             .collect();
         let conns: Vec<Conn> = ids
             .into_iter()
@@ -1029,44 +1438,59 @@ impl Huginn {
         ok_json(&conns)
     }
 
-    #[tool(description = "List databases/schemas/catalogs on a connection.")]
+    #[tool(
+        title = "List databases",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List databases/schemas/catalogs on a connection."
+    )]
     async fn list_databases(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::ListDatabases { connection_id }
         })
         .await
     }
 
-    #[tool(description = "List tables and views on a connection, with \
-                          approximate row counts and sizes where available. \
-                          For MongoDB, pass `schema` (the database name) when \
-                          the connection has no database bound — otherwise \
-                          this returns an empty list.")]
+    #[tool(
+        title = "List tables and views",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List tables and views on a connection, with \
+                      approximate row counts and sizes where available. \
+                      For MongoDB, pass `schema` (the database name) when \
+                      the connection has no database bound — otherwise \
+                      this returns an empty list."
+    )]
     async fn list_tables(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, a.schema.as_deref(), |connection_id| {
             BridgeRequest::ListTables { connection_id }
         })
         .await
     }
 
-    #[tool(description = "Describe a relation's full structure: columns, types, \
-                          nullability, primary key, foreign keys, and indexes. \
-                          Works on a view too, and when the relation IS a view \
-                          the reply carries an extra `view` object with what the \
-                          view actually is: `query` (the bare SELECT body) on \
-                          SQL drivers, or `viewOn` plus `pipeline` on MongoDB, \
-                          where a view is a stored aggregation pipeline. Absent \
-                          `view` key means the relation is a plain table.")]
+    #[tool(
+        title = "Describe a table",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Describe a relation's full structure: columns, types, \
+                      nullability, primary key, foreign keys, and indexes. \
+                      Works on a view too, and when the relation IS a view \
+                      the reply carries an extra `view` object with what the \
+                      view actually is: `query` (the bare SELECT body) on \
+                      SQL drivers, or `viewOn` plus `pipeline` on MongoDB, \
+                      where a view is a stored aggregation pipeline. Absent \
+                      `view` key means the relation is a plain table."
+    )]
     async fn describe_table(
         &self,
-        Parameters(a): Parameters<args::Table>,
+        Parameters(mut a): Parameters<args::Table>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Table {
             connection_id,
             schema,
@@ -1082,11 +1506,16 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "List indexes on a table, with the columns each covers.")]
+    #[tool(
+        title = "List indexes",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List indexes on a table, with the columns each covers."
+    )]
     async fn list_indexes(
         &self,
-        Parameters(a): Parameters<args::Table>,
+        Parameters(mut a): Parameters<args::Table>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Table {
             connection_id,
             schema,
@@ -1102,80 +1531,60 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Run a single statement. Reads (SELECT / WITH / SHOW / \
-                          EXPLAIN / PRAGMA for SQL; find/aggregate/countDocuments/\
-                          distinct for MongoDB) always work. Writes require the \
-                          connection's MCP write policy to allow them: row-level \
-                          DML (INSERT/UPDATE/DELETE) needs 'data', schema changes \
-                          (CREATE/DROP/ALTER/…) need 'full'. Whole-table \
-                          UPDATE/DELETE with no WHERE are refused. Rows are capped \
-                          by the server's --max-rows.")]
+    #[tool(
+        title = "Run a read-only statement",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Run a single READ-ONLY statement and return its rows: \
+                      SELECT / WITH / SHOW / EXPLAIN / PRAGMA for SQL, or \
+                      find/aggregate/countDocuments/distinct for MongoDB. \
+                      Anything that writes is refused here whatever the \
+                      connection's policy says — use `run_write` for those. \
+                      Rows are capped by the server's --max-rows."
+    )]
     async fn run_query(
         &self,
         Parameters(a): Parameters<args::Query>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let target = self
-            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
-            .await?;
-
-        // Classify the statement into its required tier. `classify_statement`
-        // picks the grammar from the statement *text*, which is deliberate:
-        // this used to derive "is this Mongo?" from `self.state.connections`,
-        // and that map is empty whenever the app is serving the shared pool —
-        // so every bridged Mongo statement was classified by the SQL keyword
-        // heuristic instead. See `crate::db::classify` for the two bugs that
-        // caused.
-        let class = crate::db::classify::classify_statement(&a.sql);
-
-        // Refuse a whole-relation UPDATE/DELETE outright, regardless of tier —
-        // a classic AI footgun. Both grammars are covered: the caller can opt in
-        // with `WHERE 1=1`, or `{_id: {$exists: true}}` on MongoDB.
-        if crate::db::classify::is_unfiltered_write(&a.sql) {
-            return Err(ErrorData::invalid_params(
-                "run_query refused a whole-relation UPDATE/DELETE with no predicate. \
-                 Add one — `WHERE 1=1` on SQL, or `{_id: {$exists: true}}` on MongoDB, \
-                 if you really mean every row."
-                    .to_string(),
-                None,
-            ));
-        }
-
-        // Policy is a property of the *profile* (`ConnectionProfile::mcp_write`),
-        // not of the resolved pool: for Mongo, `target` may be the synthetic
-        // per-database id `<connection_id>::db::<name>` (see
-        // `resolve_mongo_target`), which is never a key in `profiles.json` — a
-        // `write_policy` lookup against it would always miss and silently fall
-        // back to `ReadOnly`, regardless of the connection's real setting.
-        self.require_class(&a.connection_id, class)?;
-
-        // Reads are not audited; writes append to mcp-audit.log.
-        let value = self
-            .call(
-                BridgeRequest::RunStatement {
-                    connection_id: target,
-                    policy_id: a.connection_id.clone(),
-                    sql: a.sql.clone(),
-                },
-                class != StmtClass::Read,
-            )
-            .await
-            .map_err(to_err)?;
-        let mut result: crate::commands::query::QueryResult =
-            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
-        truncate_rows(&mut result, self.config.max_rows);
-        ok_json(&result)
+        self.run_statement(a, StatementKind::Read).await
     }
 
-    #[tool(description = "Browse one page of rows from a table without writing \
-                          SQL. Returns columns + rows; limit is clamped to the \
-                          server's --max-rows.")]
+    #[tool(
+        title = "Run a writing statement",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
+        description = "Run a single statement that CHANGES the database, and \
+                      return whatever it reports. Row-level DML \
+                      (INSERT/UPDATE/DELETE) needs the connection's MCP write \
+                      policy to be at least 'data'; schema changes \
+                      (CREATE/DROP/ALTER/…) need 'full'. Whole-relation \
+                      UPDATE/DELETE with no predicate are refused. A read is \
+                      refused here too — use `run_query`, which does not need \
+                      write permission. Every call is recorded in the app's \
+                      MCP audit log."
+    )]
+    async fn run_write(
+        &self,
+        Parameters(a): Parameters<args::Query>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_statement(a, StatementKind::Write).await
+    }
+
+    #[tool(
+        title = "Browse table rows",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Browse one page of rows from a table without writing \
+                      SQL. Returns columns + rows; limit is clamped to the \
+                      server's --max-rows."
+    )]
     async fn browse_table(
         &self,
-        Parameters(a): Parameters<args::Browse>,
+        Parameters(mut a): Parameters<args::Browse>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let limit = a
             .limit
             .unwrap_or(self.config.max_rows)
@@ -1197,33 +1606,48 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Return the connected server's engine and version.")]
+    #[tool(
+        title = "Server version",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Return the connected server's engine and version."
+    )]
     async fn server_version(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::ServerVersion { connection_id }
         })
         .await
     }
 
-    #[tool(description = "List server-side users/roles (permission context).")]
+    #[tool(
+        title = "List users and roles",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List server-side users/roles (permission context)."
+    )]
     async fn list_users(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::ListUsers { connection_id }
         })
         .await
     }
 
-    #[tool(description = "List the privileges granted to a user/role.")]
+    #[tool(
+        title = "List privileges",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "List the privileges granted to a user/role."
+    )]
     async fn list_privileges(
         &self,
-        Parameters(a): Parameters<args::Privileges>,
+        Parameters(mut a): Parameters<args::Privileges>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Privileges {
             connection_id,
             user,
@@ -1237,32 +1661,42 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Read a connection's live vital signs: queries/s, \
-                          connection pressure, cache hit rate and related \
-                          counters, normalised to an engine-independent \
-                          metric catalogue (name kept the same whether the \
-                          server is MySQL or MongoDB). MySQL and MongoDB \
-                          only; fails with an explicit 'unsupported driver' \
-                          on the others.")]
+    #[tool(
+        title = "Server vital signs",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Read a connection's live vital signs: queries/s, \
+                      connection pressure, cache hit rate and related \
+                      counters, normalised to an engine-independent \
+                      metric catalogue (name kept the same whether the \
+                      server is MySQL or MongoDB). MySQL and MongoDB \
+                      only; fails with an explicit 'unsupported driver' \
+                      on the others."
+    )]
     async fn pulse_health(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::PulseHealth { connection_id }
         })
         .await
     }
 
-    #[tool(description = "Read one metric's stored history from Pulse's \
-                          on-disk sampler (pulse.db), oldest first. Empty \
-                          unless the connection has Pulse's history sampler \
-                          turned on in Settings; pulse_health's reply names \
-                          the metrics a given engine reports.")]
+    #[tool(
+        title = "Stored metric history",
+        annotations(read_only_hint = true, open_world_hint = false),
+        description = "Read one metric's stored history from Pulse's \
+                      on-disk sampler (pulse.db), oldest first. Empty \
+                      unless the connection has Pulse's history sampler \
+                      turned on in Settings; pulse_health's reply names \
+                      the metrics a given engine reports."
+    )]
     async fn pulse_metrics(
         &self,
-        Parameters(a): Parameters<args::PulseMetrics>,
+        Parameters(mut a): Parameters<args::PulseMetrics>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::PulseMetrics {
             connection_id,
             metric,
@@ -1278,16 +1712,21 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Statements this server has spent the most time on, \
-                          ranked by total time, since the statistics were \
-                          last reset (MySQL) or over what the profiler \
-                          currently retains (MongoDB). Each row's 'sample' \
-                          field, when present, is a runnable example \
-                          pulse_explain accepts.")]
+    #[tool(
+        title = "Slowest statements",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Statements this server has spent the most time on, \
+                      ranked by total time, since the statistics were \
+                      last reset (MySQL) or over what the profiler \
+                      currently retains (MongoDB). Each row's 'sample' \
+                      field, when present, is a runnable example \
+                      pulse_explain accepts."
+    )]
     async fn pulse_top_queries(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Tables {
             connection_id,
             schema,
@@ -1298,16 +1737,21 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Read the plan the server would use for one \
-                          statement, without running it — a pulse_top_queries \
-                          row's own 'sample' field in practice. Refuses a \
-                          statement that is not read-only, is itself \
-                          EXPLAIN/ANALYZE, or carries more than one \
-                          statement.")]
+    #[tool(
+        title = "Explain a statement",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Read the plan the server would use for one \
+                      statement, without running it — a pulse_top_queries \
+                      row's own 'sample' field in practice. Refuses a \
+                      statement that is not read-only, is itself \
+                      EXPLAIN/ANALYZE, or carries more than one \
+                      statement."
+    )]
     async fn pulse_explain(
         &self,
-        Parameters(a): Parameters<args::PulseExplain>,
+        Parameters(mut a): Parameters<args::PulseExplain>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::PulseExplain {
             connection_id,
             sample,
@@ -1322,12 +1766,17 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "The connection's biggest relations, largest first, \
-                          split into data / index / free space.")]
+    #[tool(
+        title = "Largest relations",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "The connection's biggest relations, largest first, \
+                      split into data / index / free space."
+    )]
     async fn pulse_storage(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Tables {
             connection_id,
             schema,
@@ -1338,30 +1787,40 @@ impl Huginn {
         .await
     }
 
-    #[tool(description = "Every session or operation currently open on the \
-                          server (SHOW FULL PROCESSLIST on MySQL; active or \
-                          lock-waiting ops from currentOp on MongoDB), with a \
-                          best-effort blocking chain on MySQL.")]
+    #[tool(
+        title = "Open sessions",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Every session or operation currently open on the \
+                      server (SHOW FULL PROCESSLIST on MySQL; active or \
+                      lock-waiting ops from currentOp on MongoDB), with a \
+                      best-effort blocking chain on MySQL."
+    )]
     async fn pulse_sessions(
         &self,
-        Parameters(a): Parameters<args::Connection>,
+        Parameters(mut a): Parameters<args::Connection>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.read_tool(&a.connection_id, None, |connection_id| {
             BridgeRequest::PulseSessions { connection_id }
         })
         .await
     }
 
-    #[tool(description = "Index usage across the connection's biggest \
-                          relations, least-read first — the fastest way to \
-                          spot an index nobody reads. A reads count of 0 \
-                          means genuinely never used since the counters were \
-                          last reset, not unavailable; unavailable reads as \
-                          null.")]
+    #[tool(
+        title = "Index usage",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Index usage across the connection's biggest \
+                      relations, least-read first — the fastest way to \
+                      spot an index nobody reads. A reads count of 0 \
+                      means genuinely never used since the counters were \
+                      last reset, not unavailable; unavailable reads as \
+                      null."
+    )]
     async fn pulse_index_usage(
         &self,
-        Parameters(a): Parameters<args::Tables>,
+        Parameters(mut a): Parameters<args::Tables>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         let args::Tables {
             connection_id,
             schema,
@@ -1373,16 +1832,24 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Insert a row",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
         description = "Insert one row into a table. Requires the connection's \
-                          MCP write policy to be 'data' or 'full'. Values travel \
-                          as text and are cast to each column's type; omitted \
-                          columns take their database default. Returns the \
-                          generated primary key when available."
+                      MCP write policy to be 'data' or 'full'. Values travel \
+                      as text and are cast to each column's type; omitted \
+                      columns take their database default. Returns the \
+                      generated primary key when available."
     )]
     async fn insert_row(
         &self,
-        Parameters(a): Parameters<args::InsertRow>,
+        Parameters(mut a): Parameters<args::InsertRow>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1419,15 +1886,25 @@ impl Huginn {
         ok_json(&out)
     }
 
-    #[tool(description = "Update one column of the single row addressed by its \
-                          full primary key. Requires the connection's MCP write \
-                          policy to be 'data' or 'full'. Refuses to touch more \
-                          than one row (an incomplete composite key is an error, \
-                          not a silent multi-row update).")]
+    #[tool(
+        title = "Update one column",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        description = "Update one column of the single row addressed by its \
+                      full primary key. Requires the connection's MCP write \
+                      policy to be 'data' or 'full'. Refuses to touch more \
+                      than one row (an incomplete composite key is an error, \
+                      not a silent multi-row update)."
+    )]
     async fn update_cell(
         &self,
-        Parameters(a): Parameters<args::UpdateCell>,
+        Parameters(mut a): Parameters<args::UpdateCell>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1457,15 +1934,25 @@ impl Huginn {
         ok_json(&out)
     }
 
-    #[tool(description = "Delete one or more rows, each addressed by its full \
-                          primary key. Requires the connection's MCP write \
-                          policy to be 'data' or 'full'. Only rows whose full \
-                          key matches a supplied tuple are removed. Returns the \
-                          number of rows deleted.")]
+    #[tool(
+        title = "Delete rows",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
+        description = "Delete one or more rows, each addressed by its full \
+                      primary key. Requires the connection's MCP write \
+                      policy to be 'data' or 'full'. Only rows whose full \
+                      key matches a supplied tuple are removed. Returns the \
+                      number of rows deleted."
+    )]
     async fn delete_rows(
         &self,
-        Parameters(a): Parameters<args::DeleteRows>,
+        Parameters(mut a): Parameters<args::DeleteRows>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1493,26 +1980,34 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Create or replace a view",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Create a view, redefine an existing one, or rename one. \
-                       Requires the connection's MCP write policy to be 'full' \
-                       — a view is schema, so this is the same DDL tier \
-                       CREATE/DROP/ALTER need through run_query. Pass just \
-                       `name` and `query`: the tool reads the current definition \
-                       itself to decide whether this is a create or a replace \
-                       and how to express it on this engine (Postgres CREATE OR \
-                       REPLACE, MySQL RENAME TABLE, SQLite drop-and-recreate, \
-                       MongoDB createView/collMod). Set `preview: true` to see \
-                       the statements without running them — that dry run is a \
-                       read and works on any connection. Note a rename plus a \
-                       body change is atomic on Postgres but NOT on MySQL, \
-                       which commits each DDL statement implicitly. Not \
-                       supported on SQL Server, whose T-SQL view DDL is not \
-                       written yet."
+                      Requires the connection's MCP write policy to be 'full' \
+                      — a view is schema, so this is the same DDL tier \
+                      CREATE/DROP/ALTER need through run_query. Pass just \
+                      `name` and `query`: the tool reads the current definition \
+                      itself to decide whether this is a create or a replace \
+                      and how to express it on this engine (Postgres CREATE OR \
+                      REPLACE, MySQL RENAME TABLE, SQLite drop-and-recreate, \
+                      MongoDB createView/collMod). Set `preview: true` to see \
+                      the statements without running them — that dry run is a \
+                      read and works on any connection. Note a rename plus a \
+                      body change is atomic on Postgres but NOT on MySQL, \
+                      which commits each DDL statement implicitly. Not \
+                      supported on SQL Server, whose T-SQL view DDL is not \
+                      written yet."
     )]
     async fn save_view(
         &self,
-        Parameters(a): Parameters<args::SaveView>,
+        Parameters(mut a): Parameters<args::SaveView>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         if a.preview {
             // A dry run executes nothing, so it goes through the shared
             // read-only body: `call(.., false)` skips the audit log, which is
@@ -1574,20 +2069,28 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Drop a view",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Drop a view. Requires the connection's MCP write policy \
-                       to be 'full' (DROP is schema, the same tier run_query \
-                       needs for it — note that deleting *rows* only needs \
-                       'data'). Works on every driver, SQL Server and MongoDB \
-                       included. Refuses to drop anything that is not a view: on \
-                       SQL a DROP VIEW against a table errors, and on MongoDB — \
-                       where a view and a collection are one namespace — the \
-                       catalog is checked first, so a mistyped name cannot \
-                       destroy a collection's documents."
+                      to be 'full' (DROP is schema, the same tier run_query \
+                      needs for it — note that deleting *rows* only needs \
+                      'data'). Works on every driver, SQL Server and MongoDB \
+                      included. Refuses to drop anything that is not a view: on \
+                      SQL a DROP VIEW against a table errors, and on MongoDB — \
+                      where a view and a collection are one namespace — the \
+                      catalog is checked first, so a mistyped name cannot \
+                      destroy a collection's documents."
     )]
     async fn drop_view(
         &self,
-        Parameters(a): Parameters<args::DropView>,
+        Parameters(mut a): Parameters<args::DropView>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1613,20 +2116,28 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Create an index",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Create an index on a MongoDB collection. MongoDB only — on \
-                       the SQL drivers an index is created with CREATE INDEX \
-                       through run_query, which is more expressive than any \
-                       portable form (USING gin, INCLUDE, a partial predicate). \
-                       Requires the connection's MCP write policy to be 'full': \
-                       an index is schema, the same tier run_query needs for \
-                       db.coll.createIndex(...). Read the existing indexes with \
-                       list_indexes first — its 'mongo' object reports each key's \
-                       direction and type, which a bare column list cannot."
+                      the SQL drivers an index is created with CREATE INDEX \
+                      through run_query, which is more expressive than any \
+                      portable form (USING gin, INCLUDE, a partial predicate). \
+                      Requires the connection's MCP write policy to be 'full': \
+                      an index is schema, the same tier run_query needs for \
+                      db.coll.createIndex(...). Read the existing indexes with \
+                      list_indexes first — its 'mongo' object reports each key's \
+                      direction and type, which a bare column list cannot."
     )]
     async fn create_index(
         &self,
-        Parameters(a): Parameters<args::CreateIndex>,
+        Parameters(mut a): Parameters<args::CreateIndex>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1668,19 +2179,27 @@ impl Huginn {
     }
 
     #[tool(
+        title = "Drop an index",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = true,
+            open_world_hint = true
+        ),
         description = "Drop an index from a MongoDB collection. MongoDB only (on \
-                       SQL, use DROP INDEX through run_query). Requires the \
-                       connection's MCP write policy to be 'full'. The `_id_` \
-                       index is refused. There is no 'edit an index' tool \
-                       because MongoDB cannot alter one in place: replacing it \
-                       is drop_index then create_index, and doing it as two \
-                       calls keeps the window where the index is missing \
-                       visible to you."
+                      SQL, use DROP INDEX through run_query). Requires the \
+                      connection's MCP write policy to be 'full'. The `_id_` \
+                      index is refused. There is no 'edit an index' tool \
+                      because MongoDB cannot alter one in place: replacing it \
+                      is drop_index then create_index, and doing it as two \
+                      calls keeps the window where the index is missing \
+                      visible to you."
     )]
     async fn drop_index(
         &self,
-        Parameters(a): Parameters<args::DropIndex>,
+        Parameters(mut a): Parameters<args::DropIndex>,
     ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
         self.ensure_connected(&a.connection_id)
             .await
             .map_err(to_err)?;
@@ -1803,21 +2322,42 @@ pub async fn serve() -> anyhow::Result<()> {
              governed per connection by the write policy set in HuginnDB → Settings → MCP."
         );
     }
-    if config.allowed.is_empty() {
+    let state = Arc::new(AppState::new());
+
+    // The exposed set as it stands *right now*. Only a banner and the bridge
+    // handshake below read it: every enforcement path re-reads `profiles.json`
+    // per call, so ticking a connection in Settings → MCP takes effect without
+    // restarting the client and this snapshot going stale costs nothing.
+    let exposed: Vec<crate::state::ConnectionProfile> = state
+        .profiles
+        .read()
+        .iter()
+        .filter(|p| config.exposes(p))
+        .cloned()
+        .collect();
+    if exposed.is_empty() {
         eprintln!(
-            "[huginndb-mcp] no connections exposed — pass --connections <profile-id>[,<id>...]"
+            "[huginndb-mcp] no connections exposed yet — tick the ones you want reachable in \
+             HuginnDB → Settings → MCP (or pass --connections <profile-id>[,<id>...] to pin a \
+             set for this client only)"
         );
     } else {
-        let mut ids: Vec<&String> = config.allowed.iter().collect();
-        ids.sort();
+        let mut names: Vec<String> = exposed
+            .iter()
+            .map(|p| format!("{} ({})", p.name, p.id))
+            .collect();
+        names.sort();
         eprintln!(
-            "[huginndb-mcp] exposing {} connection(s): {} (write policy: per-connection{}, \
-             max-rows: {}, max-connections: {} per connection, idle pools closed after {}s)",
-            ids.len(),
-            ids.iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            "[huginndb-mcp] exposing {} connection(s) from {}: {} (write policy: \
+             per-connection{}, max-rows: {}, max-connections: {} per connection, idle pools \
+             closed after {}s)",
+            names.len(),
+            if config.pinned.is_some() {
+                "--connections"
+            } else {
+                "Settings → MCP"
+            },
+            names.join(", "),
             if config.read_only {
                 ", forced read-only via --read-only"
             } else {
@@ -1829,14 +2369,19 @@ pub async fn serve() -> anyhow::Result<()> {
         );
     }
 
-    let state = Arc::new(AppState::new());
-
     // Attach to a running desktop app when its bridge is up, so this process
     // borrows the app's pools instead of opening its own. `None` — no app, or
     // the bridge disabled — is the ordinary case and keeps the pre-bridge
     // behaviour exactly.
-    let allowed: Vec<String> = config.allowed.iter().cloned().collect();
-    let bridge = crate::bridge::client::BridgeClient::connect(allowed)
+    // The handshake still carries a concrete list, even when exposure is the
+    // app's to decide: an app older than this change enforces exactly that
+    // snapshot, which is the pre-1.21 behaviour rather than a refusal, and a
+    // refusal is the one failure the sidecar cannot fall back from (it arrives
+    // as an error reply mid-tool-call, not as `Unreachable`). A current app
+    // ignores the snapshot and re-reads `mcp_exposed` per request — that is
+    // what `defer_exposure` asks it to do.
+    let allowed: Vec<String> = exposed.iter().map(|p| p.id.clone()).collect();
+    let bridge = crate::bridge::client::BridgeClient::connect(allowed, config.pinned.is_none())
         .await
         .map(Arc::new);
     if bridge.is_some() {
@@ -1870,7 +2415,10 @@ mod tests {
     #[test]
     fn config_defaults_expose_nothing() {
         let c = Config::from_args(&args(&[]));
-        assert!(c.allowed.is_empty(), "opt-in: no connections by default");
+        assert!(
+            c.pinned.is_none(),
+            "no --connections defers to the app's own mcp_exposed flags"
+        );
         assert!(!c.read_only);
         assert!(!c.saw_allow_writes);
         assert_eq!(c.max_rows, DEFAULT_MAX_ROWS);
@@ -1911,12 +2459,141 @@ mod tests {
             "--read-only",
             "--max-rows=50",
         ]));
-        assert!(c.allowed.contains("alpha"));
-        assert!(c.allowed.contains("beta"));
-        assert!(c.allowed.contains("gamma"));
-        assert_eq!(c.allowed.len(), 3);
+        let pinned = c.pinned.as_ref().expect("the flag pins a set");
+        assert!(pinned.contains("alpha"));
+        assert!(pinned.contains("beta"));
+        assert!(pinned.contains("gamma"));
+        assert_eq!(pinned.len(), 3);
         assert!(c.read_only);
         assert_eq!(c.max_rows, 50);
+    }
+
+    #[test]
+    fn an_empty_connections_value_pins_an_empty_set() {
+        // Distinct from omitting the flag: `--connections ""` is an explicit
+        // "expose nothing", while no flag at all defers to Settings → MCP.
+        // Collapsing the two would turn a deliberate lockdown into a wide-open
+        // one on upgrade.
+        let c = Config::from_args(&args(&["--connections", ""]));
+        let pinned = c.pinned.as_ref().expect("the flag was seen");
+        assert!(pinned.is_empty());
+    }
+
+    /// Config for the resolver tests: `None` defers to `mcp_exposed`, `Some`
+    /// pins that set.
+    fn resolver_config(pinned: Option<&[&str]>) -> Config {
+        Config {
+            pinned: pinned.map(|ids| ids.iter().map(|s| s.to_string()).collect()),
+            read_only: false,
+            max_rows: DEFAULT_MAX_ROWS,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            saw_allow_writes: false,
+        }
+    }
+
+    fn exposed_profile(id: &str, name: &str) -> crate::state::ConnectionProfile {
+        crate::state::ConnectionProfile {
+            name: name.into(),
+            mcp_exposed: true,
+            ..crate::testkit::profile(id)
+        }
+    }
+
+    #[test]
+    fn a_connection_resolves_by_id_or_by_name() {
+        let profiles = vec![exposed_profile("uuid-1", "Producción MySQL")];
+        let config = resolver_config(None);
+        assert_eq!(
+            resolve_connection(&config, "uuid-1", &profiles).unwrap(),
+            "uuid-1"
+        );
+        assert_eq!(
+            resolve_connection(&config, "Producción MySQL", &profiles).unwrap(),
+            "uuid-1"
+        );
+        // Case-insensitively, and tolerating the whitespace a model pads with.
+        assert_eq!(
+            resolve_connection(&config, "  producción mysql  ", &profiles).unwrap(),
+            "uuid-1"
+        );
+    }
+
+    #[test]
+    fn an_id_wins_over_a_name_that_collides_with_it() {
+        // Nothing stops a user naming one connection after another's uuid. The
+        // id is the identity, so it must win — resolving to the *named* profile
+        // would send the write somewhere the caller never asked for.
+        let profiles = vec![
+            exposed_profile("beta", "Alpha"),
+            exposed_profile("uuid-2", "beta"),
+        ];
+        assert_eq!(
+            resolve_connection(&resolver_config(None), "beta", &profiles).unwrap(),
+            "beta"
+        );
+    }
+
+    #[test]
+    fn an_ambiguous_name_is_refused_and_names_the_candidates() {
+        // Profile names are not unique, so this is reachable with two clients'
+        // servers both called "Producción". Guessing either would be a write to
+        // the wrong database.
+        let profiles = vec![
+            exposed_profile("uuid-1", "Producción"),
+            exposed_profile("uuid-2", "producción"),
+        ];
+        let err = resolve_connection(&resolver_config(None), "Producción", &profiles)
+            .expect_err("ambiguous");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("uuid-1"), "{msg}");
+        assert!(msg.contains("uuid-2"), "{msg}");
+    }
+
+    #[test]
+    fn an_unexposed_connection_is_told_apart_from_an_unknown_one() {
+        // The two need different fixes, and "unknown connection" sent the user
+        // hunting for a typo when the answer was a checkbox.
+        let profiles = vec![crate::testkit::profile("uuid-1")];
+        let err = resolve_connection(&resolver_config(None), "uuid-1", &profiles)
+            .expect_err("not exposed");
+        let msg = format!("{err:?}");
+        assert!(msg.contains("Settings"), "{msg}");
+
+        // Same connection, but this client pinned its own list: the fix is the
+        // command line, not the app.
+        let err = resolve_connection(&resolver_config(Some(&["other"])), "uuid-1", &profiles)
+            .expect_err("not in the pinned list");
+        assert!(format!("{err:?}").contains("--connections"));
+
+        let err =
+            resolve_connection(&resolver_config(None), "nope", &profiles).expect_err("unknown");
+        assert!(format!("{err:?}").contains("unknown connection"));
+    }
+
+    #[test]
+    fn pinning_a_list_overrides_the_apps_own_flags_in_both_directions() {
+        // `--connections` is an argument the user typed; a checkbox must not
+        // widen it, and must not narrow it either.
+        let profiles = vec![
+            exposed_profile("uuid-1", "Ticked"),
+            crate::testkit::profile("uuid-2"), // mcp_exposed: false
+        ];
+        let config = resolver_config(Some(&["uuid-2"]));
+        assert_eq!(
+            resolve_connection(&config, "uuid-2", &profiles).unwrap(),
+            "uuid-2",
+            "pinned wins over an unticked flag"
+        );
+        assert!(
+            resolve_connection(&config, "uuid-1", &profiles).is_err(),
+            "a ticked flag must not widen a pinned list"
+        );
+    }
+
+    #[test]
+    fn an_empty_reference_is_refused() {
+        let profiles = vec![exposed_profile("uuid-1", "Alpha")];
+        assert!(resolve_connection(&resolver_config(None), "   ", &profiles).is_err());
     }
 
     #[test]
@@ -1976,13 +2653,14 @@ mod tests {
                 max_connections: None,
                 origin_id: None,
                 pulse_enabled: false,
+                mcp_exposed: true,
             });
         let mut allowed = HashSet::new();
         allowed.insert(id.to_string());
         Huginn::new(
             Arc::new(state),
             Arc::new(Config {
-                allowed,
+                pinned: Some(allowed),
                 read_only,
                 max_rows: DEFAULT_MAX_ROWS,
                 max_connections: DEFAULT_MAX_CONNECTIONS,
@@ -2464,6 +3142,155 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// The MCP Bundle manifest must list exactly the tools the router serves.
+    ///
+    /// `mcpb/manifest.json` is what an MCPB-aware client (and Anthropic's
+    /// directory review) reads to describe this extension before ever starting
+    /// it, so a tool added here and forgotten there makes the bundle lie about
+    /// itself — silently, and in the one place nobody re-reads. Nothing links
+    /// the two files, so this test is the link.
+    #[test]
+    fn the_mcpb_manifest_lists_exactly_the_tools_we_serve() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../mcpb/manifest.json");
+        let raw = std::fs::read_to_string(path).expect("mcpb/manifest.json");
+        let manifest: serde_json::Value = serde_json::from_str(&raw).expect("valid JSON");
+        let mut declared: Vec<String> = manifest["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .map(|t| t["name"].as_str().expect("tool name").to_string())
+            .collect();
+        declared.sort();
+
+        let mut served: Vec<String> = Huginn::tool_router()
+            .list_all()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        served.sort();
+
+        assert_eq!(
+            declared, served,
+            "mcpb/manifest.json's tool list has drifted from the router"
+        );
+    }
+
+    /// Every tool must carry a human-readable title and an explicit
+    /// `readOnlyHint`.
+    ///
+    /// Nothing in the type system enforces this — `annotations` is optional on
+    /// `Tool`, so a new tool compiles fine with none and simply tells clients
+    /// nothing about whether it writes. The cost is not cosmetic: a client's
+    /// auto-approval mode and its permission rules read these hints, so an
+    /// unannotated read gets treated with the same suspicion as a DELETE, and
+    /// an unannotated write gets no more friction than a SELECT. Same family as
+    /// the unenforced steps gotcha #49 records — the test is the enforcement.
+    #[test]
+    fn every_tool_declares_a_title_and_a_read_only_hint() {
+        for tool in Huginn::tool_router().list_all() {
+            let name = &tool.name;
+            assert!(
+                tool.title.as_deref().is_some_and(|t| !t.trim().is_empty()),
+                "{name}: needs a human-readable title"
+            );
+            let annotations = tool
+                .annotations
+                .as_ref()
+                .unwrap_or_else(|| panic!("{name}: needs annotations"));
+            assert!(
+                annotations.read_only_hint.is_some(),
+                "{name}: must say whether it modifies anything"
+            );
+            assert!(
+                annotations.open_world_hint.is_some(),
+                "{name}: must say whether its domain is closed"
+            );
+        }
+    }
+
+    /// The seven write tools must never advertise themselves as read-only, and
+    /// must each state whether they are destructive — the half of the contract
+    /// a client uses to decide how loudly to ask.
+    #[test]
+    fn the_write_tools_are_annotated_as_writes() {
+        let tools = Huginn::tool_router().list_all();
+        for name in WRITE_TOOLS {
+            let tool = tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("tool {name} missing from tool_router"));
+            let a = tool.annotations.as_ref().expect("annotated");
+            assert_eq!(
+                a.read_only_hint,
+                Some(false),
+                "{name}: writes are not read-only"
+            );
+            assert!(
+                a.destructive_hint.is_some(),
+                "{name}: must state whether it destroys or only adds"
+            );
+        }
+        // And the two that only ever add must not be lumped in with the ones
+        // that overwrite or remove: `destructive_hint` defaults to true when it
+        // is absent, so saying "false" out loud is the whole point.
+        for name in ["insert_row", "create_index"] {
+            let tool = tools.iter().find(|t| t.name == name).unwrap();
+            assert_eq!(
+                tool.annotations.as_ref().unwrap().destructive_hint,
+                Some(false),
+                "{name}: additive"
+            );
+        }
+    }
+
+    /// The two statement tools are annotated as the constants they now are:
+    /// `run_query` reads, `run_write` writes. Neither depends on any
+    /// connection's policy, which is the property that keeps them honest for a
+    /// client that caches `tools/list` at startup.
+    #[test]
+    fn the_two_statement_tools_are_annotated_as_constants() {
+        let tools = Huginn::tool_router().list_all();
+        let ann = |name: &str| {
+            tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("{name} missing"))
+                .annotations
+                .clone()
+                .expect("annotated")
+        };
+        assert_eq!(ann("run_query").read_only_hint, Some(true));
+        assert_eq!(ann("run_write").read_only_hint, Some(false));
+        assert_eq!(ann("run_write").destructive_hint, Some(true));
+    }
+
+    /// `--read-only` takes every write tool off the surface rather than leaving
+    /// eight tools that can only answer with a refusal.
+    ///
+    /// It is also the *only* input allowed to vary the surface: it is a process
+    /// argument, so unlike a per-connection policy it cannot change under a
+    /// client that cached `tools/list` at startup. See `disable_write_tools`.
+    #[test]
+    fn read_only_mode_removes_the_write_tools() {
+        let normal = huginn_with_policy("t-ann", McpWritePolicy::Full, false);
+        for name in WRITE_TOOLS {
+            assert!(
+                normal.tool_router.get(name).is_some(),
+                "{name} should be offered when writes are possible"
+            );
+        }
+
+        let killed = huginn_with_policy("t-ann", McpWritePolicy::Full, true);
+        for name in WRITE_TOOLS {
+            assert!(
+                killed.tool_router.get(name).is_none(),
+                "{name} must not be offered under --read-only"
+            );
+        }
+        // The read half survives, or the flag would leave nothing usable.
+        assert!(killed.tool_router.get("run_query").is_some());
     }
 
     /// Regression test for issue #83: the write tools' input schemas must

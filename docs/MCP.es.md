@@ -32,6 +32,71 @@ permite. Ver [Seguridad](#seguridad).
 Consulta [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) para el
 razonamiento de diseño (en inglés).
 
+## Primeros pasos
+
+Cuatro pasos, una sola vez. Nada de esto necesita una terminal salvo que
+quieras usarla.
+
+**1. Instala HuginnDB.** El conector viaja dentro del instalador como binario
+sidecar — no hay nada más que descargar ni nada que compilar.
+
+**2. Elige a qué puede llegar el asistente.** Abre **Ajustes → MCP** y marca
+las conexiones que quieras que vea. **Nada es alcanzable hasta que lo marcas**,
+y esa es toda la decisión de acceso: la configuración del cliente de IA no
+nombra ninguna conexión.
+
+**3. Elige qué puede hacer.** Cada conexión marcada tiene un nivel de escritura
+en el mismo panel:
+
+| Nivel | Qué permite |
+| --- | --- |
+| `read-only` *(por defecto)* | Solo lecturas. Toda herramienta de escritura se rechaza. |
+| `data` | Añade `INSERT` / `UPDATE` / `DELETE`. Sin cambios de esquema. |
+| `full` | Añade `CREATE` / `DROP` / `ALTER`, vistas e índices. |
+
+Déjalo todo en `read-only` hasta que tengas un motivo para no hacerlo. Tanto
+esto como el paso 2 se releen en **cada llamada**, así que puedes cambiar de
+opinión después sin reiniciar nada.
+
+**4. Apunta tu cliente al conector.**
+
+- **Claude Code** — pulsa **Añadir a Claude Code** en Ajustes → MCP. Ese es
+  todo el paso. (Ejecuta `claude mcp add` por ti; ver
+  [Claude Code (CLI)](#claude-code-cli) para hacerlo a mano.)
+- **Claude Desktop** — descarga el `.mcpb` del
+  [último release](https://github.com/Alexfp28/huginnDB/releases) y suéltalo en
+  **Ajustes → Extensiones**. Ver
+  [Claude Desktop (extensión de un clic)](#claude-desktop-extensión-de-un-clic).
+- **Cualquier otro** — copia el snippet JSON de Ajustes → MCP a la
+  configuración de tu cliente. Lleva una ruta y nada más, así que es el mismo
+  en cualquier máquina y se pega una sola vez.
+
+**Comprueba que funciona.** Pídele al asistente: *"con huginndb, lista mis
+conexiones, luego lista las tablas de \<nombre\> y enséñame 5 filas de la
+primera."* Si responde con nombres de tabla reales, ya está.
+
+### Si vienes de una configuración anterior a la 1.21
+
+Tu configuración actual sigue funcionando exactamente igual — no hay que hacer
+nada. Pero conviene saber qué cambió, porque la forma antigua ya no es la
+buena.
+
+Las conexiones expuestas vivían en la configuración del propio cliente como
+`--connections <uuid>,<uuid>`, y por eso añadir una conexión obligaba a editar
+ese fichero (uno por cliente) y reiniciarlo. Esa lista ahora vive en la app, en
+el paso 2 de arriba.
+
+**Un cliente lanzado con `--connections` queda fijado a esa lista** e ignora
+las casillas, a propósito: un argumento que escribiste tú manda sobre una
+casilla, en los dos sentidos. Para pasar un cliente a las casillas, quita el
+flag de su configuración — el comando se queda en una ruta pelada — y marca lo
+que quieras en Ajustes → MCP. Para dejar un cliente deliberadamente más
+estrecho que el resto, deja el flag; ver [Fijar un cliente a un conjunto
+concreto](#fijar-un-cliente-a-un-conjunto-concreto).
+
+Un cambio de comportamiento que conviene conocer: `run_query` ya no acepta
+sentencias que escriban. Esas van por `run_write`, y el rechazo lo dice.
+
 ## Obtener el binario
 
 **Instalaciones empaquetadas (el caso normal):** `huginndb-mcp` se distribuye
@@ -62,18 +127,36 @@ Ajustes → MCP en una instalación empaquetada, o mira [Obtener el
 binario](#obtener-el-binario) para una compilación desde fuente (en Windows,
 `…\target\release\huginndb-mcp.exe`).
 
-Donde una plantilla diga `<profile-id>`, usa el `id` UUID estable de la
-conexión que quieras exponer. Búscalo en la app de escritorio, o léelo de
-`profiles.json` en el directorio de configuración de tu plataforma
-(`%APPDATA%\HuginnDB` en Windows, `~/.config/HuginnDB` en Linux,
-`~/Library/Application Support/HuginnDB` en macOS) — es el campo `id`, no el
-`name` visible. Expón varias a la vez con una lista separada por comas
-(`--connections id1,id2`).
+**A qué conexiones puede llegar se elige en la app**, no en la configuración
+del cliente: abre **Ajustes → MCP** y márcalas. El conector relee esa elección
+de `profiles.json` en cada llamada, así que exponer una conexión más es marcar
+una casilla — sin editar configuración ni reiniciar el cliente. Nada queda
+expuesto hasta que lo marcas.
+
+Por eso ninguna de las plantillas de abajo lleva un id de conexión: son las
+mismas en cualquier máquina y se pegan una sola vez. (Antes de 1.21 el conjunto
+expuesto vivía aquí como `--connections <uuid>,<uuid>`; esas configuraciones
+siguen funcionando — ver [Fijar un cliente a un conjunto
+concreto](#fijar-un-cliente-a-un-conjunto-concreto).)
+
+**Cómo nombrar una conexión en un prompt.** Cada herramienta acepta el
+**nombre** de la conexión tal y como aparece en HuginnDB — *"con huginndb, lista
+las tablas de Producción MySQL"* — o su id de perfil. `list_connections`
+devuelve ambos. Los nombres se comparan sin distinguir mayúsculas; si dos
+conexiones expuestas comparten uno, el conector lo dice y pide el id en vez de
+adivinar.
 
 ### Claude Code (CLI)
 
+**Ajustes → MCP tiene un botón "Añadir a Claude Code"** que ejecuta esto
+mismo por ti, si el CLI `claude` está en tu `PATH`. Pulsarlo dos veces es
+inofensivo — informa de que ya estaba registrado en vez de fallar. Para
+deshacerlo, `claude mcp remove huginndb`.
+
+Lo mismo a mano:
+
 ```bash
-claude mcp add huginndb -s user -- /ruta/absoluta/a/huginndb-mcp --connections <profile-id>
+claude mcp add huginndb -s user -- /ruta/absoluta/a/huginndb-mcp
 ```
 
 - El `--` separa el comando+args del servidor de los flags propios de
@@ -91,13 +174,30 @@ de proyecto):
   "mcpServers": {
     "huginndb": {
       "command": "/ruta/absoluta/a/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
 ```
 
-### Claude Desktop
+### Claude Desktop (extensión de un clic)
+
+Cada release adjunta un **MCP Bundle** — `huginndb-mcp-<versión>-win32.mcpb`
+(y uno `-linux`) en la
+[página de releases](https://github.com/Alexfp28/huginnDB/releases).
+Descárgalo y abre **Ajustes → Extensiones** en Claude Desktop: arrastra el
+fichero o usa *Instalar extensión*. Ni ruta que copiar ni JSON que editar.
+
+El bundle lleva su propia copia del conector, pero no es autónomo:
+**HuginnDB tiene que estar instalado en la misma máquina**, porque ahí es donde
+viven los perfiles de conexión y sus entradas del llavero. Qué conexiones puede
+alcanzar sigue siendo Ajustes → MCP en la app, y se sigue releyendo en cada
+llamada — la extensión no tiene ajustes propios, que es justo la gracia.
+
+Usa la vía manual de abajo si quieres fijar un cliente a un subconjunto con
+`--connections`, que el bundle no pasa.
+
+### Claude Desktop (manual)
 
 Ajustes → Developer → **Edit Config** abre `claude_desktop_config.json`
 (`%APPDATA%\Claude\` en Windows, `~/Library/Application Support/Claude/` en
@@ -108,7 +208,7 @@ macOS). Añade el servidor y **reinicia la app**:
   "mcpServers": {
     "huginndb": {
       "command": "C:\\ruta\\a\\huginndb-mcp.exe",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -128,7 +228,7 @@ proyectos):
   "mcpServers": {
     "huginndb": {
       "command": "/ruta/absoluta/a/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -151,7 +251,7 @@ Manage MCP Servers → View raw config**, y pega:
   "mcpServers": {
     "huginndb": {
       "command": "/ruta/absoluta/a/huginndb-mcp",
-      "args": ["--connections", "<profile-id>"]
+      "args": []
     }
   }
 }
@@ -171,7 +271,7 @@ Claude). Añade una tabla `[mcp_servers.<nombre>]`:
 ```toml
 [mcp_servers.huginndb]
 command = "C:\\ruta\\a\\huginndb-mcp.exe"
-args = ["--connections", "<profile-id>"]
+args = []
 # opcional: startup_timeout_sec = 20
 ```
 
@@ -179,7 +279,7 @@ O añádelo desde la CLI (los servidores stdio toman un comando separado por
 `--`):
 
 ```bash
-codex mcp add huginndb -- /ruta/absoluta/a/huginndb-mcp --connections <profile-id>
+codex mcp add huginndb -- /ruta/absoluta/a/huginndb-mcp
 ```
 
 Las herramientas aparecen entonces bajo el servidor `huginndb` dentro de
@@ -189,12 +289,32 @@ Codex.
 
 | Flag | Por defecto | Significado |
 | --- | --- | --- |
-| `--connections <a,b,c>` | *(ninguna)* | IDs de perfil a los que el servidor puede acceder. **Opt-in**: sin ninguno configurado, no se expone nada. |
-| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
+| `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
+| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `run_write` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
 Los flags aceptan tanto `--flag valor` como `--flag=valor`.
+
+### Fijar un cliente a un conjunto concreto
+
+`--connections id1,id2` sobreescribe las casillas de Ajustes → MCP solo para ese
+cliente, durante toda la vida del proceso. Úsalo cuando un cliente deba ver un
+conjunto más estrecho que el resto — un agente de pruebas limitado a una base de
+staging, por ejemplo — o para que una configuración anterior a 1.21 siga
+funcionando sin tocarla.
+
+La fijación es absoluta en ambos sentidos: marcar una conexión en la app no
+amplía un cliente fijado, y desmarcarla no lo estrecha. Un argumento que
+escribió el usuario manda sobre una casilla, así que la única forma de cambiar
+lo que ve un cliente fijado es editar su configuración y reiniciarlo — que es
+justo la fricción que las casillas existen para quitar, así que prefiérelas
+salvo que quieras expresamente un cliente con un conjunto distinto.
+
+El id de un perfil está en Ajustes → MCP, o en `profiles.json` dentro del
+directorio de configuración de tu plataforma (`%APPDATA%\HuginnDB` en Windows,
+`~/.config/HuginnDB` en Linux, `~/Library/Application Support/HuginnDB` en
+macOS) — es el campo `id`, no el `name` visible.
 
 ## Huella de conexiones
 
@@ -260,7 +380,8 @@ datos a demanda.
 | `list_tables` | Tablas y vistas, con recuentos de filas y tamaños aproximados. |
 | `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. Funciona también sobre una vista, y añade un objeto `view` con su definición cuando la relación lo es — `query` (el cuerpo del SELECT) en SQL, `viewOn` + `pipeline` en MongoDB. |
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. En MongoDB cada entrada lleva además un objeto `mongo` con la definición completa — dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación, pesos, tamaño y uso. Léelo antes de recrear un índice: la lista de columnas por sí sola no distingue `{createdAt: -1}` de `{createdAt: 1}`. |
-| `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
+| `run_query` | Ejecuta una única sentencia de **solo lectura** (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Cualquier cosa que escriba se rechaza aquí diga lo que diga el nivel. |
+| `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
@@ -282,9 +403,25 @@ datos a demanda.
 `list_connections` informa del nivel de escritura efectivo de cada conexión,
 para que el asistente sepa de antemano qué puede hacer.
 
+Cada herramienta lleva además un **título** y **anotaciones** MCP:
+`readOnlyHint` en las diecisiete que solo leen, y `destructiveHint` /
+`idempotentHint` en las ocho que escriben (`insert_row` y `create_index` se
+marcan como aditivas, no destructivas). Los clientes las usan para decidir
+cuánta fricción merece una llamada, así que un `list_tables` ya no parece tan
+arriesgado como un `delete_rows`.
+
+Leer y escribir son **dos herramientas** — `run_query` y `run_write` — en vez
+de una que abarque ambas. Las reglas de permisos de un cliente se aplican por
+nombre de herramienta, así que un ejecutor único hacía imposible expresar "los
+SELECT que pasen, lo demás que me pregunte", y obligaba a que la anotación
+describiera el más peligroso de los dos tiers. Separadas, ambas son constantes
+honestas que ningún cambio de nivel puede dejar obsoletas: `run_query` es
+`readOnlyHint`, `run_write` es `destructiveHint`. Cada una rechaza el tráfico
+de la otra y dice qué herramienta usar en su lugar.
+
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 
-En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_query` alcanza
+En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_write` alcanza
 en `full` y que es estrictamente más expresivo que cualquier forma portable —
 `USING gin`, `INCLUDE`, un predicado parcial, un índice sobre expresión. Una
 herramienta tendría que aplanar todo eso en un conjunto fijo de campos, y el
@@ -296,13 +433,13 @@ Exponerlo como herramienta sería un retroceso.
 MongoDB es el caso opuesto: hasta 1.19.0 la gramática mongosh no tenía
 `createIndex` en absoluto, así que la operación no era alcanzable *por ninguna
 vía*. Ahora existen las dos — las dos herramientas y
-`db.coll.createIndex(...)` por `run_query` — y comparten una sola
+`db.coll.createIndex(...)` por `run_write` — y comparten una sola
 implementación.
 
 No hay herramienta para «editar» un índice porque MongoDB no puede alterarlo en
 sitio: reemplazarlo es `drop_index` y luego `create_index`, y dejarlo en dos
 llamadas mantiene visible para quien llama la ventana en la que el índice no
-existe. Ocultar un índice (`collMod`) se alcanza por `run_query` como
+existe. Ocultar un índice (`collMod`) se alcanza por `run_write` como
 `db.coll.hideIndex("nombre")` — la forma reversible de ensayar un borrado.
 
 ### Pulse: cómo `pulse_metrics` llega al histórico del muestreador
@@ -340,7 +477,7 @@ nombre de la base de datos mediante:
 
 - `schema` en `list_tables`, `describe_table`, `list_indexes`,
   `browse_table`, `save_view` y `drop_view`.
-- `database` en `run_query` (su `sql` a secas no tiene campo para esto).
+- `database` en `run_query` / `run_write` (su `sql` a secas no tiene campo para esto).
 
 El servidor lo resuelve igual que el explorador de esquema de la app de
 escritorio cuando expandes una base de datos — reutilizando el mismo cliente
@@ -363,13 +500,13 @@ conexión son baratas. Una conexión de una sola base de datos (con
     lecturas de mongosh no se confunden con escrituras. Toda herramienta de
     escritura se rechaza.
   - **`data`** — añade DML a nivel de fila: `INSERT`/`UPDATE`/`DELETE` vía
-    `run_query`, más las herramientas `insert_row` / `update_cell` /
+    `run_write`, más las herramientas `insert_row` / `update_cell` /
     `delete_rows`. Sin cambios de esquema.
   - **`full`** — añade DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) vía
-    `run_query`, más las herramientas `save_view` / `drop_view` /
+    `run_write`, más las herramientas `save_view` / `drop_view` /
     `create_index` / `drop_index`. En MongoDB este es también el nivel de
     `createIndex`/`dropIndex`/`hideIndex`, `drop()` y `renameCollection` vía
-    `run_query`.
+    `run_write`.
 
   Un índice y un *namespace* también son esquema, por la misma razón y con la
   misma consecuencia: `create_index` y `drop_index` viven en `full`, igual que
@@ -380,7 +517,7 @@ conexión son baratas. Una conexión de una sola base de datos (con
   raro por un segundo — eliminar una *vista* pide `full` mientras que borrar
   *filas* solo pide `data` — y es la misma asimetría que ya existe entre
   `DROP TABLE` y `DELETE FROM`. Es además la única respuesta coherente: el
-  `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_query` está
+  `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_write` está
   clasificado como DDL, así que una conexión en `data` lo tiene rechazado, y
   una herramienta que permitiera el mismo cambio devolvería justo lo que el
   nivel acaba de negar. El `preview: true` de `save_view` es una excepción de
@@ -402,7 +539,7 @@ conexión son baratas. Una conexión de una sola base de datos (con
   Las lecturas no se registran, así que el fichero es un registro limpio de las
   operaciones que cambian estado.
 - **Guarda anti-relación-entera.** Un `UPDATE`/`DELETE` sin `WHERE` en
-  `run_query` se rechaza de plano, en cualquier nivel — añade un predicado
+  `run_write` se rechaza de plano, en cualquier nivel — añade un predicado
   explícito (`WHERE 1=1` si de verdad quieres todas las filas). MongoDB entra
   en la misma guarda: `updateMany({})` y `deleteMany({})` se rechazan, y la
   forma de decir que lo quieres es un predicado trivialmente cierto, p. ej.
@@ -410,9 +547,14 @@ conexión son baratas. Una conexión de una sola base de datos (con
   ambiguo y ya está detrás de `full`, exactamente como `DROP TABLE`.
 - **Kill-switch global.** `--read-only` fuerza todas las conexiones a solo
   lectura sin importar su nivel guardado.
-- **Exposición opt-in.** Solo los IDs de perfil que pases a `--connections`
-  son alcanzables; cualquier otra llamada a una conexión no nombrada se
-  rechaza.
+- **Exposición opt-in.** Solo son alcanzables las conexiones marcadas en
+  Ajustes → MCP (o nombradas por `--connections`); cualquier otra llamada se
+  rechaza, y el *nombre* de una conexión solo puede resolver a una que ya esté
+  expuesta. La exposición se relee en cada llamada, así que desmarcar una le
+  quita el acceso a un cliente en marcha de inmediato. Además es estrictamente
+  local: una sincronización de origen compartido nunca la cambia y se limpia al
+  importar perfiles, así que ni un publicador ni un fichero que hayas importado
+  pueden exponer una base de datos en tu máquina.
 - **Sin texto plano nuevo.** Las contraseñas se leen del llavero del sistema
   en el momento de conectar, igual que la app de escritorio. El conector
   nunca las registra ni las persiste (el log de auditoría registra sentencias
@@ -513,7 +655,7 @@ No hay herramienta para editar la estructura de una *tabla* en ningún driver.
 Se dejó fuera a propósito (ver
 [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): hacer que un asistente
 sintetice una lista de columnas completa, con tipos, nulabilidad, valores por
-defecto y claves, es peor que hacerle emitir `ALTER TABLE` por `run_query`, que
+defecto y claves, es peor que hacerle emitir `ALTER TABLE` por `run_write`, que
 `full` permite. Ese argumento va del *tamaño del DTO*, y por eso no se traslada
 a los índices de MongoDB: la especificación de un índice es un documento de
 claves y un puñado de flags, más cerca de `save_view` que de una tabla.

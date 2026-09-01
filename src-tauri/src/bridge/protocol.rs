@@ -67,6 +67,27 @@ pub struct Hello {
     /// the user never named.
     #[serde(default)]
     pub allowed: Vec<String>,
+    /// When true, `allowed` is only this client's startup snapshot and the app
+    /// should authorize against `ConnectionProfile::mcp_exposed` instead,
+    /// re-read on every request.
+    ///
+    /// Set whenever the sidecar was started without an explicit
+    /// `--connections` list, which is the normal case now that the exposed set
+    /// is picked in Settings → MCP. It is what makes ticking a connection there
+    /// take effect in a client that is already running: without it the app
+    /// would keep enforcing the snapshot taken when that client started, and
+    /// the checkbox would appear to do nothing until the user restarted it.
+    ///
+    /// Additive, and deliberately **not** a `PROTOCOL_VERSION` bump: an app
+    /// that predates the field ignores it and enforces `allowed`, which is the
+    /// old behaviour rather than a refusal — and a refusal is the one outcome
+    /// the sidecar cannot degrade from gracefully, since it arrives as an error
+    /// reply mid-tool-call instead of as
+    /// [`crate::bridge::client::BridgeError::Unreachable`]. An old *sidecar*
+    /// never sets it and a current app then reads `false`, which is exactly
+    /// what that sidecar means.
+    #[serde(default)]
+    pub defer_exposure: bool,
 }
 
 /// Reply to [`Hello`].

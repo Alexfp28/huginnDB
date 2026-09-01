@@ -50,6 +50,10 @@ pub struct BridgeClient {
     stream: Mutex<Connection>,
     /// Connections this client is allowed to reach, re-sent on reconnect.
     allowed: Vec<String>,
+    /// Whether the app should authorize against `mcp_exposed` rather than
+    /// against `allowed`. Re-sent on reconnect for the same reason `allowed`
+    /// is: a reconnect is a fresh handshake and the app remembers nothing.
+    defer_exposure: bool,
 }
 
 struct Connection {
@@ -65,11 +69,16 @@ impl BridgeClient {
     /// or a rejected token. Every one of those is a normal reason to fall back
     /// to local pools, and none of them should fail a tool call or print
     /// anything alarming.
-    pub async fn connect(allowed: Vec<String>) -> Option<Self> {
+    /// `defer_exposure` says the sidecar has no `--connections` list of its own
+    /// and the app should authorize against `ConnectionProfile::mcp_exposed`
+    /// instead, re-read per request. `allowed` still carries this process's
+    /// snapshot of that set — see the note where [`crate::mcp::serve`] builds
+    /// it for why the snapshot travels even then.
+    pub async fn connect(allowed: Vec<String>, defer_exposure: bool) -> Option<Self> {
         let discovery = read_discovery()?;
         let connection = timeout(
             CONNECT_TIMEOUT,
-            Self::handshake(&discovery.token, discovery.port, &allowed),
+            Self::handshake(&discovery.token, discovery.port, &allowed, defer_exposure),
         )
         .await
         .ok()?
@@ -77,10 +86,16 @@ impl BridgeClient {
         Some(Self {
             stream: Mutex::new(connection),
             allowed,
+            defer_exposure,
         })
     }
 
-    async fn handshake(token: &str, port: u16, allowed: &[String]) -> io::Result<Connection> {
+    async fn handshake(
+        token: &str,
+        port: u16,
+        allowed: &[String],
+        defer_exposure: bool,
+    ) -> io::Result<Connection> {
         let stream = TcpStream::connect(("127.0.0.1", port)).await?;
         // Interactive request/response on loopback: Nagle would add latency to
         // every call for no batching benefit.
@@ -94,6 +109,7 @@ impl BridgeClient {
                 protocol_version: PROTOCOL_VERSION,
                 token: token.to_string(),
                 allowed: allowed.to_vec(),
+                defer_exposure,
             },
         )
         .await?;
@@ -195,7 +211,12 @@ impl BridgeClient {
         let discovery = read_discovery()?;
         timeout(
             CONNECT_TIMEOUT,
-            Self::handshake(&discovery.token, discovery.port, &self.allowed),
+            Self::handshake(
+                &discovery.token,
+                discovery.port,
+                &self.allowed,
+                self.defer_exposure,
+            ),
         )
         .await
         .ok()?

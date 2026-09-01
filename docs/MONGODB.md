@@ -195,7 +195,7 @@ database bound, pass `schema` — the database name — or the collection list c
 back empty. See [`MCP.md`](MCP.md).
 
 `create_index` and `drop_index` are MongoDB-only tools — on the SQL drivers an
-index is created with `CREATE INDEX` through `run_query`, which is more
+index is created with `CREATE INDEX` through `run_write`, which is more
 expressive than any portable form. Read the existing indexes with
 `list_indexes` first: on MongoDB each entry carries a `mongo` object with the
 real definition, and the column list alone cannot tell `{createdAt: -1}` from

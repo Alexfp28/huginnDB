@@ -21,6 +21,7 @@ import type {
   ConflictResolution,
   BatchResult,
   ConnectionProfile,
+  ClaudeCodeRegistration,
   DeleteProfilesReport,
   McpWritePolicy,
   ConnectionTabState,
@@ -141,6 +142,30 @@ export const api = {
    */
   setPulseEnabled: (ids: string[], enabled: boolean) =>
     invoke<number>("set_pulse_enabled", { ids, enabled }),
+
+  /**
+   * Expose or hide several connections from the headless MCP connector in one
+   * write. Same "how many actually changed" return as `setMcpWritePolicy`.
+   *
+   * This is what the Settings → MCP checkboxes write. The sidecar re-reads the
+   * flag per call, so it takes effect without restarting the MCP client —
+   * unless that client was started with an explicit `--connections` list, which
+   * pins it for the life of the process.
+   */
+  setMcpExposed: (ids: string[], exposed: boolean) =>
+    invoke<number>("set_mcp_exposed", { ids, exposed }),
+
+  /**
+   * Run `claude mcp add huginndb -s user -- <sidecar>` for the user, instead of
+   * making them paste a path into a terminal. Reversible with
+   * `claude mcp remove huginndb`; the button click is the confirmation.
+   *
+   * Never throws for the ordinary outcomes — "already registered" and "no CLI
+   * on PATH" come back as values, since neither is a failure the user needs to
+   * see as one.
+   */
+  registerWithClaudeCode: () =>
+    invoke<ClaudeCodeRegistration>("register_with_claude_code"),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is

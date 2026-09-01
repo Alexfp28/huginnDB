@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
-import { Copy, Search, X } from "lucide-react";
+import { Copy, Search, Terminal, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ import { useOrigins } from "@/stores/sync/origins";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type {
+  ClaudeCodeRegistration,
   ConnectionProfile,
   McpConnectorInfo,
   McpWritePolicy,
@@ -67,7 +68,6 @@ export function McpSection() {
   const { t } = useTranslation();
   const [info, setInfo] = useState<McpConnectorInfo | null>(null);
   const [profiles, setProfiles] = useState<ConnectionProfile[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
   const [scope, setScope] = useState<ProfileScope>("all");
   /** Pending "set everything to full", which is the one level worth a prompt. */
@@ -84,6 +84,10 @@ export function McpSection() {
    * and re-applying the same policy twice is harmless.
    */
   const [applying, setApplying] = useState(false);
+  /** Result of the last "add to Claude Code" click, or null before the first. */
+  const [registration, setRegistration] =
+    useState<ClaudeCodeRegistration | null>(null);
+  const [registering, setRegistering] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -96,6 +100,23 @@ export function McpSection() {
       .then(setProfiles)
       .catch(() => setProfiles([]));
   }, []);
+
+  /**
+   * The checked set is not local UI state: it *is* `ConnectionProfile.mcp_exposed`,
+   * the field the sidecar reads to decide what it may reach at all.
+   *
+   * It used to be a `useState` that fed nothing but the generated snippet, so
+   * this panel could offer the choice without being able to make it — the real
+   * decision lived in the client's own config as `--connections <uuid>,<uuid>`,
+   * which is why adding a connection meant hand-editing a JSON file per client
+   * and restarting each one. Deriving it from the profiles keeps the checkbox
+   * honest: what is ticked here is exactly what is reachable, and the sidecar
+   * re-reads it per call, so it takes effect without a restart.
+   */
+  const selected = useMemo(
+    () => new Set(profiles.filter((p) => p.mcp_exposed).map((p) => p.id)),
+    [profiles],
+  );
 
   const shared = useMemo(() => profiles.filter(isFromOrigin), [profiles]);
   const hasShared = shared.length > 0;
@@ -144,13 +165,26 @@ export function McpSection() {
       : t("connections.sharedBadgeTooltipUnknown");
   };
 
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  /**
+   * Expose or hide one connection. Optimistic, then resynced from disk on
+   * failure — the same shape as `setWritePolicy` below and for the same reason:
+   * leaving a tick on screen that never landed would tell the user an AI client
+   * can reach a database it cannot (or, worse, the reverse).
+   */
+  async function toggle(id: string) {
+    const next = !selected.has(id);
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, mcp_exposed: next } : p)),
+    );
+    try {
+      await api.setMcpExposed([id], next);
+    } catch {
+      notify.error(t("settings.mcp.exposureSaveError"));
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+    }
   }
 
   /**
@@ -219,33 +253,59 @@ export function McpSection() {
     filteredProfiles.length > 0 &&
     filteredProfiles.every((p) => selected.has(p.id));
 
-  /** Check every id in the list, or clear them if all are already in. Drives
-   *  both the toolbar button (every filtered profile) and each section header. */
-  function toggleAll(ids: string[]) {
+  /** Expose every id in the list, or hide them if all are already exposed.
+   *  Drives both the toolbar button (every filtered profile) and each section
+   *  header. One backend write for the batch, like the bulk policy row. */
+  async function toggleAll(ids: string[]) {
     if (ids.length === 0) return;
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (ids.every((id) => next.has(id))) {
-        for (const id of ids) next.delete(id);
-      } else {
-        for (const id of ids) next.add(id);
-      }
-      return next;
-    });
+    const next = !ids.every((id) => selected.has(id));
+    const set = new Set(ids);
+    setProfiles((prev) =>
+      prev.map((p) => (set.has(p.id) ? { ...p, mcp_exposed: next } : p)),
+    );
+    try {
+      await api.setMcpExposed(ids, next);
+    } catch {
+      notify.error(t("settings.mcp.exposureSaveError"));
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+    }
+  }
+
+  /**
+   * Run the `claude mcp add` the snippet below spells out, so the common case
+   * is a click rather than a trip to a terminal.
+   *
+   * Every outcome is a value, not an exception: "already registered" is what a
+   * second click looks like, and "no CLI on PATH" is a perfectly ordinary state
+   * for someone who only uses Claude Desktop. Both leave the copyable command
+   * right there as the fallback.
+   */
+  async function addToClaudeCode() {
+    setRegistering(true);
+    try {
+      setRegistration(await api.registerWithClaudeCode());
+    } catch (e) {
+      setRegistration({ outcome: "failed", detail: String(e) });
+    } finally {
+      setRegistering(false);
+    }
   }
 
   const path = info?.binary_path ?? "";
-  const ids = [...selected].join(",");
-  const cliCommand = ids
-    ? `claude mcp add huginndb -s user -- ${path} --connections ${ids}`
+  // No `--connections` and no uuids: the exposed set is the checkboxes above,
+  // read from `profiles.json` on every call. That is what makes the snippet
+  // paste-once — adding a connection later is a tick here, not an edit of every
+  // client's config followed by a restart of each. (The flag still exists for
+  // pinning one client to a fixed subset; `docs/MCP.md` covers it.)
+  const cliCommand = path
+    ? `claude mcp add huginndb -s user -- ${path}`
     : "";
-  const jsonSnippet = ids
+  const jsonSnippet = path
     ? JSON.stringify(
-        {
-          mcpServers: {
-            huginndb: { command: path, args: ["--connections", ids] },
-          },
-        },
+        { mcpServers: { huginndb: { command: path } } },
         null,
         2,
       )
@@ -354,7 +414,7 @@ export function McpSection() {
                 size="sm"
                 className="h-7 shrink-0 px-2 text-[11px]"
                 disabled={filteredProfiles.length === 0}
-                onClick={() => toggleAll(filteredProfiles.map((p) => p.id))}
+                onClick={() => void toggleAll(filteredProfiles.map((p) => p.id))}
               >
                 {allFilteredSelected
                   ? t("settings.mcp.deselectAll")
@@ -371,8 +431,8 @@ export function McpSection() {
                 <McpConnectionTree
                   sections={sections}
                   selected={selected}
-                  onToggle={toggle}
-                  onToggleAll={toggleAll}
+                  onToggle={(id) => void toggle(id)}
+                  onToggleAll={(ids) => void toggleAll(ids)}
                   onSetPolicy={(id, level) => void setWritePolicy(id, level)}
                   sharedTooltip={sharedTooltip}
                   searching={filter.trim().length > 0}
@@ -417,6 +477,14 @@ export function McpSection() {
             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
               {t("settings.mcp.sharedIdsHint")}
             </p>
+            {/* The snippet below is valid whether or not anything is ticked, so
+                nothing else would tell the user their connector will come up
+                unable to reach a single database. */}
+            {selected.size === 0 && (
+              <p className="mt-1 text-[11px] leading-relaxed text-amber-600 dark:text-amber-500">
+                {t("settings.mcp.nothingExposedHint")}
+              </p>
+            )}
           </>
         )}
       </div>
@@ -426,10 +494,41 @@ export function McpSection() {
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
             {t("settings.mcp.claudeCodeLabel")}
           </span>
-          {cliCommand && <CopyButton text={cliCommand} />}
+          <div className="flex items-center gap-1.5">
+            {path && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={registering}
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => void addToClaudeCode()}
+              >
+                <Terminal className="h-3 w-3" />
+                {registering
+                  ? t("settings.mcp.addingToClaudeCode")
+                  : t("settings.mcp.addToClaudeCode")}
+              </Button>
+            )}
+            {cliCommand && <CopyButton text={cliCommand} />}
+          </div>
         </div>
+        {registration && (
+          <p
+            className={
+              registration.outcome === "failed"
+                ? "mb-1 text-[11px] leading-relaxed text-destructive"
+                : "mb-1 text-[11px] leading-relaxed text-muted-foreground"
+            }
+          >
+            {t(`settings.mcp.register.${registration.outcome}`)}
+            {registration.outcome === "failed" && registration.detail
+              ? ` ${registration.detail}`
+              : ""}
+          </p>
+        )}
         <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-[11px]">
-          {cliCommand || t("settings.mcp.selectHint")}
+          {cliCommand || t("settings.mcp.noBinaryHint")}
         </pre>
       </div>
 
@@ -441,7 +540,7 @@ export function McpSection() {
           {jsonSnippet && <CopyButton text={jsonSnippet} />}
         </div>
         <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-[11px]">
-          {jsonSnippet || t("settings.mcp.selectHint")}
+          {jsonSnippet || t("settings.mcp.noBinaryHint")}
         </pre>
       </div>
 

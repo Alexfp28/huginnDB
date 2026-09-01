@@ -281,6 +281,30 @@ pub struct ConnectionProfile {
     /// backend itself reads this (the sampler, not just a headless sidecar).
     #[serde(default)]
     pub pulse_enabled: bool,
+    /// Whether the headless MCP connector may reach this connection at all.
+    ///
+    /// Opt-in, off by default, for the same reason as `mcp_write` and
+    /// `pulse_enabled`: an upgrade must never silently widen what an AI client
+    /// can see. Before this field the exposed set lived only in the MCP
+    /// client's own config (`--connections <uuid>,<uuid>`), which put the
+    /// coarsest and most frequently changed knob in the one place the app
+    /// cannot reach — so adding a connection meant looking its uuid up in this
+    /// very file and hand-editing a client config, per client, then restarting
+    /// it. `mcp_write`, the *more* sensitive half, was already here and already
+    /// hot-reloaded; this closes the asymmetry.
+    ///
+    /// The sidecar re-reads it fresh per call, so ticking the box in
+    /// Settings → MCP takes effect without restarting the MCP client, and an
+    /// explicit `--connections` on the command line still wins (see
+    /// `crate::mcp::Config`).
+    ///
+    /// **Strictly local, in both directions.** `merge_into` preserves it across
+    /// a shared-origin sync and `apply_profile_imports` clears it on import:
+    /// which of your servers your AI clients may reach is a decision about
+    /// *this* machine, and a publisher two machines away must not be able to
+    /// make it — nor a bundle you imported to look at.
+    #[serde(default)]
+    pub mcp_exposed: bool,
 }
 
 /// How the client decides whether to trust the SSH server's host key.

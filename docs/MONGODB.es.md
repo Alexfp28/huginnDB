@@ -203,7 +203,7 @@ base de datos fijada, pasa `schema` — el nombre de la base — o la lista de
 colecciones vuelve vacía. Ver [`MCP.es.md`](MCP.es.md).
 
 `create_index` y `drop_index` son herramientas solo de MongoDB — en los drivers
-SQL un índice se crea con `CREATE INDEX` por `run_query`, que es más expresivo
+SQL un índice se crea con `CREATE INDEX` por `run_write`, que es más expresivo
 que cualquier forma portable. Lee primero los índices existentes con
 `list_indexes`: en MongoDB cada entrada lleva un objeto `mongo` con la
 definición real, y la lista de columnas por sí sola no distingue

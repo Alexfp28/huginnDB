@@ -242,11 +242,15 @@ async fn serve_connection(app: AppHandle, stream: TcpStream, token: Arc<String>)
         return;
     }
 
-    // The connections the client says it is allowed to reach (its
-    // `--connections` allowlist). Advisory — a hostile token-holder would
-    // simply declare everything — but it keeps an honest sidecar honest, and
-    // the per-connection write policy checked below is the authoritative gate.
-    let allowed: HashSet<String> = hello.allowed.into_iter().collect();
+    // What this client may reach. Advisory with respect to a *hostile*
+    // token-holder — it would simply declare everything — but it keeps an
+    // honest sidecar honest, and the per-connection write policy checked below
+    // is the authoritative gate either way.
+    let exposure = if hello.defer_exposure {
+        Exposure::FromProfiles
+    } else {
+        Exposure::Declared(hello.allowed.into_iter().collect())
+    };
 
     // --- request loop ---
     while let Ok(Some(line)) = lines.next_line().await {
@@ -254,7 +258,7 @@ async fn serve_connection(app: AppHandle, stream: TcpStream, token: Arc<String>)
             continue;
         }
         let response = match serde_json::from_str::<BridgeRequest>(&line) {
-            Ok(request) => handle(&app, &request, &allowed).await,
+            Ok(request) => handle(&app, &request, &exposure).await,
             Err(e) => BridgeResponse::err(format!("malformed request: {e}")),
         };
         if write_line(&mut write_half, &response).await.is_err() {
@@ -273,13 +277,9 @@ async fn write_line<T: serde::Serialize>(
 }
 
 /// Dispatch one request, converting the result to the wire form.
-async fn handle(
-    app: &AppHandle,
-    request: &BridgeRequest,
-    allowed: &HashSet<String>,
-) -> BridgeResponse {
+async fn handle(app: &AppHandle, request: &BridgeRequest, exposure: &Exposure) -> BridgeResponse {
     let start = Instant::now();
-    match dispatch(app, request, allowed).await {
+    match dispatch(app, request, exposure).await {
         Ok(value) => {
             log_served(app, request, start, None);
             BridgeResponse::ok(value)
@@ -457,15 +457,49 @@ impl LogSink for BridgeSink<'_> {
     }
 }
 
+/// What a connected sidecar is allowed to reach.
+///
+/// Two sources, and which one applies is the client's to declare at handshake
+/// (see [`crate::bridge::protocol::Hello::defer_exposure`]).
+enum Exposure {
+    /// The client pinned its own `--connections` list. Enforce exactly it, for
+    /// the whole session — an argument the user typed is not something a later
+    /// change in the app should widen.
+    Declared(HashSet<String>),
+    /// The client deferred to the app: authorize against
+    /// `ConnectionProfile::mcp_exposed`, read **live on every request**.
+    ///
+    /// Live is the point. The handshake happens once and an MCP client holds
+    /// its sidecar for days, so a snapshot would mean a connection ticked in
+    /// Settings → MCP stayed unreachable until the user restarted the client —
+    /// the same staleness that made `--connections` worth removing. The app
+    /// owns `profiles.json` and keeps it in memory, so this costs a read lock,
+    /// not a disk read.
+    FromProfiles,
+}
+
+impl Exposure {
+    fn admits(&self, state: &AppState, id: &str) -> bool {
+        match self {
+            Exposure::Declared(ids) => ids.contains(id),
+            Exposure::FromProfiles => state
+                .profiles
+                .read()
+                .iter()
+                .any(|p| p.id == id && p.mcp_exposed),
+        }
+    }
+}
+
 async fn dispatch(
     app: &AppHandle,
     request: &BridgeRequest,
-    allowed: &HashSet<String>,
+    exposure: &Exposure,
 ) -> AppResult<Value> {
     let state = app.state::<AppState>();
     let state = state.inner();
 
-    // The allowlist covers the connection being reached *and* the profile whose
+    // The check covers the connection being reached *and* the profile whose
     // policy governs it; for a Mongo view those differ, and only checking one
     // would leave a gap.
     let target = connection_id_of(request);
@@ -473,9 +507,9 @@ async fn dispatch(
     // the connector's access check, so the two must not be able to disagree
     // about what "the profile behind this id" means.
     let root = crate::state::parent_connection_id(&target).to_string();
-    if !allowed.contains(&root) {
+    if !exposure.admits(state, &root) {
         return Err(AppError::InvalidInput(format!(
-            "connection {root:?} was not declared by this client"
+            "connection {root:?} is not exposed to this MCP client"
         )));
     }
     check_policy(state, request)?;
@@ -560,6 +594,7 @@ mod tests {
             protocol_version: version,
             token: token.into(),
             allowed: vec![],
+            defer_exposure: false,
         }
     }
 

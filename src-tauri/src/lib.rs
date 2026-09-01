@@ -277,6 +277,7 @@ pub fn run() {
             commands::connection::delete_profiles,
             commands::connection::set_mcp_write_policy,
             commands::connection::set_pulse_enabled,
+            commands::connection::set_mcp_exposed,
             commands::connection::test_connection,
             commands::connection::connect,
             commands::connection::disconnect,
@@ -406,6 +407,7 @@ pub fn run() {
             commands::feedback::submit_issue,
             commands::feedback::mailto_report_url,
             commands::mcp::get_mcp_connector_info,
+            commands::mcp::register_with_claude_code,
             commands::mcp::is_mcp_sidecar_running,
             commands::app::get_app_flavor,
         ])

@@ -195,3 +195,32 @@ jobs:
           prerelease: ${{ steps.resolve_tag.outputs.prerelease }}
           retryAttempts: 3
           args: ${{ matrix.args }}
+
+      # Packages the sidecar built above a second way: as an MCP Bundle
+      # (`.mcpb`), the one-click install format Claude Desktop and other
+      # MCPB-aware clients read. Same binary, different wrapper — the installer
+      # asset above puts it next to the app for clients configured by path,
+      # this one is for clients that install extensions.
+      #
+      # One bundle per platform rather than one carrying all of them: the
+      # payload is a precompiled binary, and a fat bundle would trip the size
+      # of every install to serve one architecture.
+      #
+      # Runs AFTER tauri-action because that step is what creates the draft
+      # release this uploads into. `--clobber` so a re-run of a leg replaces
+      # its own asset instead of failing on the name.
+      - name: Package and upload the .mcpb bundle
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f src-tauri/target/release/huginndb-mcp.exe ]; then
+            platform=win32
+            binary=src-tauri/target/release/huginndb-mcp.exe
+          else
+            platform=linux
+            binary=src-tauri/target/release/huginndb-mcp
+          fi
+          scripts/build-mcpb.sh "$binary" "$platform"
+          gh release upload "${{ steps.resolve_tag.outputs.tag }}" \
+            mcpb/build/*.mcpb --clobber

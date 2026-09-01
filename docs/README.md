@@ -17,6 +17,10 @@ language that has none.
 | [SQL Server](SQL_SERVER.md) · [es](SQL_SERVER.es.md) | `HOST\INSTANCE` and the SQL Browser, certificate trust, Windows auth, how values are rendered, and the surfaces not implemented yet. |
 | [MCP connector](MCP.md) · [es](MCP.es.md) | Exposing your databases to an AI client: the binary, per-client config, the per-connection write policy, the audit log, and what to do when the client itself blocks a call. |
 
+Policy documents, not guides — they are read on GitHub rather than in the app:
+[`PRIVACY.md`](PRIVACY.md) (what HuginnDB collects: nothing, and what the MCP
+connector reads and never sends).
+
 Repo-level documents outside this folder: [`README.md`](../README.md),
 [`ROADMAP.md`](../ROADMAP.md), [`CHANGELOG.md`](../CHANGELOG.md),
 [`SECURITY.md`](../SECURITY.md), [`CONTRIBUTING.md`](../CONTRIBUTING.md).
@@ -31,6 +35,7 @@ out of the in-app viewer:
 | [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md) | Why the MCP connector is a headless stdio sidecar, phase-by-phase, plus the open question of distributing it through a marketplace. |
 | [`MONGODB_ROADMAP.md`](MONGODB_ROADMAP.md) | Full done/deferred split for the MongoDB driver, with the implementation hook for each open item. |
 | [`CONNECTION_POOLING_ANALYSIS.md`](CONNECTION_POOLING_ANALYSIS.md) | How the connection footprint got bounded: endpoint budgets, child pools, the reaper. |
+| [`MCPB_SUBMISSION.md`](MCPB_SUBMISSION.md) | Everything Anthropic's connector-directory review asks about the `.mcpb` bundle: server basics, how to stand up a review environment, verified example prompts, and where each requirement is met. |
 | [`CANARY.md`](CANARY.md) | The side-by-side pre-release channel: what it isolates, what it shares, how it's built. |
 
 ## Adding a guide

@@ -394,13 +394,40 @@ pub fn set_mcp_write_policy(
     ids: Vec<String>,
     level: crate::state::McpWritePolicy,
 ) -> AppResult<usize> {
+    set_local_flag(app, state, ids, |p| {
+        if p.mcp_write == level {
+            return false;
+        }
+        p.mcp_write = level;
+        true
+    })
+}
+
+/// Set one local, non-secret field on several profiles at once, saving and
+/// emitting exactly once.
+///
+/// The body the three `set_*` commands below share. `apply` returns whether it
+/// actually changed the profile, so an already-correct batch costs no disk
+/// write and no `profiles-changed` event — the distinction the callers' return
+/// value reports, and the reason this can't just be a blind assignment.
+///
+/// Deliberately scoped to fields that touch neither the keychain nor anything a
+/// shared origin publishes: every current caller sets a *local* trust or
+/// resource decision (`mcp_write`, `mcp_exposed`, `pulse_enabled`), which is
+/// what makes running one over an origin-owned profile safe. Reach for
+/// `save_profile` for anything else.
+fn set_local_flag(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    mut apply: impl FnMut(&mut crate::state::ConnectionProfile) -> bool,
+) -> AppResult<usize> {
     let changed = {
         let mut profiles = state.profiles.write();
         let wanted: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
         let mut changed = 0usize;
         for p in profiles.iter_mut() {
-            if wanted.contains(p.id.as_str()) && p.mcp_write != level {
-                p.mcp_write = level;
+            if wanted.contains(p.id.as_str()) && apply(p) {
                 changed += 1;
             }
         }
@@ -428,25 +455,42 @@ pub fn set_pulse_enabled(
     ids: Vec<String>,
     enabled: bool,
 ) -> AppResult<usize> {
-    let changed = {
-        let mut profiles = state.profiles.write();
-        let wanted: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
-        let mut changed = 0usize;
-        for p in profiles.iter_mut() {
-            if wanted.contains(p.id.as_str()) && p.pulse_enabled != enabled {
-                p.pulse_enabled = enabled;
-                changed += 1;
-            }
+    set_local_flag(app, state, ids, |p| {
+        if p.pulse_enabled == enabled {
+            return false;
         }
-        if changed > 0 {
-            store::save_profiles(&profiles)?;
+        p.pulse_enabled = enabled;
+        true
+    })
+}
+
+/// Expose (or hide) several connections from the headless MCP connector.
+///
+/// The write half of `ConnectionProfile::mcp_exposed`, and the reason
+/// Settings → MCP stopped being a snippet generator: the exposed set used to
+/// live only in the MCP client's config as `--connections <uuid>,<uuid>`, so
+/// the panel could offer the choice but not make it. Same shape as the two
+/// commands above, and local for the same reason — an origin's publisher does
+/// not decide what this machine's AI clients may reach.
+///
+/// The sidecar re-reads the flag per call, so this takes effect without
+/// restarting the MCP client — with one exception it cannot control: a client
+/// launched with an explicit `--connections` list is pinned to it, since an
+/// argument the user typed outranks a checkbox.
+#[tauri::command]
+pub fn set_mcp_exposed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    exposed: bool,
+) -> AppResult<usize> {
+    set_local_flag(app, state, ids, |p| {
+        if p.mcp_exposed == exposed {
+            return false;
         }
-        changed
-    };
-    if changed > 0 {
-        let _ = app.emit(PROFILES_CHANGED_EVENT, ());
-    }
-    Ok(changed)
+        p.mcp_exposed = exposed;
+        true
+    })
 }
 
 /// Delete the profile with `id` and its associated keychain entries.
@@ -1677,6 +1721,18 @@ pub(crate) fn apply_profile_imports(
         let mut new_profile = ep.profile.clone();
         new_profile.id = new_id.clone();
         new_profile.name = final_name;
+        // Never let an imported file decide what this machine's AI clients may
+        // reach. `ExportedProfile` flattens the whole `ConnectionProfile`, so
+        // `mcp_exposed` rides along in any bundle written by a machine that had
+        // it set — and importing someone's connections to *look* at them would
+        // otherwise expose them to every configured MCP client on the spot.
+        // The user re-opts in from Settings → MCP, which is one checkbox.
+        //
+        // `mcp_write` is deliberately left as it arrives: a policy on a
+        // connection nothing can reach grants nothing, so the gate above is the
+        // whole fix, and clearing both would silently discard a level the user
+        // is about to want anyway.
+        new_profile.mcp_exposed = false;
 
         // Decrypt and store secrets if present. `Strict` because the user is
         // sitting in the import dialog: a wrong passphrase has to surface here
@@ -2069,6 +2125,34 @@ mod tests {
             profile: profile(id, name),
             secrets: None,
         }
+    }
+
+    #[test]
+    fn an_imported_profile_is_never_exposed_to_mcp() {
+        // `ExportedProfile` flattens the whole `ConnectionProfile`, so a bundle
+        // written on a machine that had the connection exposed carries
+        // `mcp_exposed: true`. Importing someone's connections to look at them
+        // must not hand every configured MCP client access to them on the spot.
+        let mut profiles = Vec::new();
+        let mut ep = exported("orig-a", "A");
+        ep.profile.mcp_exposed = true;
+        ep.profile.mcp_write = crate::state::McpWritePolicy::Full;
+
+        let (result, _map, _overwritten) = apply_profile_imports(
+            &mut profiles,
+            vec![ep],
+            None,
+            &std::collections::HashMap::new(),
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(result.imported.len(), 1);
+        assert!(!profiles[0].mcp_exposed, "exposure is re-opted-in locally");
+        // The policy rides along untouched: it grants nothing while the
+        // connection is unreachable, and clearing it too would discard a level
+        // the user is about to want.
+        assert_eq!(profiles[0].mcp_write, crate::state::McpWritePolicy::Full);
     }
 
     #[test]

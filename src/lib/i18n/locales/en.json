@@ -1309,7 +1309,7 @@
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
-      "sharedIdsHint": "A connection published by a shared origin keeps the same id on every machine, so a snippet built from shared connections works for the whole team as-is.",
+      "sharedIdsHint": "Which connections are exposed is a decision about this machine: it is kept out of exports and never changed by a shared-origin sync, so each teammate ticks their own. The snippet carries no connection ids, so it is the same on every machine and you only paste it once.",
       "selectAllInSection": "Select every connection in {{section}}",
       "localSection": "Local",
       "scopeAll": "All",
@@ -1325,9 +1325,9 @@
       "connectionsLabel": "Connections to expose",
       "noConnections": "No saved connections yet — add one first.",
       "filterPlaceholder": "Filter connections…",
-      "selectAll": "Select all",
-      "deselectAll": "Deselect all",
-      "selectedCount": "{{selected}} of {{total}} selected",
+      "selectAll": "Expose all",
+      "deselectAll": "Hide all",
+      "selectedCount": "{{selected}} of {{total}} exposed",
       "noMatches": "No connections match “{{query}}”.",
       "writePolicyLabel": "Write access",
       "level": {
@@ -1339,9 +1339,19 @@
       "writePolicySaveError": "Couldn't save the write policy.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / other clients (JSON)",
-      "selectHint": "Select at least one connection above.",
       "copied": "Copied to clipboard.",
-      "fullGuide": "Full setup guide (Codex, Claude Desktop, flags, tools)…"
+      "fullGuide": "Full setup guide (Codex, Claude Desktop, flags, tools)…",
+      "exposureSaveError": "Couldn't save which connections are exposed.",
+      "noBinaryHint": "The connector binary wasn't found, so there's nothing to point a client at.",
+      "nothingExposedHint": "No connections are ticked yet — the connector will start with nothing to reach. Tick one above; it takes effect without restarting the AI client.",
+      "addToClaudeCode": "Add to Claude Code",
+      "addingToClaudeCode": "Adding…",
+      "register": {
+        "added": "Added to Claude Code. Open a session and check it with /mcp.",
+        "already-registered": "Already registered in Claude Code — nothing to change. Remove it with `claude mcp remove huginndb` if you want to re-add it.",
+        "cli-not-found": "The claude CLI isn't on this machine's PATH. Copy the command below and run it in a terminal that has it.",
+        "failed": "The claude CLI refused:"
+      }
     },
     "pulse": {
       "intro": "How often Pulse samples a connection's vital signs into its on-disk history, how long that history is kept, and which connections it watches — opt-in per connection, off by default.",
