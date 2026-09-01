@@ -19,27 +19,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   true whenever it is absent. `openWorldHint` is set throughout (false for the
   two that only read local state: `list_connections` and `pulse_metrics`).
 
-  `run_query` is the one tool that no constant describes honestly: it is a
-  general statement executor, so it is annotated as a potentially destructive
-  write even though nearly every call is a `SELECT`. The obvious refinement —
-  derive its annotation from the write policies of the currently exposed
-  connections — is a trap, and is documented as one at
-  `mark_run_query_read_only`. A client reads `tools/list` **once**, at startup,
-  and every policy and exposure decision in this connector is re-read per call
-  precisely so it can change under a running client; a snapshot-derived hint
-  would therefore go stale in the *unsafe* direction the moment a connection
-  was raised to `data`, leaving an auto-approving client convinced no
-  confirmation was needed for a write. The gate itself would still hold — the
-  policy is re-read — but the prompt the user thought they had would be gone.
-  The single input that cannot go stale is `--read-only`, which is fixed for
-  the life of the process, and under it `run_query` is re-annotated read-only
-  and its description rewritten to match.
+  `run_query` was the one tool no constant described honestly, and the fix was
+  to stop asking it to: **reading and writing are now two tools.** `run_query`
+  runs read-only statements and is annotated `readOnlyHint`; the new
+  `run_write` runs the ones that change something and is annotated
+  `destructiveHint`. Each refuses the other's traffic and names the tool to use
+  instead — refusing *reads* on `run_write` matters as much as the reverse, or a
+  model routes everything through the write tool and the split buys nothing.
+  Both keep going through the same executor and the same policy gate, which
+  still re-reads `mcp_write` from disk per call.
+
+  That split fell out of an idea worth recording as a trap, because it looks
+  obviously right: deriving `run_query`'s annotation from the write policies of
+  the currently exposed connections. A client reads `tools/list` **once**, at
+  startup, while every policy and exposure decision here is re-read per call
+  precisely so it can change under a running client — so a snapshot-derived
+  hint would go stale in the *unsafe* direction the moment a connection was
+  raised to `data`, leaving an auto-approving client convinced no confirmation
+  was needed for a write. The gate would still hold; the prompt the user
+  thought they had would be gone. Two tools with constant annotations have no
+  such failure mode, and they buy something the single tool never could: a
+  client's permission rules key on the tool *name*, so "let the SELECTs run,
+  ask me about the rest" is now expressible.
+
+  `--read-only` is the one input still allowed to vary the surface, because it
+  is a process argument fixed for the life of the sidecar: under it the eight
+  write tools are removed from `tools/list` outright rather than left to answer
+  with a refusal. `ToolRouter::call` rejects a disabled route too, so it is a
+  gate and not a presentation trick.
 
   Enforced by test rather than by the compiler (`annotations` is optional on
   `Tool`, so an unannotated tool builds fine and simply tells clients nothing):
   one test asserts every tool has a title, a `readOnlyHint` and an
   `openWorldHint`, another that no write tool claims to be read-only and that
-  the two additive ones say so out loud.
+  the two additive ones say so out loud, and a third that `--read-only` really
+  does take all eight off the surface.
 
 ### Changed
 

@@ -187,9 +187,9 @@ The tools then show up under the `huginndb` server inside Codex.
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Pin this client to exactly these profile ids, ignoring the Settings → MCP checkboxes. Without the flag the server defers to those checkboxes and re-reads them per call, which is the normal setup. `--connections ""` pins an empty set — an explicit "expose nothing". |
-| `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
+| `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `run_write` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
 | `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
-| `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
+| `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy, and take the eight write tools off `tools/list` entirely — they could only refuse, and a tool the model never sees is a turn it never wastes. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
 
 Flags accept both `--flag value` and `--flag=value`.
@@ -272,7 +272,8 @@ per-database ones on demand.
 | `list_tables` | Tables and views, with approximate row counts and sizes. |
 | `describe_table` | Full structure: columns, types, nullability, PK, FKs, indexes. Works on a view too, and adds a `view` object with the view's definition when the relation is one — `query` (the SELECT body) on SQL, `viewOn` + `pipeline` on MongoDB. |
 | `list_indexes` | Indexes on a table and the columns each covers. On MongoDB each entry also carries a `mongo` object with the full definition — per-key direction and type, `sparse`, TTL, partial filter, collation, weights, size and usage. Read it before recreating an index: the column list alone cannot tell `{createdAt: -1}` from `{createdAt: 1}`. |
-| `run_query` | Run a single statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Reads always work; writes require the connection's write policy to allow them (`data` for DML, `full` for DDL). |
+| `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Anything that writes is refused here whatever the policy says. |
+| `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
@@ -296,25 +297,21 @@ assistant knows up front what it may do.
 
 Every tool also carries a **title** and MCP **annotations** — `readOnlyHint`
 for the seventeen that only read, and `destructiveHint` / `idempotentHint` on
-the seven that write (`insert_row` and `create_index` are marked additive
+the eight that write (`insert_row` and `create_index` are marked additive
 rather than destructive). Clients use these to decide how much friction a call
 deserves, so a `list_tables` no longer looks as risky as a `delete_rows`.
 
-`run_query` is the one that cannot be pinned down by a constant: it is a
-general statement executor, so it is annotated as a potentially destructive
-write, even though nearly every call is a read. It is re-annotated read-only
-only under `--read-only`, which is fixed for the life of the process. It is
-deliberately *not* derived from the exposed connections' write policies:
-a client reads `tools/list` once at startup, and those policies are re-read per
-call precisely so they can change under a running client — so a
-policy-derived hint would go stale in the unsafe direction the moment a
-connection was raised to `data`, telling the client no confirmation was needed
-for a write. The policy gate itself always holds; it is the client-side prompt
-that would have gone missing.
+Reading and writing are **two tools** — `run_query` and `run_write` — rather
+than one that spans both. A client's permission rules key on the tool name, so
+a single statement runner made "let the SELECTs through, ask me about the rest"
+impossible to express, and forced the annotation to describe the more dangerous
+of the two tiers. Split, both are honest constants that no policy change can
+make stale: `run_query` is `readOnlyHint`, `run_write` is `destructiveHint`.
+Each refuses the other's traffic and names the tool to use instead.
 
 ### Indexes: why the two write tools are MongoDB-only
 
-On the SQL drivers an index is created with `CREATE INDEX`, which `run_query`
+On the SQL drivers an index is created with `CREATE INDEX`, which `run_write`
 reaches at `full` and which is strictly more expressive than any portable form —
 `USING gin`, `INCLUDE`, a partial predicate, an expression index. A tool would
 have to flatten all of that into a fixed set of fields, and HuginnDB's own
@@ -330,7 +327,7 @@ routes exist now — the two tools, and `db.coll.createIndex(...)` through
 There is no "edit an index" tool because MongoDB cannot alter one in place: a
 replacement is `drop_index` then `create_index`, and leaving it as two calls
 keeps the window where the index is missing visible to the caller. Hiding an
-index (`collMod`) is reachable through `run_query` as
+index (`collMod`) is reachable through `run_write` as
 `db.coll.hideIndex("name")` — the reversible way to rehearse a drop.
 
 ### Pulse: how `pulse_metrics` reaches the sampler's history
@@ -362,7 +359,7 @@ SQL catalog to fall back to. Pass the database name via:
 
 - `schema` on `list_tables`, `describe_table`, `list_indexes`,
   `browse_table`, `save_view` and `drop_view`.
-- `database` on `run_query` (its bare `sql` has no field for this).
+- `database` on `run_query` / `run_write` (their bare `sql` has no field for this).
 
 The server resolves this the same way the desktop app's schema explorer does
 when you expand a database — reusing the same MongoDB client and re-tagging
@@ -382,13 +379,13 @@ only needed when `list_connections` shows an empty `database`.
     plain-SQL keyword match, so mongosh reads aren't mistaken for writes. Every
     write tool is refused.
   - **`data`** — adds row-level DML: `INSERT`/`UPDATE`/`DELETE` through
-    `run_query`, plus the `insert_row` / `update_cell` / `delete_rows` tools.
+    `run_write`, plus the `insert_row` / `update_cell` / `delete_rows` tools.
     No schema changes.
   - **`full`** — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) through
-    `run_query`, plus the `save_view` / `drop_view` / `create_index` /
+    `run_write`, plus the `save_view` / `drop_view` / `create_index` /
     `drop_index` tools. On MongoDB this is also the tier for
     `createIndex`/`dropIndex`/`hideIndex`, `drop()` and `renameCollection`
-    through `run_query`.
+    through `run_write`.
 
   An index and a namespace are schema too, for the same reason and with the
   same consequence: `create_index` and `drop_index` sit at `full`, and so does
@@ -398,7 +395,7 @@ only needed when `list_connections` shows an empty `database`.
   reads oddly for a second — dropping a *view* needs `full` while deleting
   *rows* only needs `data` — and it is the same asymmetry `DROP TABLE` and
   `DELETE FROM` already have. It is also the only consistent answer: the
-  `CREATE OR REPLACE VIEW` you could write by hand through `run_query` is
+  `CREATE OR REPLACE VIEW` you could write by hand through `run_write` is
   classified as DDL, so a `data` connection is refused it, and a tool that
   allowed the same change anyway would hand back what the policy just denied.
   `save_view`'s `preview: true` is a genuine exception rather than a loophole:
@@ -417,7 +414,7 @@ only needed when `list_connections` shows an empty `database`.
 - **Audit log.** Every write (success or failure) appends a line to
   `mcp-audit.log`, in the same config directory as `profiles.json`. Reads are
   not logged, so the file is a clean record of state-changing operations.
-- **Whole-relation guard.** A `run_query` `UPDATE`/`DELETE` with no `WHERE`
+- **Whole-relation guard.** A `run_write` `UPDATE`/`DELETE` with no `WHERE`
   clause is refused outright, at any level — add an explicit predicate
   (`WHERE 1=1` if you truly mean every row). MongoDB is covered by the same
   guard: `updateMany({})` and `deleteMany({})` are refused, and the way to say
@@ -426,7 +423,10 @@ only needed when `list_connections` shows an empty `database`.
   unambiguous about its scope and already behind `full`, exactly like
   `DROP TABLE`.
 - **Global kill-switch.** `--read-only` forces every connection to read-only
-  regardless of its saved policy.
+  regardless of its saved policy, and removes every write tool from the
+  surface. It is the only thing that varies the tool list, because it is a
+  process argument and so cannot go stale under a client that cached
+  `tools/list` at startup.
 - **Opt-in exposure.** Only connections ticked in Settings → MCP (or named by
   `--connections`) are reachable; a tool call for any other is refused, and a
   connection's *name* can only ever resolve to one that is already exposed.
@@ -528,7 +528,7 @@ There is no tool for editing a *table's* structure on any driver. That was
 deferred deliberately (see
 [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): making an assistant
 synthesise a whole column list, with types, nullability, defaults and keys, is
-worse than having it emit `ALTER TABLE` through `run_query`, which `full`
+worse than having it emit `ALTER TABLE` through `run_write`, which `full`
 allows. That argument is about the *size of the DTO*, which is why it did not
 carry over to indexes on MongoDB: an index spec is a key document plus a handful
 of flags, closer in shape to `save_view` than to a table.

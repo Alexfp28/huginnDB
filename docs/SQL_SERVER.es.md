@@ -108,5 +108,5 @@ definición de una vista, con `describe_table` — y escribir filas, y puede
 eliminar una vista, pero no puede crearla ni redefinirla (`save_view` devuelve
 aquí un error de «driver no soportado») ni alterar la estructura de una tabla
 con una herramienta. El DDL de tablas no es una herramienta en ningún driver: va
-por `run_query` con el nivel `full`, donde el T-SQL que escribas tú funciona con
+por `run_write` con el nivel `full`, donde el T-SQL que escribas tú funciona con
 normalidad. Ver [`MCP.es.md`](MCP.es.md).

@@ -201,7 +201,7 @@ Codex.
 | Flag | Por defecto | Significado |
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
-| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
+| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `run_write` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
@@ -291,7 +291,8 @@ datos a demanda.
 | `list_tables` | Tablas y vistas, con recuentos de filas y tamaños aproximados. |
 | `describe_table` | Estructura completa: columnas, tipos, nulabilidad, PK, FKs, índices. Funciona también sobre una vista, y añade un objeto `view` con su definición cuando la relación lo es — `query` (el cuerpo del SELECT) en SQL, `viewOn` + `pipeline` en MongoDB. |
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. En MongoDB cada entrada lleva además un objeto `mongo` con la definición completa — dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación, pesos, tamaño y uso. Léelo antes de recrear un índice: la lista de columnas por sí sola no distingue `{createdAt: -1}` de `{createdAt: 1}`. |
-| `run_query` | Ejecuta una única sentencia (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Las lecturas siempre funcionan; las escrituras requieren que el nivel de la conexión lo permita (`data` para DML, `full` para DDL). |
+| `run_query` | Ejecuta una única sentencia de **solo lectura** (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Cualquier cosa que escriba se rechaza aquí diga lo que diga el nivel. |
+| `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
@@ -315,27 +316,23 @@ para que el asistente sepa de antemano qué puede hacer.
 
 Cada herramienta lleva además un **título** y **anotaciones** MCP:
 `readOnlyHint` en las diecisiete que solo leen, y `destructiveHint` /
-`idempotentHint` en las siete que escriben (`insert_row` y `create_index` se
+`idempotentHint` en las ocho que escriben (`insert_row` y `create_index` se
 marcan como aditivas, no destructivas). Los clientes las usan para decidir
 cuánta fricción merece una llamada, así que un `list_tables` ya no parece tan
 arriesgado como un `delete_rows`.
 
-`run_query` es la única que no se puede fijar con una constante: es un
-ejecutor de sentencias genérico, así que se anota como escritura
-potencialmente destructiva aunque casi todas sus llamadas sean lecturas. Solo
-se reanota como de solo lectura bajo `--read-only`, que es fijo durante toda
-la vida del proceso. Deliberadamente **no** se deriva de los niveles de
-escritura de las conexiones expuestas: un cliente lee `tools/list` una vez al
-arrancar, y esos niveles se releen en cada llamada justamente para poder
-cambiar bajo un cliente en marcha — así que una anotación derivada de ellos
-quedaría obsoleta en la dirección insegura en cuanto se subiera una conexión a
-`data`, diciéndole al cliente que una escritura no necesita confirmación. La
-verja del nivel de escritura siempre aguanta; lo que desaparecería es el aviso
-del lado del cliente.
+Leer y escribir son **dos herramientas** — `run_query` y `run_write` — en vez
+de una que abarque ambas. Las reglas de permisos de un cliente se aplican por
+nombre de herramienta, así que un ejecutor único hacía imposible expresar "los
+SELECT que pasen, lo demás que me pregunte", y obligaba a que la anotación
+describiera el más peligroso de los dos tiers. Separadas, ambas son constantes
+honestas que ningún cambio de nivel puede dejar obsoletas: `run_query` es
+`readOnlyHint`, `run_write` es `destructiveHint`. Cada una rechaza el tráfico
+de la otra y dice qué herramienta usar en su lugar.
 
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 
-En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_query` alcanza
+En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_write` alcanza
 en `full` y que es estrictamente más expresivo que cualquier forma portable —
 `USING gin`, `INCLUDE`, un predicado parcial, un índice sobre expresión. Una
 herramienta tendría que aplanar todo eso en un conjunto fijo de campos, y el
@@ -347,13 +344,13 @@ Exponerlo como herramienta sería un retroceso.
 MongoDB es el caso opuesto: hasta 1.19.0 la gramática mongosh no tenía
 `createIndex` en absoluto, así que la operación no era alcanzable *por ninguna
 vía*. Ahora existen las dos — las dos herramientas y
-`db.coll.createIndex(...)` por `run_query` — y comparten una sola
+`db.coll.createIndex(...)` por `run_write` — y comparten una sola
 implementación.
 
 No hay herramienta para «editar» un índice porque MongoDB no puede alterarlo en
 sitio: reemplazarlo es `drop_index` y luego `create_index`, y dejarlo en dos
 llamadas mantiene visible para quien llama la ventana en la que el índice no
-existe. Ocultar un índice (`collMod`) se alcanza por `run_query` como
+existe. Ocultar un índice (`collMod`) se alcanza por `run_write` como
 `db.coll.hideIndex("nombre")` — la forma reversible de ensayar un borrado.
 
 ### Pulse: cómo `pulse_metrics` llega al histórico del muestreador
@@ -391,7 +388,7 @@ nombre de la base de datos mediante:
 
 - `schema` en `list_tables`, `describe_table`, `list_indexes`,
   `browse_table`, `save_view` y `drop_view`.
-- `database` en `run_query` (su `sql` a secas no tiene campo para esto).
+- `database` en `run_query` / `run_write` (su `sql` a secas no tiene campo para esto).
 
 El servidor lo resuelve igual que el explorador de esquema de la app de
 escritorio cuando expandes una base de datos — reutilizando el mismo cliente
@@ -414,13 +411,13 @@ conexión son baratas. Una conexión de una sola base de datos (con
     lecturas de mongosh no se confunden con escrituras. Toda herramienta de
     escritura se rechaza.
   - **`data`** — añade DML a nivel de fila: `INSERT`/`UPDATE`/`DELETE` vía
-    `run_query`, más las herramientas `insert_row` / `update_cell` /
+    `run_write`, más las herramientas `insert_row` / `update_cell` /
     `delete_rows`. Sin cambios de esquema.
   - **`full`** — añade DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) vía
-    `run_query`, más las herramientas `save_view` / `drop_view` /
+    `run_write`, más las herramientas `save_view` / `drop_view` /
     `create_index` / `drop_index`. En MongoDB este es también el nivel de
     `createIndex`/`dropIndex`/`hideIndex`, `drop()` y `renameCollection` vía
-    `run_query`.
+    `run_write`.
 
   Un índice y un *namespace* también son esquema, por la misma razón y con la
   misma consecuencia: `create_index` y `drop_index` viven en `full`, igual que
@@ -431,7 +428,7 @@ conexión son baratas. Una conexión de una sola base de datos (con
   raro por un segundo — eliminar una *vista* pide `full` mientras que borrar
   *filas* solo pide `data` — y es la misma asimetría que ya existe entre
   `DROP TABLE` y `DELETE FROM`. Es además la única respuesta coherente: el
-  `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_query` está
+  `CREATE OR REPLACE VIEW` que podrías escribir a mano por `run_write` está
   clasificado como DDL, así que una conexión en `data` lo tiene rechazado, y
   una herramienta que permitiera el mismo cambio devolvería justo lo que el
   nivel acaba de negar. El `preview: true` de `save_view` es una excepción de
@@ -453,7 +450,7 @@ conexión son baratas. Una conexión de una sola base de datos (con
   Las lecturas no se registran, así que el fichero es un registro limpio de las
   operaciones que cambian estado.
 - **Guarda anti-relación-entera.** Un `UPDATE`/`DELETE` sin `WHERE` en
-  `run_query` se rechaza de plano, en cualquier nivel — añade un predicado
+  `run_write` se rechaza de plano, en cualquier nivel — añade un predicado
   explícito (`WHERE 1=1` si de verdad quieres todas las filas). MongoDB entra
   en la misma guarda: `updateMany({})` y `deleteMany({})` se rechazan, y la
   forma de decir que lo quieres es un predicado trivialmente cierto, p. ej.
@@ -569,7 +566,7 @@ No hay herramienta para editar la estructura de una *tabla* en ningún driver.
 Se dejó fuera a propósito (ver
 [`MCP_CONNECTOR_ROADMAP.md`](MCP_CONNECTOR_ROADMAP.md)): hacer que un asistente
 sintetice una lista de columnas completa, con tipos, nulabilidad, valores por
-defecto y claves, es peor que hacerle emitir `ALTER TABLE` por `run_query`, que
+defecto y claves, es peor que hacerle emitir `ALTER TABLE` por `run_write`, que
 `full` permite. Ese argumento va del *tamaño del DTO*, y por eso no se traslada
 a los índices de MongoDB: la especificación de un índice es un documento de
 claves y un puñado de flags, más cerca de `save_view` que de una tabla.

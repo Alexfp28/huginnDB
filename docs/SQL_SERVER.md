@@ -99,5 +99,5 @@ table above: an assistant can read the schema — including a view's definition,
 through `describe_table` — and write rows, and it can drop a view, but it cannot
 create or redefine one (`save_view` returns an "unsupported driver" error here)
 and it cannot alter a table's structure through a tool. Table DDL is not a tool
-on any driver; it goes through `run_query` at the `full` policy, where T-SQL you
+on any driver; it goes through `run_write` at the `full` policy, where T-SQL you
 write yourself works normally. See [`MCP.md`](MCP.md).

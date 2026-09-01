@@ -95,6 +95,16 @@ const POOL_IDLE_TTL: Duration = Duration::from_secs(300);
 /// How often the idle-pool sweep runs.
 const POOL_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Which of the two statement tools a call arrived through.
+///
+/// `run_query` and `run_write` share one executor and differ only in the tier
+/// they admit — see [`Huginn::run_statement`] for why they are two tools.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StatementKind {
+    Read,
+    Write,
+}
+
 /// Runtime configuration parsed from the process arguments.
 struct Config {
     /// Profile ids pinned on the command line with `--connections`, or `None`
@@ -707,52 +717,47 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 }
 
 /// Map a backend [`crate::error::AppError`] onto an MCP error.
-/// Re-annotate `run_query` as read-only, for a process started with
+/// Every tool that can change a database. The write half of the surface.
+///
+/// Kept as one list because three separate places need exactly it and would
+/// otherwise each keep their own copy: the `--read-only` gate below, and the
+/// two tests that pin down their annotations.
+const WRITE_TOOLS: [&str; 8] = [
+    "run_write",
+    "insert_row",
+    "update_cell",
+    "delete_rows",
+    "save_view",
+    "drop_view",
+    "create_index",
+    "drop_index",
+];
+
+/// Remove every write tool from the surface, for a process started with
 /// `--read-only`.
 ///
-/// **The only annotation in this server that is not a constant, and the only
-/// one that safely can be.** `run_query` is annotated `destructive_hint = true`
-/// by default because it is a general statement executor: at `data` or `full`
-/// it really can DELETE. That is honest but pessimistic for the common
-/// deployment where everything exposed is `read-only`, and it puts a
-/// write-shaped confirmation in front of the tool that serves nearly every
-/// read.
+/// The flag already forces each connection to [`McpWritePolicy::ReadOnly`], so
+/// these eight could only ever answer with a refusal. Taking them off
+/// `tools/list` instead says the same thing earlier and cheaper: the model
+/// never spends a turn discovering that this deployment does not write, and
+/// nothing in the client's context suggests it might. `ToolRouter::call`
+/// refuses a disabled route as well, so this is a gate rather than a
+/// presentation trick.
 ///
-/// The tempting fix — derive the annotation from the write policies of the
-/// currently exposed connections — is wrong, and worth spelling out because it
-/// looks obviously right. A client reads `tools/list` **once**, at startup, and
-/// caches it for the life of the session. Every other policy and exposure
-/// decision in this connector is re-read per call precisely so it can change
-/// under a running client (gotcha #58) — so a snapshot-derived hint would go
-/// stale in the *unsafe* direction the moment the user raises a connection to
-/// `data`: the client would keep believing `run_query` cannot write, and an
-/// auto-approving mode would then run an INSERT without the prompt the user
-/// expects. The gate would still hold (`require_class` re-reads the policy),
-/// but the confirmation the user thought they had would be gone.
-///
-/// `--read-only` is the one input that cannot go stale: it is a process
-/// argument, fixed for the life of this sidecar, and it forces every connection
-/// to read-only regardless of what any profile says. When it is set,
-/// `run_query` genuinely cannot write, and saying so is a fact rather than a
-/// snapshot.
-///
-/// Making the general case dynamic would need a `tools/list_changed`
-/// notification driven by a watch on `profiles.json` — a real feature, not a
-/// tweak to this function.
-fn mark_run_query_read_only(router: &mut ToolRouter<Huginn>) {
-    if let Some(route) = router.map.get_mut("run_query") {
-        route.attr.annotations = Some(
-            rmcp::model::ToolAnnotations::new()
-                .read_only(true)
-                .open_world(true),
-        );
-        route.attr.description = Some(
-            "Run a single read-only statement (SELECT / WITH / SHOW / EXPLAIN / PRAGMA for SQL; \
-             find/aggregate/countDocuments/distinct for MongoDB). This server was started with \
-             --read-only, so every write is refused whatever the connection's saved policy says. \
-             Rows are capped by the server's --max-rows."
-                .into(),
-        );
+/// **This is the only thing allowed to vary the tool surface, and `--read-only`
+/// is the only input allowed to vary it.** A client fetches `tools/list` once,
+/// at startup, and caches it for the session — while exposure and per-connection
+/// write policy are deliberately re-read on every call so they can change under
+/// a running client (gotcha #58). Deriving the surface, or a tool's annotations,
+/// from those would go stale in the unsafe direction the moment a connection was
+/// raised to `data`: the client would keep believing no write was possible and
+/// an auto-approving mode would skip the confirmation the user thought they had.
+/// The policy gate would still hold; the prompt would not. `--read-only` cannot
+/// go stale, because it is a process argument fixed for the life of this
+/// sidecar.
+fn disable_write_tools(router: &mut ToolRouter<Huginn>) {
+    for name in WRITE_TOOLS {
+        router.disable_route(name);
     }
 }
 
@@ -950,7 +955,7 @@ impl Huginn {
     ) -> Self {
         let mut tool_router = Self::tool_router();
         if config.read_only {
-            mark_run_query_read_only(&mut tool_router);
+            disable_write_tools(&mut tool_router);
         }
         Self {
             state,
@@ -1224,6 +1229,113 @@ impl Huginn {
         resolve_connection(&self.config, reference, &self.all_profiles())
     }
 
+    /// The body behind `run_query` and `run_write`.
+    ///
+    /// One statement executor, two tools, and the split is the whole point:
+    /// a client's permission rules key on the **tool name**, so while reads and
+    /// writes shared one name there was no way to say "let the SELECTs run,
+    /// ask me about the rest". The tool's annotation had the same problem from
+    /// the other side — a single name spanning both tiers can only be
+    /// annotated as the more dangerous of the two, which put write-shaped
+    /// friction in front of the tool that serves nearly every read.
+    ///
+    /// Splitting by tier makes both annotations honest **constants**:
+    /// `run_query` is `readOnlyHint`, `run_write` is `destructiveHint`, and
+    /// neither can go stale the way a policy-derived hint would (that trap is
+    /// documented in the `Unreleased` CHANGELOG entry and gotcha #59).
+    ///
+    /// Enforcement runs in **both** directions. Refusing writes on `run_query`
+    /// is the obvious half; refusing *reads* on `run_write` is what stops a
+    /// model routing everything through the write tool and quietly undoing the
+    /// split — the caller is told which tool to use instead, since being
+    /// pointed at the cheaper tool is a better answer than silently obliging.
+    ///
+    /// Neither refusal replaces the policy gate: `require_class` below still
+    /// re-reads `mcp_write` from disk on every call, and it is what actually
+    /// decides whether a write is allowed to happen.
+    async fn run_statement(
+        &self,
+        mut a: args::Query,
+        kind: StatementKind,
+    ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
+            .await?;
+
+        // Classify the statement into its required tier. `classify_statement`
+        // picks the grammar from the statement *text*, which is deliberate:
+        // this used to derive "is this Mongo?" from `self.state.connections`,
+        // and that map is empty whenever the app is serving the shared pool —
+        // so every bridged Mongo statement was classified by the SQL keyword
+        // heuristic instead. See `crate::db::classify` for the two bugs that
+        // caused.
+        let class = crate::db::classify::classify_statement(&a.sql);
+
+        match (kind, class) {
+            (StatementKind::Read, StmtClass::Read) => {}
+            (StatementKind::Read, _) => {
+                return Err(ErrorData::invalid_params(
+                    "run_query only runs read-only statements. This one writes — call \
+                     `run_write` instead (it needs the connection's MCP write policy to \
+                     allow it)."
+                        .to_string(),
+                    None,
+                ));
+            }
+            (StatementKind::Write, StmtClass::Read) => {
+                return Err(ErrorData::invalid_params(
+                    "run_write only runs statements that change the database. This one is \
+                     read-only — call `run_query` instead, which needs no write permission."
+                        .to_string(),
+                    None,
+                ));
+            }
+            (StatementKind::Write, _) => {}
+        }
+
+        // Refuse a whole-relation UPDATE/DELETE outright, regardless of tier —
+        // a classic AI footgun. Both grammars are covered: the caller can opt in
+        // with `WHERE 1=1`, or `{_id: {$exists: true}}` on MongoDB.
+        if crate::db::classify::is_unfiltered_write(&a.sql) {
+            return Err(ErrorData::invalid_params(
+                "run_write refused a whole-relation UPDATE/DELETE with no predicate. \
+                 Add one — `WHERE 1=1` on SQL, or `{_id: {$exists: true}}` on MongoDB, \
+                 if you really mean every row."
+                    .to_string(),
+                None,
+            ));
+        }
+
+        // Policy is a property of the *profile* (`ConnectionProfile::mcp_write`),
+        // not of the resolved pool: for Mongo, `target` may be the synthetic
+        // per-database id `<connection_id>::db::<name>` (see
+        // `resolve_mongo_target`), which is never a key in `profiles.json` — a
+        // `write_policy` lookup against it would always miss and silently fall
+        // back to `ReadOnly`, regardless of the connection's real setting.
+        self.require_class(&a.connection_id, class)?;
+
+        // Reads are not audited; writes append to mcp-audit.log.
+        let value = self
+            .call(
+                BridgeRequest::RunStatement {
+                    connection_id: target,
+                    policy_id: a.connection_id.clone(),
+                    sql: a.sql.clone(),
+                },
+                class != StmtClass::Read,
+            )
+            .await
+            .map_err(to_err)?;
+        let mut result: crate::commands::query::QueryResult =
+            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
+        truncate_rows(&mut result, self.config.max_rows);
+        ok_json(&result)
+    }
+
     /// The write policy in force for `connection_id`, read **fresh from
     /// `profiles.json`** so a change made in the desktop app (Settings → MCP)
     /// takes effect without restarting the MCP client. Falls back to the
@@ -1420,80 +1532,45 @@ impl Huginn {
     }
 
     #[tool(
-        title = "Run a statement",
+        title = "Run a read-only statement",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Run a single READ-ONLY statement and return its rows: \
+                      SELECT / WITH / SHOW / EXPLAIN / PRAGMA for SQL, or \
+                      find/aggregate/countDocuments/distinct for MongoDB. \
+                      Anything that writes is refused here whatever the \
+                      connection's policy says — use `run_write` for those. \
+                      Rows are capped by the server's --max-rows."
+    )]
+    async fn run_query(
+        &self,
+        Parameters(a): Parameters<args::Query>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.run_statement(a, StatementKind::Read).await
+    }
+
+    #[tool(
+        title = "Run a writing statement",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
             idempotent_hint = false,
             open_world_hint = true
         ),
-        description = "Run a single statement. Reads (SELECT / WITH / SHOW / \
-                      EXPLAIN / PRAGMA for SQL; find/aggregate/countDocuments/\
-                      distinct for MongoDB) always work. Writes require the \
-                      connection's MCP write policy to allow them: row-level \
-                      DML (INSERT/UPDATE/DELETE) needs 'data', schema changes \
-                      (CREATE/DROP/ALTER/…) need 'full'. Whole-table \
-                      UPDATE/DELETE with no WHERE are refused. Rows are capped \
-                      by the server's --max-rows."
+        description = "Run a single statement that CHANGES the database, and \
+                      return whatever it reports. Row-level DML \
+                      (INSERT/UPDATE/DELETE) needs the connection's MCP write \
+                      policy to be at least 'data'; schema changes \
+                      (CREATE/DROP/ALTER/…) need 'full'. Whole-relation \
+                      UPDATE/DELETE with no predicate are refused. A read is \
+                      refused here too — use `run_query`, which does not need \
+                      write permission. Every call is recorded in the app's \
+                      MCP audit log."
     )]
-    async fn run_query(
+    async fn run_write(
         &self,
-        Parameters(mut a): Parameters<args::Query>,
+        Parameters(a): Parameters<args::Query>,
     ) -> Result<CallToolResult, ErrorData> {
-        a.connection_id = self.canonical_connection(&a.connection_id)?;
-        self.ensure_connected(&a.connection_id)
-            .await
-            .map_err(to_err)?;
-        let target = self
-            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
-            .await?;
-
-        // Classify the statement into its required tier. `classify_statement`
-        // picks the grammar from the statement *text*, which is deliberate:
-        // this used to derive "is this Mongo?" from `self.state.connections`,
-        // and that map is empty whenever the app is serving the shared pool —
-        // so every bridged Mongo statement was classified by the SQL keyword
-        // heuristic instead. See `crate::db::classify` for the two bugs that
-        // caused.
-        let class = crate::db::classify::classify_statement(&a.sql);
-
-        // Refuse a whole-relation UPDATE/DELETE outright, regardless of tier —
-        // a classic AI footgun. Both grammars are covered: the caller can opt in
-        // with `WHERE 1=1`, or `{_id: {$exists: true}}` on MongoDB.
-        if crate::db::classify::is_unfiltered_write(&a.sql) {
-            return Err(ErrorData::invalid_params(
-                "run_query refused a whole-relation UPDATE/DELETE with no predicate. \
-                 Add one — `WHERE 1=1` on SQL, or `{_id: {$exists: true}}` on MongoDB, \
-                 if you really mean every row."
-                    .to_string(),
-                None,
-            ));
-        }
-
-        // Policy is a property of the *profile* (`ConnectionProfile::mcp_write`),
-        // not of the resolved pool: for Mongo, `target` may be the synthetic
-        // per-database id `<connection_id>::db::<name>` (see
-        // `resolve_mongo_target`), which is never a key in `profiles.json` — a
-        // `write_policy` lookup against it would always miss and silently fall
-        // back to `ReadOnly`, regardless of the connection's real setting.
-        self.require_class(&a.connection_id, class)?;
-
-        // Reads are not audited; writes append to mcp-audit.log.
-        let value = self
-            .call(
-                BridgeRequest::RunStatement {
-                    connection_id: target,
-                    policy_id: a.connection_id.clone(),
-                    sql: a.sql.clone(),
-                },
-                class != StmtClass::Read,
-            )
-            .await
-            .map_err(to_err)?;
-        let mut result: crate::commands::query::QueryResult =
-            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
-        truncate_rows(&mut result, self.config.max_rows);
-        ok_json(&result)
+        self.run_statement(a, StatementKind::Write).await
     }
 
     #[tool(
@@ -3106,15 +3183,7 @@ mod tests {
     #[test]
     fn the_write_tools_are_annotated_as_writes() {
         let tools = Huginn::tool_router().list_all();
-        for name in [
-            "insert_row",
-            "update_cell",
-            "delete_rows",
-            "save_view",
-            "drop_view",
-            "create_index",
-            "drop_index",
-        ] {
+        for name in WRITE_TOOLS {
             let tool = tools
                 .iter()
                 .find(|t| t.name == name)
@@ -3143,38 +3212,52 @@ mod tests {
         }
     }
 
-    /// `run_query` is annotated destructive by default and re-annotated
-    /// read-only under `--read-only`. See `mark_run_query_read_only` for why
-    /// that flag is the *only* input allowed to change an annotation.
+    /// The two statement tools are annotated as the constants they now are:
+    /// `run_query` reads, `run_write` writes. Neither depends on any
+    /// connection's policy, which is the property that keeps them honest for a
+    /// client that caches `tools/list` at startup.
     #[test]
-    fn read_only_mode_re_annotates_run_query() {
-        let default = huginn_with_policy("t-ann", McpWritePolicy::ReadOnly, false);
-        let a = default
-            .tool_router
-            .get("run_query")
-            .expect("run_query")
-            .annotations
-            .clone()
-            .expect("annotated");
-        assert_eq!(
-            a.read_only_hint,
-            Some(false),
-            "a statement runner can write"
-        );
-        assert_eq!(a.destructive_hint, Some(true));
+    fn the_two_statement_tools_are_annotated_as_constants() {
+        let tools = Huginn::tool_router().list_all();
+        let ann = |name: &str| {
+            tools
+                .iter()
+                .find(|t| t.name == name)
+                .unwrap_or_else(|| panic!("{name} missing"))
+                .annotations
+                .clone()
+                .expect("annotated")
+        };
+        assert_eq!(ann("run_query").read_only_hint, Some(true));
+        assert_eq!(ann("run_write").read_only_hint, Some(false));
+        assert_eq!(ann("run_write").destructive_hint, Some(true));
+    }
 
-        // Note the policy above is already read-only: a per-connection policy
-        // must NOT be what flips this, because it can change under a client
-        // that cached `tools/list` at startup.
-        let killed = huginn_with_policy("t-ann", McpWritePolicy::ReadOnly, true);
-        let a = killed
-            .tool_router
-            .get("run_query")
-            .expect("run_query")
-            .annotations
-            .clone()
-            .expect("annotated");
-        assert_eq!(a.read_only_hint, Some(true), "--read-only cannot go stale");
+    /// `--read-only` takes every write tool off the surface rather than leaving
+    /// eight tools that can only answer with a refusal.
+    ///
+    /// It is also the *only* input allowed to vary the surface: it is a process
+    /// argument, so unlike a per-connection policy it cannot change under a
+    /// client that cached `tools/list` at startup. See `disable_write_tools`.
+    #[test]
+    fn read_only_mode_removes_the_write_tools() {
+        let normal = huginn_with_policy("t-ann", McpWritePolicy::Full, false);
+        for name in WRITE_TOOLS {
+            assert!(
+                normal.tool_router.get(name).is_some(),
+                "{name} should be offered when writes are possible"
+            );
+        }
+
+        let killed = huginn_with_policy("t-ann", McpWritePolicy::Full, true);
+        for name in WRITE_TOOLS {
+            assert!(
+                killed.tool_router.get(name).is_none(),
+                "{name} must not be offered under --read-only"
+            );
+        }
+        // The read half survives, or the flag would leave nothing usable.
+        assert!(killed.tool_router.get("run_query").is_some());
     }
 
     /// Regression test for issue #83: the write tools' input schemas must
