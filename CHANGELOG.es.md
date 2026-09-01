@@ -134,6 +134,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **`DialogContent` usa `max-w-md` por defecto, y la prop de tamaño se llama
+  `size` en todos los primitivos.** De los 31 diálogos que sobrescribían el
+  ancho del modal, 15 pedían `max-w-md` y solo 3 querían el `max-w-lg` que
+  shadcn trae por defecto: el valor por defecto simplemente estaba mal elegido
+  para una herramienta de escritorio densa. Corregirlo borró 15 `className` y
+  hizo innecesaria una variante `size` en Dialog, porque lo que queda son casos
+  únicos de verdad que se leen bien como sobrescrituras explícitas. Aparte, la
+  variante de densidad de `Input` se llamaba `inputSize` para esquivar el
+  atributo HTML nativo `size` (ancho en caracteres) — pero su tipo de props ya
+  hace `Omit` de ese atributo, así que el rodeo había sobrevivido a su motivo y
+  dejaba la librería con dos nombres para un mismo concepto.
+
 - **Las conexiones expuestas al conector MCP ahora se eligen desde la propia
   app, y las herramientas aceptan el *nombre* de una conexión.** Dos mitades
   de la misma queja: la configuración del cliente llevaba un uuid interno que
@@ -202,6 +214,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   degradarse con elegancia.
 
 ### Corregido
+
+- **Tres errores de token de tema en el cromo compartido: casillas, enlaces en
+  línea y todas las sombras escritas a mano.** Los tres vienen del mismo sitio
+  —un punto de uso que escribe él mismo un color en vez de tomar el que el
+  sistema de diseño ya tenía— y los tres pasaban desapercibidos hasta poner dos
+  superficies una al lado de la otra.
+
+  Doce casillas usaban `accent-primary`, que no es el azul que nadie esperaba:
+  `--primary` es casi negro en los temas claros y casi blanco en los oscuros
+  (`index.css`), mientras que `--brand` es el único color saturado que la app
+  puede gastar en affordances que significan «haz esto». Así que el mismo
+  control se pintaba gris en doce sitios y azul de marca en otros veinte, a
+  veces en la misma pantalla. Ahora todas las casillas toman `accent-brand`.
+  Cinco enlaces en línea tenían el mismo error con `text-primary`, y
+  `Button variant="link"` ya usaba `text-brand` — así que esos cinco
+  contradecían a su propio primitivo.
+
+  Nueve superficies dibujaban una sombra cruda de Tailwind (`shadow-sm` …
+  `shadow-2xl`) en lugar de la escala `shadow-elevation-1..4`, tres de ellas
+  dentro de `components/ui/`. Y no es solo inconsistencia: las sombras de
+  Tailwind son un negro fijo, mientras que la escala de elevación mezcla
+  `--foreground`, así que una sombra cruda bajo un panel oscuro es un manchón
+  negro en vez de la elevación que pretendía ser. Los paneles flotantes están
+  ahora en `elevation-3` (igual que el desplegable, el menú contextual y el
+  select, que ya lo hacían) y las superficies modales en `elevation-4` (igual
+  que `DialogContent`).
 
 - **Ocultar una conexión en el selector de un entorno sincronizado no se
   mantenía — la siguiente sincronización del origen la volvía a mostrar sin

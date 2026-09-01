@@ -80,7 +80,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Download className="h-4 w-4" />
@@ -97,7 +97,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
               </Label>
               <button
                 onClick={toggleAll}
-                className="text-xs text-primary underline-offset-2 hover:underline"
+                className="text-xs text-brand underline-offset-2 hover:underline"
               >
                 {allSelected
                   ? t("transfer.export.deselectAll")
@@ -114,7 +114,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                     type="checkbox"
                     checked={selected.has(p.id)}
                     onChange={() => toggle(p.id)}
-                    className="h-3.5 w-3.5 rounded accent-primary"
+                    className="h-3.5 w-3.5 rounded accent-brand"
                   />
                   <span className="flex-1 truncate text-xs">{p.name}</span>
                   <span className="text-[10px] uppercase text-muted-foreground">

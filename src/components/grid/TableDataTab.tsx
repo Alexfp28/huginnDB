@@ -1455,7 +1455,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         open={!!pendingDelete}
         onOpenChange={(open) => !open && setPendingDelete(null)}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {(pendingDelete?.pkValueRows.length ?? 0) > 1

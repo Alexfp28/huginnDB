@@ -96,7 +96,7 @@ export function Segmented<T extends string>({
               variant === "underline" && (size === "sm" ? "py-1.5" : "py-2"),
               active
                 ? variant === "pill"
-                  ? "bg-background text-foreground shadow-sm"
+                  ? "bg-background text-foreground shadow-elevation-1"
                   : "border-brand text-foreground"
                 : cn(
                     "text-muted-foreground hover:text-foreground",

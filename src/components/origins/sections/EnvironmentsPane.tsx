@@ -363,7 +363,7 @@ export function EnvironmentsPane({
                       >
                         <input
                           type="checkbox"
-                          className="h-3.5 w-3.5 shrink-0 rounded accent-primary"
+                          className="h-3.5 w-3.5 shrink-0 rounded accent-brand"
                           disabled={readOnly}
                           checked={active.connectionIds.includes(c.id)}
                           onChange={() =>

@@ -109,7 +109,7 @@ function Panel({
             >
               <input
                 type="checkbox"
-                className="h-3.5 w-3.5 shrink-0 rounded accent-primary"
+                className="h-3.5 w-3.5 shrink-0 rounded accent-brand"
                 checked={selected.has(item.id)}
                 onChange={() => onToggle(item.id)}
               />

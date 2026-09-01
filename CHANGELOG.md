@@ -119,6 +119,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **`DialogContent` defaults to `max-w-md`, and the size prop is called `size`
+  on every primitive.** Of the 31 dialogs that overrode the modal width, 15
+  asked for `max-w-md` and only 3 wanted shadcn's `max-w-lg` default — the
+  default was simply mis-chosen for a dense desktop tool. Correcting it deleted
+  15 `className`s and made a `size` variant on Dialog unnecessary, since what
+  remains are genuine one-offs that read fine as explicit overrides. Separately,
+  `Input`'s density variant was named `inputSize` to dodge the native HTML
+  `size` attribute (character width) — but its props type already `Omit`s that
+  attribute, so the workaround had outlived its reason and left the library with
+  two names for one concept.
+
 - **The MCP connector's exposed connections are now picked in the app, and the
   tools take a connection's *name*.** Two halves of the same complaint: the
   client config carried an internal uuid the user never chose and should not
@@ -180,6 +191,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   gracefully.
 
 ### Fixed
+
+- **Three theme-token bugs in shared chrome: checkboxes, inline links, and every
+  hand-rolled shadow.** All three come from the same place — a call site
+  spelling a colour itself instead of taking the one the design system already
+  had — and all three stayed invisible until you put two surfaces side by side.
+
+  Twelve checkboxes used `accent-primary`, which is not the blue anyone
+  expected. `--primary` is near-black in light themes and near-white in dark
+  ones (`index.css`), while `--brand` is the one saturated colour the app is
+  allowed to spend on affordances that mean "do this". So the same control
+  rendered grey in twelve places and brand blue in twenty others, sometimes on
+  the same screen. Every checkbox takes `accent-brand` now. Five inline links
+  had the same bug with `text-primary`, and `Button variant="link"` already
+  used `text-brand` — so those five disagreed with their own primitive.
+
+  Nine surfaces drew a raw Tailwind shadow (`shadow-sm` … `shadow-2xl`) instead
+  of the `shadow-elevation-1..4` scale, three of them inside `components/ui/`
+  itself. That is not just inconsistency: Tailwind's shadows are a fixed black,
+  while the elevation scale mixes `--foreground`, so a raw shadow under a dark
+  panel is a black smear rather than the lift it was meant to be. Floating
+  panels now sit at `elevation-3` (matching the dropdown, context menu and
+  select that already did) and modal surfaces at `elevation-4` (matching
+  `DialogContent`).
 
 - **Hiding a connection in a synced environment's picker didn't stick — the**
   **next sync from the origin quietly showed it again.** `visible_connections`

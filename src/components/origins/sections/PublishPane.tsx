@@ -115,7 +115,7 @@ export function PublishPane({
           <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 rounded accent-primary"
+              className="h-3.5 w-3.5 rounded accent-brand"
               disabled={readOnly}
               checked={passphrase.rotating}
               onChange={(e) =>

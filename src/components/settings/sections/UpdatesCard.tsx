@@ -143,7 +143,7 @@ export function UpdatesCard({ currentVersion }: Props) {
               href="https://github.com/Alexfp28/huginnDB/releases"
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] text-muted-foreground hover:text-primary hover:underline"
+              className="text-[11px] text-muted-foreground hover:text-brand hover:underline"
             >
               {t("update.openReleases")}
             </a>

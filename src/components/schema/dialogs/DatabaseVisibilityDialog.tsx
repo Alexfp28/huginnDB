@@ -130,7 +130,7 @@ export function DatabaseVisibilityDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("schema.selectDatabases.title")}</DialogTitle>
           <DialogDescription>
@@ -179,7 +179,7 @@ export function DatabaseVisibilityDialog({
             <button
               onClick={clearOverride}
               disabled={submitting}
-              className="text-[11px] text-primary underline-offset-2 hover:underline disabled:opacity-50"
+              className="text-[11px] text-brand underline-offset-2 hover:underline disabled:opacity-50"
             >
               {t("schema.selectDatabases.useProfileDefault")}
             </button>
@@ -194,7 +194,7 @@ export function DatabaseVisibilityDialog({
           </span>
           <button
             onClick={toggleAll}
-            className="text-xs text-primary underline-offset-2 hover:underline"
+            className="text-xs text-brand underline-offset-2 hover:underline"
           >
             {allSelected
               ? t("schema.selectDatabases.deselectAll")
@@ -211,7 +211,7 @@ export function DatabaseVisibilityDialog({
                 type="checkbox"
                 checked={sel.has(name)}
                 onChange={() => toggle(name)}
-                className="h-3.5 w-3.5 rounded accent-primary"
+                className="h-3.5 w-3.5 rounded accent-brand"
               />
               <span className="flex-1 truncate text-xs">{name}</span>
             </label>

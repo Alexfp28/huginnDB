@@ -496,7 +496,7 @@ export function StructureEditorTab({
 
       {/* SQLite rebuild confirmation */}
       <Dialog open={confirmRebuild} onOpenChange={setConfirmRebuild}>
-        <DialogContent className="max-w-md">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("structure.rebuildTitle")}</DialogTitle>
           </DialogHeader>

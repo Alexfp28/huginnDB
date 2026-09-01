@@ -100,7 +100,7 @@ export function ImportSqlDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("schema.importSql.title")}</DialogTitle>
           <DialogDescription>

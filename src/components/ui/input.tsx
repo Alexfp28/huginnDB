@@ -16,14 +16,14 @@ const inputVariants = cva(
   "flex w-full rounded-md border border-input bg-background transition-colors file:border-0 file:bg-transparent file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
-      inputSize: {
+      size: {
         default: "h-9 px-3 py-1 text-sm file:text-sm",
         sm: "h-8 px-2.5 py-1 text-xs file:text-xs",
         xs: "h-7 px-2 py-0.5 text-xs file:text-xs",
       },
     },
     defaultVariants: {
-      inputSize: "default",
+      size: "default",
     },
   },
 );
@@ -33,10 +33,10 @@ export interface InputProps
     VariantProps<typeof inputVariants> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, inputSize, ...props }, ref) => (
+  ({ className, type, size, ...props }, ref) => (
     <input
       type={type}
-      className={cn(inputVariants({ inputSize, className }))}
+      className={cn(inputVariants({ size, className }))}
       ref={ref}
       {...props}
     />

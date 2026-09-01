@@ -224,7 +224,7 @@ export function EnvironmentEditorDialog() {
                 // Clearing writes `null`, not the previous lucide key: the icon
                 // picker is gone, so "no image" is the only other state.
                 onClick={() => patchDraft({ icon: null })}
-                className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-foreground"
+                className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-elevation-1 hover:text-foreground"
               >
                 <X className="h-3 w-3" />
               </button>

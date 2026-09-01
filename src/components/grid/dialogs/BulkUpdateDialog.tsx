@@ -293,7 +293,7 @@ export function BulkUpdateDialog({
                       </SelectContent>
                     </Select>
                     <Input
-                      inputSize="xs"
+                      size="xs"
                       className="flex-1"
                       value={r.value}
                       placeholder={t("tableData.bulkUpdate.setValuePlaceholder")}

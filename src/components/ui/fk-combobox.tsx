@@ -259,7 +259,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
         </button>
         {open && (
           <div
-            className="absolute left-0 top-full z-50 mt-1 w-[min(20rem,max(100%,12rem))] rounded-md border border-border bg-popover text-popover-foreground shadow-md"
+            className="absolute left-0 top-full z-50 mt-1 w-[min(20rem,max(100%,12rem))] rounded-md border border-border bg-popover text-popover-foreground shadow-elevation-3"
             // Catch mousedown so clicks on the panel chrome (search bar
             // padding, scrollbar) don't bubble up and trigger the parent
             // row's blur-commit before the click registers.

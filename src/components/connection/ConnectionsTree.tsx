@@ -763,7 +763,7 @@ function ConnectionVisibilityDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("connectionsTree.selectConnections.title")}</DialogTitle>
           <DialogDescription>
@@ -816,7 +816,7 @@ function ConnectionVisibilityDialog({
                   type="checkbox"
                   checked={sel.has(p.id)}
                   onChange={() => toggle(p.id)}
-                  className="h-3.5 w-3.5 rounded accent-primary"
+                  className="h-3.5 w-3.5 rounded accent-brand"
                 />
                 <span className="flex-1 truncate text-xs">{p.name}</span>
                 <DriverBadge driver={p.driver} />

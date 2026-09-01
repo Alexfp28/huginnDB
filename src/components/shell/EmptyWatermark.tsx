@@ -132,7 +132,7 @@ export function EmptyWatermark() {
               )}
             </div>
 
-            <div className="w-full rounded-2xl border border-border/70 bg-card/50 p-5 shadow-sm">
+            <div className="w-full rounded-2xl border border-border/70 bg-card/50 p-5 shadow-elevation-1">
               <WorkspacePicker />
             </div>
           </>

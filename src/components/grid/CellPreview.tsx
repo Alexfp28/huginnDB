@@ -97,7 +97,7 @@ export function CellPreview({
     <div
       className={cn(
         "absolute bottom-2 right-2 z-20 flex w-80 flex-col",
-        "rounded-lg border border-border bg-card shadow-xl",
+        "rounded-lg border border-border bg-card shadow-elevation-4",
         "overflow-hidden",
       )}
     >

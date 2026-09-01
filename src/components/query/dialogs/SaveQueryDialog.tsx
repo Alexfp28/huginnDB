@@ -80,7 +80,7 @@ export function SaveQueryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>
             {existing ? t("saveQuery.titleUpdate") : t("saveQuery.titleSave")}

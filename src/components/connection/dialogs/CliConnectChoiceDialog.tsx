@@ -48,7 +48,7 @@ export function CliConnectChoiceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("cliConnect.title")}</DialogTitle>
           <DialogDescription>

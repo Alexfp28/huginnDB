@@ -130,7 +130,7 @@ export function SchemasPane({
                 <label className="flex cursor-pointer items-start gap-2">
                   <input
                     type="checkbox"
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-primary"
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded accent-brand"
                     disabled={readOnly}
                     checked={on}
                     onChange={() => toggle(schema)}
@@ -158,7 +158,7 @@ export function SchemasPane({
                         >
                           <input
                             type="checkbox"
-                            className="h-3 w-3 shrink-0 rounded accent-primary"
+                            className="h-3 w-3 shrink-0 rounded accent-brand"
                             disabled={readOnly}
                             checked={draft.bindings.some((x) => x.id === b.id)}
                             onChange={() => toggleBinding(b)}

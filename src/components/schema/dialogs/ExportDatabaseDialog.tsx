@@ -266,7 +266,7 @@ export function ExportDatabaseDialog({
                       checked={row.checked}
                       disabled={row.locked}
                       onChange={() => toggleDb(name)}
-                      className="h-3.5 w-3.5 rounded accent-primary disabled:opacity-70"
+                      className="h-3.5 w-3.5 rounded accent-brand disabled:opacity-70"
                     />
                     <span className="flex-1 truncate text-xs font-medium">{name}</span>
                   </label>
@@ -292,7 +292,7 @@ export function ExportDatabaseDialog({
                                 type="checkbox"
                                 checked={checked}
                                 onChange={() => toggleTable(name, tb.name)}
-                                className="h-3 w-3 rounded accent-primary"
+                                className="h-3 w-3 rounded accent-brand"
                               />
                               <span className="truncate text-2xs text-muted-foreground">
                                 {tb.name}
@@ -335,7 +335,7 @@ export function ExportDatabaseDialog({
                 </label>
                 <div className="flex items-center gap-1.5">
                   <Input
-                    inputSize="sm"
+                    size="sm"
                     className="min-w-0 flex-1"
                     value={destPath}
                     readOnly

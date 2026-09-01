@@ -43,7 +43,15 @@ const DialogContent = React.forwardRef<
         // child drags all its siblings out over the dialog's own border. A
         // footer of four `whitespace-nowrap` buttons did exactly that. Zeroing
         // the minimum makes the offending child shrink instead.
-        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 border bg-card p-6 shadow-elevation-4 duration-200 [&>*]:min-w-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98] sm:rounded-lg",
+        //
+        // `max-w-md`, not shadcn's `max-w-lg`: of the 31 call sites that used
+        // to override this, 15 passed `max-w-md` and only 3 wanted the `lg`
+        // default. The default was simply mis-chosen for a dense desktop tool,
+        // so correcting it deleted 15 `className`s — and made a `size` variant
+        // on Dialog unnecessary, since the remaining widths are all one-offs
+        // (`2xl`, `4xl`, `6xl`, viewport-relative) that read fine as explicit
+        // overrides. `tailwind-merge` lets those win, `className` being last.
+        "fixed left-1/2 top-1/2 z-50 grid w-full max-w-md -translate-x-1/2 -translate-y-1/2 gap-4 border bg-card p-6 shadow-elevation-4 duration-200 [&>*]:min-w-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98] sm:rounded-lg",
         className,
       )}
       {...props}

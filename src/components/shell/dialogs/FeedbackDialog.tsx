@@ -158,7 +158,7 @@ export function FeedbackDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("feedback.title")}</DialogTitle>
           <DialogDescription>{t("feedback.description")}</DialogDescription>

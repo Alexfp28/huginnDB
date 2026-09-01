@@ -69,7 +69,7 @@ export function UpdateBanner({ version }: Props) {
       className="pointer-events-none fixed inset-x-0 top-3 z-50 flex justify-center px-4"
     >
       <div
-        className={`pointer-events-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-border bg-card/95 px-4 py-3 shadow-xl backdrop-blur transition-all duration-300 ease-out ${
+        className={`pointer-events-auto flex w-full max-w-2xl items-center gap-3 rounded-lg border border-border bg-card/95 px-4 py-3 shadow-elevation-4 backdrop-blur transition-all duration-300 ease-out ${
           shown ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"
         }`}
       >

@@ -113,7 +113,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Download className="h-4 w-4" />
@@ -134,7 +134,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
               </Label>
               <button
                 onClick={toggleAll}
-                className="text-xs text-primary underline-offset-2 hover:underline"
+                className="text-xs text-brand underline-offset-2 hover:underline"
               >
                 {allSelected
                   ? t("transfer.export.deselectAll")
@@ -151,7 +151,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
                     type="checkbox"
                     checked={selected.has(env.id)}
                     onChange={() => toggle(env.id)}
-                    className="h-3.5 w-3.5 rounded accent-primary"
+                    className="h-3.5 w-3.5 rounded accent-brand"
                   />
                   <span
                     className="h-2 w-2 shrink-0 rounded-full"

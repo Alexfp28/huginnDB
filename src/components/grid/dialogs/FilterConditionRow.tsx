@@ -70,7 +70,7 @@ export function FilterConditionRow({
       {row.op === "between" ? (
         <>
           <Input
-            inputSize="xs"
+            size="xs"
             className="flex-1"
             value={row.value}
             placeholder={t("tableData.filter.fromPlaceholder")}
@@ -78,7 +78,7 @@ export function FilterConditionRow({
           />
           <span className="text-muted-foreground">–</span>
           <Input
-            inputSize="xs"
+            size="xs"
             className="flex-1"
             value={row.value2}
             placeholder={t("tableData.filter.toPlaceholder")}
@@ -87,7 +87,7 @@ export function FilterConditionRow({
         </>
       ) : (
         <Input
-          inputSize="xs"
+          size="xs"
           className="flex-1"
           value={row.value}
           disabled={valueless}

@@ -1311,7 +1311,7 @@ function GroupCombobox({
       />
       {open && matches.length > 0 && (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-md"
+          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-popover py-1 text-popover-foreground shadow-elevation-3"
           // Keep the input focused when a suggestion is clicked so the click
           // resolves before the outside-click handler can fire.
           onMouseDown={(e) => e.preventDefault()}

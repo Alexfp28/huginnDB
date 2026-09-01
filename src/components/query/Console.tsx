@@ -237,7 +237,7 @@ export function Console() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("console.filterPlaceholder")}
-            inputSize="sm"
+            size="sm"
             className="pl-6 font-mono"
           />
         </div>
