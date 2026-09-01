@@ -203,7 +203,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
       return (
         <input
           className={cn(
-            "h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring",
+            "h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 font-mono text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20",
             className,
           )}
           value={value ?? ""}
@@ -245,7 +245,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
           }}
           className={cn(
             "flex h-6 w-full min-w-0 items-center justify-between gap-1 rounded-sm border border-input bg-background px-1.5 font-mono text-xs",
-            "focus:outline-none focus:ring-1 focus:ring-ring",
+            "focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20",
             value === null
               ? "italic text-muted-foreground"
               : "text-foreground",
@@ -285,7 +285,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                     ? `Search ${refTable}…`
                     : `Filter ${refTable}…`
                 }
-                className="h-7 w-full rounded-sm border border-input bg-background px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                className="h-7 w-full rounded-sm border border-input bg-background px-2 text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
               />
               {tooLarge && !query.trim() && (
                 <div className="px-1 text-[10px] italic text-muted-foreground">

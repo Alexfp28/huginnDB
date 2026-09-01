@@ -87,7 +87,7 @@ export function BitInput({
           onCancel?.();
         }
       }}
-      className="h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+      className="h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
     >
       {nullable && <option value={NULL_OPT}>NULL</option>}
       <option value="0">{label("0")}</option>

@@ -36,7 +36,7 @@ import { VanishedEnvironmentNotice } from "@/components/common/VanishedEnvironme
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordInput } from "@/components/common/PasswordInput";
 import type { Origin, OriginRole } from "@/types";
 import { formatDateTime } from "@/lib/utils";
 

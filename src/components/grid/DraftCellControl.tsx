@@ -20,7 +20,7 @@
 import type { MutableRefObject } from "react";
 import { BitInput } from "@/components/grid/BitInput";
 import { CellInput } from "@/components/grid/CellInput";
-import { FkCombobox } from "@/components/ui/fk-combobox";
+import { FkCombobox } from "@/components/grid/FkCombobox";
 import { isBitType } from "@/lib/grid/columnKinds";
 import type { ColumnInfo, ColumnMeta, DraftCell } from "@/types";
 

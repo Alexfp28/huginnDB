@@ -2,6 +2,7 @@ import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { CONTROL_FOCUS } from "@/components/ui/styles";
 
 // Shape and motion follow the brand visual language: 12px corners on the
 // full-size button (`rounded-xl`, deliberately outside the `--radius` scale —
@@ -11,7 +12,11 @@ import { cn } from "@/lib/utils";
 // `all` would also animate width/height, which makes a button holding a
 // spinner (Run, Connect) visibly stretch when its label swaps.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-180 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
+  [
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-180 ease-out",
+    CONTROL_FOCUS,
+    "disabled:pointer-events-none disabled:opacity-50",
+  ],
   {
     variants: {
       variant: {
@@ -44,7 +49,8 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
 }

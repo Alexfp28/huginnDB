@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { CONTROL_FOCUS_TIGHT } from "@/components/ui/styles";
 
 /**
  * Compact segmented control — a single-choice toggle group styled as one
@@ -85,7 +86,8 @@ export function Segmented<T extends string>({
             title={o.title}
             onClick={() => onValueChange(o.value)}
             className={cn(
-              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "inline-flex items-center justify-center gap-1.5 whitespace-nowrap font-medium transition-colors",
+              CONTROL_FOCUS_TIGHT,
               variant === "pill"
                 ? "rounded-[calc(var(--radius)-4px)]"
                 : // `-mb-px` pulls the segment's own border over the strip's, so

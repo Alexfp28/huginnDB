@@ -222,7 +222,7 @@ export function StatusConnections() {
           <button
             type="button"
             className={cn(
-              "flex items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring",
+              "flex items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
               count > 0 && "text-foreground",
             )}
           >

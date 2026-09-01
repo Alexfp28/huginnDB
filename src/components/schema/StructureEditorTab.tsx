@@ -530,8 +530,15 @@ export function StructureEditorTab({
 // Columns editor
 // ---------------------------------------------------------------------------
 
-/** Shared cell chrome: a compact, bordered input matching the grid's density. */
-const cellInputClass = "h-7 border-transparent bg-transparent px-1.5 text-xs shadow-none focus-visible:border-input focus-visible:ring-1 focus-visible:ring-ring";
+/**
+ * Shared cell chrome: a compact input that reads flat in the table until it is
+ * focused. It no longer overrides the focus treatment — it used to swap the
+ * primitive's brand focus for a grey `border-input` + hairline ring, which was
+ * the only field in the app that did, and left no clear signal of which cell
+ * you were editing. `Input` supplies the field focus language now.
+ */
+const cellInputClass =
+  "h-7 border-transparent bg-transparent px-1.5 text-xs shadow-none";
 
 /**
  * Shared `<select>` chrome for the type picker. Unlike `cellInputClass`,
@@ -543,7 +550,7 @@ const cellInputClass = "h-7 border-transparent bg-transparent px-1.5 text-xs sha
  * makes the popup match.
  */
 const typeSelectClass =
-  "h-7 w-full rounded-sm border border-input bg-background px-1 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-30";
+  "h-7 w-full rounded-sm border border-input bg-background px-1 font-mono text-xs text-foreground focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20 disabled:opacity-30";
 
 function ColumnsEditor({
   columns,

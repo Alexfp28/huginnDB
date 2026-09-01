@@ -192,6 +192,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A focused field or toolbar control was easy to lose track of.** Sixteen
+  places drew focus as `ring-1 ring-ring` — a one-pixel hairline in the theme's
+  ring colour, which at that width is close to invisible on either theme. It was
+  never a decision so much as the shape focus had before the visual overhaul,
+  kept alive because there was nowhere to take the current treatment *from*: the
+  nine dense fields in grid cells and the type pickers now use the same
+  border-turns-brand-plus-soft-halo language as every `Input`, and the seven
+  status-bar and switcher controls use the ringed language the segmented control
+  already had. The structure editor's cell input is part of this: it was the one
+  field in the app that overrode the primitive's focus with a grey border and a
+  hairline, so which cell you were editing was genuinely hard to see. It no
+  longer overrides anything.
+
 - **Three theme-token bugs in shared chrome: checkboxes, inline links, and every
   hand-rolled shadow.** All three come from the same place — a call site
   spelling a colour itself instead of taking the one the design system already

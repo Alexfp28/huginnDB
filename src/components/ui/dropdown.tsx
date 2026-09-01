@@ -2,6 +2,7 @@ import * as React from "react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MENU_ITEM, MENU_PANEL, MENU_SUBTRIGGER } from "@/components/ui/styles";
 
 const DropdownMenu = DropdownMenuPrimitive.Root;
 const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
@@ -25,11 +26,7 @@ const DropdownMenuSubTrigger = React.forwardRef<
 >(({ className, inset, children, ...props }, ref) => (
   <DropdownMenuPrimitive.SubTrigger
     ref={ref}
-    className={cn(
-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(MENU_SUBTRIGGER, "text-sm", inset && "pl-8", className)}
     {...props}
   >
     {children}
@@ -48,10 +45,7 @@ const DropdownMenuSubContent = React.forwardRef<
   <DropdownMenuPrimitive.Portal>
     <DropdownMenuPrimitive.SubContent
       ref={ref}
-      className={cn(
-        "z-50 max-h-[var(--radix-popper-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-elevation-3 duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]",
-        className,
-      )}
+      className={cn(MENU_PANEL, "min-w-[10rem]", className)}
       {...props}
     />
   </DropdownMenuPrimitive.Portal>
@@ -77,7 +71,8 @@ const DropdownMenuContent = React.forwardRef<
         // edge. Horizontal clipping is kept so long labels can't escape the
         // rounded corners. Consumers that pass their own `max-h-*` still win
         // (`cn` is tailwind-merge).
-        "z-50 max-h-[var(--radix-popper-available-height)] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-elevation-3 duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]",
+        MENU_PANEL,
+        "min-w-[8rem]",
         className,
       )}
       {...props}
@@ -92,10 +87,7 @@ const DropdownMenuItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DropdownMenuPrimitive.Item
     ref={ref}
-    className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      className,
-    )}
+    className={cn(MENU_ITEM, "text-sm", className)}
     {...props}
   />
 ));
@@ -135,8 +127,7 @@ const DropdownMenuSeparator = React.forwardRef<
     {...props}
   />
 ));
-DropdownMenuSeparator.displayName =
-  DropdownMenuPrimitive.Separator.displayName;
+DropdownMenuSeparator.displayName = DropdownMenuPrimitive.Separator.displayName;
 
 /**
  * Right-aligned shortcut hint inside a menu item. Mirrors

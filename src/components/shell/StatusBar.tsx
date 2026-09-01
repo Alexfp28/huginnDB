@@ -99,7 +99,7 @@ export function StatusBar() {
           <button
             type="button"
             onClick={() => useCommandPalette.getState().toggle()}
-            className="rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             {t("statusBar.commandPaletteHint")}
           </button>
@@ -151,7 +151,7 @@ function HistoryMenu({ count }: { count: number }) {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <History className="h-3 w-3" />
             {t("statusBar.history")} {count}
@@ -213,7 +213,7 @@ function DensityMenu() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Rows3 className="h-3 w-3" />
           </button>
@@ -259,7 +259,7 @@ function ConsoleToggle() {
         onClick={toggleConsole}
         aria-pressed={consoleOpen}
         className={cn(
-          "flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring",
+          "flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
           consoleOpen && "text-foreground",
         )}
       >
@@ -279,7 +279,7 @@ function ThemeToggle() {
       <button
         type="button"
         onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-        className="flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+        className="flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         {mode === "dark" ? (
           <Sun className="h-3 w-3" />

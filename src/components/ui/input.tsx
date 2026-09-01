@@ -1,6 +1,7 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
+import { fieldFocus } from "@/components/ui/styles";
 
 // Density variants for this dense desktop tool. The default `h-9` shadcn input
 // was too tall for most surfaces, so nearly every call site was hand-patching
@@ -13,7 +14,11 @@ import { cn } from "@/lib/utils";
 // coloured gap — legible, but a heavy, floating ring on a 28px-tall field, and
 // the brief asks inputs to stay very clean with a fine border and a blue focus.
 const inputVariants = cva(
-  "flex w-full rounded-md border border-input bg-background transition-colors file:border-0 file:bg-transparent file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50",
+  [
+    "flex w-full rounded-md border border-input bg-background transition-colors file:border-0 file:bg-transparent file:font-medium placeholder:text-muted-foreground",
+    fieldFocus(),
+    "disabled:cursor-not-allowed disabled:opacity-50",
+  ],
   {
     variants: {
       size: {
@@ -29,7 +34,8 @@ const inputVariants = cva(
 );
 
 export interface InputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size">,
+  extends
+    Omit<React.InputHTMLAttributes<HTMLInputElement>, "size">,
     VariantProps<typeof inputVariants> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(

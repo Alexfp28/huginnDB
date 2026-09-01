@@ -1051,7 +1051,7 @@ const FieldRow = memo(function FieldRow({
           <span className="flex min-w-0 flex-1 items-center gap-1">
             <input
               autoFocus
-              className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:ring-1 focus:ring-ring"
+              className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
               placeholder={text === null ? nullDisplay : ""}
               value={text ?? ""}
               onChange={(e) => actionsRef.current.editChange(e.target.value)}
@@ -1179,7 +1179,7 @@ function DraftRow({
         <span className="w-3 shrink-0" />
         <input
           autoFocus
-          className="h-5 w-32 shrink-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:ring-1 focus:ring-ring"
+          className="h-5 w-32 shrink-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
           placeholder={t("dataGrid.list.fieldName")}
           value={draft.key}
           // An array's new element is appended at its next index: naming it
@@ -1190,7 +1190,7 @@ function DraftRow({
         />
         <span className="shrink-0 text-muted-foreground/60">:</span>
         <input
-          className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:ring-1 focus:ring-ring"
+          className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
           placeholder={t("dataGrid.list.fieldValue")}
           value={draft.text}
           onChange={(e) => onChange({ ...draft, text: e.target.value })}

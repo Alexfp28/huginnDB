@@ -74,7 +74,7 @@ export function EnvironmentSwitcher() {
           disabled={switching}
           className={cn(
             "flex max-w-[10rem] items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors",
-            "hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-60",
+            "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
           )}
           title={t("environments.switcherTooltip")}
         >

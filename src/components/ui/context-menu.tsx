@@ -2,6 +2,7 @@ import * as React from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { cn } from "@/lib/utils";
+import { MENU_ITEM, MENU_PANEL, MENU_SUBTRIGGER } from "@/components/ui/styles";
 
 const ContextMenu = ContextMenuPrimitive.Root;
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
@@ -22,11 +23,7 @@ const ContextMenuSubTrigger = React.forwardRef<
 >(({ className, inset, children, ...props }, ref) => (
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
-    className={cn(
-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(MENU_SUBTRIGGER, "text-xs", inset && "pl-8", className)}
     {...props}
   >
     {children}
@@ -45,10 +42,7 @@ const ContextMenuSubContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <ContextMenuPrimitive.SubContent
     ref={ref}
-    className={cn(
-      "z-50 max-h-[var(--radix-popper-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-elevation-3 duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]",
-      className,
-    )}
+    className={cn(MENU_PANEL, "min-w-[10rem]", className)}
     {...props}
   />
 ));
@@ -64,7 +58,8 @@ const ContextMenuContent = React.forwardRef<
       className={cn(
         // Same capped-height + scroll treatment as `DropdownMenuContent` (see
         // the note there): a long menu must scroll rather than be clipped.
-        "z-50 max-h-[var(--radix-popper-available-height)] min-w-[10rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-elevation-3 duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]",
+        MENU_PANEL,
+        "min-w-[10rem]",
         className,
       )}
       {...props}
@@ -81,11 +76,7 @@ const ContextMenuItem = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={cn(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-      inset && "pl-8",
-      className,
-    )}
+    className={cn(MENU_ITEM, "text-xs", inset && "pl-8", className)}
     {...props}
   />
 ));

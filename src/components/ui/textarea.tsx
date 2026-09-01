@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { fieldFocus } from "@/components/ui/styles";
 
 // Shared multiline input. Mirrors the Input primitive's border/focus language
 // so textareas stop being hand-rolled per dialog (FeedbackDialog previously
@@ -11,7 +12,9 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ className, ...props }, ref) => (
     <textarea
       className={cn(
-        "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-brand focus-visible:ring-[3px] focus-visible:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-50",
+        "flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm transition-colors placeholder:text-muted-foreground",
+        fieldFocus(),
+        "disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       ref={ref}

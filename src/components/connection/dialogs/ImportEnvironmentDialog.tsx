@@ -30,7 +30,7 @@ import {
 import { api } from "@/lib/tauri";
 import { useEnvironments } from "@/stores/session/environments";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordInput } from "@/components/common/PasswordInput";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,

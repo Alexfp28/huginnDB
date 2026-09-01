@@ -16,7 +16,7 @@ import { ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordInput } from "@/components/common/PasswordInput";
 
 /** Shortest passphrase an export will accept. */
 export const MIN_PASSPHRASE_LENGTH = 8;

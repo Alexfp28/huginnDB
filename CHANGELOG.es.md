@@ -215,6 +215,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Costaba saber qué campo o control tenías enfocado.** Dieciséis sitios
+  dibujaban el foco como `ring-1 ring-ring`: un pelo de un píxel en el color de
+  anillo del tema que, a ese grosor, es casi invisible en cualquiera de los dos
+  temas. Nunca fue una decisión, sino la forma que tenía el foco antes del
+  rediseño visual, y seguía viva porque no había de dónde tomar el tratamiento
+  actual: los nueve campos densos de las celdas del grid y los selectores de
+  tipo usan ahora el mismo lenguaje —el borde se vuelve azul de marca más un
+  halo tenue— que cualquier `Input`, y los siete controles de la barra de estado
+  y del conmutador usan el anillo que el control segmentado ya tenía. El campo
+  de celda del editor de estructura entra aquí: era el único campo de la app que
+  anulaba el foco del primitivo con un borde gris y un pelo, así que saber qué
+  celda estabas editando costaba de verdad. Ya no anula nada.
+
 - **Tres errores de token de tema en el cromo compartido: casillas, enlaces en
   línea y todas las sombras escritas a mano.** Los tres vienen del mismo sitio
   —un punto de uso que escribe él mismo un color en vez de tomar el que el

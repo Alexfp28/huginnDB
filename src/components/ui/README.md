@@ -1,0 +1,79 @@
+# `components/ui/` — the primitive layer
+
+Presentational primitives. Everything here is reusable across every domain in
+the app, carries no copy of its own, and can be rendered in a test without a
+store, a mock, or an IPC boundary.
+
+## The dependency rule
+
+This is the frontier that keeps the layer reusable, and it is the one rule here
+a test enforces (`uiContracts.test.ts`) rather than trusting to discipline.
+
+| Layer           | May import                                                                                           | Must not import                                         |
+| --------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `ui/`           | `react`, `@radix-ui/*`, `lucide-react`, `class-variance-authority`, `@/lib/utils` (`cn`), `./styles` | `@/stores/*`, `@/lib/tauri`, `react-i18next`, `@/types` |
+| `common/`       | all of the above, plus `react-i18next`, `@/types`, pure `@/lib/*`                                    | `@/lib/tauri`, `@/stores/*`                             |
+| a domain folder | anything                                                                                             | —                                                       |
+
+It gives an objective answer to the question that used to be settled by feel:
+
+- **A primitive that needs its own words belongs in `common/`, not here.**
+  `ConfirmDialog` (`t("common.cancel")`) and `PasswordInput` (the show/hide
+  toggle's `aria-label`) both live there for exactly this reason. A shared
+  component that takes its labels as props stays here.
+- **A component that does IO belongs in its domain.** `FkCombobox` sat here for
+  a long time while importing `@/lib/tauri` and a grid store — 375 lines, a
+  quarter of the directory, that no other domain could ever use. It is
+  `grid/FkCombobox.tsx` now.
+- **No primitive reads a store.** This also neuters gotcha #1 (unstable Zustand
+  selectors) by construction: a selector bug inside a primitive would arrive in
+  a hundred call sites at once. There is exactly one real temptation — making
+  the tooltip delay a preference — and the answer is to pass `delayDuration` to
+  the `TooltipProvider` at each of the three window roots, which are components
+  that already reach stores. See the note in `tooltip.tsx`.
+
+## Conventions
+
+- `React.forwardRef` for anything wrapping a DOM element, with
+  `React.ElementRef<typeof X>` / `ComponentPropsWithoutRef<typeof X>` and the
+  `displayName` inherited from the Radix primitive.
+- `...props` always spread. A primitive with a closed prop list cannot be a
+  tooltip target or an `asChild` slot.
+- **`className` is always the last argument to `cn`**, so `tailwind-merge` lets
+  the consumer win. `uiContracts.test.ts` asserts the behaviour rather than the
+  spelling.
+- **The size prop is `size`.** Where the native HTML attribute collides (`input`,
+  `select`), `Omit` it from the props type — do not rename the prop.
+- **Density vocabulary is `xs` / `sm` / `md`**: `h-7 text-xs` / `h-8 text-xs` /
+  `h-9 text-sm`. `size="icon"` is a _shape_, not a density.
+- **`brand` is the action colour, `primary` is not.** `--primary` is near-black
+  in light themes and near-white in dark ones; `--brand` is the app's one
+  saturated colour. Checkboxes, links and active states take `brand`.
+- Repeated class fragments live in `styles.ts`, which takes only fragments with
+  two or more consumers _in this directory_. New shared chrome is created on
+  first adoption, never speculatively.
+
+## What's here
+
+| File               | Exports                             | Notes                                                             |
+| ------------------ | ----------------------------------- | ----------------------------------------------------------------- |
+| `button.tsx`       | `Button`, `buttonVariants`          | `cva`; the base every other control borrows from                  |
+| `input.tsx`        | `Input`, `inputVariants`            | `cva`; the density canon                                          |
+| `textarea.tsx`     | `Textarea`                          | shares the field focus language                                   |
+| `select.tsx`       | `Select*`                           | Radix; `focus`, not `focus-visible` — its trigger is a `<button>` |
+| `label.tsx`        | `Label`                             | Radix passthrough                                                 |
+| `switch.tsx`       | `Switch`                            | Radix passthrough                                                 |
+| `segmented.tsx`    | `Segmented`                         | generic over the value union; single-choice toggle strip          |
+| `tabs.tsx`         | `Tabs*`                             | Radix                                                             |
+| `dialog.tsx`       | `Dialog*`                           | Radix; `DialogContent` supplies the overlay and the close button  |
+| `dropdown.tsx`     | `DropdownMenu*`                     | Radix; `text-sm`, `min-w-[8rem]`                                  |
+| `context-menu.tsx` | `ContextMenu*`, `ContextMenuAction` | Radix; denser than the dropdown by design                         |
+| `tooltip.tsx`      | `Tooltip*`, `SimpleTooltip`         | read its docstring before replacing a native `title=`             |
+| `kbd.tsx`          | `Kbd`                               |                                                                   |
+| `styles.ts`        | class fragments                     | strings only, no `cva`, no JSX                                    |
+
+`ui/` has no barrel `index.ts`, deliberately. Call sites import by path
+(`@/components/ui/button`), which is what lets a file move inside this directory
+without touching its own imports — the invariant gotcha #28 asks to keep. A
+barrel would also add a second import path to diverge, for no gain across the
+200-plus `Button` call sites.

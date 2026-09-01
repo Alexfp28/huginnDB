@@ -4,7 +4,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, KeyRound, Maximize2 } from "lucide-react";
 import { BitInput } from "@/components/grid/BitInput";
 import { CellInput } from "@/components/grid/CellInput";
-import { FkCombobox } from "@/components/ui/fk-combobox";
+import { FkCombobox } from "@/components/grid/FkCombobox";
 import {
   formatValue,
   rawCellText,

@@ -23,7 +23,7 @@ import {
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { Button } from "@/components/ui/button";
-import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordInput } from "@/components/common/PasswordInput";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
