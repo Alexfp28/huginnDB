@@ -134,6 +134,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Los desplegables nativos son un único control, y el arreglo de tema que
+  hay detrás existe una sola vez.** WebView2 pinta el popup de un `<select>`
+  con el color de fondo del propio disparador, así que un disparador
+  transparente abre un popup en claro del sistema por oscuro que sea el tema de
+  la app. Los ocho selects nativos de la aplicación llevaban cada uno su copia
+  de ese arreglo, con cuatro grafías distintas del cromo que lo rodea: un
+  parche a un copiar-pegar de perderse. Ahora es incondicional y vive en el
+  primitivo. De paso, los más densos pasan de 24px a los 28px compartidos.
+
 - **Las casillas de verificación son ahora un único control.** Treinta y cinco
   eran inputs nativos escritos punto por punto, en cuatro tamaños, con el estado
   mixto («algunos seleccionados») cableado a mano mediante una ref en cuatro

@@ -10,12 +10,13 @@
  * options per the user's `bitDisplay` preference.
  *
  * The component is intentionally a single `onSelect` callback rather than the
- * `onChange`/`onCommit`/`onCancel` trio of [[CellInput]]: a `<select>` commits
+ * `onChange`/`onCommit`/`onCancel` trio of [[CellInput]]: a `<NativeSelect>` commits
  * the instant the user picks, so the inline-edit call site saves straight from
  * `onSelect` (avoiding the stale-state race a deferred commit would hit).
  */
 
 import { useEffect } from "react";
+import { NativeSelect } from "@/components/ui/native-select";
 import { normalizeBitValue } from "@/lib/grid/columnKinds";
 
 const NULL_OPT = "__null__";
@@ -53,7 +54,7 @@ export function BitInput({
   // on mount. Two cases:
   //   • Fresh, required BIT column at NULL → seed it to "0" (the INSERT would
   //     otherwise reject a missing required value).
-  //   • A non-null value the <select> can only show as "0"/"1" but that isn't
+  //   • A non-null value the <NativeSelect> can only show as "0"/"1" but that isn't
   //     already exactly "0"/"1" (e.g. a duplicated row carrying "true", or a
   //     legacy BIT(1) cell holding a wider/garbage integer). The select renders
   //     the normalized option, but the draft cell still holds the raw string;
@@ -74,7 +75,7 @@ export function BitInput({
     bitDisplay === "true_false" ? (v === "1" ? "true" : "false") : v;
 
   return (
-    <select
+    <NativeSelect
       autoFocus={autoFocus}
       disabled={disabled}
       value={cur === "" ? NULL_OPT : cur}
@@ -87,11 +88,13 @@ export function BitInput({
           onCancel?.();
         }
       }}
-      className="h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
+      size="xs"
+      mono
+      className="w-full min-w-0"
     >
       {nullable && <option value={NULL_OPT}>NULL</option>}
       <option value="0">{label("0")}</option>
       <option value="1">{label("1")}</option>
-    </select>
+    </NativeSelect>
   );
 }

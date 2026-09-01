@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload } from "lucide-react";
+import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
 
 import { api } from "@/lib/tauri";
@@ -50,7 +51,9 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
 
   const [step, setStep] = useState<Step>("pick");
   const [filePath, setFilePath] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<JsonSchemaImportAnalysis | null>(null);
+  const [analysis, setAnalysis] = useState<JsonSchemaImportAnalysis | null>(
+    null,
+  );
   const [actions, setActions] = useState<Record<string, ConflictAction>>({});
   const [result, setResult] = useState<JsonSchemaImportResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,7 +142,11 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
             <p className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-primary">
               {t("transfer.importJsonSchemas.pickNote")}
             </p>
-            <Button variant="outline" onClick={() => void pick()} disabled={busy}>
+            <Button
+              variant="outline"
+              onClick={() => void pick()}
+              disabled={busy}
+            >
               <Upload className="mr-1 h-3.5 w-3.5" />
               {t("transfer.importJsonSchemas.pickTitle")}
             </Button>
@@ -157,7 +164,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
                   <span className="min-w-0 flex-1 truncate font-mono">
                     {c.existing_name}
                   </span>
-                  <select
+                  <NativeSelect
                     value={actions[c.id] ?? "skip"}
                     onChange={(e) =>
                       setActions((prev) => ({
@@ -165,16 +172,18 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
                         [c.id]: e.target.value as ConflictAction,
                       }))
                     }
-                    className="h-6 rounded-sm border border-input bg-background px-1 text-xs"
+                    size="xs"
                   >
-                    <option value="skip">{t("transfer.import.action.skip")}</option>
+                    <option value="skip">
+                      {t("transfer.import.action.skip")}
+                    </option>
                     <option value="rename">
                       {t("transfer.import.action.rename")}
                     </option>
                     <option value="overwrite">
                       {t("transfer.import.action.overwrite")}
                     </option>
-                  </select>
+                  </NativeSelect>
                 </div>
               ))}
             </div>

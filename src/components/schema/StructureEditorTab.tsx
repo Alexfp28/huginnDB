@@ -26,6 +26,7 @@ import { notify } from "@/lib/notify";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import {
@@ -555,18 +556,6 @@ export function StructureEditorTab({
 const cellInputClass =
   "h-7 border-transparent bg-transparent px-1.5 text-xs shadow-none";
 
-/**
- * Shared `<select>` chrome for the type picker. Unlike `cellInputClass`,
- * this can't stay `bg-transparent`: WebView2/Chromium paints its native
- * dropdown popup using the trigger element's own `background-color` /
- * `color`, so a transparent trigger left the open popup falling back to the
- * OS light-theme default regardless of the app's theme. `bg-background` +
- * `text-foreground` (the same pairing `BitInput` already uses for its select)
- * makes the popup match.
- */
-const typeSelectClass =
-  "h-7 w-full rounded-sm border border-input bg-background px-1 font-mono text-xs text-foreground focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20 disabled:opacity-30";
-
 function ColumnsEditor({
   columns,
   driver,
@@ -817,7 +806,7 @@ function ColumnsEditor({
 
 /**
  * Type + length/set cell. Splits `column.dataType` into a categorised base
- * type (a native `<select>` grouped by `<optgroup>` — HeidiSQL-style, and
+ * type (a native `<NativeSelect>` grouped by `<optgroup>` — HeidiSQL-style, and
  * keyboard-navigable for free) and a separate length/precision field, so
  * picking "VARCHAR" then typing "255" reads the same way the catalog
  * presents it. A `dataType` that doesn't match any catalog entry (a custom
@@ -867,13 +856,15 @@ function TypeCell({
     return (
       <>
         <td className="px-0.5 py-0.5">
-          <select
+          <NativeSelect
             value={CUSTOM_TYPE_VALUE}
             onChange={(e) => applyBaseType(e.target.value)}
-            className={typeSelectClass}
+            size="xs"
+            mono
+            className="w-full"
           >
             <TypeOptions categories={categories} />
-          </select>
+          </NativeSelect>
         </td>
         <td className="px-0.5 py-0.5">
           <Input
@@ -890,13 +881,15 @@ function TypeCell({
   return (
     <>
       <td className="px-0.5 py-0.5">
-        <select
+        <NativeSelect
           value={parsed.baseType}
           onChange={(e) => applyBaseType(e.target.value)}
-          className={typeSelectClass}
+          size="xs"
+          mono
+          className="w-full"
         >
           <TypeOptions categories={categories} />
-        </select>
+        </NativeSelect>
       </td>
       <td className="px-0.5 py-0.5">
         <Input

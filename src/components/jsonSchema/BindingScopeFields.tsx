@@ -5,7 +5,7 @@
  * rather than opening a dialog, so the rule stays visible next to the ones it
  * competes with.
  *
- * The connection axis is a `<select>` over saved profiles rather than a text
+ * The connection axis is a `<NativeSelect>` over saved profiles rather than a text
  * field, because it is a uuid — nobody types one, and a typo would produce a rule
  * that silently never matches. The other three are free text, since the point of
  * a wildcard rule is to name tables and columns that may not exist yet.
@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
@@ -60,27 +61,31 @@ export function BindingScopeFields({ binding, onClose }: Props) {
           <Label className="text-[11px]">
             {t("jsonSchemas.bindings.col.schema")}
           </Label>
-          <select
+          <NativeSelect
             value={draft.schemaId}
             onChange={(e) => setDraft({ ...draft, schemaId: e.target.value })}
-            className="h-7 w-full rounded-sm border border-input bg-background px-1.5 text-xs"
+            size="xs"
+            className="w-full"
           >
             {schemas.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-[11px]">{t("jsonSchemas.scope.connection")}</Label>
-          <select
+          <Label className="text-[11px]">
+            {t("jsonSchemas.scope.connection")}
+          </Label>
+          <NativeSelect
             value={draft.connectionId ?? ""}
             onChange={(e) =>
               setDraft({ ...draft, connectionId: e.target.value || null })
             }
-            className="h-7 w-full rounded-sm border border-input bg-background px-1.5 text-xs"
+            size="xs"
+            className="w-full"
           >
             <option value="">{t("jsonSchemas.scope.connectionAny")}</option>
             {profiles.map((p) => (
@@ -88,11 +93,13 @@ export function BindingScopeFields({ binding, onClose }: Props) {
                 {p.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
 
         <div className="space-y-1">
-          <Label className="text-[11px]">{t("jsonSchemas.scope.dbSchema")}</Label>
+          <Label className="text-[11px]">
+            {t("jsonSchemas.scope.dbSchema")}
+          </Label>
           <Input
             value={draft.dbSchema ?? ""}
             onChange={(e) =>
@@ -107,7 +114,9 @@ export function BindingScopeFields({ binding, onClose }: Props) {
           <Label className="text-[11px]">{t("jsonSchemas.scope.table")}</Label>
           <Input
             value={draft.table ?? ""}
-            onChange={(e) => setDraft({ ...draft, table: e.target.value || null })}
+            onChange={(e) =>
+              setDraft({ ...draft, table: e.target.value || null })
+            }
             placeholder={t("jsonSchemas.scope.tablePlaceholder")}
             className="h-7 font-mono text-xs"
           />
@@ -130,7 +139,11 @@ export function BindingScopeFields({ binding, onClose }: Props) {
       {error && <p className="text-[11px] text-destructive">{error}</p>}
 
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => void save()} disabled={!draft.column.trim()}>
+        <Button
+          size="sm"
+          onClick={() => void save()}
+          disabled={!draft.column.trim()}
+        >
           {t("common.save")}
         </Button>
         <Button size="sm" variant="ghost" onClick={onClose}>

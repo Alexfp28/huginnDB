@@ -10,6 +10,7 @@
 
 import { useTranslation } from "react-i18next";
 
+import { NativeSelect } from "@/components/ui/native-select";
 import type { McpWritePolicy } from "@/types";
 
 /** Least permissive first. `full` last is load-bearing — see the module doc. */
@@ -25,18 +26,19 @@ export function McpWritePolicySelect({
 }) {
   const { t } = useTranslation();
   return (
-    <select
+    <NativeSelect
       value={value ?? "read-only"}
       onChange={(e) => onChange(e.target.value as McpWritePolicy)}
       aria-label={t("settings.mcp.writePolicyLabel")}
       title={t("settings.mcp.writePolicyLabel")}
-      className="h-6 shrink-0 rounded border border-border bg-background px-1.5 text-[11px]"
+      size="xs"
+      className="shrink-0"
     >
       {WRITE_LEVELS.map((lvl) => (
         <option key={lvl} value={lvl}>
           {t(`settings.mcp.level.${lvl}`)}
         </option>
       ))}
-    </select>
+    </NativeSelect>
   );
 }

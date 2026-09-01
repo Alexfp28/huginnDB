@@ -119,6 +119,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The native dropdowns are one control, and the theme fix behind them exists
+  once.** WebView2 paints a `<select>`'s popup using the trigger's own
+  background colour, so a transparent trigger opens an OS-light popup however
+  dark the app's theme is. Every one of the eight native selects in the app
+  carried its own copy of that fix, in four different spellings of the
+  surrounding chrome — a workaround one copy-paste away from being lost. It is
+  now unconditional in the primitive. The dense ones grow from 24px to the
+  shared 28px along the way.
+
 - **Checkboxes are one control now.** Thirty-five of them were native inputs
   written out per call site, in four sizes, with the mixed ("some selected")
   state hand-wired through a ref in four places and several carrying no styling

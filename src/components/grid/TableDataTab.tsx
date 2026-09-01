@@ -38,6 +38,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
 import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
@@ -87,11 +88,7 @@ import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
 import { runExport } from "@/lib/grid/exportTable";
 import { clampRowHeight } from "@/lib/grid/rowHeight";
-import {
-  nextOffset,
-  pageWindow,
-  prevOffset,
-} from "@/lib/grid/pagination";
+import { nextOffset, pageWindow, prevOffset } from "@/lib/grid/pagination";
 import { pickJsonFile } from "@/lib/dialogs";
 import {
   registerTableRefresh,
@@ -133,8 +130,7 @@ function duplicateDraft(
   resultColumns: string[],
   values: CellValue[],
   pkColumn:
-    | { name: string; is_primary_key: boolean; data_type: string }
-    | undefined,
+    { name: string; is_primary_key: boolean; data_type: string } | undefined,
 ): DraftRow {
   const cells: Record<string, DraftCell> = {};
   const pkIsAuto =
@@ -324,7 +320,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       search: appliedFilter || undefined,
       documentViewMode,
     });
-  }, [setViewState, tabId, serverFilters, sort, appliedFilter, documentViewMode]);
+  }, [
+    setViewState,
+    tabId,
+    serverFilters,
+    sort,
+    appliedFilter,
+    documentViewMode,
+  ]);
 
   const pushHistory = useFilterHistory((s) => s.push);
   const filterHistory = useFilterHistory((s) => s.byConnection[connectionId]);
@@ -857,9 +860,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * destructive-write confirmation like the tree version did.
    */
   const importCollectionJsonForTab = useCallback(async () => {
-    const picked = await pickJsonFile(
-      t("schema.importCollection.pickTitle"),
-    );
+    const picked = await pickJsonFile(t("schema.importCollection.pickTitle"));
     if (!picked) return;
     if (
       !confirmDestructive(
@@ -1010,68 +1011,68 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // icon-only button only implies in a tooltip.
   const leadingToolbar: GridToolbarItem[] = useMemo(
     () => [
-    {
-      id: "refresh",
-      bar: (
-        <IconButton
-          icon={RefreshCw}
-          label={t("tableData.refresh")}
-          loading={loading}
-          onClick={fetchData}
-        />
-      ),
-      menu: (
-        <DropdownMenuItem
-          className="text-xs"
-          disabled={loading}
-          onSelect={fetchData}
-        >
-          <RefreshCw className="mr-2 h-3.5 w-3.5" />
-          {t("tableData.refresh")}
-        </DropdownMenuItem>
-      ),
-    },
-    {
-      id: "advanced-filter",
-      bar: (
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setAdvancedOpen(true)}
-          title={t("tableData.filter.title")}
-          // Brand-tint the icon while filters are active so it reads as "on"
-          // and doubles as an at-a-glance indicator, with the count as a badge.
-          className="relative"
-        >
-          <ListFilter
-            className={`h-3.5 w-3.5 ${serverFilters.length ? "text-brand" : ""}`}
+      {
+        id: "refresh",
+        bar: (
+          <IconButton
+            icon={RefreshCw}
+            label={t("tableData.refresh")}
+            loading={loading}
+            onClick={fetchData}
           />
-          {serverFilters.length > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
-              {serverFilters.length}
-            </span>
-          )}
-        </Button>
-      ),
-      menu: (
-        <DropdownMenuItem
-          className="text-xs"
-          onSelect={() => setAdvancedOpen(true)}
-        >
-          <ListFilter
-            className={`mr-2 h-3.5 w-3.5 ${
-              serverFilters.length ? "text-brand" : ""
-            }`}
-          />
-          {t("tableData.filter.title")}
-          {serverFilters.length > 0 && (
-            <span className="ml-auto pl-3 tabular-nums text-muted-foreground">
-              {serverFilters.length}
-            </span>
-          )}
-        </DropdownMenuItem>
-      ),
-    },
+        ),
+        menu: (
+          <DropdownMenuItem
+            className="text-xs"
+            disabled={loading}
+            onSelect={fetchData}
+          >
+            <RefreshCw className="mr-2 h-3.5 w-3.5" />
+            {t("tableData.refresh")}
+          </DropdownMenuItem>
+        ),
+      },
+      {
+        id: "advanced-filter",
+        bar: (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setAdvancedOpen(true)}
+            title={t("tableData.filter.title")}
+            // Brand-tint the icon while filters are active so it reads as "on"
+            // and doubles as an at-a-glance indicator, with the count as a badge.
+            className="relative"
+          >
+            <ListFilter
+              className={`h-3.5 w-3.5 ${serverFilters.length ? "text-brand" : ""}`}
+            />
+            {serverFilters.length > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
+                {serverFilters.length}
+              </span>
+            )}
+          </Button>
+        ),
+        menu: (
+          <DropdownMenuItem
+            className="text-xs"
+            onSelect={() => setAdvancedOpen(true)}
+          >
+            <ListFilter
+              className={`mr-2 h-3.5 w-3.5 ${
+                serverFilters.length ? "text-brand" : ""
+              }`}
+            />
+            {t("tableData.filter.title")}
+            {serverFilters.length > 0 && (
+              <span className="ml-auto pl-3 tabular-nums text-muted-foreground">
+                {serverFilters.length}
+              </span>
+            )}
+          </DropdownMenuItem>
+        ),
+      },
     ],
     [fetchData, loading, t, serverFilters],
   );
@@ -1081,122 +1082,122 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // on the header's right side instead of being split across the toolbar.
   const insertExtraContent: GridToolbarItem[] = useMemo(
     () => [
-    // MongoDB only: additive JSON import into this collection (#65), moved
-    // here from the schema tree's right-click menu so the action lives with
-    // the data it affects instead of the tree. SQL has no table-scoped import
-    // primitive (only a whole-connection `.sql` batch), so it keeps that entry
-    // point in the tree unchanged.
-    ...(isMongo
-      ? [
-          {
-            id: "import-collection",
-            bar: (
+      // MongoDB only: additive JSON import into this collection (#65), moved
+      // here from the schema tree's right-click menu so the action lives with
+      // the data it affects instead of the tree. SQL has no table-scoped import
+      // primitive (only a whole-connection `.sql` batch), so it keeps that entry
+      // point in the tree unchanged.
+      ...(isMongo
+        ? [
+            {
+              id: "import-collection",
+              bar: (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => void importCollectionJsonForTab()}
+                  title={t("schema.importCollection.title")}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {t("schema.importCollection.title")}
+                </Button>
+              ),
+              menu: (
+                <DropdownMenuItem
+                  className="text-xs"
+                  onSelect={() => void importCollectionJsonForTab()}
+                >
+                  <Upload className="mr-2 h-3.5 w-3.5" />
+                  {t("schema.importCollection.title")}
+                </DropdownMenuItem>
+              ),
+            },
+          ]
+        : []),
+      {
+        id: "export-data",
+        bar: (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
                 className="h-7 gap-1 px-2 text-xs"
-                onClick={() => void importCollectionJsonForTab()}
-                title={t("schema.importCollection.title")}
               >
-                <Upload className="h-3.5 w-3.5" />
-                {t("schema.importCollection.title")}
+                <Download className="h-3.5 w-3.5" />
+                {t("tableData.exportData.label")}
+                <ChevronDown className="h-3 w-3 opacity-60" />
               </Button>
-            ),
-            menu: (
-              <DropdownMenuItem
-                className="text-xs"
-                onSelect={() => void importCollectionJsonForTab()}
-              >
-                <Upload className="mr-2 h-3.5 w-3.5" />
-                {t("schema.importCollection.title")}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={() => void exportFull()}>
+                {isMongo
+                  ? t("schema.exportCollection.title")
+                  : t("tableData.exportData.table")}
               </DropdownMenuItem>
-            ),
-          },
-        ]
-      : []),
-    {
-      id: "export-data",
-      bar: (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 gap-1 px-2 text-xs"
-            >
-              <Download className="h-3.5 w-3.5" />
+              <DropdownMenuItem onSelect={() => void exportFiltered()}>
+                {t("tableData.exportData.queryResults")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+        // A dropdown can't collapse into a menu as a nested dropdown (it would
+        // portal outside the parent's content and dismiss it), so it becomes a
+        // submenu with the very same two choices.
+        menu: (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="text-xs">
+              <Download className="mr-2 h-3.5 w-3.5" />
               {t("tableData.exportData.label")}
-              <ChevronDown className="h-3 w-3 opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => void exportFull()}>
-              {isMongo
-                ? t("schema.exportCollection.title")
-                : t("tableData.exportData.table")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void exportFiltered()}>
-              {t("tableData.exportData.queryResults")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
-      // A dropdown can't collapse into a menu as a nested dropdown (it would
-      // portal outside the parent's content and dismiss it), so it becomes a
-      // submenu with the very same two choices.
-      menu: (
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="text-xs">
-            <Download className="mr-2 h-3.5 w-3.5" />
-            {t("tableData.exportData.label")}
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuItem
-              className="text-xs"
-              onSelect={() => void exportFull()}
-            >
-              {isMongo
-                ? t("schema.exportCollection.title")
-                : t("tableData.exportData.table")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-xs"
-              onSelect={() => void exportFiltered()}
-            >
-              {t("tableData.exportData.queryResults")}
-            </DropdownMenuItem>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-      ),
-    },
-    ...(hasPk
-      ? [
-          {
-            id: "bulk-update",
-            bar: (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
-                onClick={() => setBulkUpdateOpen(true)}
-                title={t("tableData.bulkUpdate.toolbarTitle")}
-              >
-                <ReplaceAll className="h-3.5 w-3.5" />
-                {t("tableData.bulkUpdate.toolbarLabel")}
-              </Button>
-            ),
-            menu: (
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
               <DropdownMenuItem
                 className="text-xs"
-                onSelect={() => setBulkUpdateOpen(true)}
+                onSelect={() => void exportFull()}
               >
-                <ReplaceAll className="mr-2 h-3.5 w-3.5" />
-                {t("tableData.bulkUpdate.toolbarLabel")}
+                {isMongo
+                  ? t("schema.exportCollection.title")
+                  : t("tableData.exportData.table")}
               </DropdownMenuItem>
-            ),
-          },
-        ]
-      : []),
+              <DropdownMenuItem
+                className="text-xs"
+                onSelect={() => void exportFiltered()}
+              >
+                {t("tableData.exportData.queryResults")}
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ),
+      },
+      ...(hasPk
+        ? [
+            {
+              id: "bulk-update",
+              bar: (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => setBulkUpdateOpen(true)}
+                  title={t("tableData.bulkUpdate.toolbarTitle")}
+                >
+                  <ReplaceAll className="h-3.5 w-3.5" />
+                  {t("tableData.bulkUpdate.toolbarLabel")}
+                </Button>
+              ),
+              menu: (
+                <DropdownMenuItem
+                  className="text-xs"
+                  onSelect={() => setBulkUpdateOpen(true)}
+                >
+                  <ReplaceAll className="mr-2 h-3.5 w-3.5" />
+                  {t("tableData.bulkUpdate.toolbarLabel")}
+                </DropdownMenuItem>
+              ),
+            },
+          ]
+        : []),
     ],
     [isMongo, hasPk, t, importCollectionJsonForTab, exportFull, exportFiltered],
   );
@@ -1210,58 +1211,58 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // a global preference — see its declaration above.
   const trailingToolbar: GridToolbarItem[] = useMemo(
     () => [
-    {
-      id: "view-mode",
-      // One segmented control, so one item — splitting it in two would put a
-      // gap through the middle of a control whose two halves ARE the choice.
-      bar: (
-        <div className="flex items-center overflow-hidden rounded-md border border-border">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setDocumentViewMode("table")}
-            title={t("dataGrid.viewModeTable")}
-            className={`h-7 w-7 rounded-none ${
-              documentViewMode === "table" ? "bg-accent text-brand" : ""
-            }`}
-          >
-            <Table2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setDocumentViewMode("list")}
-            title={t("dataGrid.viewModeList")}
-            className={`h-7 w-7 rounded-none ${
-              documentViewMode === "list" ? "bg-accent text-brand" : ""
-            }`}
-          >
-            <Rows3 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      ),
-      // In the menu the segment becomes two checkable rows: the "which of the
-      // two is active" state the segmented control shows by tinting one half
-      // has to be readable here too.
-      menu: (
-        <>
-          <DropdownMenuCheckboxItem
-            className="text-xs"
-            checked={documentViewMode === "table"}
-            onSelect={() => setDocumentViewMode("table")}
-          >
-            {t("dataGrid.viewModeTable")}
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem
-            className="text-xs"
-            checked={documentViewMode === "list"}
-            onSelect={() => setDocumentViewMode("list")}
-          >
-            {t("dataGrid.viewModeList")}
-          </DropdownMenuCheckboxItem>
-        </>
-      ),
-    },
+      {
+        id: "view-mode",
+        // One segmented control, so one item — splitting it in two would put a
+        // gap through the middle of a control whose two halves ARE the choice.
+        bar: (
+          <div className="flex items-center overflow-hidden rounded-md border border-border">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setDocumentViewMode("table")}
+              title={t("dataGrid.viewModeTable")}
+              className={`h-7 w-7 rounded-none ${
+                documentViewMode === "table" ? "bg-accent text-brand" : ""
+              }`}
+            >
+              <Table2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setDocumentViewMode("list")}
+              title={t("dataGrid.viewModeList")}
+              className={`h-7 w-7 rounded-none ${
+                documentViewMode === "list" ? "bg-accent text-brand" : ""
+              }`}
+            >
+              <Rows3 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ),
+        // In the menu the segment becomes two checkable rows: the "which of the
+        // two is active" state the segmented control shows by tinting one half
+        // has to be readable here too.
+        menu: (
+          <>
+            <DropdownMenuCheckboxItem
+              className="text-xs"
+              checked={documentViewMode === "table"}
+              onSelect={() => setDocumentViewMode("table")}
+            >
+              {t("dataGrid.viewModeTable")}
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              className="text-xs"
+              checked={documentViewMode === "list"}
+              onSelect={() => setDocumentViewMode("list")}
+            >
+              {t("dataGrid.viewModeList")}
+            </DropdownMenuCheckboxItem>
+          </>
+        ),
+      },
     ],
     [documentViewMode, t],
   );
@@ -1276,81 +1277,81 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // selector.
   const footerContent = useMemo(
     () => (
-    <>
-      <div className="flex items-center">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => zoomRows(-2)}
-          disabled={rowHeight <= 14}
-          title={t("dataGrid.zoomOut")}
-        >
-          <ZoomOut className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => zoomRows(2)}
-          disabled={rowHeight >= 40}
-          title={t("dataGrid.zoomIn")}
-        >
-          <ZoomIn className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      <div className="ml-auto flex flex-wrap items-center gap-2">
-        <span
-          className="tabular-nums text-muted-foreground"
-          title={totalEstimated ? t("tableData.approxTotal") : undefined}
-        >
-          {formatNumber(page.from)}–{formatNumber(page.to)}
-          {total !== null && (
-            <>
-              {" "}
-              {t("dataGrid.of")}{" "}
-              <span className="font-medium text-foreground">
-                {totalEstimated ? "~" : ""}
-                {formatNumber(total)}
-              </span>
-            </>
-          )}
-        </span>
+      <>
         <div className="flex items-center">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setOffset(prevOffset(offset, pageSize))}
-            disabled={!page.canPrev || loading}
-            title={t("tableData.prevPage")}
+            onClick={() => zoomRows(-2)}
+            disabled={rowHeight <= 14}
+            title={t("dataGrid.zoomOut")}
           >
-            <ChevronLeft className="h-3.5 w-3.5" />
+            <ZoomOut className="h-3.5 w-3.5" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setOffset(nextOffset(offset, pageSize))}
-            disabled={!page.canNext || loading}
-            title={t("tableData.nextPage")}
+            onClick={() => zoomRows(2)}
+            disabled={rowHeight >= 40}
+            title={t("dataGrid.zoomIn")}
           >
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ZoomIn className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <select
-          value={pageSize}
-          onChange={(e) => {
-            setOffset(0);
-            setPageSize(Number(e.target.value));
-          }}
-          className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
-        >
-          {pageSizeOptions.map((n) => (
-            <option key={n} value={n}>
-              {t("tableData.perPage", { count: n })}
-            </option>
-          ))}
-        </select>
-      </div>
-    </>
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <span
+            className="tabular-nums text-muted-foreground"
+            title={totalEstimated ? t("tableData.approxTotal") : undefined}
+          >
+            {formatNumber(page.from)}–{formatNumber(page.to)}
+            {total !== null && (
+              <>
+                {" "}
+                {t("dataGrid.of")}{" "}
+                <span className="font-medium text-foreground">
+                  {totalEstimated ? "~" : ""}
+                  {formatNumber(total)}
+                </span>
+              </>
+            )}
+          </span>
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setOffset(prevOffset(offset, pageSize))}
+              disabled={!page.canPrev || loading}
+              title={t("tableData.prevPage")}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setOffset(nextOffset(offset, pageSize))}
+              disabled={!page.canNext || loading}
+              title={t("tableData.nextPage")}
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <NativeSelect
+            value={pageSize}
+            onChange={(e) => {
+              setOffset(0);
+              setPageSize(Number(e.target.value));
+            }}
+            size="xs"
+          >
+            {pageSizeOptions.map((n) => (
+              <option key={n} value={n}>
+                {t("tableData.perPage", { count: n })}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      </>
     ),
     [
       zoomRows,
