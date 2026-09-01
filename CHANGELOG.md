@@ -8,6 +8,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Settings → MCP can register the connector with Claude Code in one click.**
+  The last manual step in the setup was copying an absolute path out of the
+  panel and into a terminal (or, worse, into a JSON file). The new button runs
+  exactly the command the panel already displayed —
+  `claude mcp add huginndb -s user -- <sidecar>` — and reports back in the
+  panel. Clicking it twice is harmless: "already registered" is reported as a
+  state, not a failure, because that is simply what a second click looks like.
+  If the `claude` CLI isn't on `PATH`, it says so and the copyable command
+  stays as the fallback, which is the ordinary case for someone who only uses
+  Claude Desktop. Undo with `claude mcp remove huginndb`.
+
+  Implemented without `tauri-plugin-shell`. That plugin exists to let the
+  *frontend* spawn processes, which this codebase does not do anyway — all I/O
+  lives in Rust commands — so it would have bought a dependency and a
+  capability surface and nothing else; `is_mcp_sidecar_running` had already
+  made the same call. The one Windows subtlety is why `find_in_path` exists
+  rather than a bare `Command::new("claude")`: `CreateProcess` does not apply
+  `PATHEXT`, so `claude.cmd` is invisible to it, and resolving the executable
+  ourselves also lets the sidecar path travel as a plain argv entry instead of
+  being quoted into a `cmd /C` string — it routinely contains spaces.
+
 - **Every MCP tool now carries a title and MCP annotations.** The connector
   shipped twenty-four tools with a description and nothing else, so a client
   had only the name to go on when deciding how much friction a call deserved:

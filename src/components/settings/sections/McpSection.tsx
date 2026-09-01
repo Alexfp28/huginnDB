@@ -19,7 +19,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
-import { Copy, Search, X } from "lucide-react";
+import { Copy, Search, Terminal, X } from "lucide-react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ import { useOrigins } from "@/stores/sync/origins";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type {
+  ClaudeCodeRegistration,
   ConnectionProfile,
   McpConnectorInfo,
   McpWritePolicy,
@@ -83,6 +84,10 @@ export function McpSection() {
    * and re-applying the same policy twice is harmless.
    */
   const [applying, setApplying] = useState(false);
+  /** Result of the last "add to Claude Code" click, or null before the first. */
+  const [registration, setRegistration] =
+    useState<ClaudeCodeRegistration | null>(null);
+  const [registering, setRegistering] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -266,6 +271,26 @@ export function McpSection() {
         .listProfiles()
         .then(setProfiles)
         .catch(() => {});
+    }
+  }
+
+  /**
+   * Run the `claude mcp add` the snippet below spells out, so the common case
+   * is a click rather than a trip to a terminal.
+   *
+   * Every outcome is a value, not an exception: "already registered" is what a
+   * second click looks like, and "no CLI on PATH" is a perfectly ordinary state
+   * for someone who only uses Claude Desktop. Both leave the copyable command
+   * right there as the fallback.
+   */
+  async function addToClaudeCode() {
+    setRegistering(true);
+    try {
+      setRegistration(await api.registerWithClaudeCode());
+    } catch (e) {
+      setRegistration({ outcome: "failed", detail: String(e) });
+    } finally {
+      setRegistering(false);
     }
   }
 
@@ -469,8 +494,39 @@ export function McpSection() {
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
             {t("settings.mcp.claudeCodeLabel")}
           </span>
-          {cliCommand && <CopyButton text={cliCommand} />}
+          <div className="flex items-center gap-1.5">
+            {path && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={registering}
+                className="h-6 gap-1 px-2 text-[11px]"
+                onClick={() => void addToClaudeCode()}
+              >
+                <Terminal className="h-3 w-3" />
+                {registering
+                  ? t("settings.mcp.addingToClaudeCode")
+                  : t("settings.mcp.addToClaudeCode")}
+              </Button>
+            )}
+            {cliCommand && <CopyButton text={cliCommand} />}
+          </div>
         </div>
+        {registration && (
+          <p
+            className={
+              registration.outcome === "failed"
+                ? "mb-1 text-[11px] leading-relaxed text-destructive"
+                : "mb-1 text-[11px] leading-relaxed text-muted-foreground"
+            }
+          >
+            {t(`settings.mcp.register.${registration.outcome}`)}
+            {registration.outcome === "failed" && registration.detail
+              ? ` ${registration.detail}`
+              : ""}
+          </p>
+        )}
         <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-[11px]">
           {cliCommand || t("settings.mcp.noBinaryHint")}
         </pre>

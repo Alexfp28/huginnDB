@@ -83,6 +83,13 @@ adivinar.
 
 ### Claude Code (CLI)
 
+**Ajustes → MCP tiene un botón "Añadir a Claude Code"** que ejecuta esto
+mismo por ti, si el CLI `claude` está en tu `PATH`. Pulsarlo dos veces es
+inofensivo — informa de que ya estaba registrado en vez de fallar. Para
+deshacerlo, `claude mcp remove huginndb`.
+
+Lo mismo a mano:
+
 ```bash
 claude mcp add huginndb -s user -- /ruta/absoluta/a/huginndb-mcp
 ```

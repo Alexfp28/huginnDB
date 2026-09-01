@@ -165,6 +165,24 @@ export interface ConnectionProfile {
   mcp_exposed?: boolean;
 }
 
+/** Outcome of registering the sidecar with the Claude Code CLI. Mirrors
+ *  `ClaudeCodeOutcome` in Rust (serde kebab-case).
+ *
+ *  `already-registered` is deliberately not an error: it is what a second
+ *  click looks like. `cli-not-found` means the panel should fall back to the
+ *  copyable command. */
+export type ClaudeCodeOutcome =
+  | "added"
+  | "already-registered"
+  | "cli-not-found"
+  | "failed";
+
+export interface ClaudeCodeRegistration {
+  outcome: ClaudeCodeOutcome;
+  /** What the CLI printed, trimmed. Empty unless `outcome` is `failed`. */
+  detail: string;
+}
+
 /** How far the MCP connector may write to a connection. Mirrors
  *  `McpWritePolicy` in Rust (serde kebab-case). */
 export type McpWritePolicy = "read-only" | "data" | "full";

@@ -1343,7 +1343,15 @@
       "fullGuide": "Full setup guide (Codex, Claude Desktop, flags, tools)…",
       "exposureSaveError": "Couldn't save which connections are exposed.",
       "noBinaryHint": "The connector binary wasn't found, so there's nothing to point a client at.",
-      "nothingExposedHint": "No connections are ticked yet — the connector will start with nothing to reach. Tick one above; it takes effect without restarting the AI client."
+      "nothingExposedHint": "No connections are ticked yet — the connector will start with nothing to reach. Tick one above; it takes effect without restarting the AI client.",
+      "addToClaudeCode": "Add to Claude Code",
+      "addingToClaudeCode": "Adding…",
+      "register": {
+        "added": "Added to Claude Code. Open a session and check it with /mcp.",
+        "already-registered": "Already registered in Claude Code — nothing to change. Remove it with `claude mcp remove huginndb` if you want to re-add it.",
+        "cli-not-found": "The claude CLI isn't on this machine's PATH. Copy the command below and run it in a terminal that has it.",
+        "failed": "The claude CLI refused:"
+      }
     },
     "pulse": {
       "intro": "How often Pulse samples a connection's vital signs into its on-disk history, how long that history is kept, and which connections it watches — opt-in per connection, off by default.",

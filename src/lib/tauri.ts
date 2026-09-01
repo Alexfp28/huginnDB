@@ -13,31 +13,59 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AppFlavor,
   AppTab,
+  BatchResult,
   BulkUpdatePreview,
   CellValue,
+  ClaudeCodeRegistration,
   ColumnFilter,
   ColumnInfo,
   ConflictResolution,
-  BatchResult,
   ConnectionProfile,
-  DeleteProfilesReport,
-  McpWritePolicy,
   ConnectionTabState,
-  DatabaseInfo,
+  CountResult,
   DataMode,
+  DatabaseInfo,
+  DeleteProfilesReport,
   Diagnostics,
+  Environment,
   EnvironmentImportAnalysis,
   EnvironmentImportResult,
+  EnvironmentList,
   ExportTarget,
   FeedbackKind,
   FkOptionsPage,
-  IssueOutcome,
   ImportAnalysis,
-  AppFlavor,
-  McpConnectorInfo,
   ImportResult,
   IndexInfo,
+  IssueOutcome,
+  JsonSchemaBinding,
+  JsonSchemaEntry,
+  JsonSchemaImportAnalysis,
+  JsonSchemaImportResult,
+  JsonSchemaInferResult,
+  JsonSchemaLibrary,
+  JsonSchemaMatch,
+  JsonSchemaSource,
+  LaunchState,
+  McpConnectorInfo,
+  McpWritePolicy,
+  MongoIndexInfo,
+  MongoViewDefinition,
+  NewMongoIndexSpec,
+  Origin,
+  OriginDocument,
+  OriginDraft,
+  OriginDraftBase,
+  OriginDraftEnvironment,
+  OriginPublishImpact,
+  OriginRole,
+  OriginSaveOutcome,
+  OriginSyncReport,
+  OriginWritableProbe,
+  PipelineStageInput,
+  PipelineText,
   PoolStats,
   Preferences,
   PrivilegeInfo,
@@ -49,15 +77,10 @@ import type {
   PulseStorageItem,
   PulseTopQuery,
   QueryResult,
-  CountResult,
+  ResolvedJsonSchema,
   RowValue,
-  StartupArgs,
-  MongoIndexInfo,
-  MongoViewDefinition,
-  NewMongoIndexSpec,
-  PipelineStageInput,
-  PipelineText,
   StagePreview,
+  StartupArgs,
   StructurePreview,
   TableInfo,
   TableQuery,
@@ -67,28 +90,6 @@ import type {
   ViewDefinition,
   ViewPreview,
   WorkspaceLayout,
-  LaunchState,
-  Environment,
-  EnvironmentList,
-  Origin,
-  OriginDocument,
-  OriginDraft,
-  OriginDraftBase,
-  OriginDraftEnvironment,
-  OriginPublishImpact,
-  OriginRole,
-  OriginSaveOutcome,
-  OriginWritableProbe,
-  OriginSyncReport,
-  JsonSchemaLibrary,
-  JsonSchemaEntry,
-  JsonSchemaBinding,
-  JsonSchemaSource,
-  JsonSchemaMatch,
-  JsonSchemaInferResult,
-  JsonSchemaImportAnalysis,
-  JsonSchemaImportResult,
-  ResolvedJsonSchema,
 } from "@/types";
 
 export const api = {
@@ -153,6 +154,18 @@ export const api = {
    */
   setMcpExposed: (ids: string[], exposed: boolean) =>
     invoke<number>("set_mcp_exposed", { ids, exposed }),
+
+  /**
+   * Run `claude mcp add huginndb -s user -- <sidecar>` for the user, instead of
+   * making them paste a path into a terminal. Reversible with
+   * `claude mcp remove huginndb`; the button click is the confirmation.
+   *
+   * Never throws for the ordinary outcomes — "already registered" and "no CLI
+   * on PATH" come back as values, since neither is a failure the user needs to
+   * see as one.
+   */
+  registerWithClaudeCode: () =>
+    invoke<ClaudeCodeRegistration>("register_with_claude_code"),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is

@@ -75,6 +75,13 @@ and asks for the id instead of guessing.
 
 ### Claude Code (CLI)
 
+**Settings → MCP has an "Add to Claude Code" button** that runs exactly this
+for you, when the `claude` CLI is on your `PATH`. Clicking it twice is
+harmless — it reports that the server is already registered rather than
+failing. Undo it with `claude mcp remove huginndb`.
+
+The same thing by hand:
+
 ```bash
 claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp
 ```
