@@ -36,11 +36,20 @@
  * knowing about, so it's still the caller's job via `onArrowDown`.
  */
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, type KeyboardEvent } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  type KeyboardEvent,
+} from "react";
 import { Search, X } from "lucide-react";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { cn } from "@/lib/utils";
-import { TREE_SEARCH_DEBOUNCE_MS, useTreeSearch } from "@/stores/session/treeSearch";
+import {
+  TREE_SEARCH_DEBOUNCE_MS,
+  useTreeSearch,
+} from "@/stores/session/treeSearch";
 import type { Driver } from "@/types";
 
 export const TreeFilterBox = forwardRef<
@@ -131,7 +140,10 @@ export const TreeFilterBox = forwardRef<
         "focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand/20",
       )}
     >
-      <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden />
+      <Search
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
+        aria-hidden
+      />
       <input
         ref={inputRef}
         type="text"
@@ -146,7 +158,7 @@ export const TreeFilterBox = forwardRef<
           type="button"
           title={clearLabel}
           aria-label={clearLabel}
-          className="shrink-0 rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent/40 hover:text-foreground"
+          className="shrink-0 rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
           onClick={clearText}
         >
           <X className="h-3 w-3" />

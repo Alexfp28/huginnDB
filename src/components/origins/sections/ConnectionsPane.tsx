@@ -103,7 +103,10 @@ export function ConnectionsPane({
     const map = new Map<string, string[]>();
     for (const env of draft.environments) {
       for (const id of env.connectionIds) {
-        map.set(id, [...(map.get(id) ?? []), env.name || t("environments.defaultName")]);
+        map.set(id, [
+          ...(map.get(id) ?? []),
+          env.name || t("environments.defaultName"),
+        ]);
       }
     }
     return map;
@@ -115,7 +118,8 @@ export function ConnectionsPane({
         .filter((p) => !inDocument.has(p.id) && !p.ephemeral)
         .map((p) => ({
           id: p.id,
-          haystack: `${p.name} ${p.host} ${p.database} ${p.group ?? ""}`.toLowerCase(),
+          haystack:
+            `${p.name} ${p.host} ${p.database} ${p.group ?? ""}`.toLowerCase(),
         })),
     [profiles, inDocument],
   );
@@ -146,7 +150,9 @@ export function ConnectionsPane({
         // control right next to it says so and can be switched to `clear`
         // before the first save. The alternative default ships a connection
         // nobody can open.
-        secret: (pristineById.get(p.id) ?? { kind: "fromKeychain" }) as OriginSecretSlot,
+        secret: (pristineById.get(p.id) ?? {
+          kind: "fromKeychain",
+        }) as OriginSecretSlot,
       }));
     onChange({ ...draft, connections: [...draft.connections, ...additions] });
   }
@@ -236,7 +242,7 @@ export function ConnectionsPane({
                 type="button"
                 disabled={readOnly}
                 title={t(`originEditor.secret.${c.secret.kind}`)}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground disabled:opacity-50"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
                 onClick={(e) => {
                   // The row is a <label>: without this the click also toggles
                   // the checkbox it wraps.

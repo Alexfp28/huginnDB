@@ -157,7 +157,7 @@ export function DocsDialog() {
                       "flex w-full items-start gap-2 border-l-2 px-3 py-2 text-left transition-colors",
                       selected
                         ? "border-primary bg-accent/40"
-                        : "border-transparent hover:bg-accent/30",
+                        : "border-transparent hover:bg-accent",
                     )}
                   >
                     <ChevronRight
@@ -254,7 +254,7 @@ export function DocsDialog() {
                           key={s.slug}
                           type="button"
                           onClick={() => setSection(s.slug)}
-                          className="flex items-start gap-2 rounded-md border p-3 text-left transition-colors hover:border-brand/60 hover:bg-accent/40"
+                          className="flex items-start gap-2 rounded-md border p-3 text-left transition-colors hover:border-brand/60 hover:bg-accent"
                         >
                           <FileText
                             aria-hidden
@@ -305,7 +305,7 @@ function SidebarRow({
         depth === 1 ? "pl-8" : "pl-12",
         active
           ? "border-primary bg-accent/40 text-foreground"
-          : "border-transparent text-muted-foreground hover:bg-accent/30 hover:text-foreground",
+          : "border-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
       )}
     >
       {label}

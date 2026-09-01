@@ -100,7 +100,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
             {schemas.map((s) => (
               <label
                 key={s.id}
-                className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-xs hover:bg-accent/40"
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-0.5 text-xs hover:bg-accent"
               >
                 <Checkbox
                   checked={selected.has(s.id)}

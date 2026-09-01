@@ -137,7 +137,7 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
             isLost ? t("connections.lost", { message: lostMessage }) : p.name
           }
           className={cn(
-            "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-brand/40",
+            "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent focus-visible:ring-2 focus-visible:ring-brand/40",
             isLost && "bg-destructive/10",
             dimmedByFilter && "opacity-55 hover:opacity-100",
             // Selected connection: the same brand rail the active table row
@@ -192,7 +192,7 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
               type="button"
               title={t("connectionsTree.filter.scopeHere")}
               aria-label={t("connectionsTree.filter.scopeHere")}
-              className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+              className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
               onClick={(e) => {
                 e.stopPropagation();
                 actionsRef.current.onNarrowToConnection(p.id);

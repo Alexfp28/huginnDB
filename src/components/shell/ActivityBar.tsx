@@ -29,7 +29,12 @@ interface ActivityBarProps {
   className?: string;
 }
 
-export function ActivityBar({ side, buttons, footer, className }: ActivityBarProps) {
+export function ActivityBar({
+  side,
+  buttons,
+  footer,
+  className,
+}: ActivityBarProps) {
   return (
     <div
       className={cn(
@@ -39,14 +44,18 @@ export function ActivityBar({ side, buttons, footer, className }: ActivityBarPro
       )}
     >
       {buttons.map((btn) => (
-        <SimpleTooltip key={btn.id} label={btn.label} side={side === "left" ? "right" : "left"}>
+        <SimpleTooltip
+          key={btn.id}
+          label={btn.label}
+          side={side === "left" ? "right" : "left"}
+        >
           <button
             type="button"
             onClick={btn.onClick}
             aria-pressed={btn.active}
             className={cn(
               "relative flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150",
-              "hover:bg-accent/60 hover:text-foreground",
+              "hover:bg-accent hover:text-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
               // Selected: the icon itself goes brand blue over a quiet surface.
               // The colour is the signal, not a loud fill.
@@ -72,7 +81,9 @@ export function ActivityBar({ side, buttons, footer, className }: ActivityBarPro
         </SimpleTooltip>
       ))}
       {footer && (
-        <div className="mt-auto flex flex-col items-center gap-0.5">{footer}</div>
+        <div className="mt-auto flex flex-col items-center gap-0.5">
+          {footer}
+        </div>
       )}
     </div>
   );

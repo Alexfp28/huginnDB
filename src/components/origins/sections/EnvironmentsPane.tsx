@@ -175,8 +175,8 @@ export function EnvironmentsPane({
                     ? t("originEditor.environments.importNone")
                     : undefined
                 }
+                icon={Download}
               >
-                <Download className="mr-1.5 h-3.5 w-3.5" />
                 {t("originEditor.environments.import")}
               </Button>
             </DropdownMenuTrigger>
@@ -211,8 +211,8 @@ export function EnvironmentsPane({
             variant="outline"
             disabled={readOnly}
             onClick={addEnvironment}
+            icon={Plus}
           >
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
             {t("originEditor.environments.add")}
           </Button>
         </div>
@@ -237,7 +237,7 @@ export function EnvironmentsPane({
                     "flex w-full items-center gap-2 border-l-2 px-2.5 py-2 text-left",
                     selected
                       ? "border-primary bg-accent/40"
-                      : "border-transparent hover:bg-accent/30",
+                      : "border-transparent hover:bg-accent",
                   )}
                 >
                   <span
@@ -366,7 +366,7 @@ export function EnvironmentsPane({
                     {draft.connections.map((c) => (
                       <label
                         key={c.id}
-                        className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-accent/30"
+                        className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-accent"
                       >
                         <Checkbox
                           disabled={readOnly}

@@ -33,7 +33,10 @@ import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
 import { isUnsupported, usePulseView } from "@/lib/pulse/usePulseView";
 import { slowestHint } from "@/lib/pulse/hints";
-import { parentConnectionId, resolveConnectionLabel } from "@/lib/connectionLabel";
+import {
+  parentConnectionId,
+  resolveConnectionLabel,
+} from "@/lib/connectionLabel";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
@@ -70,7 +73,9 @@ function Section({
         type="button"
         onClick={() => toggleSection(id)}
         aria-expanded={!collapsed}
-        aria-label={collapsed ? t("pulse.section.expand") : t("pulse.section.collapse")}
+        aria-label={
+          collapsed ? t("pulse.section.expand") : t("pulse.section.collapse")
+        }
         className="flex items-center gap-2 text-2xs font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground"
       >
         <ChevronRight
@@ -136,7 +141,8 @@ function QueryRow({ query }: { query: PulseTopQuery }) {
 function StorageRow({ item, max }: { item: PulseStorageItem; max: number }) {
   const total = item.dataBytes + item.indexBytes + item.freeBytes;
   const share = max > 0 ? total / max : 0;
-  const pct = (n: number) => (total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "0%");
+  const pct = (n: number) =>
+    total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "0%";
 
   return (
     <div className="flex flex-col gap-0.5">
@@ -154,10 +160,19 @@ function StorageRow({ item, max }: { item: PulseStorageItem; max: number }) {
       {/* Scaled against the largest relation, so the bars read as a ranking
           rather than each one filling its own row. */}
       <div className="h-2 w-full overflow-hidden rounded-sm bg-accent">
-        <div className="flex h-full" style={{ width: `${(share * 100).toFixed(1)}%` }}>
-          <span style={{ width: pct(item.dataBytes), background: "var(--brand)" }} />
-          <span style={{ width: pct(item.indexBytes), background: "var(--fk)" }} />
-          <span style={{ width: pct(item.freeBytes), background: "var(--warning)" }} />
+        <div
+          className="flex h-full"
+          style={{ width: `${(share * 100).toFixed(1)}%` }}
+        >
+          <span
+            style={{ width: pct(item.dataBytes), background: "var(--brand)" }}
+          />
+          <span
+            style={{ width: pct(item.indexBytes), background: "var(--fk)" }}
+          />
+          <span
+            style={{ width: pct(item.freeBytes), background: "var(--warning)" }}
+          />
         </div>
       </div>
     </div>
@@ -249,7 +264,9 @@ export function PulsePanel({ active }: { active: boolean }) {
   const topQueries = (view.topQueries?.items ?? []).slice(0, COMPACT_ROWS);
   const topStorage = (view.storage?.items ?? []).slice(0, COMPACT_ROWS);
   const storageMax = topStorage.length
-    ? Math.max(...topStorage.map((i) => i.dataBytes + i.indexBytes + i.freeBytes))
+    ? Math.max(
+        ...topStorage.map((i) => i.dataBytes + i.indexBytes + i.freeBytes),
+      )
     : 0;
 
   return (
@@ -311,7 +328,11 @@ export function PulsePanel({ active }: { active: boolean }) {
           {topStorage.length > 0 ? (
             <>
               {topStorage.map((i) => (
-                <StorageRow key={`${i.schema}.${i.name}`} item={i} max={storageMax} />
+                <StorageRow
+                  key={`${i.schema}.${i.name}`}
+                  item={i}
+                  max={storageMax}
+                />
               ))}
               <StorageLegend />
             </>
@@ -356,7 +377,9 @@ function PanelFrame({
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <Activity className="h-3.5 w-3.5 shrink-0 text-brand" />
-        <span className="shrink-0 text-xs font-semibold">{t("pulse.title")}</span>
+        <span className="shrink-0 text-xs font-semibold">
+          {t("pulse.title")}
+        </span>
         {subtitle && (
           <span className="truncate font-mono text-2xs text-muted-foreground">
             {subtitle}
@@ -407,7 +430,7 @@ function HeaderButton({
         aria-label={label}
         className={cn(
           "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground",
-          "transition-colors hover:bg-accent/60 hover:text-foreground",
+          "transition-colors hover:bg-accent hover:text-foreground",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
           pressed && "bg-accent/70 text-brand",
         )}

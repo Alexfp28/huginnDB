@@ -535,7 +535,7 @@ function DatabaseRoot({
         <ContextMenuTrigger asChild>
           <button
             className={cn(
-              "flex w-full items-center gap-1 px-2 py-1.5 transition-opacity hover:bg-accent/40",
+              "flex w-full items-center gap-1 px-2 py-1.5 transition-opacity hover:bg-accent",
               dimmed && "opacity-50 hover:opacity-100",
               menuOpen && "ring-1 ring-inset ring-ring",
             )}

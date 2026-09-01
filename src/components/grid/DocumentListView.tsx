@@ -997,7 +997,7 @@ const FieldRow = memo(function FieldRow({
 }: FieldRowProps) {
   const isNull = f.value === null || f.value === undefined;
   return (
-    <div className="group/field flex items-center gap-2 font-mono leading-relaxed hover:bg-accent/30">
+    <div className="group/field flex items-center gap-2 font-mono leading-relaxed hover:bg-accent">
       {/* Left gutter: per-field actions, revealed on hover so the reading
           rhythm of the document isn't broken by a column of icons. */}
       <span className="flex w-10 shrink-0 items-center justify-end gap-0.5">

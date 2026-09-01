@@ -184,7 +184,7 @@ export const TableRow = memo(function TableRow({
         <div>
           <div
             className={cn(
-              "flex items-center pl-8 pr-2 hover:bg-accent/30",
+              "flex items-center pl-8 pr-2 hover:bg-accent",
               // Active-table "you are here" marker: soft brand wash + a 2px
               // inset brand rail (inset shadow, so it adds no layout shift).
               isActive &&
@@ -208,7 +208,7 @@ export const TableRow = memo(function TableRow({
               // the row opens the table in a tab (below). A single click
               // anywhere used to expand columns, which surprised users
               // coming from IDEs where clicking a table row opens it.
-              className="-my-1 -ml-1 shrink-0 rounded p-1.5 hover:bg-accent/60"
+              className="-my-1 -ml-1 shrink-0 rounded p-1.5 hover:bg-accent"
               aria-label={
                 tableOpen
                   ? ct("schema.collapseColumns")

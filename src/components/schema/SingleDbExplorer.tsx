@@ -267,7 +267,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                     <ContextMenuTrigger asChild>
                       <button
                         className={cn(
-                          "flex w-full items-center gap-1 px-2 py-1.5 hover:bg-accent/40",
+                          "flex w-full items-center gap-1 px-2 py-1.5 hover:bg-accent",
                           openSchemaMenu === schema &&
                             "ring-1 ring-inset ring-ring",
                         )}

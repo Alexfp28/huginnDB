@@ -345,7 +345,7 @@ function QueriesView({
                         aria-expanded={open}
                         className={cn(
                           "flex items-center gap-1 rounded-md px-1.5 py-1 font-mono text-3xs",
-                          "text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
+                          "text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
                           "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
                         )}
@@ -779,7 +779,7 @@ function RetroView({ connectionId }: { connectionId: string }) {
                 "rounded-md px-2 py-0.5 font-mono text-3xs",
                 range === r
                   ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {t(`pulse.retro.range.${r}`)}
@@ -851,7 +851,7 @@ function PulseBody({ connectionId }: { connectionId: string }) {
             aria-current={viewId === v.id}
             className={cn(
               "flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs",
-              "transition-colors hover:bg-accent/60 hover:text-foreground",
+              "transition-colors hover:bg-accent hover:text-foreground",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
               viewId === v.id
                 ? "bg-accent font-semibold text-foreground"
@@ -873,7 +873,7 @@ function PulseBody({ connectionId }: { connectionId: string }) {
           <button
             type="button"
             onClick={refresh}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {t("pulse.refresh")}

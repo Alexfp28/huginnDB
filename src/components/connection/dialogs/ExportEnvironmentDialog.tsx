@@ -228,8 +228,8 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
             size="sm"
             onClick={handleExport}
             disabled={!canExport || loading}
+            icon={Download}
           >
-            <Download className="mr-1.5 h-3.5 w-3.5" />
             {loading
               ? t("transfer.export.exporting")
               : t("transfer.exportEnvironment.exportButton", {

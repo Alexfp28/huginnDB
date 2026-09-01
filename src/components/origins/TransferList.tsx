@@ -105,7 +105,7 @@ function Panel({
           visible.map((item) => (
             <label
               key={item.id}
-              className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-accent/30"
+              className="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 hover:bg-accent"
               onDoubleClick={() => onCommit(item.id)}
             >
               <Checkbox

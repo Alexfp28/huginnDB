@@ -238,7 +238,7 @@ export function SecurityTab({
                 return (
                   <Fragment key={row.id}>
                     <tr
-                      className="cursor-pointer border-b border-border/30 hover:bg-accent/30"
+                      className="cursor-pointer border-b border-border/30 hover:bg-accent"
                       onClick={() => toggleRow(row.original)}
                     >
                       {row.getVisibleCells().map((cell) => (

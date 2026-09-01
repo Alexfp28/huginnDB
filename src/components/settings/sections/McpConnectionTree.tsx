@@ -58,7 +58,7 @@ export function McpConnectionTree({
     return (
       <div
         key={p.id}
-        className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent/50"
+        className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent"
       >
         <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
           <Checkbox

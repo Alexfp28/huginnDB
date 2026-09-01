@@ -152,7 +152,7 @@ export function WhatsNewDialog() {
                 return (
                   <li
                     key={h.titleKey}
-                    className="flex items-start gap-3 rounded-md p-2 opacity-0 [animation-fill-mode:forwards] animate-pop-in transition-colors hover:bg-accent/50"
+                    className="flex items-start gap-3 rounded-md p-2 opacity-0 [animation-fill-mode:forwards] animate-pop-in transition-colors hover:bg-accent"
                     style={{ animationDelay: `${i * 45}ms` }}
                   >
                     <span className="brand-sticker mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">

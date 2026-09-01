@@ -544,7 +544,7 @@ export function ConnectionsTree() {
               disabled={active.size === 0 || disconnectingAll}
               onClick={() => void handleDisconnectAll()}
               aria-label={t("menu.file.disconnectAll")}
-              className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
+              className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
             >
               {/* Closing a pool through a tunnel or a pooler is a round trip
                   per database, so this is not always instant — the button says
@@ -573,7 +573,7 @@ export function ConnectionsTree() {
               type="button"
               onClick={() => setVisibilityPickerOpen(true)}
               aria-label={t("connectionsTree.selectConnections.action")}
-              className="relative shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+              className="relative shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <ListFilter
                 className={cn("h-3.5 w-3.5", visibleSet && "text-brand")}

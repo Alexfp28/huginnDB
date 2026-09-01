@@ -254,7 +254,7 @@ export const GridRow = memo(function GridRow({
    * neighbours while still fully hiding the content behind it. Applied as an
    * inline `style.backgroundColor` (not a class) because it has to win
    * outright — no hover variant competes with it, so pinned/gutter cells
-   * don't pick up the row's `hover:bg-accent/40` tint; that's an accepted
+   * don't pick up the row's `hover:bg-accent` tint; that's an accepted
    * trade-off, not an oversight.
    */
   const pinnedBgColor = isMultiSelected
@@ -281,7 +281,7 @@ export const GridRow = memo(function GridRow({
         // selection was correct, only invisible). The stronger tint
         // pairs with the inset accent bar on the gutter cell below.
         stateBg,
-        showsHover && "hover:bg-accent/40",
+        showsHover && "hover:bg-accent",
       )}
       onClick={(e) => {
         e.stopPropagation();

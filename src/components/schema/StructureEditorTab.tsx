@@ -657,7 +657,7 @@ function ColumnsEditor({
               <tr
                 key={c._key}
                 className={cn(
-                  "group/col border-b border-border/50 last:border-b-0 hover:bg-accent/30",
+                  "group/col border-b border-border/50 last:border-b-0 hover:bg-accent",
                   i % 2 === 1 && "bg-muted/15",
                 )}
               >
@@ -796,8 +796,7 @@ function ColumnsEditor({
           </tbody>
         </table>
       </div>
-      <Button size="sm" variant="outline" onClick={onAdd}>
-        <Plus className="mr-1 h-3.5 w-3.5" />
+      <Button size="sm" variant="outline" onClick={onAdd} icon={Plus}>
         {t("structure.col.add")}
       </Button>
     </div>

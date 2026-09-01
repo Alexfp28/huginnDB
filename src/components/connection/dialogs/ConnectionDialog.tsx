@@ -1245,8 +1245,8 @@ export function ConnectionDialog({
                       variant="ghost"
                       onClick={onDuplicate}
                       disabled={busy}
+                      icon={Copy}
                     >
-                      <Copy className="mr-1 h-3.5 w-3.5" />
                       {t("connectionDialog.duplicate")}
                     </Button>
                   )}
@@ -1256,8 +1256,8 @@ export function ConnectionDialog({
                       className="text-destructive hover:text-destructive"
                       onClick={onDelete}
                       disabled={busy}
+                      icon={Trash2}
                     >
-                      <Trash2 className="mr-1 h-3.5 w-3.5" />
                       {t("connectionDialog.delete")}
                     </Button>
                   )}
@@ -1266,8 +1266,8 @@ export function ConnectionDialog({
                       variant="outline"
                       onClick={onConnect}
                       disabled={busy || !name}
+                      icon={Plug}
                     >
-                      <Plug className="mr-1 h-3.5 w-3.5" />
                       {connecting
                         ? t("connectionDialog.connecting")
                         : t("connectionDialog.connect")}

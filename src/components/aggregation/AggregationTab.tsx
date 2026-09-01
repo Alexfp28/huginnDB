@@ -530,8 +530,12 @@ export function AggregationTab({
           {boundView ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button size="sm" className="h-7 text-xs" disabled={saving}>
-                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={saving}
+                  icon={Save}
+                >
                   {t("aggregation.save")}
                 </Button>
               </DropdownMenuTrigger>

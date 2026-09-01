@@ -258,7 +258,7 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
               <tr
                 key={index.name}
                 className={cn(
-                  "border-b border-border/30 hover:bg-accent/20",
+                  "border-b border-border/30 hover:bg-accent",
                   busy === index.name && "opacity-50",
                   index.hidden && "text-muted-foreground",
                 )}

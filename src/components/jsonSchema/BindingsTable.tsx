@@ -101,7 +101,7 @@ export function BindingsTable({ onEdit }: Props) {
               <tr
                 key={b.id}
                 className={cn(
-                  "group/row cursor-pointer border-b border-border/50 last:border-b-0 hover:bg-accent/30",
+                  "group/row cursor-pointer border-b border-border/50 last:border-b-0 hover:bg-accent",
                   i % 2 === 1 && "bg-muted/15",
                   !b.enabled && "opacity-60",
                 )}

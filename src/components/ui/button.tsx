@@ -35,7 +35,7 @@ const buttonVariants = cva(
         // only thing separating this from `ghost` is the resting colour, which
         // is exactly what the ~65 hand-rolled icon buttons all wrote out —
         // along with four different hover alphas. `IconButton` is built on it.
-        quiet: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+        quiet: "text-muted-foreground hover:bg-accent hover:text-foreground",
         link: "text-brand underline-offset-4 hover:text-brand-hover hover:underline",
       },
       // The `xs`/`sm`/`md` density vocabulary is shared with Input, Textarea

@@ -279,7 +279,7 @@ export function OriginEditorOverlay() {
                         "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
                         active
                           ? "border-primary bg-accent/40"
-                          : "border-transparent hover:bg-accent/30",
+                          : "border-transparent hover:bg-accent",
                       )}
                     >
                       <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

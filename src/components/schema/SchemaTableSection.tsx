@@ -84,7 +84,7 @@ export const TableSection = memo(function TableSection({
   return (
     <div>
       <button
-        className="flex w-full items-center gap-1 py-1 pl-5 pr-2 hover:bg-accent/30"
+        className="flex w-full items-center gap-1 py-1 pl-5 pr-2 hover:bg-accent"
         onClick={() => toggleNode(connectionId, sectionKey)}
       >
         {isOpen ? (

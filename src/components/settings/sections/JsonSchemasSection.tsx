@@ -50,7 +50,10 @@ import { BindingsTable } from "@/components/jsonSchema/BindingsTable";
 import { BindingScopeFields } from "@/components/jsonSchema/BindingScopeFields";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
 import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
 import { schemaModelPath, collectExternalRefs } from "@/lib/monaco/monacoJson";
 import { schemaUri } from "@/stores/jsonSchemas";
@@ -85,9 +88,8 @@ export function JsonSchemasSection() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
-  const [editingBinding, setEditingBinding] = useState<JsonSchemaBinding | null>(
-    null,
-  );
+  const [editingBinding, setEditingBinding] =
+    useState<JsonSchemaBinding | null>(null);
 
   const selected = useMemo(
     () => schemas.find((s) => s.id === selectedId) ?? null,
@@ -231,7 +233,9 @@ export function JsonSchemasSection() {
       await createFrom(base, text);
       notify.success(t("jsonSchemas.toast.created", { name: base }));
     } catch (e) {
-      notify.error(t("jsonSchemas.library.fileNotJson", { message: String(e) }));
+      notify.error(
+        t("jsonSchemas.library.fileNotJson", { message: String(e) }),
+      );
     }
   }
 
@@ -292,7 +296,11 @@ export function JsonSchemasSection() {
           <Plus className="mr-1 h-3.5 w-3.5" />
           {t("jsonSchemas.library.new")}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => void importFromFile()}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void importFromFile()}
+        >
           <FileJson className="mr-1 h-3.5 w-3.5" />
           {t("jsonSchemas.library.addFromFile")}
         </Button>
@@ -314,7 +322,9 @@ export function JsonSchemasSection() {
       </div>
 
       {schemas.length === 0 ? (
-        <EmptyLibrary onPick={(name, tplBody) => void createFrom(name, tplBody)} />
+        <EmptyLibrary
+          onPick={(name, tplBody) => void createFrom(name, tplBody)}
+        />
       ) : (
         <div className="grid min-h-0 grid-cols-[190px_1fr] gap-3">
           <aside className="space-y-1">
@@ -335,7 +345,7 @@ export function JsonSchemasSection() {
                     type="button"
                     onClick={() => setSelectedId(s.id)}
                     className={cn(
-                      "flex w-full flex-col items-start rounded-sm px-2 py-1 text-left leading-tight hover:bg-accent/40",
+                      "flex w-full flex-col items-start rounded-sm px-2 py-1 text-left leading-tight hover:bg-accent",
                       s.id === selectedId && "bg-accent/60",
                     )}
                   >
@@ -409,7 +419,8 @@ export function JsonSchemasSection() {
                 <div
                   className={cn(
                     "space-y-1",
-                    fullscreen && "fixed inset-0 z-50 flex flex-col bg-background p-4",
+                    fullscreen &&
+                      "fixed inset-0 z-50 flex flex-col bg-background p-4",
                   )}
                 >
                   <div className="flex items-center gap-2">
@@ -482,7 +493,9 @@ export function JsonSchemasSection() {
 
                   {bodyError && (
                     <p className="text-[11px] text-destructive">
-                      {t("jsonSchemas.detail.bodyInvalid", { message: bodyError })}
+                      {t("jsonSchemas.detail.bodyInvalid", {
+                        message: bodyError,
+                      })}
                     </p>
                   )}
                   {externalRefs.length > 0 && (
@@ -574,7 +587,7 @@ function EmptyLibrary({
             key={tpl.id}
             type="button"
             onClick={() => onPick(t(tpl.nameKey), tpl.body)}
-            className="rounded-md border border-border px-2 py-2 text-left hover:bg-accent/40"
+            className="rounded-md border border-border px-2 py-2 text-left hover:bg-accent"
           >
             <span className="flex items-center gap-1 text-xs font-medium">
               <Braces className="h-3 w-3 shrink-0" />

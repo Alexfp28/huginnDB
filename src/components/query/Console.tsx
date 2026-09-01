@@ -360,7 +360,7 @@ function ConsoleRow({ entry, selected, onClick }: ConsoleRowProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 border-b border-border/40 px-2 py-1 text-left font-mono text-[11px] hover:bg-accent/30",
+        "flex w-full items-center gap-2 border-b border-border/40 px-2 py-1 text-left font-mono text-[11px] hover:bg-accent",
         selected && "bg-accent/40",
         isError && "border-l-2 border-l-destructive",
       )}

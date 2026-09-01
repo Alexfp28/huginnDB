@@ -134,6 +134,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Un solo color de hover en vez de cinco.** Al pasar el puntero por una fila,
+  un elemento de menú o un botón de barra, el tinte podía ser cualquiera de
+  cinco intensidades —opaco en 29 sitios, y al 30%, 40%, 50% o 60% en otros 50—,
+  así que el mismo gesto se leía distinto según el panel en el que estuvieras, y
+  dos superficies contiguas podían discrepar. Ahora todas usan el color de hover
+  del tema a plena intensidad. Vale la pena dejar dicho el razonamiento, porque
+  es la regla de aquí en adelante: `--accent` *es* la superficie de hover, así
+  que si el resultado se ve demasiado fuerte lo que hay que ajustar es ese token,
+  no cincuenta puntos de uso. El fondo de la paleta de comandos coincide también
+  con el del resto de modales, en vez de ser un 10% más claro.
+
 - **Los indicadores de carga, las etiquetas de estado y los títulos de sección
   son tres primitivos compartidos en vez de tres costumbres.** El indicador de
   carga aparecía en 39 sitios con tres tamaños; los títulos de sección en 24,

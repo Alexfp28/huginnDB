@@ -119,6 +119,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **One hover colour instead of five.** A pointer over a row, a menu item or a
+  toolbar button used to tint it at any of five strengths — fully opaque in 29
+  places, and at 30%, 40%, 50% or 60% in 50 others — so the same gesture read
+  differently depending on which panel you were in, and two adjacent surfaces
+  could disagree. They all use the theme's hover colour at full strength now.
+  The reasoning is worth stating because it is the rule going forward: `--accent`
+  *is* the hover surface, so if the result reads too strong the fix is that
+  token, not fifty call sites. The command palette's backdrop also matches every
+  other modal's now, rather than being 10% lighter.
+
 - **Loading spinners, status pills and section headings are three shared
   primitives instead of three habits.** The spinner appeared in 39 places at
   three sizes; section headings in 24, in four spellings of the same 10px

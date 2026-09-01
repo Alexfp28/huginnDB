@@ -145,7 +145,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                     "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
                     active
                       ? "border-primary bg-accent/40"
-                      : "border-transparent hover:bg-accent/30",
+                      : "border-transparent hover:bg-accent",
                   )}
                 >
                   <div className="relative">

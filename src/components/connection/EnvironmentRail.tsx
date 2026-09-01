@@ -267,7 +267,7 @@ function EnvironmentButton({
           // `shrink-0`: in the rail's scrolling flex column the buttons would
           // otherwise compress to fit instead of overflowing into the scroll.
           "group relative flex w-full shrink-0 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
-          "hover:bg-accent/50",
+          "hover:bg-accent",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
           isActive && "bg-accent/60",
         )}
@@ -378,7 +378,7 @@ function SortableEnvironmentButton({
               // See `EnvironmentButton` on `shrink-0` — the rail scrolls, and
               // without it the avatars squash instead of overflowing.
               "group relative flex w-full shrink-0 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
-              "hover:bg-accent/50",
+              "hover:bg-accent",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
               isActive && "bg-accent/60",
               isDragging && "z-10 opacity-80",

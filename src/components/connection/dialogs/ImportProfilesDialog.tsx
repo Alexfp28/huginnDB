@@ -111,8 +111,12 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
               <Button variant="ghost" size="sm" onClick={handleClose}>
                 {t("common.cancel")}
               </Button>
-              <Button size="sm" onClick={w.pickFile} disabled={loading}>
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
+              <Button
+                size="sm"
+                onClick={w.pickFile}
+                disabled={loading}
+                icon={Upload}
+              >
                 {t("transfer.import.browse")}
               </Button>
             </DialogFooter>

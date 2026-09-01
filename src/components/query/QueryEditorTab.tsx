@@ -657,7 +657,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                   {filteredHistory.map((h) => (
                     <div
                       key={h.id}
-                      className="group flex items-start gap-1.5 border-b border-border/40 px-3 py-2 hover:bg-accent/30"
+                      className="group flex items-start gap-1.5 border-b border-border/40 px-3 py-2 hover:bg-accent"
                     >
                       {h.error ? (
                         <X className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />

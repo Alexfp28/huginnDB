@@ -87,7 +87,7 @@ export function ConnectionRailRow({
         "group/row flex w-full cursor-pointer items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
         editing
           ? "border-primary bg-accent/40"
-          : "border-transparent hover:bg-accent/30",
+          : "border-transparent hover:bg-accent",
         checked && multi && "bg-accent/60",
       )}
     >

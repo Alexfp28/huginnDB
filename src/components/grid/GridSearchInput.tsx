@@ -55,7 +55,7 @@ export function GridSearchInput({
       {hasValue && (
         <button
           type="button"
-          className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
+          className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
           title="Clear filter"
           onClick={() => {
             // Clear immediately + apply, so the grid actually refetches
@@ -72,13 +72,16 @@ export function GridSearchInput({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center justify-center border-l border-input px-1.5 text-muted-foreground/70 hover:bg-accent/30 hover:text-foreground"
+              className="flex items-center justify-center border-l border-input px-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
               title="Recent searches on this connection"
             >
               <ChevronDown className="h-3 w-3" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+          <DropdownMenuContent
+            align="start"
+            className="max-h-72 overflow-y-auto"
+          >
             {history.map((q) => (
               <DropdownMenuItem
                 key={q}

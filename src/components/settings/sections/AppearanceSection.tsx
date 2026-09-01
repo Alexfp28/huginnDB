@@ -170,7 +170,7 @@ export function AppearanceSection() {
                 "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm",
                 theme.id === active.id
                   ? "border-primary bg-accent/40"
-                  : "border-transparent hover:bg-accent/30",
+                  : "border-transparent hover:bg-accent",
               )}
             >
               <ThemeSwatch colors={theme[mode]} />
@@ -238,8 +238,13 @@ export function AppearanceSection() {
                 onChange={(e) => setNewName(e.target.value)}
               />
             </div>
-            <Button size="sm" variant="outline" onClick={handleDuplicate}>
-              <Copy className="mr-1 h-3 w-3" /> {t("common.duplicate")}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDuplicate}
+              icon={Copy}
+            >
+              {t("common.duplicate")}
             </Button>
           </div>
 
