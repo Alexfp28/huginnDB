@@ -70,8 +70,7 @@ export function ConnectionsSection() {
    *  partially-typed number produces. `min` of 0 is meaningful for the fields
    *  where 0 is the documented "disabled" value. */
   const numeric =
-    (apply: (n: number) => void, min: number, max: number) =>
-    (raw: string) => {
+    (apply: (n: number) => void, min: number, max: number) => (raw: string) => {
       const n = Number.parseInt(raw, 10);
       if (Number.isFinite(n) && n >= min && n <= max) apply(n);
     };
@@ -110,7 +109,7 @@ export function ConnectionsSection() {
               {stats.endpoints.map((e) => (
                 <li
                   key={e.label}
-                  className="font-mono text-[11px] tabular-nums text-muted-foreground"
+                  className="font-mono text-2xs tabular-nums text-muted-foreground"
                 >
                   {e.label}
                   {" · "}
@@ -138,9 +137,11 @@ export function ConnectionsSection() {
           max={64}
           value={connections.maxConnections}
           onChange={(e) =>
-            numeric((n) => updateConnections({ maxConnections: n }), 2, 64)(
-              e.target.value,
-            )
+            numeric(
+              (n) => updateConnections({ maxConnections: n }),
+              2,
+              64,
+            )(e.target.value)
           }
           className="h-8 w-24 text-right font-mono text-xs"
         />
@@ -182,9 +183,11 @@ export function ConnectionsSection() {
           max={100}
           value={connections.maxChildPools}
           onChange={(e) =>
-            numeric((n) => updateConnections({ maxChildPools: n }), 0, 100)(
-              e.target.value,
-            )
+            numeric(
+              (n) => updateConnections({ maxChildPools: n }),
+              0,
+              100,
+            )(e.target.value)
           }
           className="h-8 w-24 text-right font-mono text-xs"
         />
@@ -228,9 +231,11 @@ export function ConnectionsSection() {
           step={30}
           value={connections.keepaliveSecs}
           onChange={(e) =>
-            numeric((n) => updateConnections({ keepaliveSecs: n }), 0, 3600)(
-              e.target.value,
-            )
+            numeric(
+              (n) => updateConnections({ keepaliveSecs: n }),
+              0,
+              3600,
+            )(e.target.value)
           }
           className="h-8 w-24 text-right font-mono text-xs"
         />
@@ -247,7 +252,7 @@ export function ConnectionsSection() {
               which can differ from the checkbox if the listener failed to
               start. */}
           {stats?.mcpBridgePort != null && (
-            <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="font-mono text-2xs tabular-nums text-muted-foreground">
               127.0.0.1:{stats.mcpBridgePort}
             </span>
           )}
@@ -258,7 +263,7 @@ export function ConnectionsSection() {
         </div>
       </PrefRow>
 
-      <p className="pt-3 text-[11px] leading-relaxed text-muted-foreground">
+      <p className="pt-3 text-2xs leading-relaxed text-muted-foreground">
         {t("settings.connections.footnote")}
       </p>
     </div>

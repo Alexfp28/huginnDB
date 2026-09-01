@@ -220,7 +220,7 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-sm">
           <thead className="sticky top-0 bg-background">
-            <tr className="border-b border-border/50 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b border-border/50 text-2xs uppercase tracking-wide text-muted-foreground">
               <th className="px-3 py-1.5 text-left font-medium">
                 {t("indexes.columns.name")}
               </th>
@@ -265,7 +265,7 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
               >
                 <td className="px-3 py-1.5">
                   <div className="font-mono text-xs">{index.name}</div>
-                  <div className="text-[11px] text-muted-foreground">
+                  <div className="text-2xs text-muted-foreground">
                     {t(`indexes.kind.${index.kind}`)}
                   </div>
                 </td>
@@ -395,7 +395,7 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
 function KeyChip({ field, value }: { field: string; value: string }) {
   const direction = value === "1" ? "asc" : value === "-1" ? "desc" : null;
   return (
-    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[11px]">
+    <span className="inline-flex items-center gap-1 rounded-sm border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-2xs">
       {field}
       {direction === "asc" ? (
         <ArrowUp className="h-3 w-3 text-muted-foreground" />

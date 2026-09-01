@@ -48,7 +48,7 @@ export function PipelineOutput({
     return (
       <div
         className={cn(
-          "h-full overflow-auto bg-destructive/5 p-3 font-mono text-[11px] leading-relaxed text-destructive",
+          "h-full overflow-auto bg-destructive/5 p-3 font-mono text-2xs leading-relaxed text-destructive",
           className,
         )}
       >
@@ -101,7 +101,7 @@ export function PipelineOutput({
         />
       </div>
       {truncated && (
-        <div className="border-t border-border px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div className="border-t border-border px-3 py-1 text-3xs uppercase tracking-wider text-muted-foreground">
           {t("aggregation.sampleTruncated", { count: result.rows.length })}
         </div>
       )}

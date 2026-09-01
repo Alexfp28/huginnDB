@@ -119,6 +119,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The dense micro-type is on the scale it was built for.** 286 places wrote
+  `text-[10px]`, `text-[11px]` or `text-[9px]` directly, which is what the app's
+  `3xs`/`2xs` tokens were added to replace — that migration had only reached
+  about a third of the way. Same pixel sizes, but the line-height is now pinned
+  rather than inherited, so two labels of the same size sitting side by side
+  finally line up. Six chips were below the 10px legibility floor the scale
+  exists to enforce and have been raised to it.
+
 - **Sixty-nine corners now follow the theme's radius.** Tailwind's bare
   `rounded` is a fixed 4px that sits outside the app's radius scale, so those
   corners were the only ones in the interface that could never move with the

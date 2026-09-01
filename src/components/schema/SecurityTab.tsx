@@ -196,7 +196,7 @@ export function SecurityTab({
                       <th
                         key={header.id}
                         className={cn(
-                          "px-3 py-1.5 text-left text-[11px] font-medium uppercase tracking-wide text-muted-foreground",
+                          "px-3 py-1.5 text-left text-2xs font-medium uppercase tracking-wide text-muted-foreground",
                           header.column.getCanSort() &&
                             "cursor-pointer select-none",
                         )}

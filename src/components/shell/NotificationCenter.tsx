@@ -120,7 +120,7 @@ export function NotificationCenter() {
               // Reads against the header, not the status bar it used to sit in:
               // a 15px brand pill with an 11px numeral and a background-coloured
               // ring punching it out of the icon.
-              <span className="absolute -right-1 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-brand px-1 font-mono text-[10px] font-bold leading-none text-brand-foreground ring-2 ring-background">
+              <span className="absolute -right-1 -top-1 flex h-[15px] min-w-[15px] items-center justify-center rounded-full bg-brand px-1 font-mono text-3xs font-bold leading-none text-brand-foreground ring-2 ring-background">
                 {unread > 9 ? "9+" : unread}
               </span>
             )}

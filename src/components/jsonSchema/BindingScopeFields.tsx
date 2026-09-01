@@ -58,7 +58,7 @@ export function BindingScopeFields({ binding, onClose }: Props) {
     <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="space-y-1">
-          <Label className="text-[11px]">
+          <Label className="text-2xs">
             {t("jsonSchemas.bindings.col.schema")}
           </Label>
           <NativeSelect
@@ -76,7 +76,7 @@ export function BindingScopeFields({ binding, onClose }: Props) {
         </div>
 
         <div className="space-y-1">
-          <Label className="text-[11px]">
+          <Label className="text-2xs">
             {t("jsonSchemas.scope.connection")}
           </Label>
           <NativeSelect
@@ -97,9 +97,7 @@ export function BindingScopeFields({ binding, onClose }: Props) {
         </div>
 
         <div className="space-y-1">
-          <Label className="text-[11px]">
-            {t("jsonSchemas.scope.dbSchema")}
-          </Label>
+          <Label className="text-2xs">{t("jsonSchemas.scope.dbSchema")}</Label>
           <Input
             value={draft.dbSchema ?? ""}
             onChange={(e) =>
@@ -111,7 +109,7 @@ export function BindingScopeFields({ binding, onClose }: Props) {
         </div>
 
         <div className="space-y-1">
-          <Label className="text-[11px]">{t("jsonSchemas.scope.table")}</Label>
+          <Label className="text-2xs">{t("jsonSchemas.scope.table")}</Label>
           <Input
             value={draft.table ?? ""}
             onChange={(e) =>
@@ -123,7 +121,7 @@ export function BindingScopeFields({ binding, onClose }: Props) {
         </div>
 
         <div className="space-y-1 sm:col-span-2">
-          <Label className="text-[11px]">{t("jsonSchemas.scope.column")}</Label>
+          <Label className="text-2xs">{t("jsonSchemas.scope.column")}</Label>
           <Input
             value={draft.column}
             onChange={(e) => setDraft({ ...draft, column: e.target.value })}
@@ -133,10 +131,10 @@ export function BindingScopeFields({ binding, onClose }: Props) {
         </div>
       </div>
 
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         {t("jsonSchemas.scope.globHint")}
       </p>
-      {error && <p className="text-[11px] text-destructive">{error}</p>}
+      {error && <p className="text-2xs text-destructive">{error}</p>}
 
       <div className="flex items-center gap-2">
         <Button

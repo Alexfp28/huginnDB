@@ -121,11 +121,11 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             <Sparkles className="h-4 w-4 text-primary" />
             {t("settings.title")}
           </DialogTitle>
-          <DialogDescription className="text-[11px]">
+          <DialogDescription className="text-2xs">
             {t("settings.description")}{" "}
             {/* Read from the catalogue, not written out: this line used to say
                 `Ctrl/Cmd + ,` regardless of what the user had rebound it to. */}
-            <Kbd className="px-1 py-0.5 text-[10px]">
+            <Kbd className="px-1 py-0.5 text-3xs">
               {openSettingsShortcut ?? t("settings.shortcuts.unassigned")}
             </Kbd>
             .
@@ -161,7 +161,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                     <span className="text-sm">
                       {t(`settings.sections.${s.id}.label`)}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-3xs text-muted-foreground">
                       {t(`settings.sections.${s.id}.desc`)}
                     </span>
                   </div>

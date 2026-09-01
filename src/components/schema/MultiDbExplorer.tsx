@@ -237,7 +237,7 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
               connection's context menu that cue would have vanished silently, so it
               is stated here instead. */}
           {visibleSet && (
-            <div className="text-[11px] text-muted-foreground">
+            <div className="text-2xs text-muted-foreground">
               {t(
                 subsetIsLocal
                   ? "schema.selectDatabases.subsetActiveLocal"
@@ -574,7 +574,7 @@ function DatabaseRoot({
             {filterActive && (
               <span
                 className={cn(
-                  "ml-auto shrink-0 rounded-sm px-1 text-[10px] leading-4 tabular-nums",
+                  "ml-auto shrink-0 rounded-sm px-1 text-3xs leading-4 tabular-nums",
                   // A cold database says "—", never "0": nobody has read it,
                   // and a provisional zero is what makes a search look failed.
                   matchCount === null
@@ -703,12 +703,10 @@ function DatabaseRoot({
       {effectiveExpanded && (
         <div className="ml-3 border-l border-border/35 pl-0.5">
           {error && (
-            <div className="px-3 py-1 text-[11px] text-destructive">
-              {error}
-            </div>
+            <div className="px-3 py-1 text-2xs text-destructive">{error}</div>
           )}
           {opening && !childId && (
-            <div className="px-3 py-1 text-[11px] italic text-muted-foreground">
+            <div className="px-3 py-1 text-2xs italic text-muted-foreground">
               …
             </div>
           )}

@@ -53,7 +53,7 @@ export function PublishConfirmDialog({
       title={t("originEditor.confirm.title", { revision })}
       description={
         <div className="space-y-1">
-          <p className="break-all font-mono text-[11px]">{path}</p>
+          <p className="break-all font-mono text-2xs">{path}</p>
           {silent && (
             <p className="text-destructive">
               {t("originEditor.confirm.silentWarning")}

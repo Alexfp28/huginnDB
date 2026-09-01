@@ -89,7 +89,7 @@ function PickerCard({
           {label}
         </span>
         {subtitle && (
-          <span className="max-w-[9.5rem] truncate text-[11px] text-muted-foreground">
+          <span className="max-w-[9.5rem] truncate text-2xs text-muted-foreground">
             {subtitle}
           </span>
         )}

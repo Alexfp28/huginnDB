@@ -63,8 +63,10 @@ export function DeleteConnectionsDialog({
   // keychain entry at all (`delete_profile` skips it), and an untunnelled one
   // has no SSH secret.
   const sweeps = [
-    targets.some((p) => p.driver !== "sqlite") && t("connections.deleteSweeps.password"),
-    targets.some((p) => p.ssh_tunnel) && t("connections.deleteSweeps.sshSecret"),
+    targets.some((p) => p.driver !== "sqlite") &&
+      t("connections.deleteSweeps.password"),
+    targets.some((p) => p.ssh_tunnel) &&
+      t("connections.deleteSweeps.sshSecret"),
     t("connections.deleteSweeps.tabs"),
     t("connections.deleteSweeps.visibility"),
     t("connections.deleteSweeps.jsonSchemas"),
@@ -107,7 +109,8 @@ export function DeleteConnectionsDialog({
       description={
         <span className="block">
           {shown.join(", ")}
-          {hidden > 0 && ` — ${t("connections.deleteMoreNames", { count: hidden })}`}
+          {hidden > 0 &&
+            ` — ${t("connections.deleteMoreNames", { count: hidden })}`}
         </span>
       }
       confirmLabel={t("connections.deleteAction", { count: targets.length })}
@@ -117,16 +120,16 @@ export function DeleteConnectionsDialog({
       onConfirm={onConfirm}
     >
       <div className="rounded-md bg-muted/50 px-3 py-2">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("connections.deleteSweeps.title")}
         </p>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] text-muted-foreground">
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-2xs text-muted-foreground">
           {sweeps.map((s) => (
             <li key={s}>{s}</li>
           ))}
         </ul>
       </div>
-      <p className="mt-2 text-[11px] text-warning">
+      <p className="mt-2 text-2xs text-warning">
         {t("connections.deleteIrreversible")}
       </p>
     </ConfirmDialog>

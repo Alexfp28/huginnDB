@@ -160,7 +160,7 @@ export function EnvironmentsPane({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("originEditor.environments.hint")}
         </p>
         <div className="flex shrink-0 items-center gap-2">
@@ -197,7 +197,7 @@ export function EnvironmentsPane({
                   <span className="min-w-0 flex-1 truncate">
                     {env.name || t("environments.defaultName")}
                   </span>
-                  <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">
+                  <span className="ml-2 shrink-0 text-3xs text-muted-foreground">
                     {t("originEditor.environments.importCount", {
                       count: env.connectionIds.length,
                     })}
@@ -221,7 +221,7 @@ export function EnvironmentsPane({
       <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr] gap-2">
         <div className="min-h-0 overflow-y-auto rounded-md border border-border">
           {draft.environments.length === 0 ? (
-            <p className="p-3 text-center text-[11px] text-muted-foreground">
+            <p className="p-3 text-center text-2xs text-muted-foreground">
               {importable.length > 0
                 ? t("originEditor.environments.emptyWithLocal")
                 : t("originEditor.environments.empty")}
@@ -248,7 +248,7 @@ export function EnvironmentsPane({
                   <span className="min-w-0 flex-1 truncate text-xs">
                     {env.name || t("environments.defaultName")}
                   </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                  <span className="shrink-0 text-3xs text-muted-foreground">
                     {env.connectionIds.length}
                   </span>
                 </button>
@@ -259,14 +259,14 @@ export function EnvironmentsPane({
 
         <div className="min-h-0 overflow-y-auto rounded-md border border-border p-3">
           {!active ? (
-            <p className="text-center text-[11px] text-muted-foreground">
+            <p className="text-center text-2xs text-muted-foreground">
               {t("originEditor.environments.pick")}
             </p>
           ) : (
             <div className="space-y-3">
               <div className="grid grid-cols-[1fr_auto] items-end gap-2">
                 <label className="block">
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {t("originEditor.environments.name")}
                   </span>
                   <Input
@@ -295,7 +295,7 @@ export function EnvironmentsPane({
 
               <div className="grid grid-cols-3 gap-2">
                 <label className="block">
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {t("originEditor.environments.color")}
                   </span>
                   <Input
@@ -311,7 +311,7 @@ export function EnvironmentsPane({
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {t("originEditor.environments.icon")}
                   </span>
                   <Input
@@ -326,7 +326,7 @@ export function EnvironmentsPane({
                   />
                 </label>
                 <label className="block">
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-2xs text-muted-foreground">
                     {t("originEditor.environments.theme")}
                   </span>
                   <Input
@@ -344,21 +344,21 @@ export function EnvironmentsPane({
               {/* Stored opaquely by the backend, exactly like a local
                   environment's: a theme id the consumer does not have falls
                   back to their default rather than failing. */}
-              <p className="text-[10px] text-muted-foreground">
+              <p className="text-3xs text-muted-foreground">
                 {t("originEditor.environments.cosmeticsHint")}
               </p>
 
               <div>
                 <div className="mb-1 flex items-baseline justify-between gap-2">
-                  <span className="text-[11px] font-semibold">
+                  <span className="text-2xs font-semibold">
                     {t("originEditor.environments.members")}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-3xs text-muted-foreground">
                     {t("originEditor.environments.membersHint")}
                   </span>
                 </div>
                 {draft.connections.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-border p-3 text-center text-[11px] text-muted-foreground">
+                  <p className="rounded-md border border-dashed border-border p-3 text-center text-2xs text-muted-foreground">
                     {t("originEditor.environments.noConnections")}
                   </p>
                 ) : (

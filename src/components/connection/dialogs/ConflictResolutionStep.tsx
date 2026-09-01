@@ -45,7 +45,7 @@ export function ConflictResolutionStep({
                 {c.incoming_name}
               </span>
               {c.incoming_name !== c.existing_name && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-3xs text-muted-foreground">
                   {t("transfer.import.existingAs", { name: c.existing_name })}
                 </span>
               )}
@@ -56,7 +56,7 @@ export function ConflictResolutionStep({
                   key={action}
                   onClick={() => onResolve(c.id, action)}
                   className={
-                    "rounded-sm px-2 py-0.5 text-[10px] font-medium uppercase transition-colors " +
+                    "rounded-sm px-2 py-0.5 text-3xs font-medium uppercase transition-colors " +
                     (resolutions[c.id] === action
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted text-muted-foreground hover:bg-muted/80")
@@ -69,7 +69,7 @@ export function ConflictResolutionStep({
           </div>
         ))}
       </div>
-      {error && <p className="text-[11px] text-destructive">{error}</p>}
+      {error && <p className="text-2xs text-destructive">{error}</p>}
     </>
   );
 }

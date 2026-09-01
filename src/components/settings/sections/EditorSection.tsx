@@ -191,7 +191,7 @@ function EditorPreview({ editor }: { editor: EditorPrefs }) {
   const colorFor = (kind?: Tok["kind"]) => (kind ? c[kind] : c.foreground);
   return (
     <div className="mb-3">
-      <div className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+      <div className="mb-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
         {t("settings.editor.preview")}
       </div>
       <div

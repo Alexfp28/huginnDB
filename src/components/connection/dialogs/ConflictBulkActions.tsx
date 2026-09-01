@@ -21,7 +21,7 @@ export function ConflictBulkActions({ onSelect }: Props) {
 
   return (
     <div className="flex items-center justify-between gap-2">
-      <span className="text-[10px] uppercase font-medium text-muted-foreground">
+      <span className="text-3xs uppercase font-medium text-muted-foreground">
         {t("transfer.import.markAllAs")}
       </span>
       <div className="flex gap-1.5">
@@ -29,7 +29,7 @@ export function ConflictBulkActions({ onSelect }: Props) {
           <button
             key={action}
             onClick={() => onSelect(action)}
-            className="rounded-sm px-2 py-0.5 text-[10px] uppercase font-medium text-muted-foreground bg-muted hover:bg-muted/80 transition-colors"
+            className="rounded-sm px-2 py-0.5 text-3xs uppercase font-medium text-muted-foreground bg-muted hover:bg-muted/80 transition-colors"
           >
             {t(`transfer.import.action.${action}`)}
           </button>

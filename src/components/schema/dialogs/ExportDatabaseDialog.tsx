@@ -249,7 +249,7 @@ export function ExportDatabaseDialog({
       <DialogContent className="flex h-[70vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b border-border px-5 py-3">
           <DialogTitle>{t("schema.exportDatabaseDialog.title")}</DialogTitle>
-          <DialogDescription className="text-[11px]">
+          <DialogDescription className="text-2xs">
             {t("schema.exportDatabaseDialog.description")}
           </DialogDescription>
         </DialogHeader>

@@ -132,7 +132,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
             title={t("cellEditor.setNull")}
             disabled={disabled}
             className={cn(
-              "shrink-0 rounded-sm px-1 text-[10px]",
+              "shrink-0 rounded-sm px-1 text-3xs",
               nullActive
                 ? "bg-primary/20 text-primary"
                 : "text-muted-foreground/50 hover:text-foreground",

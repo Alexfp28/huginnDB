@@ -169,7 +169,7 @@ export function StatusConnections() {
           {p.name}
         </span>
         {selected === p.id && (
-          <span className="shrink-0 rounded-sm bg-brand/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-brand">
+          <span className="shrink-0 rounded-sm bg-brand/15 px-1 py-0.5 text-3xs font-medium uppercase tracking-wide text-brand">
             {t("statusBar.activeLabel")}
           </span>
         )}

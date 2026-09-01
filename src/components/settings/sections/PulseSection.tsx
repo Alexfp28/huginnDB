@@ -216,11 +216,11 @@ export function PulseSection() {
 
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
             {t("settings.pulse.connectionsLabel")}
           </span>
           {profiles.length > 0 && (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t("settings.pulse.enabledCount", {
                 enabled: profiles.filter((p) => p.pulse_enabled).length,
                 total: profiles.length,
@@ -275,7 +275,7 @@ export function PulseSection() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 shrink-0 px-2 text-[11px]"
+                className="h-7 shrink-0 px-2 text-2xs"
                 disabled={filteredProfiles.length === 0}
                 onClick={() =>
                   void setEnabled(

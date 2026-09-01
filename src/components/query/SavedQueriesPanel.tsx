@@ -53,9 +53,7 @@ export function SavedQueriesPanel({
         <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {t("saved.title")}
         </div>
-        <span className="text-[10px] text-muted-foreground">
-          {items.length}
-        </span>
+        <span className="text-3xs text-muted-foreground">{items.length}</span>
       </div>
       <div className="px-3 pb-2">
         <SearchField
@@ -88,7 +86,7 @@ export function SavedQueriesPanel({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium">{q.name}</div>
                 {q.description && (
-                  <div className="line-clamp-2 text-[11px] text-muted-foreground">
+                  <div className="line-clamp-2 text-2xs text-muted-foreground">
                     {q.description}
                   </div>
                 )}
@@ -97,7 +95,7 @@ export function SavedQueriesPanel({
                     {q.tags.map((t) => (
                       <span
                         key={t}
-                        className="rounded-sm bg-muted px-1 py-px text-[9px] text-muted-foreground"
+                        className="rounded-sm bg-muted px-1 py-px text-3xs text-muted-foreground"
                       >
                         {t}
                       </span>

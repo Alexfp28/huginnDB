@@ -280,7 +280,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                         )}
                         <Database className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="truncate text-xs">{schema}</span>
-                        <span className="ml-auto text-[10px] text-muted-foreground">
+                        <span className="ml-auto text-3xs text-muted-foreground">
                           {tables.length + views.length}
                         </span>
                       </button>

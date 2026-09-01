@@ -279,7 +279,7 @@ export function ConnectionRail({
             aria-label={t("connections.selectAll")}
           />
         )}
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-3xs uppercase tracking-wider text-muted-foreground">
           {t("connectionDialog.listTitle")}
         </span>
         {allLocal.length > 0 && (
@@ -316,11 +316,11 @@ export function ConnectionRail({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {profiles.length === 0 ? (
-          <div className="px-3 py-3 text-[11px] text-muted-foreground">
+          <div className="px-3 py-3 text-2xs text-muted-foreground">
             {t("connectionDialog.emptyList")}
           </div>
         ) : sections.length === 0 ? (
-          <div className="px-3 py-3 text-[11px] text-muted-foreground">
+          <div className="px-3 py-3 text-2xs text-muted-foreground">
             {t("connectionDialog.noMatches")}
           </div>
         ) : (
@@ -355,7 +355,7 @@ export function ConnectionRail({
       </div>
       {checkedProfiles.length > 0 && (
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {t("connections.selectedCount", { count: checkedProfiles.length })}
           </span>
           <Button

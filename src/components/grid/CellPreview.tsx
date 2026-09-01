@@ -14,7 +14,10 @@ import { useEffect, useMemo } from "react";
 import { X, Maximize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { detectLanguage, tryFormat } from "@/lib/grid/detectContentType";
-import { usePreferences, selectGridPrefs } from "@/stores/preferences/preferences";
+import {
+  usePreferences,
+  selectGridPrefs,
+} from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
 import type { CellValue } from "@/types";
 
@@ -80,7 +83,11 @@ export function CellPreview({
       } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         onSave?.(rawText);
-      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "n") {
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        e.key.toLowerCase() === "n"
+      ) {
         e.preventDefault();
         onSetNull?.();
       }
@@ -109,7 +116,7 @@ export function CellPreview({
           <span className="font-medium">{columnName}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+          <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             {LANG_BADGE[lang] ?? "TEXT"}
           </span>
           <button
@@ -136,7 +143,7 @@ export function CellPreview({
       </div>
 
       {/* Footer: keyboard shortcut hints */}
-      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground/70">
+      <div className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-3xs text-muted-foreground/70">
         <button
           className="flex items-center gap-1 hover:text-muted-foreground"
           onClick={onFullscreen}

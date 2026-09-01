@@ -69,7 +69,10 @@ export function FeedbackDialog() {
     setIncludeDiagnostics(true);
     setShowPatField(false);
     setPatInput("");
-    void api.hasGithubPat().then(setHasPat).catch(() => setHasPat(false));
+    void api
+      .hasGithubPat()
+      .then(setHasPat)
+      .catch(() => setHasPat(false));
   }, [open, prefill]);
 
   async function handleSavePat() {
@@ -109,7 +112,11 @@ export function FeedbackDialog() {
     setSubmitting(true);
     try {
       const body = await buildBody();
-      const url = await api.mailtoReportUrl({ kind, title: title.trim(), body });
+      const url = await api.mailtoReportUrl({
+        kind,
+        title: title.trim(),
+        body,
+      });
       await api.openUrl(url);
       notify.info(t("feedback.openedMailClient"));
       setOpen(false);
@@ -125,7 +132,11 @@ export function FeedbackDialog() {
     setSubmitting(true);
     try {
       const body = await buildBody();
-      const outcome = await api.submitIssue({ kind, title: title.trim(), body });
+      const outcome = await api.submitIssue({
+        kind,
+        title: title.trim(),
+        body,
+      });
       if (outcome.created) {
         notify.success(t("feedback.created"), {
           actions: [
@@ -222,7 +233,7 @@ export function FeedbackDialog() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 px-2 text-[11px]"
+                    className="h-6 px-2 text-2xs"
                     onClick={handleClearPat}
                   >
                     {t("feedback.patClear")}
@@ -232,7 +243,7 @@ export function FeedbackDialog() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 px-2 text-[11px]"
+                  className="h-6 px-2 text-2xs"
                   onClick={() => setShowPatField((v) => !v)}
                 >
                   {hasPat ? t("feedback.patChange") : t("feedback.patAdd")}
@@ -258,7 +269,7 @@ export function FeedbackDialog() {
                 </Button>
               </div>
             )}
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
+            <p className="mt-1.5 text-2xs text-muted-foreground">
               {hasPat ? t("feedback.hintApi") : t("feedback.hintBrowser")}
             </p>
           </div>
@@ -278,7 +289,10 @@ export function FeedbackDialog() {
             <Button variant="ghost" onClick={() => setOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button onClick={handleSubmit} disabled={!title.trim() || submitting}>
+            <Button
+              onClick={handleSubmit}
+              disabled={!title.trim() || submitting}
+            >
               {hasPat ? t("feedback.submit") : t("feedback.openBrowser")}
             </Button>
           </div>

@@ -23,7 +23,10 @@ function prefsPaths(stateDir: string): { os: string; path: string }[] {
   return [
     { os: "Windows", path: `%APPDATA%\\${stateDir}\\prefs.json` },
     { os: "Linux", path: `$XDG_CONFIG_HOME/${stateDir}/prefs.json` },
-    { os: "macOS", path: `~/Library/Application Support/${stateDir}/prefs.json` },
+    {
+      os: "macOS",
+      path: `~/Library/Application Support/${stateDir}/prefs.json`,
+    },
   ];
 }
 
@@ -85,7 +88,7 @@ export function AboutSection() {
             draggable={false}
           />
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            <div className="text-2xs uppercase tracking-wider text-muted-foreground">
               {productName}
             </div>
             <div className="mt-1 font-mono text-base">{currentVersion}</div>
@@ -111,7 +114,7 @@ export function AboutSection() {
       <PatchNotesCard currentVersion={currentVersion} />
 
       <div>
-        <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1 text-2xs uppercase tracking-wider text-muted-foreground">
           {t("settings.about.prefsLocation")}
         </div>
         <div className="divide-y divide-border/60 rounded-md border border-border">
@@ -121,13 +124,13 @@ export function AboutSection() {
               className="flex items-center justify-between gap-4 px-3 py-2"
             >
               <span className="text-xs">{p.os}</span>
-              <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+              <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
                 {p.path}
               </code>
             </div>
           ))}
         </div>
-        <div className="mt-1 text-[11px] text-muted-foreground">
+        <div className="mt-1 text-2xs text-muted-foreground">
           {t("settings.about.tabStateHint", { file: "tab_state.json" })}
         </div>
       </div>

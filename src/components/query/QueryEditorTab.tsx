@@ -534,7 +534,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                   ? t("query.runAll", { count: statements.length })
                   : t("query.run")}
               {!running && (
-                <kbd className="ml-0.5 rounded-sm border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-[10px] font-medium leading-none">
+                <kbd className="ml-0.5 rounded-sm border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-3xs font-medium leading-none">
                   {runHint}
                 </kbd>
               )}
@@ -617,11 +617,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             {showHistory && (
               <div className="flex w-72 shrink-0 flex-col border-l border-border bg-card/40">
                 <div className="flex items-center justify-between gap-2 px-3 py-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <span className="text-3xs uppercase tracking-wider text-muted-foreground">
                     {t("query.historyTitle")}
                   </span>
                   <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-3xs text-muted-foreground">
                       {history.length}
                     </span>
                     {history.length > 0 && (
@@ -669,10 +669,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                         className="min-w-0 flex-1 text-left text-xs"
                         title={h.sql}
                       >
-                        <div className="line-clamp-2 font-mono text-[11px]">
+                        <div className="line-clamp-2 font-mono text-2xs">
                           {h.sql}
                         </div>
-                        <div className="mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <div className="mt-1 flex items-center gap-2 text-3xs text-muted-foreground">
                           <span>{formatTime(h.ranAt)}</span>
                           {h.error ? (
                             <span className="truncate text-destructive">
@@ -705,13 +705,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           </div>
 
           {/* Editor info bar: keyboard hint · db name · line/char count · encoding */}
-          <div className="flex items-center gap-0 border-t border-border bg-card px-3 py-1 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-0 border-t border-border bg-card px-3 py-1 text-2xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <kbd className="rounded-sm bg-muted px-1 font-mono text-[10px]">
+              <kbd className="rounded-sm bg-muted px-1 font-mono text-3xs">
                 Ctrl
               </kbd>
               <span>+</span>
-              <kbd className="rounded-sm bg-muted px-1 font-mono text-[10px]">
+              <kbd className="rounded-sm bg-muted px-1 font-mono text-3xs">
                 Enter
               </kbd>
               <span className="ml-1 text-muted-foreground/70">
@@ -801,7 +801,7 @@ const QueryTimer = forwardRef<QueryTimerHandle, { running: boolean }>(
     return (
       <div
         className={cn(
-          "ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] tabular-nums transition-colors",
+          "ml-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs tabular-nums transition-colors",
           running
             ? "bg-brand/10 text-brand"
             : lastOk
@@ -831,7 +831,7 @@ function BatchSummary({ summary }: { summary: BatchResult }) {
     <div className="shrink-0 border-b border-border bg-card/40">
       <div
         className={cn(
-          "px-3 py-1 text-[11px]",
+          "px-3 py-1 text-2xs",
           ok ? "text-muted-foreground" : "text-destructive",
         )}
       >
@@ -849,7 +849,7 @@ function BatchSummary({ summary }: { summary: BatchResult }) {
         {summary.statements.map((s) => (
           <div
             key={s.index}
-            className="flex items-center gap-2 px-3 py-0.5 text-[11px]"
+            className="flex items-center gap-2 px-3 py-0.5 text-2xs"
           >
             {s.error ? (
               <X className="h-3 w-3 shrink-0 text-destructive" />
@@ -887,7 +887,7 @@ function DmlResult({ result }: { result: QueryResult }) {
   const { t } = useTranslation();
   return (
     <div className="shrink-0 border-b border-border bg-card/40">
-      <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 px-3 py-1 text-2xs text-muted-foreground">
         <Check className="h-3 w-3 shrink-0 text-primary" />
         <span>
           {t("query.rowsAffected", {

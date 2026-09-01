@@ -371,7 +371,7 @@ export function ViewEditorTab({
           <PanelResizeHandle className="h-1 bg-border hover:bg-primary/30" />
           <Panel defaultSize={45} minSize={15}>
             <div className="flex h-full flex-col">
-              <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-[11px] text-muted-foreground">
+              <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-2xs text-muted-foreground">
                 {dataPreviewLoading && (
                   <RefreshCw className="h-3 w-3 animate-spin" />
                 )}

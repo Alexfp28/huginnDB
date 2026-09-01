@@ -79,7 +79,7 @@ export function ServerFilterChip({
   const value = filterValueLabel(f, t);
   return (
     <span
-      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-[11px]"
+      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-2xs"
       title={t("dataGrid.serverSideFilter")}
     >
       <span className="text-muted-foreground">{f.column}</span>
@@ -121,7 +121,7 @@ export function ServerFilterSummary({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-muted-foreground hover:text-foreground"
           title={t("dataGrid.serverSideFilter")}
         >
           <Filter className="h-3 w-3 text-brand" />

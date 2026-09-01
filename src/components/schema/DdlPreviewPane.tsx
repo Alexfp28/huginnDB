@@ -43,7 +43,7 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
 
   return (
     <div className="flex h-48 flex-col border-t border-border">
-      <div className="flex items-center gap-2 px-3 py-1 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 px-3 py-1 text-2xs text-muted-foreground">
         <RefreshCw className="h-3 w-3" />
         {title}
         {warning && (

@@ -80,7 +80,7 @@ export function PublishPane({
     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
       <div className="grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {t("originEditor.publish.maintainer")}
           </span>
           <Input
@@ -92,7 +92,7 @@ export function PublishPane({
           />
         </label>
         <label className="block">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-2xs text-muted-foreground">
             {t("originEditor.publish.note")}
           </span>
           <Input
@@ -104,7 +104,7 @@ export function PublishPane({
           />
         </label>
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-3xs text-muted-foreground">
         {t("originEditor.publish.metadataHint")}
       </p>
 
@@ -113,7 +113,7 @@ export function PublishPane({
           <span className="text-xs font-semibold">
             {t("originEditor.publish.passphrase")}
           </span>
-          <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">
             <Checkbox
               disabled={readOnly}
               checked={passphrase.rotating}
@@ -130,7 +130,7 @@ export function PublishPane({
         </div>
 
         {!passphraseNeeded && !passphrase.rotating ? (
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {hasStoredPassphrase
               ? t("originEditor.publish.passphraseStored")
               : t("originEditor.publish.passphraseNotNeeded")}
@@ -154,7 +154,7 @@ export function PublishPane({
                     })
                   }
                 />
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-3xs text-muted-foreground">
                   {t("originEditor.publish.rotateHint")}
                 </p>
               </div>
@@ -174,7 +174,7 @@ export function PublishPane({
                 rather than into a confirmation whose only useful button would
                 be Cancel. */}
             {!passphraseReady(passphrase, passphraseNeeded) && (
-              <p className="text-[11px] text-destructive">
+              <p className="text-2xs text-destructive">
                 {t("originEditor.publish.passphraseRequired")}
               </p>
             )}

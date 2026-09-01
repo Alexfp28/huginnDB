@@ -90,7 +90,7 @@ export function VanishedOriginNotice({
               ? t("origins.vanished.titleNamed", { name })
               : t("origins.vanished.title")}
           </div>
-          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+          <p className="mt-0.5 text-2xs leading-snug text-muted-foreground">
             {t("origins.vanished.body", {
               // Blank when the sweep synthesized this notice after the origin
               // was already gone (app restart before deciding, or the whole
@@ -107,7 +107,7 @@ export function VanishedOriginNotice({
           type="button"
           disabled={busy}
           title={t("origins.vanished.keepTooltip")}
-          className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent disabled:opacity-50"
+          className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-2xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
           onClick={() => void run(() => adopt(profileId))}
         >
           {busy ? <Spinner size="xs" /> : <Check className="h-3 w-3" />}
@@ -116,7 +116,7 @@ export function VanishedOriginNotice({
         <button
           type="button"
           disabled={busy}
-          className="flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
+          className="flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
           onClick={() => {
             if (
               !confirmIrreversible(

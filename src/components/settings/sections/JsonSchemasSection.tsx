@@ -360,7 +360,7 @@ export function JsonSchemasSection() {
                         </span>
                       )}
                     </span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="text-3xs text-muted-foreground">
                       {count > 0
                         ? t("jsonSchemas.library.bindingCount", { count })
                         : t("jsonSchemas.library.unbound")}
@@ -369,7 +369,7 @@ export function JsonSchemasSection() {
                 );
               })}
               {visible.length === 0 && (
-                <p className="px-2 py-1 text-[11px] text-muted-foreground">
+                <p className="px-2 py-1 text-2xs text-muted-foreground">
                   {t("jsonSchemas.library.noMatches")}
                 </p>
               )}
@@ -424,7 +424,7 @@ export function JsonSchemasSection() {
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-medium text-muted-foreground">
+                    <span className="text-2xs font-medium text-muted-foreground">
                       {t("jsonSchemas.detail.body")}
                     </span>
                     <Button
@@ -492,21 +492,21 @@ export function JsonSchemasSection() {
                   </div>
 
                   {bodyError && (
-                    <p className="text-[11px] text-destructive">
+                    <p className="text-2xs text-destructive">
                       {t("jsonSchemas.detail.bodyInvalid", {
                         message: bodyError,
                       })}
                     </p>
                   )}
                   {externalRefs.length > 0 && (
-                    <p className="text-[11px] text-warning">
+                    <p className="text-2xs text-warning">
                       {t("jsonSchemas.detail.externalRefs", {
                         refs: externalRefs.join(", "),
                       })}
                     </p>
                   )}
                   {!body.includes("$schema") && body.trim() && (
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-2xs text-muted-foreground">
                       {t("jsonSchemas.detail.noDraftDeclared")}
                     </p>
                   )}
@@ -522,7 +522,7 @@ export function JsonSchemasSection() {
           <h4 className="text-xs font-semibold">
             {t("jsonSchemas.bindings.title")}
           </h4>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {t("jsonSchemas.bindings.cascadeHint")}
           </p>
         </div>
@@ -593,13 +593,13 @@ function EmptyLibrary({
               <Braces className="h-3 w-3 shrink-0" />
               {t(tpl.nameKey)}
             </span>
-            <span className="mt-0.5 block text-[10px] leading-snug text-muted-foreground">
+            <span className="mt-0.5 block text-3xs leading-snug text-muted-foreground">
               {t(tpl.descKey)}
             </span>
           </button>
         ))}
       </div>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         {t("jsonSchemas.empty.orImport")}
       </p>
     </div>
@@ -645,7 +645,7 @@ function TestColumnBox() {
     <section className="space-y-2">
       <div className="space-y-1">
         <h4 className="text-xs font-semibold">{t("jsonSchemas.test.title")}</h4>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("jsonSchemas.test.hint")}
         </p>
       </div>
@@ -664,7 +664,7 @@ function TestColumnBox() {
         </Button>
       </div>
       {result !== null && (
-        <p className="font-mono text-[11px]">
+        <p className="font-mono text-2xs">
           {result.length === 0 ? (
             <span className="text-muted-foreground">
               {t("jsonSchemas.test.noMatch")}

@@ -316,7 +316,7 @@ function MatchBadge({
   state: RowMatchState | null;
 }) {
   const { t } = useTranslation();
-  const base = "shrink-0 rounded-sm px-1 text-[10px] leading-4 tabular-nums";
+  const base = "shrink-0 rounded-sm px-1 text-3xs leading-4 tabular-nums";
 
   if (!isActive) {
     return (

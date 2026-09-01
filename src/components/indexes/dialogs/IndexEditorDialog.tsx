@@ -143,7 +143,9 @@ export function IndexEditorDialog({
     ttlSeconds !== null && (!Number.isFinite(ttlSeconds) || ttlSeconds < 0);
 
   function updateRow(index: number, patch: Partial<KeyRow>) {
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setRows((prev) =>
+      prev.map((r, i) => (i === index ? { ...r, ...patch } : r)),
+    );
   }
 
   function submit() {
@@ -323,7 +325,7 @@ export function IndexEditorDialog({
                   placeholder={t("indexes.editor.ttlPlaceholder")}
                   className={cn("text-xs", ttlInvalid && "border-destructive")}
                 />
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   {t("indexes.editor.ttlHint")}
                 </p>
               </div>
@@ -366,7 +368,7 @@ export function IndexEditorDialog({
                 hint={t("indexes.editor.extraHint")}
                 value={extra}
                 onChange={setExtra}
-                placeholder='{ wildcardProjection: { secrets: 0 } }'
+                placeholder="{ wildcardProjection: { secrets: 0 } }"
               />
             </div>
           )}
@@ -412,7 +414,7 @@ function FlagRow({
         <Switch checked={checked} onCheckedChange={onChange} />
         <span className="text-xs font-medium">{label}</span>
       </div>
-      <p className="text-[11px] leading-tight text-muted-foreground">{hint}</p>
+      <p className="text-2xs leading-tight text-muted-foreground">{hint}</p>
     </div>
   );
 }
@@ -445,7 +447,7 @@ function DocumentField({
         placeholder={placeholder}
         className="font-mono text-xs"
       />
-      <p className="text-[11px] text-muted-foreground">{hint}</p>
+      <p className="text-2xs text-muted-foreground">{hint}</p>
     </div>
   );
 }

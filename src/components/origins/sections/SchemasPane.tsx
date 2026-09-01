@@ -110,7 +110,7 @@ export function SchemasPane({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         {t("originEditor.schemas.hint")}
       </p>
       {all.length === 0 ? (
@@ -134,7 +134,7 @@ export function SchemasPane({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-xs">{schema.name}</div>
                     {schema.description && (
-                      <div className="truncate text-[10px] text-muted-foreground">
+                      <div className="truncate text-3xs text-muted-foreground">
                         {schema.description}
                       </div>
                     )}
@@ -158,12 +158,12 @@ export function SchemasPane({
                             checked={draft.bindings.some((x) => x.id === b.id)}
                             onChange={() => toggleBinding(b)}
                           />
-                          <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground">
+                          <span className="min-w-0 flex-1 truncate font-mono text-3xs text-muted-foreground">
                             {bindingLabel(b)}
                           </span>
                           {orphaned && (
                             <span
-                              className="inline-flex shrink-0 items-center gap-1 text-[10px] text-amber-600 dark:text-amber-500"
+                              className="inline-flex shrink-0 items-center gap-1 text-3xs text-amber-600 dark:text-amber-500"
                               title={t("originEditor.schemas.pinnedWarning")}
                             >
                               <AlertTriangle className="h-3 w-3" />

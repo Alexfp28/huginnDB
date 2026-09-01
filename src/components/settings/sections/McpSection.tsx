@@ -52,7 +52,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       variant="outline"
       size="sm"
-      className="h-6 gap-1 px-2 text-[11px]"
+      className="h-6 gap-1 px-2 text-2xs"
       onClick={() => {
         void navigator.clipboard.writeText(text);
         notify.success(t("settings.mcp.copied"));
@@ -315,16 +315,16 @@ export function McpSection() {
       </p>
 
       <div className="rounded-md border border-border bg-card/40 p-3">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
           {t("settings.mcp.binaryLabel")}
         </div>
         <div className="mt-1 flex items-center justify-between gap-2">
-          <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-[11px]">
+          <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
             {path || "—"}
           </code>
           {path && <CopyButton text={path} />}
         </div>
-        <div className="mt-2 text-[11px]">
+        <div className="mt-2 text-2xs">
           {info?.available ? (
             <span className="text-emerald-600 dark:text-emerald-400">
               {t("settings.mcp.available")}
@@ -339,11 +339,11 @@ export function McpSection() {
 
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
             {t("settings.mcp.connectionsLabel")}
           </span>
           {profiles.length > 0 && (
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {t("settings.mcp.selectedCount", {
                 selected: selected.size,
                 total: profiles.length,
@@ -398,7 +398,7 @@ export function McpSection() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 shrink-0 px-2 text-[11px]"
+                className="h-7 shrink-0 px-2 text-2xs"
                 disabled={filteredProfiles.length === 0}
                 onClick={() =>
                   void toggleAll(filteredProfiles.map((p) => p.id))
@@ -434,7 +434,7 @@ export function McpSection() {
                 schema, so it is the only one that asks first. */}
             {filteredProfiles.length > 0 && (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-2xs text-muted-foreground">
                   {t("settings.mcp.bulkPolicyLabel")}
                 </span>
                 {WRITE_LEVELS.map((lvl) => (
@@ -444,7 +444,7 @@ export function McpSection() {
                     variant="outline"
                     size="sm"
                     disabled={applying}
-                    className="h-6 px-2 text-[11px]"
+                    className="h-6 px-2 text-2xs"
                     onClick={() =>
                       lvl === "full"
                         ? setPendingFull(true)
@@ -454,22 +454,22 @@ export function McpSection() {
                     {t(`settings.mcp.level.${lvl}`)}
                   </Button>
                 ))}
-                <span className="text-[11px] text-muted-foreground/60">
+                <span className="text-2xs text-muted-foreground/60">
                   ({filteredProfiles.length})
                 </span>
               </div>
             )}
-            <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.writePolicyHint")}
             </p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.sharedIdsHint")}
             </p>
             {/* The snippet below is valid whether or not anything is ticked, so
                 nothing else would tell the user their connector will come up
                 unable to reach a single database. */}
             {selected.size === 0 && (
-              <p className="mt-1 text-[11px] leading-relaxed text-amber-600 dark:text-amber-500">
+              <p className="mt-1 text-2xs leading-relaxed text-amber-600 dark:text-amber-500">
                 {t("settings.mcp.nothingExposedHint")}
               </p>
             )}
@@ -479,7 +479,7 @@ export function McpSection() {
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
             {t("settings.mcp.claudeCodeLabel")}
           </span>
           <div className="flex items-center gap-1.5">
@@ -489,7 +489,7 @@ export function McpSection() {
                 variant="outline"
                 size="sm"
                 disabled={registering}
-                className="h-6 gap-1 px-2 text-[11px]"
+                className="h-6 gap-1 px-2 text-2xs"
                 onClick={() => void addToClaudeCode()}
               >
                 <Terminal className="h-3 w-3" />
@@ -505,8 +505,8 @@ export function McpSection() {
           <p
             className={
               registration.outcome === "failed"
-                ? "mb-1 text-[11px] leading-relaxed text-destructive"
-                : "mb-1 text-[11px] leading-relaxed text-muted-foreground"
+                ? "mb-1 text-2xs leading-relaxed text-destructive"
+                : "mb-1 text-2xs leading-relaxed text-muted-foreground"
             }
           >
             {t(`settings.mcp.register.${registration.outcome}`)}
@@ -515,19 +515,19 @@ export function McpSection() {
               : ""}
           </p>
         )}
-        <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-[11px]">
+        <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-2xs">
           {cliCommand || t("settings.mcp.noBinaryHint")}
         </pre>
       </div>
 
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
             {t("settings.mcp.jsonLabel")}
           </span>
           {jsonSnippet && <CopyButton text={jsonSnippet} />}
         </div>
-        <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-[11px]">
+        <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-2xs">
           {jsonSnippet || t("settings.mcp.noBinaryHint")}
         </pre>
       </div>

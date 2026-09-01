@@ -13,12 +13,7 @@ import {
   DraftCellControl,
   firstEditableColumn,
 } from "@/components/grid/DraftCellControl";
-import type {
-  ColumnInfo,
-  ColumnMeta,
-  DraftCell,
-  DraftRow,
-} from "@/types";
+import type { ColumnInfo, ColumnMeta, DraftCell, DraftRow } from "@/types";
 
 interface DraftRowViewProps {
   rowRef: React.MutableRefObject<HTMLTableRowElement | null>;
@@ -91,12 +86,14 @@ export function DraftRowView({
         onBlur={handleRowBlur}
         onKeyDown={handleKeyDown}
       >
-        <td className="border-b border-border/50 border-r border-r-border/70 px-2 py-1 text-[10px] font-medium text-primary">
+        <td className="border-b border-border/50 border-r border-r-border/70 px-2 py-1 text-3xs font-medium text-primary">
           {draft.saving ? "…" : "+"}
         </td>
         {columns.map((col, idx) => {
-          const cell: DraftCell =
-            draft.cells[col.name] ?? { value: null, touched: false };
+          const cell: DraftCell = draft.cells[col.name] ?? {
+            value: null,
+            touched: false,
+          };
           return (
             <td
               key={col.name}
@@ -124,7 +121,7 @@ export function DraftRowView({
         <tr>
           <td
             colSpan={columns.length + 2}
-            className="border-b border-border/50 bg-destructive/10 px-3 py-1 text-[11px] text-destructive"
+            className="border-b border-border/50 bg-destructive/10 px-3 py-1 text-2xs text-destructive"
           >
             {draft.error}
             <button

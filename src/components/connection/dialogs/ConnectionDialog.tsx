@@ -572,7 +572,7 @@ export function ConnectionDialog({
                 </Tooltip>
               </div>
             </div>
-            <DialogDescription className="text-[11px]">
+            <DialogDescription className="text-2xs">
               {t("connectionDialog.managerDescription")}
             </DialogDescription>
           </DialogHeader>
@@ -631,7 +631,7 @@ export function ConnectionDialog({
                     beside the button, since it's the editing that's affected,
                     not just the saving. */}
                   {fromOrigin && (
-                    <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
+                    <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-2xs text-muted-foreground">
                       {canEditInPlace
                         ? t("connectionDialog.fromOriginEditable", {
                             origin: originName ?? "",
@@ -815,7 +815,7 @@ export function ConnectionDialog({
                               )}
                             </p>
                           ) : (
-                            <p className="-mt-1 text-[11px] text-muted-foreground">
+                            <p className="-mt-1 text-2xs text-muted-foreground">
                               {t(
                                 "connectionDialog.fields.connectionStringHint",
                               )}
@@ -1126,7 +1126,7 @@ export function ConnectionDialog({
                                 )}
                               />
                             </Field>
-                            <p className="-mt-1 text-[11px] text-muted-foreground">
+                            <p className="-mt-1 text-2xs text-muted-foreground">
                               {t("connectionDialog.ssh.localPortHint")}
                             </p>
 
@@ -1155,18 +1155,18 @@ export function ConnectionDialog({
                                 </SelectContent>
                               </Select>
                             </Field>
-                            <p className="-mt-1 text-[11px] text-muted-foreground">
+                            <p className="-mt-1 text-2xs text-muted-foreground">
                               {t("connectionDialog.ssh.hostKeyPolicyHint")}
                             </p>
 
                             {sshHost && (
-                              <div className="rounded-md border border-border px-3 py-2 text-[11px]">
+                              <div className="rounded-md border border-border px-3 py-2 text-2xs">
                                 <div className="mb-1 font-medium text-muted-foreground">
                                   {t("connectionDialog.ssh.trustedFingerprint")}
                                 </div>
                                 {trustedFingerprint ? (
                                   <div className="flex items-center gap-2">
-                                    <code className="flex-1 truncate font-mono text-[10px]">
+                                    <code className="flex-1 truncate font-mono text-3xs">
                                       {trustedFingerprint}
                                     </code>
                                     <Button
@@ -1328,7 +1328,7 @@ function Field({
       <Label>{label}</Label>
       {children}
       {hint && (
-        <p className="text-[11px] leading-snug text-muted-foreground">{hint}</p>
+        <p className="text-2xs leading-snug text-muted-foreground">{hint}</p>
       )}
     </div>
   );

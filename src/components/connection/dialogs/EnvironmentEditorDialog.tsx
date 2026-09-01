@@ -176,7 +176,7 @@ export function EnvironmentEditorDialog() {
           </DialogTitle>
         </DialogHeader>
         {isMirrored && (
-          <p className="rounded-md border border-border bg-muted/40 px-2.5 py-2 text-[11px] text-muted-foreground">
+          <p className="rounded-md border border-border bg-muted/40 px-2.5 py-2 text-2xs text-muted-foreground">
             {t("environments.mirroredCosmeticsHint")}
           </p>
         )}

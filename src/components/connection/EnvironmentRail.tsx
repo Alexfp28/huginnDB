@@ -297,7 +297,7 @@ function EnvironmentButton({
         )}
         <span
           className={cn(
-            "w-full truncate text-center text-[11px] leading-[1.15] tracking-tight text-muted-foreground",
+            "w-full truncate text-center text-2xs leading-[1.15] tracking-tight text-muted-foreground",
             isActive && "font-medium text-foreground",
           )}
         >
@@ -419,7 +419,7 @@ function SortableEnvironmentButton({
                 the weight, not only from the background tint. */}
             <span
               className={cn(
-                "w-full truncate text-center text-[11px] leading-[1.15] tracking-tight text-muted-foreground",
+                "w-full truncate text-center text-2xs leading-[1.15] tracking-tight text-muted-foreground",
                 isActive && "font-medium text-foreground",
               )}
             >

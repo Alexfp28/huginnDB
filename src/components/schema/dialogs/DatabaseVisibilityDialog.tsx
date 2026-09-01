@@ -171,7 +171,7 @@ export function DatabaseVisibilityDialog({
               />
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {fromOrigin
               ? t("schema.selectDatabases.scopeOriginHint")
               : scope === "environment"
@@ -182,7 +182,7 @@ export function DatabaseVisibilityDialog({
             <button
               onClick={clearOverride}
               disabled={submitting}
-              className="text-[11px] text-brand underline-offset-2 hover:underline disabled:opacity-50"
+              className="text-2xs text-brand underline-offset-2 hover:underline disabled:opacity-50"
             >
               {t("schema.selectDatabases.useProfileDefault")}
             </button>

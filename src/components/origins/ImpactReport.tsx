@@ -44,7 +44,7 @@ function Row({
         ? "text-destructive"
         : "text-muted-foreground";
   return (
-    <div className={cn("flex items-start gap-2 text-[11px]", toneClass)}>
+    <div className={cn("flex items-start gap-2 text-2xs", toneClass)}>
       <Icon className="mt-0.5 h-3 w-3 shrink-0" />
       <div className="min-w-0 flex-1">{children}</div>
     </div>

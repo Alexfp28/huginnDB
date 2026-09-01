@@ -84,9 +84,7 @@ function Panel({
     <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border">
       <div className="flex items-center justify-between gap-2 border-b border-border bg-card/40 px-2.5 py-1.5">
         <span className="truncate text-xs font-semibold">{title}</span>
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          {count}
-        </span>
+        <span className="shrink-0 text-2xs text-muted-foreground">{count}</span>
       </div>
       <div className="border-b border-border p-1.5">
         <Input
@@ -98,7 +96,7 @@ function Panel({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {visible.length === 0 ? (
-          <p className="p-3 text-center text-[11px] text-muted-foreground">
+          <p className="p-3 text-center text-2xs text-muted-foreground">
             {needle ? t("originEditor.noMatches") : empty}
           </p>
         ) : (

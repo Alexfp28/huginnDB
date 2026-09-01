@@ -378,12 +378,12 @@ export function CommandPalette() {
                         </span>
                       )}
                       {cmd.combo && (
-                        <Kbd className="shrink-0 text-[10px] text-muted-foreground">
+                        <Kbd className="shrink-0 text-3xs text-muted-foreground">
                           {cmd.combo}
                         </Kbd>
                       )}
                       {activeRow && (
-                        <Kbd className="shrink-0 text-[10px] text-muted-foreground">
+                        <Kbd className="shrink-0 text-3xs text-muted-foreground">
                           ↵
                         </Kbd>
                       )}

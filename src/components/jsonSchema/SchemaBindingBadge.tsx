@@ -36,7 +36,11 @@ import {
 } from "@/components/ui/dropdown";
 import { buttonVariants } from "@/components/ui/button";
 import { InferSchemaDialog } from "@/components/jsonSchema/dialogs/InferSchemaDialog";
-import { useJsonSchemas, draftBinding, relationKey } from "@/stores/jsonSchemas";
+import {
+  useJsonSchemas,
+  draftBinding,
+  relationKey,
+} from "@/stores/jsonSchemas";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { declaresOwnSchema } from "@/lib/monaco/monacoJson";
 import { formatScopeLabel } from "@/lib/jsonSchema/scopeLabel";
@@ -180,7 +184,7 @@ export function SchemaBindingBadge({
   // table row still uses (`compact`, unchanged below).
   const triggerBase = isHeader
     ? cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")
-    : "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] leading-none transition-colors";
+    : "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-3xs leading-none transition-colors";
   const bound = Boolean(resolved);
 
   return (
@@ -207,7 +211,9 @@ export function SchemaBindingBadge({
                 (isHeader
                   ? "border-brand/40 bg-brand/10 text-brand hover:border-brand/40 hover:bg-brand/20 hover:text-brand"
                   : "border-brand/40 bg-brand/10 text-brand hover:bg-brand/20"),
-              !bound && !isHeader && "border-border/60 text-muted-foreground/70 hover:text-foreground",
+              !bound &&
+                !isHeader &&
+                "border-border/60 text-muted-foreground/70 hover:text-foreground",
               // A document declaring its own `$schema` wins over any binding, so
               // say so rather than showing a chip that is quietly not in effect.
               declared &&
@@ -218,7 +224,9 @@ export function SchemaBindingBadge({
               className,
             )}
           >
-            <FileJson className={cn("shrink-0", isHeader ? "h-3.5 w-3.5" : "h-3 w-3")} />
+            <FileJson
+              className={cn("shrink-0", isHeader ? "h-3.5 w-3.5" : "h-3 w-3")}
+            />
             {declared ? (
               <span>{t("jsonSchemas.badge.ownSchema")}</span>
             ) : resolved ? (
@@ -237,7 +245,7 @@ export function SchemaBindingBadge({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="start" className="w-64">
-          <div className="px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+          <div className="px-2 py-1.5 font-mono text-2xs text-muted-foreground">
             {t("jsonSchemas.badge.menuTitle", { column: binding.column })}
           </div>
           <DropdownMenuSeparator />
@@ -261,7 +269,9 @@ export function SchemaBindingBadge({
           <DropdownMenuSeparator />
           <DropdownMenuItem
             disabled={!valueIsJson}
-            title={valueIsJson ? undefined : t("jsonSchemas.badge.inferNeedsJson")}
+            title={
+              valueIsJson ? undefined : t("jsonSchemas.badge.inferNeedsJson")
+            }
             onSelect={(e: Event) => {
               // Keep the dropdown from stealing focus back before the dialog
               // mounts.

@@ -79,7 +79,7 @@ export function UpdatesCard({ currentVersion }: Props) {
   return (
     <div className="rounded-md border border-border bg-card/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
           {t("update.sectionTitle")}
         </div>
         <Button
@@ -109,11 +109,11 @@ export function UpdatesCard({ currentVersion }: Props) {
             })}
           </div>
           {releaseNotes && (
-            <details className="text-[11px] text-muted-foreground">
+            <details className="text-2xs text-muted-foreground">
               <summary className="cursor-pointer hover:text-foreground">
                 {t("update.releaseNotes")}
               </summary>
-              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/40 p-2 font-mono text-[10px]">
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/40 p-2 font-mono text-3xs">
                 {releaseNotes}
               </pre>
             </details>
@@ -144,7 +144,7 @@ export function UpdatesCard({ currentVersion }: Props) {
               href="https://github.com/Alexfp28/huginnDB/releases"
               target="_blank"
               rel="noreferrer"
-              className="text-[11px] text-muted-foreground hover:text-brand hover:underline"
+              className="text-2xs text-muted-foreground hover:text-brand hover:underline"
             >
               {t("update.openReleases")}
             </a>
@@ -157,7 +157,7 @@ export function UpdatesCard({ currentVersion }: Props) {
                   style={{ width: `${progressPct ?? 0}%` }}
                 />
               </div>
-              <div className="text-[10px] text-muted-foreground">
+              <div className="text-3xs text-muted-foreground">
                 {formatBytes(downloadProgress.downloaded)}
                 {downloadProgress.total
                   ? ` / ${formatBytes(downloadProgress.total)}`

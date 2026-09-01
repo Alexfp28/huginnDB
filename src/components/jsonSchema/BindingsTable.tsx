@@ -69,7 +69,7 @@ export function BindingsTable({ onEdit }: Props) {
     <div className="overflow-hidden rounded-md border border-border">
       <table className="w-full border-collapse text-xs">
         <thead>
-          <tr className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+          <tr className="bg-muted/40 text-left text-2xs uppercase tracking-wide text-muted-foreground">
             <th className="w-8 border-b border-border px-1.5 py-1.5 font-medium">
               {t("jsonSchemas.bindings.col.rank")}
             </th>

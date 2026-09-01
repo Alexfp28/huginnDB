@@ -137,9 +137,7 @@ export function ConnectionRailRow({
               glyph, not a different tooltip on the same one. */}
           <VanishedOriginMark profileId={profile.id} />
         </div>
-        <div className="truncate text-[11px] text-muted-foreground">
-          {subline}
-        </div>
+        <div className="truncate text-2xs text-muted-foreground">{subline}</div>
       </div>
     </div>
   );

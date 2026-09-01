@@ -116,7 +116,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
               <p className="text-xs font-medium">
                 {t("transfer.exportJsonSchemas.includeBindings")}
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 {t("transfer.exportJsonSchemas.includeBindingsHint")}
               </p>
             </div>

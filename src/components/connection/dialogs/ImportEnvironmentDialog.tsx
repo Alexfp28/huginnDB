@@ -116,7 +116,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               {t("transfer.importEnvironment.pickDescription")}
             </p>
             {error && (
-              <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/40 px-3 py-2 text-[11px] text-destructive">
+              <div className="flex items-start gap-2 rounded-md bg-destructive/10 border border-destructive/40 px-3 py-2 text-2xs text-destructive">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {error}
               </div>
@@ -154,7 +154,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                   <span className="truncate text-xs font-medium">
                     {env.name || t("environments.defaultName")}
                   </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                  <span className="shrink-0 text-3xs text-muted-foreground">
                     {t("transfer.importEnvironment.reviewCounts", {
                       connections: env.connectionCount,
                       origins: env.origins.length,
@@ -163,7 +163,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 </div>
               ))}
             </div>
-            {error && <p className="text-[11px] text-destructive">{error}</p>}
+            {error && <p className="text-2xs text-destructive">{error}</p>}
             <DialogActions
               size="sm"
               onCancel={handleClose}
@@ -178,7 +178,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
         {/* Step: passphrase */}
         {step === "passphrase" && (
           <div className="space-y-4 py-2">
-            <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-[11px] text-muted-foreground">
+            <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-2xs text-muted-foreground">
               <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {t("transfer.import.passphraseRequired")}
             </div>
@@ -199,7 +199,7 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
                 autoFocus
               />
             </div>
-            {error && <p className="text-[11px] text-destructive">{error}</p>}
+            {error && <p className="text-2xs text-destructive">{error}</p>}
             <DialogActions
               size="sm"
               onCancel={handleClose}

@@ -134,6 +134,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **La micro-tipografía densa está por fin en la escala para la que se creó.**
+  286 sitios escribían `text-[10px]`, `text-[11px]` o `text-[9px]` a pelo, que es
+  justo lo que los tokens `3xs`/`2xs` de la app vinieron a sustituir: esa
+  migración solo había cubierto un tercio del camino. Los tamaños en píxeles no
+  cambian, pero el interlineado queda fijado en vez de heredado, así que dos
+  etiquetas del mismo tamaño puestas una al lado de otra por fin se alinean. Seis
+  etiquetas estaban por debajo del suelo de legibilidad de 10px que la escala
+  existe para imponer y se han subido a él.
+
 - **Sesenta y nueve esquinas siguen ahora el radio del tema.** El `rounded` a
   secas de Tailwind son 4px fijos que quedan fuera de la escala de radios de la
   app, así que esas esquinas eran las únicas de toda la interfaz que nunca podían

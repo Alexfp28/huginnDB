@@ -93,7 +93,7 @@ export function StatusBar() {
     : undefined;
 
   return (
-    <div className="flex h-7 items-center justify-between border-t border-border bg-card/60 px-2 text-[11px] text-muted-foreground">
+    <div className="flex h-7 items-center justify-between border-t border-border bg-card/60 px-2 text-2xs text-muted-foreground">
       {/* Left — connections + selection stats */}
       <div className="flex items-center gap-2">
         <EnvironmentSwitcher />
@@ -191,10 +191,10 @@ function HistoryMenu({ count }: { count: number }) {
                   onSelect={() => openEntry(e.connectionId, e.sql)}
                   className="flex-col items-start gap-0.5"
                 >
-                  <span className="line-clamp-2 w-full font-mono text-[11px] text-foreground">
+                  <span className="line-clamp-2 w-full font-mono text-2xs text-foreground">
                     {e.sql}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="text-3xs text-muted-foreground">
                     {e.error
                       ? e.error
                       : `${e.rowsAffected} ${t("statusBar.rows")} · ${e.elapsedMs} ${t("statusBar.ms")}`}

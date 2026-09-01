@@ -63,7 +63,7 @@ export function AdHocDriverDialog({
             </Button>
           ))}
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-2xs text-muted-foreground">
           {t("adhocDriver.note")}
         </p>
       </DialogContent>

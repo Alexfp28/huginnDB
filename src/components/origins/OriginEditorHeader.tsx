@@ -55,7 +55,7 @@ export function OriginEditorHeader({
           <h2 className="truncate text-base font-semibold">{doc.name}</h2>
           <span
             className={cn(
-              "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px]",
+              "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-3xs",
               readOnly
                 ? "bg-muted text-muted-foreground"
                 : "bg-primary/10 text-primary",
@@ -71,20 +71,20 @@ export function OriginEditorHeader({
               ? t("originEditor.role.readOnly")
               : t("originEditor.role.publisher")}
           </span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">
+          <span className="shrink-0 text-2xs text-muted-foreground">
             {t("originEditor.revision", { revision })}
           </span>
           {dirty && !readOnly && (
-            <span className="shrink-0 text-[11px] text-amber-600 dark:text-amber-500">
+            <span className="shrink-0 text-2xs text-amber-600 dark:text-amber-500">
               {t("originEditor.unsaved")}
             </span>
           )}
         </div>
-        <div className="truncate font-mono text-[11px] text-muted-foreground">
+        <div className="truncate font-mono text-2xs text-muted-foreground">
           {doc.path}
         </div>
         {doc.role === "publisher" && !doc.writable.writable && (
-          <div className="mt-1 flex items-start gap-1.5 text-[11px] text-destructive">
+          <div className="mt-1 flex items-start gap-1.5 text-2xs text-destructive">
             <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
             <span className="break-words">
               {t("originEditor.notWritable", {
@@ -94,7 +94,7 @@ export function OriginEditorHeader({
           </div>
         )}
         {stale && (
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-destructive">
+          <div className="mt-1 flex items-center gap-2 text-2xs text-destructive">
             <AlertTriangle className="h-3 w-3 shrink-0" />
             <span>{t("originEditor.stale")}</span>
             <button className="underline" onClick={onReload}>

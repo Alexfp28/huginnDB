@@ -41,7 +41,11 @@ import {
 import { PipelineEditor } from "@/components/aggregation/PipelineEditor";
 import { PipelineOutput } from "@/components/aggregation/PipelineOutput";
 import { STAGE_CATALOG } from "@/lib/mongo/stages";
-import { operatorOf, withOperator, type PipelineStage } from "@/lib/mongo/pipeline";
+import {
+  operatorOf,
+  withOperator,
+  type PipelineStage,
+} from "@/lib/mongo/pipeline";
 import { cn } from "@/lib/utils";
 import type { StagePreview } from "@/types";
 import type { MongoCompletionEntry } from "@/lib/monaco/monacoMongo";
@@ -116,7 +120,9 @@ export function StageCard({
       }}
       className={cn(
         "rounded-lg border bg-card transition-opacity",
-        stage.enabled ? "border-border" : "border-dashed border-border opacity-60",
+        stage.enabled
+          ? "border-border"
+          : "border-dashed border-border opacity-60",
         dragging && "opacity-40",
         // Drop indicator: a brand rule on the edge the card would land above,
         // rather than moving anything mid-drag.
@@ -139,7 +145,11 @@ export function StageCard({
         <button
           onClick={onToggleCollapsed}
           className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
-          title={collapsed ? t("aggregation.stage.expand") : t("aggregation.stage.collapse")}
+          title={
+            collapsed
+              ? t("aggregation.stage.expand")
+              : t("aggregation.stage.collapse")
+          }
         >
           {collapsed ? (
             <ChevronRight className="h-3.5 w-3.5" />
@@ -148,7 +158,7 @@ export function StageCard({
           )}
         </button>
 
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-2xs uppercase tracking-wider text-muted-foreground">
           {t("aggregation.stage.label", { index: index + 1 })}
         </span>
 
@@ -156,16 +166,22 @@ export function StageCard({
           value={known && operator ? operator : ""}
           onValueChange={(next) => onChange(withOperator(stage.body, next))}
         >
-          <SelectTrigger className="h-6 w-44 font-mono text-[11px]">
+          <SelectTrigger className="h-6 w-44 font-mono text-2xs">
             {/* An operator the catalogue doesn't know (a newer server stage,
                 typed by hand) still has to read correctly in the header, so the
                 trigger falls back to the parsed name rather than showing the
                 placeholder over a perfectly valid stage. */}
-            <SelectValue placeholder={operator ?? t("aggregation.stage.pick")} />
+            <SelectValue
+              placeholder={operator ?? t("aggregation.stage.pick")}
+            />
           </SelectTrigger>
           <SelectContent>
             {STAGE_CATALOG.map((s) => (
-              <SelectItem key={s.operator} value={s.operator} className="font-mono text-[11px]">
+              <SelectItem
+                key={s.operator}
+                value={s.operator}
+                className="font-mono text-2xs"
+              >
                 {s.operator}
               </SelectItem>
             ))}
@@ -177,7 +193,7 @@ export function StageCard({
         {stage.enabled && preview?.result && (
           <span
             className={cn(
-              "rounded-sm px-1.5 py-0.5 font-mono text-[10px]",
+              "rounded-sm px-1.5 py-0.5 font-mono text-3xs",
               emptyOutput
                 ? "bg-warning/15 text-warning"
                 : "bg-muted text-muted-foreground",
@@ -240,7 +256,7 @@ export function StageCard({
                       emptyLabel={t("aggregation.stage.previewPending")}
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-4 text-center text-[11px] text-muted-foreground">
+                    <div className="flex h-full items-center justify-center px-4 text-center text-2xs text-muted-foreground">
                       {t("aggregation.stage.disabledHint")}
                     </div>
                   )}

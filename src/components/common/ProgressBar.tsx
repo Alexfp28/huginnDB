@@ -33,7 +33,7 @@ export function ProgressBar({
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="text-[10px] text-muted-foreground">{label}</p>
+      <p className="text-3xs text-muted-foreground">{label}</p>
     </div>
   );
 }

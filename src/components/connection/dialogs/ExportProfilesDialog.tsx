@@ -116,7 +116,7 @@ export function ExportProfilesDialog({ open, onOpenChange }: Props) {
                     onChange={() => toggle(p.id)}
                   />
                   <span className="flex-1 truncate text-xs">{p.name}</span>
-                  <span className="text-[10px] uppercase text-muted-foreground">
+                  <span className="text-3xs uppercase text-muted-foreground">
                     {p.driver}
                   </span>
                 </label>

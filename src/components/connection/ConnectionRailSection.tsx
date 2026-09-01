@@ -122,7 +122,7 @@ export function ConnectionRailSection({
     <div>
       <div
         className={cn(
-          "flex items-center gap-1 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider",
+          "flex items-center gap-1 px-3 py-1 text-3xs font-semibold uppercase tracking-wider",
           "border-y border-border/60 bg-muted/30 text-muted-foreground",
         )}
       >
@@ -156,7 +156,7 @@ export function ConnectionRailSection({
             ({section.ids.length})
           </span>
           {section.readOnly && (
-            <span className="shrink-0 text-[9px] font-normal normal-case text-muted-foreground/60">
+            <span className="shrink-0 text-3xs font-normal normal-case text-muted-foreground/60">
               · {t("connections.sharedReadOnly")}
             </span>
           )}

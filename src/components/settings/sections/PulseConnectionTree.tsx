@@ -101,7 +101,7 @@ export function PulseConnectionTree({
                 onClick={() =>
                   setFoldedSections((prev) => ({ ...prev, [key]: !prev[key] }))
                 }
-                className="flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] text-muted-foreground hover:text-foreground"
+                className="flex min-w-0 flex-1 items-center gap-1 text-left text-2xs text-muted-foreground hover:text-foreground"
               >
                 {collapsed ? (
                   <ChevronRight className="h-3 w-3 shrink-0" />

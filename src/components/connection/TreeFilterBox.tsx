@@ -201,7 +201,7 @@ export function ScopeChip({
   return (
     <span
       title={title}
-      className="flex min-w-0 max-w-full items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-1.5 py-px text-[10px] text-brand"
+      className="flex min-w-0 max-w-full items-center gap-1 rounded-full border border-brand/30 bg-brand/10 px-1.5 py-px text-3xs text-brand"
     >
       {driver && <DriverBadge driver={driver} />}
       <span className="truncate">{label}</span>

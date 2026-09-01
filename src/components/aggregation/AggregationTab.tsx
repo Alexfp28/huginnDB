@@ -501,7 +501,7 @@ export function AggregationTab({
           {source || t("aggregation.noSource")}
         </span>
         {boundView && (
-          <span className="rounded-sm bg-brand/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-brand">
+          <span className="rounded-sm bg-brand/15 px-1.5 py-0.5 text-3xs uppercase tracking-wider text-brand">
             {t("aggregation.boundToView", { name: boundView })}
           </span>
         )}
@@ -596,7 +596,7 @@ export function AggregationTab({
           <div className="flex items-center gap-1.5">
             <Label
               htmlFor={`${tabId}-sample-size`}
-              className="text-[11px] font-normal text-muted-foreground"
+              className="text-2xs font-normal text-muted-foreground"
             >
               {t("aggregation.sampleSize")}
             </Label>
@@ -606,13 +606,13 @@ export function AggregationTab({
             >
               <SelectTrigger
                 id={`${tabId}-sample-size`}
-                className="h-6 w-16 text-[11px]"
+                className="h-6 w-16 text-2xs"
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {SAMPLE_SIZES.map((n) => (
-                  <SelectItem key={n} value={String(n)} className="text-[11px]">
+                  <SelectItem key={n} value={String(n)} className="text-2xs">
                     {n}
                   </SelectItem>
                 ))}
@@ -631,7 +631,7 @@ export function AggregationTab({
             />
             <Label
               htmlFor={`${tabId}-show-preview`}
-              className="text-[11px] font-normal text-muted-foreground"
+              className="text-2xs font-normal text-muted-foreground"
             >
               {t("aggregation.preview")}
             </Label>
@@ -651,7 +651,7 @@ export function AggregationTab({
       {/* A pipeline error that isn't tied to one stage (a bad source, a server
           refusal) has nowhere else to surface in stage mode. */}
       {editorMode === "stages" && pipelineError && (
-        <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 font-mono text-[11px] text-destructive">
+        <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-1.5 font-mono text-2xs text-destructive">
           {pipelineError}
         </div>
       )}
@@ -731,7 +731,7 @@ export function AggregationTab({
             </div>
           )}
           {finalPreview?.error && (
-            <div className="rounded-lg bg-destructive/10 p-3 font-mono text-[11px] text-destructive">
+            <div className="rounded-lg bg-destructive/10 p-3 font-mono text-2xs text-destructive">
               {finalPreview.error}
             </div>
           )}
@@ -753,7 +753,7 @@ export function AggregationTab({
               <PanelResizeHandle className="w-px bg-border transition-colors hover:bg-brand/40" />
               <Panel defaultSize={45} minSize={20}>
                 <div className="flex h-full flex-col">
-                  <div className="border-b border-border px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="border-b border-border px-3 py-1 text-3xs uppercase tracking-wider text-muted-foreground">
                     {t("aggregation.outputTitle")}
                   </div>
                   <PipelineOutput

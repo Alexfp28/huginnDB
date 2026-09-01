@@ -66,7 +66,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
   return (
     <div className="rounded-md border border-border bg-card/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
           {t("settings.about.patchNotes")}
         </div>
         <Select value={activeVersion} onValueChange={(v) => setSelected(v)}>
@@ -100,7 +100,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
         ) : (
           <>
             {release.date && (
-              <div className="font-mono text-[10px] text-muted-foreground">
+              <div className="font-mono text-3xs text-muted-foreground">
                 {release.date}
               </div>
             )}
@@ -128,7 +128,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
         )}
       </div>
 
-      <div className="mt-2 text-[11px]">
+      <div className="mt-2 text-2xs">
         <a
           href="https://github.com/Alexfp28/huginnDB/blob/main/CHANGELOG.md"
           target="_blank"

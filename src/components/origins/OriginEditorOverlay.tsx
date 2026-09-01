@@ -287,7 +287,7 @@ export function OriginEditorOverlay() {
                         <span className="text-sm">
                           {t(`originEditor.panes.${p.id}.label`)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="text-3xs text-muted-foreground">
                           {t(`originEditor.panes.${p.id}.desc`)}
                         </span>
                       </div>

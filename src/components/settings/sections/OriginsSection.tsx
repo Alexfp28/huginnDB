@@ -277,7 +277,7 @@ export function OriginsSection() {
                       matter what this says. */}
                   <span
                     className={cn(
-                      "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px]",
+                      "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-3xs",
                       (o.role ?? "consumer") === "publisher"
                         ? "bg-primary/10 text-primary"
                         : "bg-muted text-muted-foreground",
@@ -291,7 +291,7 @@ export function OriginsSection() {
                     {t(`origins.role.${o.role ?? "consumer"}`)}
                   </span>
                   {o.maintainer && (
-                    <span className="shrink-0 truncate text-[10px] text-muted-foreground">
+                    <span className="shrink-0 truncate text-3xs text-muted-foreground">
                       {t("origins.curatedBy", { who: o.maintainer })}
                     </span>
                   )}
@@ -299,10 +299,10 @@ export function OriginsSection() {
                 {/* The path is the identifying detail when two origins share a
                     name, and it's what the user checks when a sync fails, so it
                     stays visible rather than living in a tooltip. */}
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                <div className="truncate font-mono text-2xs text-muted-foreground">
                   {o.path}
                 </div>
-                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                <div className="mt-0.5 text-2xs text-muted-foreground">
                   {o.lastSyncedAt
                     ? t("origins.lastSynced", {
                         when: formatDateTime(o.lastSyncedAt),
@@ -310,7 +310,7 @@ export function OriginsSection() {
                     : t("origins.neverSynced")}
                 </div>
                 {errors[o.id] && (
-                  <div className="mt-1 break-words text-[11px] text-destructive">
+                  <div className="mt-1 break-words text-2xs text-destructive">
                     {errors[o.id]}
                   </div>
                 )}
@@ -434,7 +434,7 @@ export function OriginsSection() {
               setDraft((d) => ({ ...d, passphrase: e.target.value }))
             }
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {t("origins.passphraseHint")}
           </p>
           <div className="flex justify-end gap-2">
@@ -493,10 +493,10 @@ export function OriginsSection() {
               setEdit((d) => ({ ...d, passphrase: e.target.value }))
             }
           />
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {t("origins.passphraseKeepHint")}
           </p>
-          <label className="flex items-start gap-2 text-[11px]">
+          <label className="flex items-start gap-2 text-2xs">
             <Checkbox
               className="mt-0.5"
               checked={edit.role === "publisher"}
@@ -538,7 +538,7 @@ export function OriginsSection() {
           <div className="text-xs font-semibold">
             {t("origins.newDocumentTitle")}
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-2xs text-muted-foreground">
             {t("origins.newDocumentHint")}
           </p>
           <div className="flex items-center gap-2">
@@ -605,7 +605,7 @@ export function OriginsSection() {
         description={
           <div className="space-y-1">
             <p>{t("origins.role.confirmBody")}</p>
-            <p className="break-all font-mono text-[11px]">{edit.path}</p>
+            <p className="break-all font-mono text-2xs">{edit.path}</p>
             <p>{t("origins.role.confirmReversible")}</p>
           </div>
         }

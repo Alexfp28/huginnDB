@@ -31,7 +31,7 @@ export function IndexesSectionHeader({
         <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
       )}
       <LayoutList className="h-3 w-3 text-muted-foreground/70" />
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className="text-2xs text-muted-foreground">{label}</span>
     </button>
   );
 }

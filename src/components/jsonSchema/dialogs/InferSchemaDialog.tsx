@@ -188,7 +188,7 @@ export function InferSchemaDialog({
                 <p className="text-xs font-medium">
                   {t("jsonSchemas.infer.strict")}
                 </p>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   {t("jsonSchemas.infer.strictHint")}
                 </p>
               </div>
@@ -202,17 +202,17 @@ export function InferSchemaDialog({
               <p className="text-xs font-medium text-muted-foreground">
                 {t("jsonSchemas.infer.preview")}
               </p>
-              <pre className="max-h-56 overflow-auto rounded-md border border-border bg-muted/30 p-2 font-mono text-[11px] leading-snug">
+              <pre className="max-h-56 overflow-auto rounded-md border border-border bg-muted/30 p-2 font-mono text-2xs leading-snug">
                 {draft?.body ?? "…"}
               </pre>
               {draft &&
                 (draft.stats.truncatedArrays || draft.stats.truncatedDepth) && (
-                  <p className="text-[11px] text-warning">
+                  <p className="text-2xs text-warning">
                     {t("jsonSchemas.infer.truncated")}
                   </p>
                 )}
               {draft && draft.stats.mixedPaths.length > 0 && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   {t("jsonSchemas.infer.mixed", {
                     paths: draft.stats.mixedPaths.join(", "),
                   })}

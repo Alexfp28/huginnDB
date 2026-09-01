@@ -400,7 +400,7 @@ export function StructureEditorTab({
             />
           )}
           {isReadOnly ? (
-            <span className="rounded-sm bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+            <span className="rounded-sm bg-muted px-2 py-1 text-2xs text-muted-foreground">
               {ddlReadOnlyReason(driver) === "mssql"
                 ? t("structure.readOnlySqlServer")
                 : t("structure.readOnlyMongo")}
@@ -601,7 +601,7 @@ function ColumnsEditor({
       <div className="overflow-hidden rounded-md border border-border">
         <table className="w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+            <tr className="bg-muted/40 text-left text-2xs uppercase tracking-wide text-muted-foreground">
               <th className="w-9 border-b border-border px-1.5 py-1.5 font-medium">
                 #
               </th>

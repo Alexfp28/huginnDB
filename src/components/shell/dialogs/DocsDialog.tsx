@@ -170,7 +170,7 @@ export function DocsDialog() {
                     <span className="min-w-0 flex-1">
                       <span className="block text-sm">{t(doc.titleKey)}</span>
                       {date && (
-                        <span className="block text-[10px] text-muted-foreground">
+                        <span className="block text-3xs text-muted-foreground">
                           {t("docs.updated", { date })}
                         </span>
                       )}
@@ -238,7 +238,7 @@ export function DocsDialog() {
             ) : (
               <>
                 {activeDate && (
-                  <div className="mb-3 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <div className="mb-3 text-2xs uppercase tracking-wide text-muted-foreground">
                     {t("docs.updated", { date: activeDate })}
                   </div>
                 )}
@@ -265,7 +265,7 @@ export function DocsDialog() {
                               {s.title}
                             </span>
                             {s.subs.length > 0 && (
-                              <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                              <span className="mt-0.5 block text-2xs leading-snug text-muted-foreground">
                                 {s.subs.map((x) => x.title).join(" · ")}
                               </span>
                             )}

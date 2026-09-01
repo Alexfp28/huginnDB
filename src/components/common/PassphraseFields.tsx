@@ -31,9 +31,7 @@ export function passphraseAccepted(
   passphrase: string,
   confirm: string,
 ): boolean {
-  return (
-    passphrase.length >= MIN_PASSPHRASE_LENGTH && passphrase === confirm
-  );
+  return passphrase.length >= MIN_PASSPHRASE_LENGTH && passphrase === confirm;
 }
 
 interface Props {
@@ -88,7 +86,7 @@ export function PassphraseFields({
           className="h-8 text-xs"
         />
         {mismatch && (
-          <p className="text-[11px] text-destructive">
+          <p className="text-2xs text-destructive">
             {t("transfer.export.passphraseMismatch")}
           </p>
         )}

@@ -30,7 +30,13 @@ interface Props {
   children: React.ReactNode;
 }
 
-export function PrefRow({ label, description, htmlFor, prefId, children }: Props) {
+export function PrefRow({
+  label,
+  description,
+  htmlFor,
+  prefId,
+  children,
+}: Props) {
   const highlightPrefId = useSettingsDialog((s) => s.highlightPrefId);
   const clearHighlight = useSettingsDialog((s) => s.clearHighlight);
   const [flashing, setFlashing] = useState(false);
@@ -74,7 +80,7 @@ export function PrefRow({ label, description, htmlFor, prefId, children }: Props
           {label}
         </Label>
         {description && (
-          <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+          <div className="mt-0.5 text-2xs leading-snug text-muted-foreground">
             {description}
           </div>
         )}

@@ -54,7 +54,7 @@ export function StageRail({ stages, previews, onSelect, onAdd }: Props) {
               onClick={() => onSelect(i)}
               title={t("aggregation.rail.goTo", { index: i + 1 })}
               className={cn(
-                "rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors",
+                "rounded-md border px-2 py-0.5 font-mono text-2xs transition-colors",
                 "hover:border-brand/50 hover:bg-brand/10",
                 !stage.enabled &&
                   "border-dashed text-muted-foreground opacity-60",

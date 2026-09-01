@@ -127,7 +127,7 @@ export function ViewMenu() {
         </DropdownMenuItem>
 
         <DropdownMenuSeparator />
-        <div className="px-2 py-1 text-[10px] leading-snug text-muted-foreground/70">
+        <div className="px-2 py-1 text-3xs leading-snug text-muted-foreground/70">
           {t("menu.view.help")}
         </div>
       </DropdownMenuContent>

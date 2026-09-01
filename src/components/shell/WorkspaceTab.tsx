@@ -176,7 +176,8 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
     // connection" cue anymore.
     const distinctConnections = new Set(tabs.map((x) => x.connectionId)).size;
     const titleCollision =
-      tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length > 1;
+      tabs.filter((x) => x.kind === tab.kind && x.title === tab.title).length >
+      1;
     const showConn = distinctConnections > 1 || titleCollision;
     const connName = resolveConnectionLabel(profiles, tab.connectionId);
     // `tabLeafTitle` drops the `database.` prefix a table tab's title carries,
@@ -367,91 +368,88 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   return (
     <ContextMenu>
       <SimpleTooltip label={tooltip} side="bottom" delayDuration={300}>
-      <ContextMenuTrigger asChild>
-    <div
-      ref={tabRef}
-      className={cn(
-        // `max-w` is what makes the priority truncation below actually fire:
-        // a `.dv-tab` is a non-shrinking flex item in a scrolling strip, so
-        // without an explicit ceiling the tab just grows and nothing inside
-        // it ever has to give way.
-        "group/tab flex h-full min-w-0 max-w-[19rem] items-center gap-2 px-3 text-xs",
-        // The active tab already carries a bg-background surface + a 2px brand
-        // top cap from index.css (`.inner-dock .dv-active-tab`); here we add the
-        // matching weight so the label reads as the active one too.
-        isActive
-          ? "font-medium text-foreground"
-          : "text-muted-foreground/70",
-      )}
-      style={
-        tabColor
-          ? { boxShadow: accentBoxShadow(tabAccentStyle, tabColor) }
-          : undefined
-      }
-      // Middle-click (wheel button) closes the tab, matching editor
-      // conventions. `mousedown` preventDefault suppresses the browser's
-      // middle-click autoscroll affordance.
-      onMouseDown={(e) => {
-        if (e.button === 1) e.preventDefault();
-      }}
-      onAuxClick={(e) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          requestClose();
-        }
-      }}
-    >
-      {driver && <DriverBadge driver={driver} />}
-      {isPinned && (
-        <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
-      )}
-      {/*
-       * Two-part label with an explicit space priority: the connection
-       * context is the disposable half (it repeats across every tab of that
-       * connection, and the driver badge already anchors it), the name is
-       * the half that tells two tabs apart, so the context is weighted to
-       * shrink several times faster and both carry a floor so neither
-       * collapses to a bare ellipsis. A hairline divider — not another "·" —
-       * separates them: `schema.table` is full of dots already, and one more
-       * read as part of the name.
-       */}
-      <span className="flex min-w-0 items-center gap-1.5">
-        {context && (
-          <>
-            <span
-              ref={contextFade.ref}
-              className={cn(
-                "min-w-[2.5rem] max-w-[8.5rem] shrink-[6] overflow-hidden whitespace-nowrap text-2xs text-muted-foreground/70",
-                contextFade.clipped && "fade-tail",
+        <ContextMenuTrigger asChild>
+          <div
+            ref={tabRef}
+            className={cn(
+              // `max-w` is what makes the priority truncation below actually fire:
+              // a `.dv-tab` is a non-shrinking flex item in a scrolling strip, so
+              // without an explicit ceiling the tab just grows and nothing inside
+              // it ever has to give way.
+              "group/tab flex h-full min-w-0 max-w-[19rem] items-center gap-2 px-3 text-xs",
+              // The active tab already carries a bg-background surface + a 2px brand
+              // top cap from index.css (`.inner-dock .dv-active-tab`); here we add the
+              // matching weight so the label reads as the active one too.
+              isActive
+                ? "font-medium text-foreground"
+                : "text-muted-foreground/70",
+            )}
+            style={
+              tabColor
+                ? { boxShadow: accentBoxShadow(tabAccentStyle, tabColor) }
+                : undefined
+            }
+            // Middle-click (wheel button) closes the tab, matching editor
+            // conventions. `mousedown` preventDefault suppresses the browser's
+            // middle-click autoscroll affordance.
+            onMouseDown={(e) => {
+              if (e.button === 1) e.preventDefault();
+            }}
+            onAuxClick={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                requestClose();
+              }
+            }}
+          >
+            {driver && <DriverBadge driver={driver} />}
+            {isPinned && (
+              <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
+            )}
+            {/*
+             * Two-part label with an explicit space priority: the connection
+             * context is the disposable half (it repeats across every tab of that
+             * connection, and the driver badge already anchors it), the name is
+             * the half that tells two tabs apart, so the context is weighted to
+             * shrink several times faster and both carry a floor so neither
+             * collapses to a bare ellipsis. A hairline divider — not another "·" —
+             * separates them: `schema.table` is full of dots already, and one more
+             * read as part of the name.
+             */}
+            <span className="flex min-w-0 items-center gap-1.5">
+              {context && (
+                <>
+                  <span
+                    ref={contextFade.ref}
+                    className={cn(
+                      "min-w-[2.5rem] max-w-[8.5rem] shrink-[6] overflow-hidden whitespace-nowrap text-2xs text-muted-foreground/70",
+                      contextFade.clipped && "fade-tail",
+                    )}
+                  >
+                    {context}
+                  </span>
+                  <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+                </>
               )}
-            >
-              {context}
+              <span
+                ref={nameFade.ref}
+                className={cn(
+                  "min-w-[4rem] shrink overflow-hidden whitespace-nowrap",
+                  nameFade.clipped && "fade-tail",
+                )}
+              >
+                {leaf}
+              </span>
             </span>
-            <span
-              aria-hidden
-              className="h-3 w-px shrink-0 bg-border"
-            />
-          </>
-        )}
-        <span
-          ref={nameFade.ref}
-          className={cn(
-            "min-w-[4rem] shrink overflow-hidden whitespace-nowrap",
-            nameFade.clipped && "fade-tail",
-          )}
-        >
-          {leaf}
-        </span>
-      </span>
-      {/*
-       * No explicit action menu here anymore — every action below (split,
-       * float, colour, close variants) lives in the right-click context menu
-       * on this same tab (see `ContextMenuContent` below). Drag-to-split
-       * still works natively.
-       */}
-      {closeButton}
-    </div>
-      </ContextMenuTrigger>
+            {/*
+             * No explicit action menu here anymore — every action below (split,
+             * float, colour, close variants) lives in the right-click context menu
+             * on this same tab (see `ContextMenuContent` below). Drag-to-split
+             * still works natively.
+             */}
+            {closeButton}
+          </div>
+        </ContextMenuTrigger>
       </SimpleTooltip>
       <ContextMenuContent className="text-xs">
         <ContextMenuItem onSelect={togglePin}>
@@ -482,7 +480,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         </ContextMenuItem>
         <ContextMenuSeparator />
         <div className="px-2 py-1.5">
-          <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
             {t("tabs.color")}
           </div>
           <div className="flex items-center gap-1">

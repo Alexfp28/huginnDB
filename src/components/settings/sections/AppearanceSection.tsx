@@ -151,7 +151,7 @@ export function AppearanceSection() {
     <div className="flex h-full flex-col gap-3">
       <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr] gap-3">
         <aside className="overflow-y-auto rounded-md border border-border bg-card/40">
-          <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
+          <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-3xs uppercase tracking-wider text-muted-foreground backdrop-blur">
             {t("settings.appearance.themes")}
             <IconButton
               size="xs"
@@ -175,7 +175,7 @@ export function AppearanceSection() {
             >
               <ThemeSwatch colors={theme[mode]} />
               <span className="flex-1 truncate">{theme.name}</span>
-              <span className="text-[9px] uppercase text-muted-foreground">
+              <span className="text-3xs uppercase text-muted-foreground">
                 {theme.builtin
                   ? t("settings.appearance.builtin")
                   : t("settings.appearance.custom")}
@@ -188,7 +188,7 @@ export function AppearanceSection() {
           <div className="flex items-center gap-2 border-b border-border bg-card/30 px-4 py-2">
             <div className="flex-1">
               <div className="text-sm font-medium">{active.name}</div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-2xs text-muted-foreground">
                 {active.builtin
                   ? t("settings.appearance.builtinInfo")
                   : t("settings.appearance.customInfo")}
@@ -274,7 +274,7 @@ export function AppearanceSection() {
             <div className="mt-5 flex flex-col gap-5">
               {COLOR_GROUPS.map((group) => (
                 <section key={group.id}>
-                  <div className="mb-2 border-b border-border/60 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <div className="mb-2 border-b border-border/60 pb-1 text-3xs uppercase tracking-wider text-muted-foreground">
                     {t(group.titleKey)}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -317,7 +317,7 @@ function DataViewGroup() {
   const listActive = grid.documentViewMode === "list";
   return (
     <section className="shrink-0 rounded-md border border-border px-4 pb-1">
-      <div className="border-b border-border/60 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+      <div className="border-b border-border/60 py-2 text-3xs uppercase tracking-wider text-muted-foreground">
         {t("settings.appearance.dataView.title")}
       </div>
       <PrefRow
@@ -423,7 +423,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
   ];
   return (
     <div>
-      <div className="mb-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+      <div className="mb-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
         {t("settings.appearance.preview")}
       </div>
       <div
@@ -442,7 +442,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
             HuginnDB
           </span>
           <span
-            className="rounded-sm px-1.5 py-0.5 text-[10px]"
+            className="rounded-sm px-1.5 py-0.5 text-3xs"
             style={{
               background: colors.accent,
               color: colors.accentForeground,
@@ -451,7 +451,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
             public
           </span>
           <button
-            className="ml-auto rounded-sm px-2 py-0.5 text-[10px] font-medium"
+            className="ml-auto rounded-sm px-2 py-0.5 text-3xs font-medium"
             style={{
               background: colors.primary,
               color: colors.primaryForeground,
@@ -467,14 +467,14 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
               SELECT * FROM users;
             </div>
             <div
-              className="mt-0.5 text-[11px]"
+              className="mt-0.5 text-2xs"
               style={{ color: colors.mutedForeground }}
             >
               42 rows · 8 ms
             </div>
           </div>
           <span
-            className="self-start rounded-sm px-1.5 py-0.5 text-[10px]"
+            className="self-start rounded-sm px-1.5 py-0.5 text-3xs"
             style={{
               background: colors.destructive,
               color: colors.destructiveForeground,
@@ -492,7 +492,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
               className="h-4 w-4 rounded-sm border"
               style={{ background: colors[s.key], borderColor: colors.border }}
             />
-            <span className="text-[10px] text-muted-foreground">{s.label}</span>
+            <span className="text-3xs text-muted-foreground">{s.label}</span>
           </div>
         ))}
       </div>
@@ -521,7 +521,7 @@ function ColorRow({
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-24 font-mono text-[11px]"
+        className="h-7 w-24 font-mono text-2xs"
       />
     </div>
   );

@@ -52,8 +52,7 @@ export function EmptyWatermark() {
   const environments = useEnvironments((s) => s.environments);
   // Same guard as `WorkspacePicker` itself — left main-window-only for now,
   // see that component's comment.
-  const showEnvironments =
-    isMainWindow() && environments.length > 1;
+  const showEnvironments = isMainWindow() && environments.length > 1;
   const showPicker = hasProfiles || showEnvironments;
 
   const [connDialogOpen, setConnDialogOpen] = useState(false);
@@ -73,7 +72,10 @@ export function EmptyWatermark() {
 
   return (
     <div className="relative flex h-full flex-col items-center overflow-y-auto p-6">
-      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 overflow-hidden"
+      >
         {/* The brand halftone, not a hand-rolled grid of `--border` dots: this
             is the same lattice the splash and the empty states use, so all four
             empty surfaces share one texture. The pitch is coarsened to 16px
@@ -150,7 +152,7 @@ export function EmptyWatermark() {
           onClick={() => togglePalette()}
           className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:text-foreground"
         >
-          <Kbd className="px-1.5 py-0.5 text-[10px] font-medium leading-normal text-muted-foreground">
+          <Kbd className="px-1.5 py-0.5 text-3xs font-medium leading-normal text-muted-foreground">
             {formatComboForDisplay(paletteCombo)}
           </Kbd>
           {t("commandPalette.title")}
@@ -160,7 +162,7 @@ export function EmptyWatermark() {
           onClick={() => openSettings()}
           className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:text-foreground"
         >
-          <Kbd className="px-1.5 py-0.5 text-[10px] font-medium leading-normal text-muted-foreground">
+          <Kbd className="px-1.5 py-0.5 text-3xs font-medium leading-normal text-muted-foreground">
             {formatComboForDisplay(settingsCombo)}
           </Kbd>
           {t("settings.title")}

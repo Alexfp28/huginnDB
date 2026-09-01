@@ -69,7 +69,7 @@ export function VanishedEnvironmentNotice({
           <div className="text-xs font-medium">
             {t("origins.vanishedEnvironments.titleNamed", { name })}
           </div>
-          <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+          <p className="mt-0.5 text-2xs leading-snug text-muted-foreground">
             {t("origins.vanishedEnvironments.body", {
               // Same fallback as `VanishedOriginNotice`: blank when the
               // reconciliation sweep raised this after the origin's name was
@@ -85,7 +85,7 @@ export function VanishedEnvironmentNotice({
           type="button"
           disabled={busy}
           title={t("origins.vanishedEnvironments.keepTooltip")}
-          className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-[11px] font-medium transition-colors hover:bg-accent disabled:opacity-50"
+          className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-2xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
           onClick={() => void run(() => adoptEnvironment(environmentId))}
         >
           {busy ? <Spinner size="xs" /> : <Check className="h-3 w-3" />}
@@ -94,7 +94,7 @@ export function VanishedEnvironmentNotice({
         <button
           type="button"
           disabled={busy}
-          className="flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
+          className="flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
           onClick={() => {
             if (
               !confirmIrreversible(

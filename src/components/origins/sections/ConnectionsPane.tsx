@@ -195,7 +195,7 @@ export function ConnectionsPane({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         {t("originEditor.connections.hint")}
       </p>
       <TransferList
@@ -215,7 +215,7 @@ export function ConnectionsPane({
               <DriverBadge driver={p.driver} />
               <span className="truncate text-xs">{p.name}</span>
               {p.group && (
-                <span className="shrink-0 truncate text-[10px] text-muted-foreground">
+                <span className="shrink-0 truncate text-3xs text-muted-foreground">
                   {p.group}
                 </span>
               )}
@@ -232,7 +232,7 @@ export function ConnectionsPane({
               <DriverBadge driver={c.driver} />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs">{c.name}</div>
-                <div className="truncate text-[10px] text-muted-foreground">
+                <div className="truncate text-3xs text-muted-foreground">
                   {envs?.length
                     ? envs.join(" · ")
                     : t("originEditor.connections.unassigned")}
@@ -257,7 +257,7 @@ export function ConnectionsPane({
           );
         }}
       />
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-3xs text-muted-foreground">
         {(["keep", "fromKeychain", "clear"] as const).map((kind) => {
           const Icon = SLOT_ICON[kind];
           return (

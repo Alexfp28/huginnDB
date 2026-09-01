@@ -182,7 +182,7 @@ export function ShortcutsSection() {
           on the whole set, and burying them past twenty-five rows meant nobody
           found them without scrolling to the bottom first. */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-2">
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {t("settings.shortcuts.summary", {
             total: ACTIONS.length,
             modified: modifiedCount,
@@ -389,8 +389,8 @@ function FilterChip({
       onClick={onClick}
       className={
         active
-          ? "flex items-center gap-1 rounded-full border border-brand bg-brand px-2.5 py-0.5 text-[11px] font-medium text-brand-foreground"
-          : "flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-[11px] text-muted-foreground hover:border-brand/60 hover:text-foreground"
+          ? "flex items-center gap-1 rounded-full border border-brand bg-brand px-2.5 py-0.5 text-2xs font-medium text-brand-foreground"
+          : "flex items-center gap-1 rounded-full border border-border px-2.5 py-0.5 text-2xs text-muted-foreground hover:border-brand/60 hover:text-foreground"
       }
     >
       {children}

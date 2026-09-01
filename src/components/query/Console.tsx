@@ -92,7 +92,7 @@ function Chip({
   return (
     <span
       className={cn(
-        "shrink-0 rounded-sm px-1 py-0.5 text-[9px] uppercase",
+        "shrink-0 rounded-sm px-1 py-0.5 text-3xs uppercase",
         className,
       )}
     >
@@ -219,7 +219,7 @@ export function Console() {
           <ChevronsDown className="h-3.5 w-3.5" />
         </Button>
         <div className="mx-1 h-5 w-px bg-border" />
-        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <label className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Checkbox
             size="xs"
             checked={kinds.sql}
@@ -227,7 +227,7 @@ export function Console() {
           />
           {t("console.kindSql")}
         </label>
-        <label className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <label className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Checkbox
             size="xs"
             checked={kinds.connection}
@@ -244,7 +244,7 @@ export function Console() {
           className="flex-1"
           inputClassName="font-mono"
         />
-        <div className="px-1 text-[10px] tabular-nums text-muted-foreground">
+        <div className="px-1 text-3xs tabular-nums text-muted-foreground">
           {filtered.length}/{entries.length}
         </div>
       </div>
@@ -280,7 +280,7 @@ export function Console() {
       {/* Detail pane */}
       {selected && (
         <div className="flex h-48 flex-col border-t border-border">
-          <div className="flex items-center gap-2 border-b border-border bg-card/40 px-2 py-1 font-mono text-[10px] text-muted-foreground">
+          <div className="flex items-center gap-2 border-b border-border bg-card/40 px-2 py-1 font-mono text-3xs text-muted-foreground">
             <span>{formatTime(selected.timestamp_ms)}</span>
             {selected.driver && (
               <Chip className="bg-muted text-muted-foreground">
@@ -303,7 +303,7 @@ export function Console() {
               <Button
                 size="sm"
                 variant="ghost"
-                className="ml-auto h-5 gap-1 px-1.5 text-[11px]"
+                className="ml-auto h-5 gap-1 px-1.5 text-2xs"
                 onClick={() =>
                   useFeedbackDialog
                     .getState()
@@ -326,7 +326,7 @@ export function Console() {
             </Button>
           </div>
           {selected.error && (
-            <div className="border-b border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-[11px] text-destructive">
+            <div className="border-b border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-2xs text-destructive">
               {selected.error}
             </div>
           )}
@@ -360,7 +360,7 @@ function ConsoleRow({ entry, selected, onClick }: ConsoleRowProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 border-b border-border/40 px-2 py-1 text-left font-mono text-[11px] hover:bg-accent",
+        "flex w-full items-center gap-2 border-b border-border/40 px-2 py-1 text-left font-mono text-2xs hover:bg-accent",
         selected && "bg-accent/40",
         isError && "border-l-2 border-l-destructive",
       )}

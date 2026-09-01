@@ -139,7 +139,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
 
         {step === "pick" && (
           <div className="space-y-3">
-            <p className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-[11px] text-primary">
+            <p className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-2xs text-primary">
               {t("transfer.importJsonSchemas.pickNote")}
             </p>
             <Button
@@ -193,7 +193,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
         {(step === "review" || step === "conflicts") &&
           analysis &&
           analysis.bindings_unresolvable > 0 && (
-            <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[11px] text-warning">
+            <p className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-2xs text-warning">
               {t("transfer.importJsonSchemas.unresolvedWarning", {
                 count: analysis.bindings_unresolvable,
               })}

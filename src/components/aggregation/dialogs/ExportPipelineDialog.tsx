@@ -85,11 +85,11 @@ export function ExportPipelineDialog({
         />
 
         {error ? (
-          <div className="rounded-md bg-destructive/10 p-3 font-mono text-[11px] text-destructive">
+          <div className="rounded-md bg-destructive/10 p-3 font-mono text-2xs text-destructive">
             {error}
           </div>
         ) : (
-          <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed">
+          <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-2xs leading-relaxed">
             {snippet || t("aggregation.export.pending")}
           </pre>
         )}

@@ -84,7 +84,10 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
 
     const rootRef = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
-    React.useImperativeHandle(ref, () => triggerRef.current as HTMLButtonElement);
+    React.useImperativeHandle(
+      ref,
+      () => triggerRef.current as HTMLButtonElement,
+    );
 
     // Initial prefetch (cache-first).
     React.useEffect(() => {
@@ -246,9 +249,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
           className={cn(
             "flex h-6 w-full min-w-0 items-center justify-between gap-1 rounded-sm border border-input bg-background px-1.5 font-mono text-xs",
             "focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20",
-            value === null
-              ? "italic text-muted-foreground"
-              : "text-foreground",
+            value === null ? "italic text-muted-foreground" : "text-foreground",
             className,
           )}
         >
@@ -281,16 +282,14 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                   }
                 }}
                 placeholder={
-                  tooLarge
-                    ? `Search ${refTable}…`
-                    : `Filter ${refTable}…`
+                  tooLarge ? `Search ${refTable}…` : `Filter ${refTable}…`
                 }
                 className="h-7 w-full rounded-sm border border-input bg-background px-2 text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
               />
               {tooLarge && !query.trim() && (
-                <div className="px-1 text-[10px] italic text-muted-foreground">
-                  Showing first {prefetched?.length ?? 0} rows · type to
-                  search all
+                <div className="px-1 text-3xs italic text-muted-foreground">
+                  Showing first {prefetched?.length ?? 0} rows · type to search
+                  all
                 </div>
               )}
             </div>
@@ -334,9 +333,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                     "flex w-full items-center gap-2 px-2 py-1 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground",
                     opt.value === value && "bg-accent/60",
                   )}
-                  title={
-                    opt.label ? `${opt.value} — ${opt.label}` : opt.value
-                  }
+                  title={opt.label ? `${opt.value} — ${opt.label}` : opt.value}
                 >
                   <span className="shrink-0">{opt.value}</span>
                   {opt.label && (

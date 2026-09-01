@@ -597,7 +597,7 @@ export function ConnectionsTree() {
             it can name a connection and a database, and on a narrow panel it
             wraps onto its own line instead of taking the input's. */}
         {(filtering || (scope.kind !== "all" && scopeProfile)) && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs">
             {scope.kind !== "all" && scopeProfile && (
               <ScopeChip
                 driver={scopeProfile.driver}
@@ -653,7 +653,7 @@ export function ConnectionsTree() {
           </div>
         )}
         {filtering && totals.cold > 0 && (
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs">
             <span className="text-muted-foreground/70">
               {t("connectionsTree.filter.partialCount", {
                 count: totals.matches,
@@ -666,7 +666,7 @@ export function ConnectionsTree() {
                 disabled={warming}
                 onClick={() => void handleWarmForSearch()}
                 title={t("connectionsTree.filter.searchUnloadedHint")}
-                className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-2xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
               >
                 {warming ? (
                   <Spinner size="xs" className="shrink-0" />
@@ -812,7 +812,7 @@ function ConnectionVisibilityDialog({
             type="button"
             variant="outline"
             size="sm"
-            className="h-7 shrink-0 px-2 text-[11px]"
+            className="h-7 shrink-0 px-2 text-2xs"
             disabled={filtered.length === 0}
             onClick={toggleAllFiltered}
           >

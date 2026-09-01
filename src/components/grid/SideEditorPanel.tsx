@@ -47,7 +47,10 @@ import { CellEditorBody } from "@/components/grid/dialogs/CellEditor";
 import { useCellEditor, type CellEditorTarget } from "@/stores/grid/cellEditor";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useTabs } from "@/stores/session/tabs";
-import { detectLanguage, type ContentLanguage } from "@/lib/grid/detectContentType";
+import {
+  detectLanguage,
+  type ContentLanguage,
+} from "@/lib/grid/detectContentType";
 import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 
@@ -273,7 +276,8 @@ export function SideEditorPanel() {
       }
     }
     window.addEventListener("keydown", onKey, { capture: true });
-    return () => window.removeEventListener("keydown", onKey, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", onKey, { capture: true });
   }, [t]);
 
   // Only active while a cell is loaded — with no target the panel shows the
@@ -329,7 +333,7 @@ export function SideEditorPanel() {
         <span className="truncate text-xs font-semibold">
           {target.columnName || t("cellEditor.title")}
         </span>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           {t("cellEditor.chars", { count: value.length })}
         </span>
         <Button
@@ -361,7 +365,7 @@ export function SideEditorPanel() {
         editorKey={editorKey}
       />
       {saveError && (
-        <div className="px-1 text-[11px] text-destructive">{saveError}</div>
+        <div className="px-1 text-2xs text-destructive">{saveError}</div>
       )}
       <div className="flex justify-end gap-2 px-1">
         <Button variant="outline" size="sm" onClick={forgetSession}>
