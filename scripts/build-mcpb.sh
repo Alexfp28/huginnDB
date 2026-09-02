@@ -24,6 +24,16 @@ PLATFORM="${2:?usage: build-mcpb.sh <binary> <platform>}"
 [ -f "$BINARY" ] || { echo "no sidecar at $BINARY" >&2; exit 1; }
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# On the Windows runner this `bash` is Git Bash (MSYS), whose `pwd` returns an
+# MSYS-style path (`/d/a/huginnDB/huginnDB`). That's fine for the coreutils
+# below, which are MSYS-aware, but `node` here is the native Windows binary —
+# it has no idea what `/d/...` means and `require()` just reports the literal
+# path as missing. `cygpath -m` (present on Git Bash, absent on Linux) gives
+# the same location in a form both native Windows tools and MSYS tools accept
+# (`D:/a/huginnDB/huginnDB`), so do the conversion once, up front.
+if command -v cygpath >/dev/null 2>&1; then
+  ROOT="$(cygpath -m "$ROOT")"
+fi
 STAGE="$ROOT/mcpb/build/stage"
 OUT_DIR="$ROOT/mcpb/build"
 
