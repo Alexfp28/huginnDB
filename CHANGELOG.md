@@ -555,6 +555,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   outlines for one field. The outer ring is now suppressed for the exact cell
   being inline-edited, since the field's own border already says so.
 
+- **A selected-but-not-editing cell's "view full value" button painted a
+  visibly mismatched patch over the cell.** Selecting a cell (without
+  entering edit mode) shows a small expand button for viewing the full value
+  (issue #78); it painted a flat `bg-background` behind itself so its
+  `sticky` positioning had an opaque surface to sit on, and that flat colour
+  never tracked the cell's own fill — selected, zebra-striped, hovered —
+  so it showed as a small rectangle a shade off from the cell around it. It's
+  transparent now, the same seam class `CellInput`'s own sticky button was
+  already fixed for; the accepted trade-off is that scrolling a very wide
+  column while both sticky and selected can show text passing underneath it.
+
 ## [1.20.0] — 2026-08-31
 
 ### Added

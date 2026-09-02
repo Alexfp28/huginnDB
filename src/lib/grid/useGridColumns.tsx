@@ -397,11 +397,14 @@ export function useGridColumns(
                   // `sticky` (not just `ml-auto`) so a wide column doesn't
                   // hide the button off the right edge of the scroll
                   // container until the user scrolls that specific cell into
-                  // view — same fix as the pinned-column background below,
-                  // opaque for the same reason: `sticky` promotes this
-                  // button to its own compositing layer, and a translucent
-                  // background would let the row's own text show through.
-                  className="sticky right-1 z-[1] ml-auto shrink-0 rounded bg-background px-1 text-muted-foreground/80 hover:text-foreground"
+                  // view. Deliberately no background: this cell's own fill
+                  // varies (selected, zebra, hover) and a flat `bg-background`
+                  // patch didn't track it, showing as a visibly mismatched
+                  // rectangle over a tinted cell — the same seam class
+                  // `CellInput`'s own sticky button was fixed for. Plain text
+                  // scrolling underneath while both sticky and selected is
+                  // the accepted trade-off for that.
+                  className="sticky right-1 z-[1] ml-auto shrink-0 rounded px-1 text-muted-foreground/80 hover:text-foreground"
                   onMouseDown={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {

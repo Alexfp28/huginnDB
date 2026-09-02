@@ -496,6 +496,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   anillo exterior ahora se suprime justo en la celda que se está editando en
   línea, ya que el propio campo ya lo indica.
 
+- **El botón de "ver el valor completo" de una celda seleccionada-pero-sin-
+  editar pintaba un parche visiblemente distinto sobre la celda.** Seleccionar
+  una celda (sin entrar en edición) muestra un pequeño botón para ver el valor
+  completo (issue #78); pintaba un `bg-background` plano detrás de sí mismo
+  para que su posicionamiento `sticky` tuviera una superficie opaca sobre la
+  que apoyarse, y ese color plano nunca seguía el propio relleno de la celda
+  —seleccionada, con la franja de cebra, en hover—, así que se veía como un
+  rectángulo de un tono distinto sobre la celda que lo rodeaba. Ahora es
+  transparente, la misma clase de costura que ya se había arreglado en el
+  botón `sticky` de `CellInput`; el compromiso aceptado es que, al hacer
+  scroll horizontal en una columna muy ancha con la celda a la vez sticky y
+  seleccionada, se puede ver el texto pasando por debajo.
+
 ## [1.20.0] — 2026-08-31
 
 ### Añadido
