@@ -16,7 +16,7 @@ use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::MongoConn;
 use mongodb::bson::{doc, Bson, Document};
 use serde_json::Value;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::schema::resolve_db;
 use super::shell::{self, MongoOp};
@@ -619,13 +619,37 @@ pub async fn count_collection(
             predicate.needle(),
             &predicate.search_columns,
         );
-        let total = coll.count_documents(filter).await?;
+        // Bounded, unlike the estimate above, because this one is a scan. A
+        // filtered count has no index to answer it from in the general case, so
+        // on a collection of tens of millions it runs for minutes — holding a
+        // pooled connection and competing with the data page the user is
+        // actually waiting on, to fill in a number in the footer.
+        //
+        // On timeout this errors, and the frontend's count path already treats
+        // a failure as non-fatal: the footer shows the current range without
+        // "/ N". That is the honest degradation. Falling back to
+        // `estimated_document_count` would be worse than showing nothing — it
+        // ignores the predicate, so it would report the whole collection as if
+        // it were the filtered total.
+        let total = coll
+            .count_documents(filter)
+            .max_time(Duration::from_millis(COUNT_TIMEOUT_MS))
+            .await?;
         Ok(CountResult {
             total,
             estimated: false,
         })
     }
 }
+
+/// Ceiling on a filtered document count.
+///
+/// The unfiltered case reads collection metadata in O(1); this one scans. Ten
+/// seconds is generous for a count that can be answered from an index and far
+/// too short for one that cannot, which is the distinction worth drawing — a
+/// count nobody can wait for is not a slower count, it is a missing one, and
+/// the footer already knows how to show a page range without a total.
+const COUNT_TIMEOUT_MS: u64 = 10_000;
 
 /// Update one field of one document addressed by `_id` (`$set`).
 pub async fn update_cell(

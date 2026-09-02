@@ -258,33 +258,138 @@ async fn collection_sizes(
 /// observed value; `nullable` is true when the field was absent from at least
 /// one sampled document (so it is not guaranteed present). `is_primary_key` is
 /// set only for `_id`.
+/// Whether `$sample` can possibly take its fast path on this collection.
+///
+/// A time-series collection is a *view* over its `system.buckets.*` backing
+/// collection, so an aggregation against it is rewritten with an unpack stage
+/// and `$sample` never gets the random cursor that makes it cheap — it goes
+/// straight to reading everything and sorting by a random key. On a collection
+/// of any size that does not finish; it either exceeds the 100 MB in-memory
+/// sort limit or runs for minutes.
+///
+/// So this is not a heuristic about size, it is a fact about the collection:
+/// asking `$sample` is pointless there, and the only thing waiting for it buys
+/// is the wait. One filtered `listCollections` — a catalog command, no scan —
+/// answers it before any documents are read.
+///
+/// The cost is that every inference now pays that round trip, including the
+/// small collections where `$sample` would have answered in milliseconds.
+/// A catalog lookup is single-digit milliseconds against a nearby server and
+/// the alternative is a two-second stall on exactly the collections big enough
+/// for someone to need the field list, so the trade is worth making. An
+/// unreadable catalog answers "not time-series" and the sample path is tried,
+/// which is the behaviour this replaced.
+///
+/// Follows the same rule `spec_is_view` documents: a spec with no `type` is a
+/// collection (the field only appeared in MongoDB 3.4), and an unrecognised
+/// reply falls to the ordinary answer rather than the exotic one.
+async fn is_timeseries(conn: &MongoConn, collection: &str) -> bool {
+    matches!(
+        super::aggregation::collection_spec(conn, collection).await,
+        Ok(Some(spec)) if matches!(spec.get_str("type"), Ok("timeseries"))
+    )
+}
+
+/// Read up to `SAMPLE_SIZE` documents without `$sample`: the oldest half in
+/// natural order and the newest half in reverse.
+///
+/// Both ends, not just the head, because the head alone is the wrong sample for
+/// the shape this exists to serve. An append-ordered collection — measurements,
+/// events, logs — has its *oldest* documents first, so a plain
+/// `find().limit(100)` describes the schema as it was when the collection was
+/// young and misses every field added since. Reading the tail as well costs one
+/// more round trip and catches schema drift in the direction it actually
+/// travels.
+///
+/// The reverse pass is best-effort: `$natural` sorting is not accepted
+/// everywhere (a time-series collection is a view over its buckets, and views
+/// restrict what they will sort by), and half a sample is a fine outcome when
+/// the alternative is none.
+async fn scan_both_ends(coll: &mongodb::Collection<Document>) -> AppResult<Vec<Document>> {
+    let half = (SAMPLE_SIZE / 2).max(1);
+    let mut docs = Vec::new();
+
+    let mut head = coll
+        .find(doc! {})
+        .limit(half)
+        .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
+        .await?;
+    while head.advance().await? {
+        docs.push(head.deserialize_current()?);
+    }
+
+    let tail = coll
+        .find(doc! {})
+        .sort(doc! {"$natural": -1})
+        .limit(half)
+        .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
+        .await;
+    if let Ok(mut tail) = tail {
+        while let Ok(true) = tail.advance().await {
+            if let Ok(d) = tail.deserialize_current() {
+                docs.push(d);
+            }
+        }
+    }
+    Ok(docs)
+}
+
+/// Infer a collection's field list by sampling documents.
+///
+/// Returns one [`ColumnInfo`] per distinct top-level field seen across the
+/// sample, `_id` first. `data_type` is the BSON type name of the field's first
+/// observed value; `nullable` is true when the field was absent from at least
+/// one sampled document (so it is not guaranteed present). `is_primary_key` is
+/// set only for `_id`.
+///
+/// Two strategies, chosen from the catalog rather than by trying one and
+/// waiting (see [`is_timeseries`]). `$sample` is preferred wherever it can be
+/// cheap — a random sample describes a heterogeneous collection better than any
+/// fixed window — and [`scan_both_ends`] covers the rest, including the case
+/// where `$sample` was tried and failed for a reason the catalog could not
+/// predict.
 pub async fn infer_columns(conn: &MongoConn, collection: &str) -> AppResult<Vec<ColumnInfo>> {
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
 
-    // `$sample` first: a random sample describes a heterogeneous collection far
-    // better than its first N documents, which on an append-ordered collection
-    // are simply its oldest and may predate half the fields in use.
-    //
-    // Bounded, and with a fallback, because it is the one part of this that can
-    // degrade without warning on a large collection (see `INFER_TIMEOUT_MS`).
-    // The fallback is a plain natural-order read: a worse sample, but O(N) in
-    // the page size rather than in the collection, so it cannot fail for being
-    // big. A worse field list beats none — with none, the advanced filter has
-    // nothing to offer and the tab silently loses a feature.
-    let sampled = coll
-        .aggregate(vec![doc! {"$sample": {"size": SAMPLE_SIZE}}])
-        .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
-        .await;
+    let mut documents: Option<Vec<Document>> = None;
 
-    let mut cursor = match sampled {
-        Ok(c) => c,
-        Err(_) => {
-            coll.find(doc! {})
-                .limit(SAMPLE_SIZE)
-                .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
-                .await?
+    if !is_timeseries(conn, collection).await {
+        let sampled = coll
+            .aggregate(vec![doc! {"$sample": {"size": SAMPLE_SIZE}}])
+            .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
+            .await;
+        if let Ok(mut cursor) = sampled {
+            let mut docs = Vec::new();
+            let mut ok = true;
+            loop {
+                match cursor.advance().await {
+                    Ok(true) => match cursor.deserialize_current() {
+                        Ok(d) => docs.push(d),
+                        Err(_) => {
+                            ok = false;
+                            break;
+                        }
+                    },
+                    Ok(false) => break,
+                    // A `$sample` that fails partway through (the slow path
+                    // hitting its sort limit reports on the first batch, not at
+                    // dispatch) is a failed sample, not a partial one.
+                    Err(_) => {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if ok {
+                documents = Some(docs);
+            }
         }
+    }
+
+    let documents = match documents {
+        Some(d) => d,
+        None => scan_both_ends(&coll).await?,
     };
 
     // Preserve first-seen field order; track type + how many docs contained it.
@@ -292,12 +397,10 @@ pub async fn infer_columns(conn: &MongoConn, collection: &str) -> AppResult<Vec<
     let mut types: std::collections::HashMap<String, &'static str> =
         std::collections::HashMap::new();
     let mut present: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut sampled = 0usize;
+    let sampled = documents.len();
 
-    while cursor.advance().await? {
-        let docu = cursor.deserialize_current()?;
-        sampled += 1;
-        for (k, v) in &docu {
+    for docu in &documents {
+        for (k, v) in docu {
             if !types.contains_key(k) {
                 order.push(k.clone());
                 types.insert(k.clone(), super::values::bson_type_name(v));

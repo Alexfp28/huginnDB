@@ -395,7 +395,7 @@ fn spec_is_view(spec: &Document) -> bool {
 /// `pipeline` live in the spec's free-form `options` document, and reading them
 /// as BSON keeps this independent of how the driver's `CollectionSpecification`
 /// models options across versions.
-async fn collection_spec(conn: &MongoConn, name: &str) -> AppResult<Option<Document>> {
+pub(super) async fn collection_spec(conn: &MongoConn, name: &str) -> AppResult<Option<Document>> {
     let db = resolve_db(conn)?;
     let reply = db
         .run_command(doc! {
