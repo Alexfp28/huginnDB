@@ -33,7 +33,9 @@ vi.mock("@/stores/session/persistedTabs", () => ({
 
 let reconnectOnLaunch = false;
 vi.mock("@/stores/preferences/preferences", () => ({
-  usePreferences: { getState: () => ({ prefs: { ui: { reconnectOnLaunch } } }) },
+  usePreferences: {
+    getState: () => ({ prefs: { ui: { reconnectOnLaunch } } }),
+  },
 }));
 
 vi.mock("@/stores/preferences/theme", () => ({
@@ -58,11 +60,25 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
 
     useEnvironments.setState({
       environments: [
-        { id: "env-a", name: "A", color: null, icon: null, order: 0, themeId: null },
-        { id: "env-b", name: "B", color: null, icon: null, order: 1, themeId: null },
+        {
+          id: "env-a",
+          name: "A",
+          color: null,
+          icon: null,
+          order: 0,
+          themeId: null,
+        },
+        {
+          id: "env-b",
+          name: "B",
+          color: null,
+          icon: null,
+          order: 1,
+          themeId: null,
+        },
       ],
       activeId: "env-a",
-      switching: false,
+      switchingTo: null,
       error: null,
     });
     useConnections.setState({
@@ -108,7 +124,9 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
   });
 
   it("clears the filter if restoreSession can't read the incoming environment's launch state", async () => {
-    useConnections.setState({ disconnect: vi.fn().mockResolvedValue(undefined) });
+    useConnections.setState({
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    });
     getLaunchState.mockRejectedValue(new Error("boom"));
 
     await useEnvironments.getState().switchTo("env-b");

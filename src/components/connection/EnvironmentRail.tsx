@@ -93,7 +93,7 @@ interface EnvironmentRailProps {
 export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   const { t } = useTranslation();
   const activeId = useEnvironments((s) => s.activeId);
-  const switching = useEnvironments((s) => s.switching);
+  const switchingTo = useEnvironments((s) => s.switchingTo);
   const switchTo = useEnvironments((s) => s.switchTo);
   const lastReplicate = useEnvironments((s) => s.lastReplicate);
   const reorder = useEnvironments((s) => s.reorder);
@@ -168,7 +168,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                   label={environmentLabel(env, defaultName)}
                   isActive={env.id === activeId}
                   schemaOpen={schemaOpen}
-                  switching={switching}
+                  switchingTo={switchingTo}
                   canDelete={ordered.length > 1 && !env.originId}
                   onClick={() => handleClick(env.id)}
                   onRename={() =>
@@ -205,7 +205,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
               label={environmentLabel(env, defaultName)}
               isActive={env.id === activeId}
               schemaOpen={schemaOpen}
-              switching={switching}
+              switchingTo={switchingTo}
               onClick={() => handleClick(env.id)}
             />
           ))
@@ -239,7 +239,8 @@ interface EnvironmentButtonProps {
   label: string;
   isActive: boolean;
   schemaOpen: boolean;
-  switching: boolean;
+  /** The environment being switched *to*, or `null`. See the store's field. */
+  switchingTo: string | null;
   onClick: () => void;
 }
 
@@ -253,14 +254,19 @@ function EnvironmentButton({
   label,
   isActive,
   schemaOpen,
-  switching,
+  switchingTo,
   onClick,
 }: EnvironmentButtonProps) {
+  // Every row is disabled while any switch is in flight, but only the row being
+  // travelled *to* shows the spinner. Those are two different questions and
+  // `switching && isActive` answered the second one with the first.
+  const busy = switchingTo !== null;
+  const isTarget = switchingTo === env.id;
   return (
     <SimpleTooltip label={label} side="right">
       <button
         type="button"
-        disabled={switching}
+        disabled={busy}
         onClick={onClick}
         aria-pressed={isActive && schemaOpen}
         className={cn(
@@ -283,7 +289,7 @@ function EnvironmentButton({
             style={{ backgroundColor: effectiveColor(env) || "var(--brand)" }}
           />
         )}
-        {switching && isActive ? (
+        {isTarget ? (
           <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
             <Spinner size="lg" className="text-muted-foreground" />
           </div>
@@ -313,7 +319,8 @@ interface SortableEnvironmentButtonProps {
   label: string;
   isActive: boolean;
   schemaOpen: boolean;
-  switching: boolean;
+  /** The environment being switched *to*, or `null`. See the store's field. */
+  switchingTo: string | null;
   /** A mirrored environment (#108) can't be deleted here — that would just be
    *  reported vanished on the next sync and re-created, never destroy the
    *  publisher's copy — so this is false whenever `env.originId` is set,
@@ -334,7 +341,7 @@ function SortableEnvironmentButton({
   label,
   isActive,
   schemaOpen,
-  switching,
+  switchingTo,
   canDelete,
   onClick,
   onRename,
@@ -342,6 +349,10 @@ function SortableEnvironmentButton({
   renameLabel,
   deleteLabel,
 }: SortableEnvironmentButtonProps) {
+  // See `EnvironmentButton`: disabled is "a switch is running", the spinner is
+  // "this is where we are going". They are not the same row.
+  const busy = switchingTo !== null;
+  const isTarget = switchingTo === env.id;
   const {
     attributes,
     listeners,
@@ -371,7 +382,7 @@ function SortableEnvironmentButton({
             {...attributes}
             {...listeners}
             type="button"
-            disabled={switching}
+            disabled={busy}
             onClick={onClick}
             aria-pressed={isActive && schemaOpen}
             className={cn(
@@ -398,7 +409,7 @@ function SortableEnvironmentButton({
                 }}
               />
             )}
-            {switching && isActive ? (
+            {isTarget ? (
               <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
                 <Spinner size="lg" className="text-muted-foreground" />
               </div>

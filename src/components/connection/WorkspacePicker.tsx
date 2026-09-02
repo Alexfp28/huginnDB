@@ -213,9 +213,11 @@ function ConnectionsPane() {
 function EnvironmentsPane() {
   const { t } = useTranslation();
   const activeId = useEnvironments((s) => s.activeId);
-  const switching = useEnvironments((s) => s.switching);
   const switchTo = useEnvironments((s) => s.switchTo);
-  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
+  // Was a local `useState` mirroring what the store now tracks itself. Kept
+  // local it was only ever right *here*: every other switch surface (the rail,
+  // the status-bar switcher) had a boolean and pointed at the wrong row.
+  const switchingTo = useEnvironments((s) => s.switchingTo);
   const [query, setQuery] = useState("");
 
   const defaultName = t("environments.defaultName");
@@ -232,13 +234,8 @@ function EnvironmentsPane() {
   );
 
   async function pick(env: Environment) {
-    if (switching || env.id === activeId) return;
-    setSwitchingTo(env.id);
-    try {
-      await switchTo(env.id);
-    } finally {
-      setSwitchingTo(null);
-    }
+    if (switchingTo !== null || env.id === activeId) return;
+    await switchTo(env.id);
   }
 
   return (
@@ -259,7 +256,7 @@ function EnvironmentsPane() {
             <PickerCard
               key={env.id}
               active={env.id === activeId}
-              disabled={switching}
+              disabled={switchingTo !== null}
               onClick={() => void pick(env)}
               label={environmentLabel(env, defaultName)}
               icon={

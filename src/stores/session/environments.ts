@@ -18,7 +18,7 @@
  *
 
  * Selector note (gotcha #1): components read `environments` / `activeId` /
- * `switching` as raw values and derive anything else with `useMemo`. Never
+ * `switchingTo` as raw values and derive anything else with `useMemo`. Never
  * return a fresh array or object from a selector here.
  */
 
@@ -116,9 +116,23 @@ interface EnvironmentsState {
   environments: Environment[];
   /** Active environment id, or `null` before the first `load()` resolves. */
   activeId: string | null;
-  /** True while `switchTo` is tearing down and rebuilding a session. Guards
-   *  against re-entry and lets the switcher disable itself. */
-  switching: boolean;
+  /**
+   * The environment `switchTo` is currently moving *to*, or `null` when idle.
+   * Guards against re-entry and lets the switcher disable itself.
+   *
+   * The target, not a boolean, and that is the whole point. `activeId` does not
+   * move until step 5 of `switchTo` — after the outgoing session is flushed and
+   * every one of its pools is torn down, which is the slow part. A `switching`
+   * flag paired with `isActive` therefore parked the spinner on the environment
+   * being *left* for the entire wait, so the one place in the UI that says
+   * "work is happening" pointed at the wrong row. No amount of styling fixes
+   * that: a boolean cannot say where you are going.
+   *
+   * Read it as a primitive (gotcha #1) and derive `switching` at the call site
+   * with `!== null`; a selector returning a fresh object would re-render every
+   * consumer on every store write.
+   */
+  switchingTo: string | null;
   error: string | null;
 
   load: () => Promise<void>;
@@ -196,12 +210,13 @@ function applyLocalView(env: Environment | undefined): void {
 export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   environments: [],
   activeId: null,
-  switching: false,
+  switchingTo: null,
   error: null,
 
   load: async () => {
     try {
-      const { environments, activeEnvironmentId } = await api.listEnvironments();
+      const { environments, activeEnvironmentId } =
+        await api.listEnvironments();
       set({
         environments,
         activeId: activeEnvironmentId || null,
@@ -314,7 +329,10 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // App auto-select effect picks whichever pool opened first — which is
     // nondeterministic under a parallel reconnect.
     const nowActive = useConnections.getState().active;
-    if (launch.selectedConnectionId && nowActive.has(launch.selectedConnectionId)) {
+    if (
+      launch.selectedConnectionId &&
+      nowActive.has(launch.selectedConnectionId)
+    ) {
       useUi.getState().setSelectedConnectionId(launch.selectedConnectionId);
     }
     if (
@@ -331,16 +349,16 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // pools/tabs/layout (gotcha #8) — picking a different environment here
       // only changes which one's connection/database filters *this* window
       // applies to its own connections tree, entirely in memory.
-      if (get().switching || get().activeId === id) return;
+      if (get().switchingTo || get().activeId === id) return;
       const env = get().environments.find((e) => e.id === id);
       if (!env) return;
-      set({ switching: true });
+      set({ switchingTo: id });
       applyLocalView(env);
-      set({ activeId: id, switching: false });
+      set({ activeId: id, switchingTo: null });
       return;
     }
-    if (get().switching || get().activeId === id) return;
-    set({ switching: true, error: null });
+    if (get().switchingTo || get().activeId === id) return;
+    set({ switchingTo: id, error: null });
     try {
       // 1. Flush the outgoing environment's tabs and pane geometry while the
       //    backend still points at it. Everything below writes to whichever
@@ -408,7 +426,10 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         try {
           await useConnections.getState().disconnect(connectionId);
         } catch (e) {
-          console.warn(`[environments] disconnect failed for ${connectionId}`, e);
+          console.warn(
+            `[environments] disconnect failed for ${connectionId}`,
+            e,
+          );
         }
       }
 
@@ -437,7 +458,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // whatever session is on screen afterwards (outgoing or a half-built
       // incoming one) needs its edits to start persisting again.
       resumeSaves();
-      set({ switching: false });
+      set({ switchingTo: null });
     }
   },
 
@@ -462,8 +483,11 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // copied in. The new environment owns the copy from that point on —
     // narrowing it there never touches the source, which is the point of the
     // override.
-    const sourceView = replicate.connections ? currentLaunchView() : emptyLaunchView();
-    let sourceTabs: [string, Awaited<ReturnType<typeof api.getTabState>>][] = [];
+    const sourceView = replicate.connections
+      ? currentLaunchView()
+      : emptyLaunchView();
+    let sourceTabs: [string, Awaited<ReturnType<typeof api.getTabState>>][] =
+      [];
     let sourceLayout: unknown = null;
     try {
       if (replicate.connections) {

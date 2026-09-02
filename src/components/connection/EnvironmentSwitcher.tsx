@@ -46,7 +46,7 @@ export function EnvironmentSwitcher() {
   // derived below with useMemo so its identity stays stable.
   const environments = useEnvironments((s) => s.environments);
   const activeId = useEnvironments((s) => s.activeId);
-  const switching = useEnvironments((s) => s.switching);
+  const switchingTo = useEnvironments((s) => s.switchingTo);
   const switchTo = useEnvironments((s) => s.switchTo);
   const lastReplicate = useEnvironments((s) => s.lastReplicate);
 
@@ -72,14 +72,14 @@ export function EnvironmentSwitcher() {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          disabled={switching}
+          disabled={switchingTo !== null}
           className={cn(
             "flex max-w-[10rem] items-center gap-1.5 rounded-sm px-1 py-0.5 outline-none transition-colors",
             "hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
           )}
           title={t("environments.switcherTooltip")}
         >
-          {switching ? (
+          {switchingTo !== null ? (
             <Spinner size="xs" className="shrink-0" />
           ) : (
             <EnvironmentMark env={active} />
