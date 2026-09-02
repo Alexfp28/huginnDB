@@ -20,12 +20,40 @@ import { cn } from "@/lib/utils";
  */
 const HasTooltipProvider = React.createContext(false);
 
+/**
+ * The app's tooltip policy, set here rather than at each window root so the
+ * three of them cannot drift (and so `SimpleTooltip`'s fallback provider gets
+ * the same behaviour). A root that genuinely needs different values still
+ * passes them — these are defaults, not a closed list.
+ *
+ * **`disableHoverableContent` is the one that matters.** Left at Radix's
+ * default of `false`, the tooltip stays open while the pointer travels through
+ * a grace area toward the content, so that the content can be hovered. Nothing
+ * in this app has hoverable tooltip content — `SimpleTooltip` renders a label —
+ * but the grace area is charged for anyway, and it is what makes a tooltip
+ * linger over its neighbour when the pointer moves between two adjacent
+ * buttons: the first is still inside its grace area while `skipDelayDuration`
+ * has already opened the second without a delay. Two tooltips, one pointer.
+ * Turning it off makes leaving the trigger close the tooltip, full stop.
+ *
+ * The delay pair is deliberately left at Radix's defaults (700ms to open,
+ * 300ms during which a neighbour opens instantly). Those are a matter of feel
+ * rather than correctness, and this is the one line to change if the app ever
+ * wants them faster — or, as `README.md` notes, the one place a preference
+ * would be wired in, since a root is a component that may read a store.
+ */
 const TooltipProvider = ({
   children,
+  disableHoverableContent = true,
   ...props
 }: React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Provider>) => (
   <HasTooltipProvider.Provider value={true}>
-    <TooltipPrimitive.Provider {...props}>{children}</TooltipPrimitive.Provider>
+    <TooltipPrimitive.Provider
+      disableHoverableContent={disableHoverableContent}
+      {...props}
+    >
+      {children}
+    </TooltipPrimitive.Provider>
   </HasTooltipProvider.Provider>
 );
 const Tooltip = TooltipPrimitive.Root;

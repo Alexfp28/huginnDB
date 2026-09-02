@@ -9,10 +9,42 @@
  *
  * `collisionPadding` is not covered: jsdom has no layout, so nothing here can
  * observe a flip at a viewport edge. It is stated at the prop instead.
+ *
+ * The same limit applies to `disableHoverableContent`: its effect is a pointer
+ * grace-area polygon between trigger and content, which needs real geometry to
+ * observe. What *is* testable, and what actually regressed, is the decision —
+ * that the app's wrapper sets the policy rather than leaving it to each of the
+ * three window roots to remember. That is asserted against the props reaching
+ * Radix, which is the narrowest thing that would have caught it.
  */
 
+import type * as React from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type ProviderProps = React.ComponentPropsWithoutRef<
+  typeof import("@radix-ui/react-tooltip").Provider
+>;
+
+/** Props every `TooltipPrimitive.Provider` render was handed, in order. */
+const { providerProps } = vi.hoisted(() => ({
+  providerProps: [] as ProviderProps[],
+}));
+
+vi.mock("@radix-ui/react-tooltip", async () => {
+  const actual = await vi.importActual<
+    typeof import("@radix-ui/react-tooltip")
+  >("@radix-ui/react-tooltip");
+  return {
+    ...actual,
+    // Pass straight through — this records, it does not stub. The portal and
+    // trigger tests below still exercise the real Radix implementation.
+    Provider: (props: ProviderProps) => {
+      providerProps.push(props);
+      return <actual.Provider {...props} />;
+    },
+  };
+});
 import {
   SimpleTooltip,
   Tooltip,
@@ -20,6 +52,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "./tooltip";
+
+beforeEach(() => {
+  providerProps.length = 0;
+});
 
 afterEach(() => {
   cleanup();
@@ -59,5 +95,52 @@ describe("the tooltip escapes its container", () => {
     // it sits in.
     const trigger = screen.getByRole("button", { name: "−" });
     expect(container.contains(trigger)).toBe(true);
+  });
+});
+
+describe("the provider carries the app's tooltip policy", () => {
+  it("turns off hoverable content by default", () => {
+    // Radix defaults this to `false`, which keeps a tooltip open while the
+    // pointer crosses a grace area toward the content. With nothing in this app
+    // rendering hoverable content, the only thing that bought was a tooltip
+    // lingering over its neighbour when the pointer moved between two adjacent
+    // buttons — the second opens with no delay (`skipDelayDuration`) while the
+    // first is still inside its grace area.
+    render(
+      <TooltipProvider>
+        <SimpleTooltip label="Disconnect all">
+          <button>x</button>
+        </SimpleTooltip>
+      </TooltipProvider>,
+    );
+    expect(providerProps).not.toHaveLength(0);
+    for (const props of providerProps) {
+      expect(props.disableHoverableContent).toBe(true);
+    }
+  });
+
+  it("still lets a root override it", () => {
+    // A default, not a closed list: a surface that one day needs hoverable
+    // content (a tooltip with a link in it) can still ask for it.
+    render(
+      <TooltipProvider disableHoverableContent={false}>
+        <SimpleTooltip label="Disconnect all">
+          <button>x</button>
+        </SimpleTooltip>
+      </TooltipProvider>,
+    );
+    expect(providerProps.at(-1)?.disableHoverableContent).toBe(false);
+  });
+
+  it("applies to SimpleTooltip's fallback provider too", () => {
+    // The safety net for a tooltip rendered with no root above it must not be
+    // the one place the policy is missing.
+    render(
+      <SimpleTooltip label="Disconnect all">
+        <button>x</button>
+      </SimpleTooltip>,
+    );
+    expect(providerProps).not.toHaveLength(0);
+    expect(providerProps.at(-1)?.disableHoverableContent).toBe(true);
   });
 });
