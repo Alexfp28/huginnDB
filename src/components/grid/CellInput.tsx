@@ -14,12 +14,30 @@
  * Both auxiliary buttons call `preventDefault` on mousedown so clicking them
  * never blurs the input first — which would otherwise trigger a premature
  * commit in inline-edit mode.
+ *
+ * **The affordances live inside the field's box, not beside it.** They used to
+ * be flex siblings of a bordered `<input>`, each painting its own opaque
+ * `bg-background` so that `sticky` had something to sit on. Against a tinted
+ * row — hover, selection, the draft row's own wash — that is a hard-edged pale
+ * rectangle butted up against a rounded, focus-haloed field, which is the seam
+ * this component was reported for. Now the wrapper carries the border and the
+ * focus treatment (`fieldFocus("focus-within")`, the variant `styles.ts`
+ * documents for exactly this shape), the input is transparent inside it, and
+ * the buttons share the field's own surface so there is nothing to seam
+ * against.
+ *
+ * The two of them also travel together in one `sticky` group now. Only the
+ * expand button was sticky before, so on a very wide column the "∅" button
+ * scrolled away while its neighbour stayed — one affordance pinned, one not,
+ * for no stated reason. One sticky container is also one compositing layer
+ * rather than two.
  */
 
 import { forwardRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Braces, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fieldFocus } from "@/components/ui/styles";
 
 interface CellInputProps {
   /** Current value; `null` renders a "NULL" placeholder. */
@@ -70,11 +88,17 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
     const { t } = useTranslation();
     const wired = Boolean(onCommit || onCancel);
     return (
-      <div className="flex items-center gap-1">
+      <div
+        className={cn(
+          "flex h-6 items-center rounded-sm border border-input bg-background pl-1.5 transition-colors",
+          fieldFocus("focus-within"),
+          disabled && "opacity-60",
+        )}
+      >
         <input
           ref={ref}
           autoFocus={autoFocus}
-          className="h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 font-mono text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
+          className="h-full min-w-0 flex-1 bg-transparent font-mono text-xs outline-none"
           placeholder={value === null ? "NULL" : ""}
           value={value ?? ""}
           disabled={disabled}
@@ -94,54 +118,59 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
           }
           onBlur={onCommit ? () => onCommit() : undefined}
         />
-        {onExpand && (
-          <button
-            type="button"
-            tabIndex={-1}
-            title={expandTitle}
-            disabled={disabled}
-            // `sticky`, not just flow position, so a wide column doesn't
-            // push this button off the right edge of the scroll container
-            // — the input itself stretches to the cell's full (possibly
-            // very wide) width, and without this the button was only
-            // reachable by scrolling that specific cell all the way over.
-            // Opaque background because `sticky` promotes it to its own
-            // compositing layer, which would otherwise let the input
-            // underneath show through while scrolling.
-            className={
-              schemaBound
-                ? "sticky right-1 z-[1] shrink-0 rounded-sm bg-background px-1 text-brand hover:text-brand/80"
-                : "sticky right-1 z-[1] shrink-0 rounded-sm bg-background px-1 text-muted-foreground/80 hover:text-foreground"
-            }
-            // Keep focus on the input so blur-commit doesn't fire before we
-            // hand the current value off to the modal editor.
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={onExpand}
-          >
-            {schemaBound ? (
-              <Braces className="h-3 w-3" />
-            ) : (
-              <Maximize2 className="h-3 w-3" />
+        {(onExpand || nullable) && (
+          // `sticky`, not just flow position, so a wide column doesn't push
+          // these off the right edge of the scroll container — the field
+          // stretches to the cell's full (possibly very wide) width, and
+          // without this they were only reachable by scrolling that specific
+          // cell all the way over. The group is opaque for the same reason it
+          // always was (sticky content scrolls over what's beneath it), but it
+          // now paints the *field's* surface from inside the field's border
+          // rather than its own rectangle over the row.
+          <span className="sticky right-0 z-[1] flex shrink-0 items-center gap-0.5 bg-background pl-0.5 pr-1">
+            {onExpand && (
+              <button
+                type="button"
+                tabIndex={-1}
+                title={expandTitle}
+                disabled={disabled}
+                className={cn(
+                  "rounded-sm px-1 py-0.5 transition-colors hover:bg-accent",
+                  schemaBound
+                    ? "text-brand hover:text-brand/80"
+                    : "text-muted-foreground/80 hover:text-foreground",
+                )}
+                // Keep focus on the input so blur-commit doesn't fire before we
+                // hand the current value off to the modal editor.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onExpand}
+              >
+                {schemaBound ? (
+                  <Braces className="h-3 w-3" />
+                ) : (
+                  <Maximize2 className="h-3 w-3" />
+                )}
+              </button>
             )}
-          </button>
-        )}
-        {nullable && (
-          <button
-            type="button"
-            tabIndex={-1}
-            title={t("cellEditor.setNull")}
-            disabled={disabled}
-            className={cn(
-              "shrink-0 rounded-sm px-1 text-3xs",
-              nullActive
-                ? "bg-primary/20 text-primary"
-                : "text-muted-foreground/50 hover:text-foreground",
+            {nullable && (
+              <button
+                type="button"
+                tabIndex={-1}
+                title={t("cellEditor.setNull")}
+                disabled={disabled}
+                className={cn(
+                  "rounded-sm px-1 text-3xs transition-colors",
+                  nullActive
+                    ? "bg-primary/20 text-primary"
+                    : "text-muted-foreground/50 hover:bg-accent hover:text-foreground",
+                )}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => onChange(null)}
+              >
+                ∅
+              </button>
             )}
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => onChange(null)}
-          >
-            ∅
-          </button>
+          </span>
         )}
       </div>
     );

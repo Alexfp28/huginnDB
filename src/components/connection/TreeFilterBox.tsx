@@ -46,6 +46,7 @@ import {
 import { Search, X } from "lucide-react";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { cn } from "@/lib/utils";
+import { fieldFocus } from "@/components/ui/styles";
 import {
   TREE_SEARCH_DEBOUNCE_MS,
   useTreeSearch,
@@ -135,9 +136,11 @@ export const TreeFilterBox = forwardRef<
     <div
       className={cn(
         "flex h-7 items-center gap-1 overflow-hidden rounded-md border border-input bg-background px-1.5 transition-colors",
-        // Same focus language as `inputVariants`: the border turns brand blue
-        // with a soft 3px halo against it, rather than a detached ring.
-        "focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand/20",
+        // The shared field focus language: the border turns brand blue with a
+        // soft 3px halo against it, rather than a detached ring. This wrapper
+        // is the reason `fieldFocus` has a `focus-within` variant at all — it
+        // was spelled out by hand here, one `outline-none` short of it.
+        fieldFocus("focus-within"),
       )}
     >
       <Search
