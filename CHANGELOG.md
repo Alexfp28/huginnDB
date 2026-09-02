@@ -254,6 +254,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Tooltips were clipped and painted over near a panel's edge.** The themed
+  tooltip rendered in its place in the page rather than on top of it, so a
+  scrolling container cut it off and anything stacked above the panel covered
+  it — visible on the connections panel's "disconnect all" button, whose tooltip
+  appeared sliced behind the title bar. It now renders above everything, like
+  every other floating surface in the app, and keeps a margin from the window
+  edges so it flips to the other side instead of sitting flush against them.
+
 - **Icon buttons showed the operating system's tooltip, not the app's.** Twenty-nine
   of them — the grid footer's zoom controls, the console's toolbar, the saved-query
   row actions, the appearance panel's export and delete, and more — were `Button`s

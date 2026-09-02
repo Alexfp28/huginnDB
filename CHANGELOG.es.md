@@ -281,6 +281,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Los tooltips se recortaban y quedaban tapados cerca del borde de un panel.**
+  El tooltip con estilo se dibujaba en su sitio dentro de la página en vez de por
+  encima, así que un contenedor con scroll lo cortaba y cualquier cosa apilada
+  sobre el panel lo cubría — se veía en el botón de «desconectar todo» del panel
+  de conexiones, cuyo tooltip aparecía partido por detrás de la barra de título.
+  Ahora se dibuja por encima de todo, como el resto de superficies flotantes de
+  la app, y guarda un margen con los bordes de la ventana para voltearse al otro
+  lado en vez de quedarse pegado a ellos.
+
 - **Los botones de icono mostraban el tooltip del sistema operativo, no el de la
   app.** Veintinueve de ellos —los controles de zoom del pie del grid, la barra de
   la consola, las acciones de fila de las consultas guardadas, el exportar y

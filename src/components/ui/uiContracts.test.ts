@@ -166,6 +166,50 @@ describe("F — className resolves conflicts", () => {
   });
 });
 
+describe("I — floating content is portalled", () => {
+  /**
+   * Radix portals some of its content on its own and not others — its tooltip
+   * is one of the others. Rendered in place, floating content is clipped by any
+   * ancestor's `overflow` and painted over by any later sibling in an
+   * ancestor's stacking context, and no `z-50` on the content can fix either.
+   *
+   * The tooltip shipped without a `Portal` from the day it was written. Nothing
+   * caught it because three files used the themed tooltip, and none of them sat
+   * inside a scrolling panel; it became visible in every panel at once as soon
+   * as `IconButton` put a tooltip behind every icon button. The other four
+   * floating primitives had it right, which is exactly the kind of "one of five
+   * disagrees and nobody knows" this file exists for.
+   */
+  it("every floating Radix content in ui/ sits inside a Portal", () => {
+    const bad: string[] = [];
+    for (const file of IN_UI) {
+      const src = code(file);
+      for (const m of src.matchAll(/<(\w+)Primitive\.Content\b/g)) {
+        // Scope, not an allowlist: only *floating* content needs a portal, and
+        // what makes content floating is that Radix positions it against an
+        // anchor — which shows up as one of these props. `TabsPrimitive.Content`
+        // is a panel rendered in place and must NOT be portalled; portalling it
+        // would tear the panel out of the layout it belongs to.
+        const positioned = new RegExp(
+          `<${m[1]}Primitive\\.Content\\b[^>]*?(sideOffset|align=|side=|position=)`,
+          "s",
+        );
+        if (!positioned.test(src) && !/sideOffset|collisionPadding/.test(src)) {
+          continue;
+        }
+        const portal = new RegExp(
+          `<(${m[1]}Primitive\\.Portal|${m[1]}Portal)\\b`,
+        );
+        // Cheap and sufficient: the wrapper is always in the same file, a few
+        // lines above. Parsing JSX to prove containment would be more
+        // machinery than the rule is worth.
+        if (!portal.test(src)) bad.push(`${file}: ${m[1]}Primitive.Content`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("H — an icon button does not carry the OS tooltip", () => {
   /**
    * The hole the first `IconButton` sweep left, found by a user rather than by

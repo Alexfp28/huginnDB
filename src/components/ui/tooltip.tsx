@@ -31,19 +31,39 @@ const TooltipProvider = ({
 const Tooltip = TooltipPrimitive.Root;
 const TooltipTrigger = TooltipPrimitive.Trigger;
 
+/**
+ * **The `Portal` is not optional.** Radix does not portal tooltip content on
+ * its own (unlike its dialog and select, and unlike the dropdown and context
+ * menu as this app wraps them), so without it the tooltip renders in place in
+ * the DOM — where an ancestor's `overflow` clips it and an ancestor's stacking
+ * context lets a later sibling paint over it, `z-50` or not. Both happen in
+ * this app: the connections panel scrolls, so a tooltip on a button near its
+ * top edge was cut off and painted under the title bar.
+ *
+ * It was wrong from the start and barely visible while three files used the
+ * themed tooltip. It is visible everywhere now that `IconButton` puts one
+ * behind every icon button, which is the useful part: a latent bug in a
+ * primitive surfaces the moment the primitive is actually adopted.
+ */
 const TooltipContent = React.forwardRef<
   React.ElementRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
->(({ className, sideOffset = 4, ...props }, ref) => (
-  <TooltipPrimitive.Content
-    ref={ref}
-    sideOffset={sideOffset}
-    className={cn(
-      "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-elevation-2 duration-150 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-[0.98]",
-      className,
-    )}
-    {...props}
-  />
+>(({ className, sideOffset = 4, collisionPadding = 8, ...props }, ref) => (
+  <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      // Keep a tooltip off the viewport edges. Radix flips it to the other
+      // side when it would not fit, which only helps if it knows how much room
+      // to insist on — the default of 0 lets it sit flush against the edge.
+      collisionPadding={collisionPadding}
+      className={cn(
+        "z-50 overflow-hidden rounded-md border bg-popover px-3 py-1.5 text-xs text-popover-foreground shadow-elevation-2 duration-150 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-[0.98]",
+        className,
+      )}
+      {...props}
+    />
+  </TooltipPrimitive.Portal>
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
