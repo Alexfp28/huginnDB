@@ -561,6 +561,7 @@
     "unpinColumn": "Dejar de fijar columna",
     "fitColumns": "Ajustar todas las columnas al contenido",
     "fitColumnsToWidth": "Ajustar todas las columnas al ancho visible",
+    "insertMore": "Otras formas de añadir datos",
     "insertDocument": {
       "action": "Nuevo documento…",
       "title": "Nuevo documento en {{collection}}",

@@ -59,6 +59,7 @@ import { DraftRowView } from "@/components/grid/DraftRowView";
 import {
   GridToolbar,
   type GridToolbarItem,
+  type InsertAlternative,
 } from "@/components/grid/GridToolbar";
 import { GridRow, type GridRowCallbacks } from "@/components/grid/GridRow";
 import { copyToClipboard } from "@/lib/grid/clipboard";
@@ -266,6 +267,9 @@ interface Props {
    * split across the toolbar.
    */
   insertExtra?: GridToolbarItem[];
+  /** Other ways to add data, offered behind the Insert button's chevron.
+   *  Empty leaves a plain one-click button — see `GridToolbar`. */
+  insertAlternatives?: InsertAlternative[];
   /**
    * Actions rendered on the TRAILING (right) side of the toolbar row, after
    * `insertExtra`, before the elapsed-time readout. TableDataTab folds its
@@ -318,7 +322,7 @@ interface Props {
  * `TableDataTab` builds its three slot arrays against it, and the type now
  * lives with the bar that consumes it.
  */
-export type { GridToolbarItem };
+export type { GridToolbarItem, InsertAlternative };
 
 export interface SelectedCell {
   /**
@@ -370,6 +374,7 @@ export function DataGrid({
   onDraftCancel,
   toolbarLeading,
   insertExtra,
+  insertAlternatives,
   toolbarTrailing,
   footer,
   showRowCount = true,
@@ -1028,6 +1033,7 @@ export function DataGrid({
       <GridToolbar
         toolbarLeading={toolbarLeading}
         insertExtra={insertExtra}
+        insertAlternatives={insertAlternatives}
         toolbarTrailing={toolbarTrailing}
         filterInput={filterInput}
         globalFilter={globalFilter}

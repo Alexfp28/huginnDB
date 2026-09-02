@@ -533,6 +533,7 @@
     "unpinColumn": "Unpin column",
     "fitColumns": "Fit all columns to their content",
     "fitColumnsToWidth": "Fit all columns to the visible width",
+    "insertMore": "Other ways to add data",
     "insertDocument": {
       "action": "New document…",
       "title": "New document in {{collection}}",

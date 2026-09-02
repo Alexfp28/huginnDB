@@ -65,7 +65,11 @@ import type {
   RowValue,
   SortSpec,
 } from "@/types";
-import { DataGrid, type GridToolbarItem } from "@/components/grid/DataGrid";
+import {
+  DataGrid,
+  type GridToolbarItem,
+  type InsertAlternative,
+} from "@/components/grid/DataGrid";
 import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
@@ -1095,6 +1099,37 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // Rendered right beside DataGrid's own "Insert" button (via `insertExtra`),
   // so every action that adds, exports, or mass-edits data reads as one group
   // on the header's right side instead of being split across the toolbar.
+  /**
+   * The other two ways to add documents to a collection, behind the Insert
+   * button's chevron rather than beside it. They were separate toolbar buttons
+   * and that was wrong: three controls for one intent, in a bar that already
+   * collapses for want of room, when only MongoDB has more than one way in.
+   *
+   * Data rather than the `{bar, menu}` pairs the slots below use — see
+   * `InsertAlternative`. The default action stays what "Insert" means on every
+   * other driver, so only the chevron appears or does not.
+   */
+  const insertAlternatives: InsertAlternative[] = useMemo(
+    () =>
+      isMongo
+        ? [
+            {
+              id: "insert-document",
+              label: t("dataGrid.insertDocument.action"),
+              icon: FilePlus2,
+              onSelect: () => setInsertDocOpen(true),
+            },
+            {
+              id: "import-collection",
+              label: t("schema.importCollection.title"),
+              icon: Upload,
+              onSelect: () => void importCollectionJsonForTab(),
+            },
+          ]
+        : [],
+    [isMongo, t, importCollectionJsonForTab],
+  );
+
   const insertExtraContent: GridToolbarItem[] = useMemo(
     () => [
       // MongoDB only: additive JSON import into this collection (#65), moved
@@ -1102,63 +1137,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       // the data it affects instead of the tree. SQL has no table-scoped import
       // primitive (only a whole-connection `.sql` batch), so it keeps that entry
       // point in the tree unchanged.
-      ...(isMongo
-        ? [
-            // The answer to "add one record" on a schemaless store. The draft
-            // row next to this can only offer the fields the grid sampled, and
-            // the import below opens a file picker — which is right for a bulk
-            // load and absurd for a single document. See
-            // `InsertDocumentDialog`.
-            {
-              id: "insert-document",
-              bar: (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => setInsertDocOpen(true)}
-                  title={t("dataGrid.insertDocument.action")}
-                >
-                  <FilePlus2 className="h-3.5 w-3.5" />
-                  {t("dataGrid.insertDocument.action")}
-                </Button>
-              ),
-              menu: (
-                <DropdownMenuItem
-                  className="text-xs"
-                  onSelect={() => setInsertDocOpen(true)}
-                >
-                  <FilePlus2 className="mr-2 h-3.5 w-3.5" />
-                  {t("dataGrid.insertDocument.action")}
-                </DropdownMenuItem>
-              ),
-            },
-            {
-              id: "import-collection",
-              bar: (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 px-2 text-xs"
-                  onClick={() => void importCollectionJsonForTab()}
-                  title={t("schema.importCollection.title")}
-                >
-                  <Upload className="h-3.5 w-3.5" />
-                  {t("schema.importCollection.title")}
-                </Button>
-              ),
-              menu: (
-                <DropdownMenuItem
-                  className="text-xs"
-                  onSelect={() => void importCollectionJsonForTab()}
-                >
-                  <Upload className="mr-2 h-3.5 w-3.5" />
-                  {t("schema.importCollection.title")}
-                </DropdownMenuItem>
-              ),
-            },
-          ]
-        : []),
       {
         id: "export-data",
         bar: (
@@ -1453,6 +1431,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             loading={loading}
             toolbarLeading={leadingToolbar}
             insertExtra={insertExtraContent}
+            insertAlternatives={insertAlternatives}
             toolbarTrailing={trailingToolbar}
             footer={footerContent}
             showRowCount={false}

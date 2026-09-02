@@ -249,13 +249,13 @@ describe("the OS tooltip outside ui/", () => {
    * look, no theme, and no coordination with the app's. `IconButton` omits
    * `title` from its props type to make that a compile error, and
    * `uiContracts.test.ts`'s rule H catches a `<Button size="icon" title=>`.
-   * Neither reaches the 80 counted here.
+   * Neither reaches the 79 counted here.
    *
    * Rule H's shape is why: it fires only on `size="icon"`, so
    * `GridToolbar.tsx`'s `<Button size="sm" title={t("dataGrid.insertNewRow")}>`
    * — a labelled button showing an OS tooltip in the grid's main toolbar —
    * passes it cleanly. Widening rule H is not the fix, because a contract with
-   * 80 violations cannot be merged; counting them is.
+   * 79 violations cannot be merged; counting them is.
    *
    * **What counts.** A `title` that reaches the DOM: any lowercase (host) tag,
    * plus `Button` / `Switch` / `SelectTrigger`, which spread their props onto
@@ -289,12 +289,12 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/grid/CellInput.tsx": 2,
     "src/components/grid/CellPreview.tsx": 2,
     "src/components/grid/GridSearchInput.tsx": 2,
-    "src/components/grid/GridToolbar.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
     "src/components/query/QueryEditorTab.tsx": 2,
     "src/components/schema/StructureEditorTab.tsx": 2,
     "src/components/settings/sections/ShortcutRow.tsx": 2,
     "src/components/shell/TabSwitcher.tsx": 2,
+    "src/components/grid/GridToolbar.tsx": 1,
     "src/components/common/DriverBadge.tsx": 1,
     "src/components/common/PasswordInput.tsx": 1,
     "src/components/common/VanishedEnvironmentNotice.tsx": 1,
@@ -318,7 +318,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${80} in ${41} files`, () => {
+  it(`is down to ${79} in ${41} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -332,6 +332,6 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(80);
+    expect(total(BUDGET)).toBeLessThanOrEqual(79);
   });
 });

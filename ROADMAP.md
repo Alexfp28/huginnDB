@@ -195,12 +195,14 @@ alongside affordances that render a glyph or a word rather than a Lucide icon.
 Those are documented exceptions in the test, not work. Read the reason before
 pushing a count down. Worth naming individually:
 
-- `GridToolbar.tsx:166` renders `<Button size="sm" title={t("dataGrid.insertNewRow")}>`
-  — the OS tooltip on a labelled button in the grid's main toolbar.
-  `uiContracts.test.ts`'s rule H exists for exactly this and misses it, because
-  it fires only on `size="icon"`. **Widening rule H is the fix and cannot be
-  merged yet**: as a contract it would fail on all 81. It becomes a one-line
-  change the moment that budget empties, which is the order to do it in.
+- ~~`GridToolbar.tsx:166`'s OS tooltip on the Insert button~~ — **fixed**; it
+  became a `SimpleTooltip` while that button was being rebuilt as a split
+  control. Worth keeping the note for the rule it exposed:
+  `uiContracts.test.ts`'s rule H exists for exactly this shape and misses it,
+  because it fires only on `size="icon"`. **Widening rule H is still blocked**
+  — as a contract it would fail on the 79 remaining — so it stays a one-line
+  change for the moment that budget empties. That ordering is the point: the
+  budget is what makes the contract mergeable later.
 - The heaviest single files are `DocumentListView.tsx` (6 raw buttons, 4 OS
   tooltips) and `ConnectionTreeRow.tsx` (8 OS tooltips). Both are row/list
   components, so one pass over each clears a visible share of both budgets.

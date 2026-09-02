@@ -16,10 +16,12 @@ import { Fragment, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
+  ChevronDown,
   MoreHorizontal,
   Plus,
   Columns3,
   UnfoldHorizontal,
+  type LucideIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,6 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { IconButton } from "@/components/ui/icon-button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { GridSearchInput } from "@/components/grid/GridSearchInput";
 import {
@@ -54,6 +57,21 @@ import type { ColumnFilter, ColumnMeta } from "@/types";
  *
  * `id` is the React key and exists only for that.
  */
+/**
+ * One extra way to add data, offered behind the Insert button's chevron.
+ *
+ * Data, not JSX: these render as a menu row in two places (the chevron's
+ * dropdown and the collapsed `⋯` menu), so a caller supplying both
+ * presentations the way `GridToolbarItem` asks would be writing the same icon
+ * and label twice.
+ */
+export interface InsertAlternative {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  onSelect: () => void;
+}
+
 export interface GridToolbarItem {
   id: string;
   /** Rendered inline in the toolbar row. */
@@ -82,6 +100,16 @@ interface GridToolbarProps {
   onRemoveFilter?: (index: number) => void;
   onInsertRow?: () => void;
   /** Fit every column to its widest visible value. */
+  /**
+   * Other ways to add data to this relation, offered behind the Insert
+   * button's chevron. Data rather than JSX, unlike `GridToolbarItem`: these
+   * only ever render as menu rows, in two places, so a caller supplying both
+   * presentations would be writing the same icon and label twice.
+   *
+   * Empty (the SQL drivers) leaves a plain one-click button with no chevron —
+   * a split control offering one choice is worse than no split at all.
+   */
+  insertAlternatives?: InsertAlternative[];
   onFitColumns: (colIds: readonly string[]) => void;
   /** Fit every column into the visible width, so the row needs no sideways
    *  scroll. The companion to `onFitColumns`, not a replacement — see
@@ -112,6 +140,7 @@ export function GridToolbar({
   serverFilters,
   onRemoveFilter,
   onInsertRow,
+  insertAlternatives,
   onFitColumns,
   onFitColumnsToWidth,
   columns,
@@ -154,26 +183,102 @@ export function GridToolbar({
    * *is* offered in list view: the draft is drawn as a card there (see
    * `DraftDocumentCard`) and commits through the same `insert_row` call.
    */
+  const alternatives = insertAlternatives ?? [];
+
+  /**
+   * A **split** button rather than a menu button, where there is more than one
+   * way in. MongoDB has three — the inline draft, the free-form document
+   * editor, and a JSON file — and before this they were three separate
+   * controls in a bar that already collapses for want of room.
+   *
+   * The distinction from `Export ▾` beside it is deliberate and is why there is
+   * a visible divider: that one opens a menu wherever you click it, this one
+   * performs its default action on the body and only opens on the chevron.
+   * Making Insert a menu button would have been the more consistent-looking
+   * choice and would have cost the most frequent action in the grid a second
+   * click, with no keyboard path to fall back on — `insert` has no shortcut.
+   * Two hit targets need to look like two, hence the divider.
+   *
+   * The body always does what "Insert" means on every other driver (the inline
+   * draft), so the primary action does not change shape between engines; only
+   * the chevron appears or does not.
+   */
   const insertItem: GridToolbarItem | null = onInsertRow
     ? {
         id: "insert",
-        bar: (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1 px-2 text-xs"
-            onClick={onInsertRow}
-            title={t("dataGrid.insertNewRow")}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t("dataGrid.insert")}
-          </Button>
+        bar: alternatives.length ? (
+          <div className="flex items-center overflow-hidden rounded-lg">
+            <SimpleTooltip label={t("dataGrid.insertNewRow")}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 rounded-r-none px-2 text-xs"
+                onClick={onInsertRow}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("dataGrid.insert")}
+              </Button>
+            </SimpleTooltip>
+            <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+            <DropdownMenu>
+              <SimpleTooltip label={t("dataGrid.insertMore")}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t("dataGrid.insertMore")}
+                    className="h-7 rounded-l-none px-1"
+                  >
+                    <ChevronDown className="h-3 w-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </SimpleTooltip>
+              <DropdownMenuContent align="start">
+                {alternatives.map((a) => (
+                  <DropdownMenuItem
+                    key={a.id}
+                    className="text-xs"
+                    onSelect={a.onSelect}
+                  >
+                    <a.icon className="mr-2 h-3.5 w-3.5" />
+                    {a.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        ) : (
+          <SimpleTooltip label={t("dataGrid.insertNewRow")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 px-2 text-xs"
+              onClick={onInsertRow}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t("dataGrid.insert")}
+            </Button>
+          </SimpleTooltip>
         ),
+        // Flattened in the overflow menu: a submenu inside the `⋯` would be a
+        // third level for three rows.
         menu: (
-          <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            {t("dataGrid.insertNewRow")}
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              {t("dataGrid.insertNewRow")}
+            </DropdownMenuItem>
+            {alternatives.map((a) => (
+              <DropdownMenuItem
+                key={a.id}
+                className="text-xs"
+                onSelect={a.onSelect}
+              >
+                <a.icon className="mr-2 h-3.5 w-3.5" />
+                {a.label}
+              </DropdownMenuItem>
+            ))}
+          </>
         ),
       }
     : null;
