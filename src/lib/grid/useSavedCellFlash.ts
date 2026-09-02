@@ -23,6 +23,14 @@
  * key — a query result with no identity — simply does not flash, which is
  * correct rather than a gap: it is not editable either.
  *
+ * **The field is a path, not a column name**, because the two surfaces that
+ * read this disagree about granularity and both are right. The table view
+ * paints one cell per top-level column, so a nested `customData.format` edit
+ * pulses the `customData` cell — the only thing on screen that contains it.
+ * The list view draws that field as its own row and pulses exactly it. Storing
+ * the full path lets each answer for itself; storing a column name would have
+ * made the list view flash a whole document's worth of fields.
+ *
  * One deliberate non-feature: editing a primary-key column changes the row's
  * own key, so the flash lands on a key that no longer exists and nothing
  * pulses. Chasing that would mean guessing which new row used to be the old
@@ -40,10 +48,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const FLASH_MS = 700;
 
 export interface SavedCellFlash {
-  /** The cell currently pulsing, or `null`. */
-  flashed: { rowKey: string; column: string } | null;
-  /** Mark a cell as just-saved. A `null` key is ignored (unkeyed grid). */
-  markSaved: (rowKey: string | null, column: string) => void;
+  /** The field currently pulsing, or `null`. */
+  flashed: { rowKey: string; path: string[] } | null;
+  /** Mark a field as just-saved. A `null` key is ignored (unkeyed grid), as is
+   *  an empty path — neither can be resolved to something on screen. */
+  markSaved: (rowKey: string | null, path: string[]) => void;
 }
 
 export function useSavedCellFlash(): SavedCellFlash {
@@ -59,10 +68,10 @@ export function useSavedCellFlash(): SavedCellFlash {
     [],
   );
 
-  const markSaved = useCallback((rowKey: string | null, column: string) => {
-    if (!rowKey) return;
+  const markSaved = useCallback((rowKey: string | null, path: string[]) => {
+    if (!rowKey || path.length === 0) return;
     if (timer.current) clearTimeout(timer.current);
-    setFlashed({ rowKey, column });
+    setFlashed({ rowKey, path });
     timer.current = setTimeout(() => {
       setFlashed(null);
       timer.current = null;

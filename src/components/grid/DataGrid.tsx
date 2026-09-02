@@ -485,6 +485,15 @@ export function DataGrid({
    */
   const { flashed, markSaved } = useSavedCellFlash();
 
+  /** Position of the pulsing row in `visibleRows`, for the list view (which
+   *  keys documents by position). `-1` becomes `null` — the row may have left
+   *  the page between the save and its refetch. */
+  const flashedRowIndex = useMemo(() => {
+    if (!flashed || !getRowKey) return null;
+    const i = visibleRows.findIndex((r) => getRowKey(r) === flashed.rowKey);
+    return i === -1 ? null : i;
+  }, [flashed, getRowKey, visibleRows]);
+
   const onCellSave = useMemo(
     () =>
       onCellSaveProp &&
@@ -494,7 +503,7 @@ export function DataGrid({
         value: string | null,
       ) => {
         await onCellSaveProp(rowValues, columnName, value);
-        markSaved(getRowKey?.(rowValues) ?? null, columnName);
+        markSaved(getRowKey?.(rowValues) ?? null, [columnName]);
       }),
     [onCellSaveProp, getRowKey, markSaved],
   );
@@ -509,10 +518,7 @@ export function DataGrid({
         type?: string,
       ) => {
         await onFieldSaveProp(rowValues, path, value, type);
-        // A nested field pulses its top-level column, which is the cell the
-        // table view actually draws; the list view renders the field itself and
-        // does not read this yet.
-        markSaved(getRowKey?.(rowValues) ?? null, path[0] ?? "");
+        markSaved(getRowKey?.(rowValues) ?? null, path);
       }),
     [onFieldSaveProp, getRowKey, markSaved],
   );
@@ -1084,6 +1090,12 @@ export function DataGrid({
               }
               copyToClipboard={copyToClipboard}
               emptyLabel={t("dataGrid.noRows")}
+              // Resolved here, against the very array passed as `rows` above
+              // and in the same render, so the index cannot be carried across
+              // two different arrays — which is the failure gotcha #7 is about,
+              // not indices as such.
+              flashedRowIndex={flashedRowIndex}
+              flashedPath={flashed ? flashed.path.join(".") : null}
               draft={
                 draftRow && onDraftCellChange && onDraftCommit && onDraftCancel
                   ? {
@@ -1339,7 +1351,10 @@ export function DataGrid({
                               // row never has to know about the flash state.
                               flashedColIdx={
                                 flashed && rowKey === flashed.rowKey
-                                  ? (columnIndexByName.get(flashed.column) ??
+                                  ? // The table view paints one cell per
+                                    // top-level column, so a nested field
+                                    // pulses the cell that contains it.
+                                    (columnIndexByName.get(flashed.path[0]) ??
                                     null)
                                   : null
                               }

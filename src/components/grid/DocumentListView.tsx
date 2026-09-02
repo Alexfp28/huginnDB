@@ -140,6 +140,15 @@ interface DocumentListViewProps {
   ) => void;
   copyToClipboard: (text: string) => void;
   emptyLabel: string;
+  /**
+   * The just-saved pulse (`useSavedCellFlash`), split into "which document" and
+   * "which field" because this component keys documents by position and fields
+   * by dotted path. The parent resolves the row key against the very `rows`
+   * array it passes here, in the same render, so the index cannot drift the way
+   * gotcha #7 warns about — it is not carried across two different arrays.
+   */
+  flashedRowIndex?: number | null;
+  flashedPath?: string | null;
   /** Inline INSERT card, pinned above the documents. Absent → this surface
    *  isn't insertable (a pipeline preview, a read-only query result). */
   draft?: ListDraft | null;
@@ -230,6 +239,8 @@ export function DocumentListView({
   onExpandField,
   copyToClipboard,
   emptyLabel,
+  flashedRowIndex,
+  flashedPath,
   draft,
 }: DocumentListViewProps) {
   const { t, i18n } = useTranslation();
@@ -313,6 +324,9 @@ export function DocumentListView({
           // render, but a boolean's IDENTITY is itself (`Object.is` on a
           // primitive), so the memo still bails out whenever the capability
           // hasn't actually changed.
+          // A primitive, so the memo below still bails out for every card
+          // except the one holding the pulse.
+          flashedPath={flashedRowIndex === i ? (flashedPath ?? null) : null}
           documentMode={!!onFieldDelete}
           hasFieldSave={!!onFieldSave}
           hasDeleteRow={!!onDeleteRow}
@@ -506,6 +520,8 @@ function DraftDocumentCard({
 
 interface DocumentCardProps {
   index: number;
+  /** Dotted path of the field pulsing in *this* document, or `null`. */
+  flashedPath: string | null;
   columns: ColumnMeta[];
   rowValues: CellValue[];
   types?: BsonTypeTree[];
@@ -582,6 +598,7 @@ interface FieldRowActions {
 
 const DocumentCard = memo(function DocumentCard({
   index,
+  flashedPath,
   columns,
   rowValues,
   types,
@@ -931,6 +948,7 @@ const DocumentCard = memo(function DocumentCard({
                 typeText={typeTextFor(f, documentMode, columnTypeByName)}
                 nullDisplay={nullDisplay}
                 editing={editing}
+                isFlashing={key === flashedPath}
                 editText={edit?.text ?? null}
                 canEdit={canEdit(f)}
                 canMutate={canMutate(f)}
@@ -957,6 +975,9 @@ const DocumentCard = memo(function DocumentCard({
 });
 
 interface FieldRowProps {
+  /** This field's write just landed — pulse it once. See
+   *  `useSavedCellFlash`. */
+  isFlashing: boolean;
   field: DocField;
   line: number;
   lineNumbers: boolean;
@@ -987,6 +1008,7 @@ const FieldRow = memo(function FieldRow({
   typeText,
   nullDisplay,
   editing,
+  isFlashing,
   editText: text,
   canEdit,
   canMutate,
@@ -997,7 +1019,15 @@ const FieldRow = memo(function FieldRow({
 }: FieldRowProps) {
   const isNull = f.value === null || f.value === undefined;
   return (
-    <div className="group/field flex items-center gap-2 font-mono leading-relaxed hover:bg-accent">
+    <div
+      className={cn(
+        "group/field flex items-center gap-2 font-mono leading-relaxed hover:bg-accent",
+        // "It saved." Same one-shot pulse the table view gives a cell, on the
+        // field the list view actually draws — a nested `customData.format`
+        // edit pulses that line, not the whole document.
+        isFlashing && "rounded-sm animate-brand-flash",
+      )}
+    >
       {/* Left gutter: per-field actions, revealed on hover so the reading
           rhythm of the document isn't broken by a column of icons. */}
       <span className="flex w-10 shrink-0 items-center justify-end gap-0.5">
