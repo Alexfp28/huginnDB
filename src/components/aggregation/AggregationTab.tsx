@@ -68,6 +68,7 @@ import { StageRail } from "@/components/aggregation/StageRail";
 import { SaveViewDialog } from "@/components/aggregation/dialogs/SaveViewDialog";
 import { ExportPipelineDialog } from "@/components/aggregation/dialogs/ExportPipelineDialog";
 import {
+  duplicateStage,
   newStage,
   stagesFromBodies,
   toStageInputs,
@@ -368,6 +369,30 @@ export function AggregationTab({
     // be scrolled to.
     requestAnimationFrame(() => {
       cardRefs.current[index]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, []);
+
+  /**
+   * Copy the stage at `index` and drop the copy directly after it.
+   *
+   * Below, where insert is above, and the two are not inconsistent: an insert
+   * is "make room *here*", so it takes the position you clicked from; a
+   * duplicate is "another one like this", which belongs next to its original
+   * and after it, the way duplication reads everywhere else.
+   */
+  const duplicateStageAt = useCallback((index: number) => {
+    setStages((prev) => {
+      const source = prev[index];
+      if (!source) return prev;
+      const next = [...prev];
+      next.splice(index + 1, 0, duplicateStage(source));
+      return next;
+    });
+    requestAnimationFrame(() => {
+      cardRefs.current[index + 1]?.scrollIntoView({
         behavior: "smooth",
         block: "nearest",
       });
@@ -721,6 +746,7 @@ export function AggregationTab({
                   })
                 }
                 onInsertBefore={() => insertStageAt(i)}
+                onDuplicate={() => duplicateStageAt(i)}
                 onDelete={() =>
                   setStages((prev) => prev.filter((s) => s.id !== stage.id))
                 }

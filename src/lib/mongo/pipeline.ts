@@ -40,6 +40,24 @@ export function newStage(operator?: string): PipelineStage {
   };
 }
 
+/**
+ * Copy a stage, with a new identity.
+ *
+ * The id is minted here rather than in the component for the same reason
+ * [`newStage`] is: the counter behind it is module-local, and two places
+ * handing out ids is how two stages end up sharing one — which in this
+ * component means sharing a React key, a collapse entry and a preview slot.
+ *
+ * `body` and `enabled` are copied verbatim: this is a duplicate, so a disabled
+ * stage yields a disabled copy. Collapse state is deliberately *not* carried
+ * over — it is keyed by id in the tab, so the copy comes up expanded, which is
+ * what you want of something you just made in order to edit it.
+ */
+export function duplicateStage(stage: PipelineStage): PipelineStage {
+  stageSeq += 1;
+  return { id: `stage-${stageSeq}`, body: stage.body, enabled: stage.enabled };
+}
+
 /** Wrap already-written bodies (a view being opened) as stages. */
 export function stagesFromBodies(bodies: string[]): PipelineStage[] {
   return bodies.map((body) => {
@@ -81,7 +99,8 @@ function firstKeySpan(body: string): KeySpan | null {
         while (i < body.length && body[i] !== "\n") i += 1;
       } else if (c === "/" && body[i + 1] === "*") {
         i += 2;
-        while (i < body.length && !(body[i] === "*" && body[i + 1] === "/")) i += 1;
+        while (i < body.length && !(body[i] === "*" && body[i + 1] === "/"))
+          i += 1;
         i += 2;
       } else {
         break;

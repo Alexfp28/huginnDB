@@ -782,6 +782,7 @@
       "toggle": "Incluir esta etapa",
       "delete": "Eliminar etapa",
         "insertBefore": "Insertar una etapa encima de esta",
+        "duplicate": "Duplicar esta etapa",
       "collapse": "Plegar",
       "expand": "Desplegar",
       "reorder": "Arrastra para reordenar",

@@ -25,6 +25,7 @@ import {
   BetweenHorizontalStart,
   ChevronDown,
   ChevronRight,
+  Copy,
   GripVertical,
   Trash2,
   TriangleAlert,
@@ -79,6 +80,8 @@ interface Props {
    * it at all.
    */
   onInsertBefore: () => void;
+  /** Copy this stage, placing the copy directly after it. */
+  onDuplicate: () => void;
   onDelete: () => void;
   onRun: () => void;
   onDragStart: () => void;
@@ -109,6 +112,7 @@ export function StageCard({
   onToggleEnabled,
   onToggleCollapsed,
   onInsertBefore,
+  onDuplicate,
   onDelete,
   onRun,
   onDragStart,
@@ -239,6 +243,12 @@ export function StageCard({
             icon={BetweenHorizontalStart}
             label={t("aggregation.stage.insertBefore")}
             onClick={onInsertBefore}
+          />
+          <IconButton
+            size="xs"
+            icon={Copy}
+            label={t("aggregation.stage.duplicate")}
+            onClick={onDuplicate}
           />
           <IconButton
             size="xs"
