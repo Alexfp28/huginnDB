@@ -79,6 +79,28 @@ It gives an objective answer to the question that used to be settled by feel:
 | `tooltip.tsx`         | `Tooltip*`, `SimpleTooltip`            | read its docstring before replacing a native `title=`                                                       |
 | `styles.ts`           | class fragments                        | strings and lookups only, no `cva`, no JSX                                                                  |
 | `uiContracts.test.ts` | —                                      | the drift guards, with the rejected rules listed and reasoned                                               |
+| `uiAdoption.test.ts`  | —                                      | the migration ratchet: per-file budgets for the two patterns that cannot be contracts yet                   |
+
+## Contracts vs. budgets
+
+Two test files guard this layer and they answer different questions.
+
+`uiContracts.test.ts` holds **contracts**: a violation is a bug, every allowlist
+is empty, and that emptiness is its stated admission rule — a rule needing
+exceptions is a matter of taste and does not belong there.
+
+`uiAdoption.test.ts` holds **budgets**: a per-file count of a pattern a
+primitive already replaces, seeded with today's real number and asserted
+exactly, so debt cannot grow and a cleanup has to come and lower the number.
+Today it counts 140 raw `<button>` elements and 81 native `title=` attributes
+outside this directory. The failure output is the delta, so it names the file
+and the transition (`"…/StatusBar.tsx": "5 -> 6"`) rather than diffing two
+seventy-key objects.
+
+The two are not in tension: a budget exists precisely for a rule that _cannot_
+be a contract yet. When a budget empties, the rule graduates into
+`uiContracts.test.ts` with an empty allowlist and leaves the ratchet; when both
+have graduated, `uiAdoption.test.ts` is deleted.
 
 `ui/` has no barrel `index.ts`, deliberately. Call sites import by path
 (`@/components/ui/button`), which is what lets a file move inside this directory

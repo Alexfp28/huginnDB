@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The component library's adoption gap is now a ratchet in CI
+  (`src/components/ui/uiAdoption.test.ts`).** The primitive layer landed with a
+  contract test, tokens and a motion band, and then only half the app adopted
+  it: 140 raw `<button>` elements and 81 native `title=` attributes still sit
+  outside `ui/`, each one re-deciding a hover alpha, a focus ring or a tooltip
+  delay that a primitive already answers. Two of them are visible bugs —
+  `ConnectionsTree`'s "disconnect all" reads like a neutral action because it is
+  a hand-rolled button rather than an `IconButton` with the `tone="destructive"`
+  that already exists, and `GridToolbar`'s insert button shows the OS tooltip
+  from a `<Button size="sm" title=…>`, which `uiContracts.test.ts`'s rule H
+  misses because that rule only fires on `size="icon"`.
+
+  The guard is a per-file budget seeded with today's real count and asserted
+  exactly, so debt cannot grow *and* a cleanup has to come and lower the number
+  — which puts the progress in the diff (`6` → `5`) next to the change that
+  earned it, instead of somewhere you have to go and measure. The maps are
+  sorted by debt descending, so each doubles as a worklist in priority order.
+
+  It is a **separate file from `uiContracts.test.ts` on purpose.** That file's
+  stated admission rule is that every allowlist must be able to end up empty,
+  and it explicitly *rejected* banning native `title=` on those grounds. This
+  does not reverse that call: a contract says "this is a bug", a budget says
+  "this is debt and it may only shrink", and a hundred-plus call sites can only
+  be the second. When a budget empties, the rule graduates into
+  `uiContracts.test.ts` with an empty allowlist and leaves the ratchet; when
+  both have, the file is deleted. Failures assert on the *delta*, not the
+  census, because Vitest abbreviates a diff between two seventy-key objects to
+  `{ …(72) }` — the output now names the file and the transition.
+
 - **The connector ships as an MCP Bundle (`.mcpb`), so Claude Desktop installs
   it in one click.** Claude Desktop has no CLI, so its setup was the worst of
   the lot: open a JSON config file by hand, paste an absolute path with doubled
