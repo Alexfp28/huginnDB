@@ -532,6 +532,7 @@
     "pinColumn": "Pin column",
     "unpinColumn": "Unpin column",
     "fitColumns": "Fit all columns to their content",
+    "fitColumnsToWidth": "Fit all columns to the visible width",
     "moreActions": "More actions",
     "activeFilterCount": "{{count}} filters",
     "openInSideEditor": "Open in side editor",

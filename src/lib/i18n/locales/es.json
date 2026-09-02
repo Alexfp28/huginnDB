@@ -560,6 +560,7 @@
     "pinColumn": "Fijar columna",
     "unpinColumn": "Dejar de fijar columna",
     "fitColumns": "Ajustar todas las columnas al contenido",
+    "fitColumnsToWidth": "Ajustar todas las columnas al ancho visible",
     "moreActions": "Más acciones",
     "activeFilterCount": "{{count}} filtros",
     "openInSideEditor": "Abrir en el editor lateral",

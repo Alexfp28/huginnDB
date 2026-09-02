@@ -34,7 +34,10 @@ import { Inbox, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { isBitType, isNumericType } from "@/lib/grid/columnKinds";
-import { computeAutoFitWidths } from "@/lib/grid/autoFitColumn";
+import {
+  computeAutoFitWidths,
+  distributeToWidth,
+} from "@/lib/grid/autoFitColumn";
 import { useGridPrefs } from "@/lib/grid/useGridPrefs";
 import {
   DocumentListView,
@@ -658,8 +661,8 @@ export function DataGrid({
    * page after the client filter), matching HeidiSQL: fitting to rows the
    * user can't see would need a full-table scan per double-click.
    */
-  function autoFitColumns(colIds: readonly string[]) {
-    const widths = computeAutoFitWidths({
+  function measureFitWidths(colIds: readonly string[]) {
+    return computeAutoFitWidths({
       host: scrollRef.current,
       colIds,
       columns: result.columns,
@@ -695,8 +698,46 @@ export function DataGrid({
       min: MIN_COLUMN_WIDTH,
       max: MAX_AUTOFIT_WIDTH,
     });
+  }
+
+  function autoFitColumns(colIds: readonly string[]) {
+    const widths = measureFitWidths(colIds);
     // One state update (and therefore one `prefs.json` write) for the whole
     // gesture, however many columns it covered.
+    if (Object.keys(widths).length > 0) {
+      commitWidths((prev) => ({ ...prev, ...widths }));
+    }
+  }
+
+  /**
+   * Fit every column into the width on screen, so the whole row is readable
+   * without scrolling sideways.
+   *
+   * The sibling of `autoFitColumns`, not a replacement for it: that one asks
+   * "how wide does this column need to be" and overflows when the answer is
+   * "wider than the window", which is right when you are reading one long
+   * value. This one asks "show me the whole row" and pays for it in truncation.
+   * Both gestures are wanted and neither is the better default, so both are
+   * offered — see `distributeToWidth`, which holds the arithmetic and its
+   * reasoning.
+   *
+   * It starts from the *content* fit rather than dividing the width evenly,
+   * which is what keeps an `id` column narrow and a `description` wide instead
+   * of flattening the table into equal strips.
+   *
+   * `clientWidth` excludes the vertical scrollbar, so the target is the real
+   * content box; the leading gutter is subtracted because it is a fixed column
+   * the data columns do not get to spend.
+   */
+  function fitColumnsToWidth() {
+    const port = scrollRef.current;
+    if (!port) return;
+    const colIds = result.columns.map((c) => c.name);
+    const widths = distributeToWidth(
+      measureFitWidths(colIds),
+      port.clientWidth - GRID_GUTTER_WIDTH,
+      MIN_COLUMN_WIDTH,
+    );
     if (Object.keys(widths).length > 0) {
       commitWidths((prev) => ({ ...prev, ...widths }));
     }
@@ -940,6 +981,7 @@ export function DataGrid({
         onRemoveFilter={onRemoveFilter}
         onInsertRow={onInsertRow}
         onFitColumns={autoFitColumns}
+        onFitColumnsToWidth={fitColumnsToWidth}
         columns={result.columns}
         viewMode={viewMode}
         showRowCount={showRowCount}

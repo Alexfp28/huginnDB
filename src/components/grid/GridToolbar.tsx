@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   MoreHorizontal,
   Plus,
+  Columns3,
   UnfoldHorizontal,
 } from "lucide-react";
 import {
@@ -82,6 +83,10 @@ interface GridToolbarProps {
   onInsertRow?: () => void;
   /** Fit every column to its widest visible value. */
   onFitColumns: (colIds: readonly string[]) => void;
+  /** Fit every column into the visible width, so the row needs no sideways
+   *  scroll. The companion to `onFitColumns`, not a replacement — see
+   *  `DataGrid.fitColumnsToWidth`. */
+  onFitColumnsToWidth: () => void;
   columns: readonly ColumnMeta[];
   /** No columns to fit in list view. */
   viewMode: "table" | "list";
@@ -108,6 +113,7 @@ export function GridToolbar({
   onRemoveFilter,
   onInsertRow,
   onFitColumns,
+  onFitColumnsToWidth,
   columns,
   viewMode,
   showRowCount,
@@ -197,6 +203,34 @@ export function GridToolbar({
         }
       : null;
 
+  // The other half of the same question. Kept as its own control rather than a
+  // mode on the one above, because which of the two you want depends on what
+  // you are doing *right now* — reading one long value, or scanning whole rows
+  // — and a toggle would make the common case two clicks and hide the fact
+  // that there are two answers at all.
+  const fitWidthItem: GridToolbarItem | null =
+    viewMode !== "list" && columns.length > 0
+      ? {
+          id: "fit-columns-to-width",
+          bar: (
+            <IconButton
+              icon={Columns3}
+              label={t("dataGrid.fitColumnsToWidth")}
+              onClick={onFitColumnsToWidth}
+            />
+          ),
+          menu: (
+            <DropdownMenuItem
+              className="text-xs"
+              onSelect={onFitColumnsToWidth}
+            >
+              <Columns3 className="mr-2 h-3.5 w-3.5" />
+              {t("dataGrid.fitColumnsToWidth")}
+            </DropdownMenuItem>
+          ),
+        }
+      : null;
+
   /**
    * What the overflow menu holds right now, grouped so the menu keeps the
    * bar's reading order (leading · data · view) with a separator between
@@ -214,7 +248,11 @@ export function GridToolbar({
     {
       id: "view",
       items: collapseChrome
-        ? [...(fitItem ? [fitItem] : []), ...(toolbarTrailing ?? [])]
+        ? [
+            ...(fitItem ? [fitItem] : []),
+            ...(fitWidthItem ? [fitWidthItem] : []),
+            ...(toolbarTrailing ?? []),
+          ]
         : [],
     },
   ].filter((g) => g.items.length > 0);
@@ -331,6 +369,7 @@ export function GridToolbar({
           </span>
         )}
         {!collapseChrome && fitItem?.bar}
+        {!collapseChrome && fitWidthItem?.bar}
         {!collapseChrome &&
           toolbarTrailing?.map((item) => (
             <Fragment key={item.id}>{item.bar}</Fragment>

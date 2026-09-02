@@ -98,8 +98,7 @@ function widthOf(run: FitText): number {
   if (!ctx || !run.text) return 0;
   ctx.font = run.font;
   return (
-    ctx.measureText(run.text).width +
-    (run.letterSpacing ?? 0) * run.text.length
+    ctx.measureText(run.text).width + (run.letterSpacing ?? 0) * run.text.length
   );
 }
 
@@ -196,8 +195,14 @@ export interface AutoFitInput {
  * filter, matching HeidiSQL. Fitting to rows the user cannot see would need a
  * full-table scan per double-click.
  */
-export function computeAutoFitWidths(input: AutoFitInput): Record<string, number> {
-  const cellFont = resolveCanvasFont(input.host, "font-mono", input.cellFontSize);
+export function computeAutoFitWidths(
+  input: AutoFitInput,
+): Record<string, number> {
+  const cellFont = resolveCanvasFont(
+    input.host,
+    "font-mono",
+    input.cellFontSize,
+  );
   const headerFont = resolveCanvasFont(input.host, "", input.headerFontSize);
   const typeFont = resolveCanvasFont(input.host, "", input.typeFontSize);
 
@@ -230,4 +235,109 @@ export function computeAutoFitWidths(input: AutoFitInput): Record<string, number
     });
   }
   return widths;
+}
+
+/**
+ * Rescale a set of content-fitted widths so their total lands exactly on the
+ * width available on screen — "fit the columns to the window", the companion to
+ * the per-column fit above.
+ *
+ * The two gestures answer different questions and both are wanted. Fitting to
+ * *content* asks "how wide does this column need to be to be readable", and
+ * happily overflows: with thirty columns you get a horizontal scrollbar, which
+ * is correct, because the alternative is thirty unreadable columns. Fitting to
+ * *width* asks "show me the whole row at once" and accepts truncation as the
+ * price. Neither is a better default than the other, so neither replaces the
+ * other.
+ *
+ * Proportional in both directions rather than equalising. The content fit is
+ * what carries the table's visual hierarchy — an `id` column is narrow because
+ * its values are, a `description` is wide because its values are — and dividing
+ * the width equally throws that away, giving a boolean column the same room as
+ * a paragraph. Scaling preserves the ratio.
+ *
+ * **Shrinking is water-filling, not a single multiply.** A flat
+ * `w * (available / total)` drives the already-narrow columns under `min`,
+ * and clamping them afterwards overshoots the target — the clamped columns
+ * keep more width than their share, so the total comes out wider than the
+ * viewport and the scrollbar the gesture was meant to remove stays. Each pass
+ * therefore clamps whatever fell below `min`, removes it from the budget, and
+ * rescales only the columns still free to move. It terminates because every
+ * pass either clamps at least one column or finishes.
+ *
+ * When even `min` for every column exceeds what is available, the result is
+ * `min` throughout and the grid still scrolls. That is honest: there is no
+ * width assignment that fits, and the alternative is columns too narrow to hold
+ * a single character.
+ *
+ * @param natural - Content-fitted widths by column name (from
+ *   `computeAutoFitWidths`), which is what keeps the proportions meaningful.
+ * @param available - Px the columns may occupy: the scrollport's inner width
+ *   less the leading gutter. The caller owns that subtraction because only it
+ *   knows which non-data columns are in play.
+ * @param min - Floor per column, `MIN_COLUMN_WIDTH`. No maximum: the whole
+ *   point when growing is to spend the available width, and `MAX_AUTOFIT_WIDTH`
+ *   has already bounded `natural`.
+ */
+export function distributeToWidth(
+  natural: Record<string, number>,
+  available: number,
+  min: number,
+): Record<string, number> {
+  const ids = Object.keys(natural);
+  if (ids.length === 0) return {};
+
+  // Nothing sensible to scale against: a zero or negative budget (the panel is
+  // collapsed, or the gutter is wider than the scrollport) would otherwise
+  // produce a division by zero and then `NaN` widths, which reach the DOM as
+  // dropped `style.width` declarations rather than as an error.
+  if (!Number.isFinite(available) || available <= 0) return {};
+
+  const clamped = new Map<string, number>();
+  let free = ids.slice();
+
+  for (;;) {
+    const budget = available - [...clamped.values()].reduce((a, b) => a + b, 0);
+    const freeTotal = free.reduce(
+      (sum, id) => sum + Math.max(natural[id], 1),
+      0,
+    );
+    if (free.length === 0) break;
+
+    // Every remaining column would land at or under the floor: clamp them all
+    // and stop, rather than looping one column at a time to the same place.
+    if (budget <= free.length * min) {
+      for (const id of free) clamped.set(id, min);
+      free = [];
+      break;
+    }
+
+    const scale = budget / freeTotal;
+    const under = free.filter((id) => Math.max(natural[id], 1) * scale < min);
+    if (under.length === 0) {
+      for (const id of free) {
+        clamped.set(
+          id,
+          Math.max(min, Math.round(Math.max(natural[id], 1) * scale)),
+        );
+      }
+      free = [];
+      break;
+    }
+    for (const id of under) clamped.set(id, min);
+    free = free.filter((id) => !under.includes(id));
+  }
+
+  // Rounding each column independently leaves the total a few px off the
+  // target, which on a `table-fixed` layout is exactly the gap that leaves a
+  // 3px scrollbar behind — the one symptom this whole function exists to
+  // remove. Put the remainder on the widest column, where it is least visible.
+  const out: Record<string, number> = {};
+  for (const id of ids) out[id] = clamped.get(id) ?? min;
+  const drift = available - Object.values(out).reduce((a, b) => a + b, 0);
+  if (drift !== 0) {
+    const widest = ids.reduce((a, b) => (out[a] >= out[b] ? a : b));
+    if (out[widest] + drift >= min) out[widest] += drift;
+  }
+  return out;
 }
