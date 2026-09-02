@@ -619,7 +619,7 @@
     "delete": "Delete",
     "filter": {
       "title": "Advanced filter",
-        "noSchema": "Advanced filter needs the field list, which has not loaded yet — press refresh to try again",
+        "loadingSchema": "Advanced filter — loading the field list…",
         "schemaFailed": "Advanced filter needs the field list, which failed to load ({{message}}) — press refresh to try again",
       "description": "Filter rows by one or more columns. All conditions must match (AND).",
       "empty": "No conditions yet — add one below.",

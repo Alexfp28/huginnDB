@@ -619,7 +619,7 @@
     "delete": "Eliminar",
     "filter": {
       "title": "Filtro avanzado",
-        "noSchema": "El filtro avanzado necesita la lista de campos, que todavía no ha cargado — pulsa recargar para reintentarlo",
+        "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
         "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
       "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
       "empty": "Aún no hay condiciones — añade una abajo.",

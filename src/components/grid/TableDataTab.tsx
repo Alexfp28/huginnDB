@@ -241,6 +241,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const colError = useSchema(
     (s) => s.byConnection[connectionId]?.columnErrors[tableKey],
   );
+  /** Inference in flight (or not started): no list yet and nothing saying why. */
+  const colsLoading = !cols && !colError;
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1096,16 +1098,19 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       {
         id: "advanced-filter",
         bar: (
-          // Without a field list the dialog is an empty form, so it says why
-          // instead of opening. The message names refresh because `reloadAll`
-          // retries the inference — the button is the fix, not just a report.
+          // Three states, not two. The dialog is built entirely from the field
+          // list, so without one it is an empty form — but "still loading" and
+          // "failed" are different answers and a disabled button says neither.
+          // Inference can take a couple of seconds on a large collection (see
+          // `INFER_TIMEOUT_MS`), and a control that is simply dead for that long
+          // reads as broken.
           <SimpleTooltip
             label={
               cols
                 ? t("tableData.filter.title")
                 : colError
                   ? t("tableData.filter.schemaFailed", { message: colError })
-                  : t("tableData.filter.noSchema")
+                  : t("tableData.filter.loadingSchema")
             }
           >
             <Button
@@ -1117,12 +1122,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               // and doubles as an at-a-glance indicator, with the count as a badge.
               className="relative"
             >
-              <ListFilter
-                className={cn(
-                  "h-3.5 w-3.5",
-                  serverFilters.length ? "text-brand" : "",
-                )}
-              />
+              {colsLoading ? (
+                <Spinner size="sm" />
+              ) : (
+                <ListFilter
+                  className={cn(
+                    "h-3.5 w-3.5",
+                    serverFilters.length ? "text-brand" : "",
+                  )}
+                />
+              )}
               {serverFilters.length > 0 && (
                 <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
                   {serverFilters.length}

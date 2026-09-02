@@ -20,22 +20,31 @@ use std::time::Duration;
 /// Number of documents sampled when inferring a collection's field list.
 const SAMPLE_SIZE: i64 = 100;
 
-/// Ceiling on how long field inference may spend on the server.
+/// How long `$sample` gets before field inference gives up on it.
 ///
-/// `$sample` is normally the cheap way to do this — under the conditions we
-/// meet (first stage, N far below 5% of the collection, more than 100
-/// documents) MongoDB serves it from a pseudo-random cursor rather than a
-/// scan. "Normally" is the operative word: that fast path is a storage-engine
-/// optimisation with its own preconditions, and when any of them does not hold
-/// the server silently falls back to reading the collection and sorting it by
-/// a random key. On a collection of tens of millions that is not slow, it is
-/// effectively never — and with no `maxTimeMS` the driver simply waits, so the
-/// symptom is a field list that never arrives rather than an error anyone can
-/// act on.
+/// Short on purpose, and it is a **discriminator rather than a patience
+/// setting**. `$sample` has two execution strategies and nothing in between:
+/// under the conditions we meet (first stage, N far below 5% of the
+/// collection, more than 100 documents) the server serves it from a
+/// pseudo-random cursor and answers in milliseconds; when any precondition
+/// does not hold it silently falls back to reading the whole collection and
+/// sorting it by a random key. On tens of millions of documents that second
+/// path does not finish — it either blows the 100 MB in-memory sort limit or
+/// runs for minutes.
 ///
-/// Eight seconds matches the pool's `server_selection_timeout`, so the two
-/// ways this call can hang time out on the same scale.
-const INFER_TIMEOUT_MS: u64 = 8_000;
+/// So there is no value of this constant that lets a slow-path `$sample`
+/// succeed; a longer one only makes the user wait longer for the same
+/// fallback. Two seconds is well past any round trip the fast path needs,
+/// including a remote server, and short enough that the fallback is the cost
+/// of a pause rather than of a hang. It was 8s when this was first bounded,
+/// chosen to match the pool's `server_selection_timeout` — which was the wrong
+/// thing to match, because that governs *reaching* a server and this governs
+/// *which algorithm the server picked*.
+///
+/// The same value bounds the fallback `find`, where it means the ordinary
+/// thing: that read is O(N) in the page size and cannot be slow for being big,
+/// so a stall there really is an unresponsive server.
+const INFER_TIMEOUT_MS: u64 = 2_000;
 
 /// Resolve the [`mongodb::Database`] a connection handle targets, or fail if no
 /// database has been selected (the parent cluster connection before the user
