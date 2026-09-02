@@ -12,6 +12,7 @@
  * pipeline result reads exactly like a collection does one tab over.
  */
 
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Spinner } from "@/components/ui/spinner";
 import { DocumentListView } from "@/components/grid/DocumentListView";
@@ -42,6 +43,7 @@ export function PipelineOutput({
   className,
 }: Props) {
   const { t } = useTranslation();
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const grid = usePreferences(selectGridPrefs);
 
   if (error) {
@@ -76,12 +78,16 @@ export function PipelineOutput({
       {/* A running refresh dims the stale documents instead of unmounting
           them: a preview that blanks on every keystroke is unreadable. */}
       <div
+        // The list windows its cards against this element, so it needs a
+        // handle on it — see `DocumentListView`'s virtualizer note.
+        ref={scrollRef}
         className={cn(
           "min-h-0 flex-1 overflow-auto transition-opacity",
           loading && "opacity-50",
         )}
       >
         <DocumentListView
+          scrollRef={scrollRef}
           columns={result.columns}
           rows={result.rows}
           rowTypes={result.row_types}

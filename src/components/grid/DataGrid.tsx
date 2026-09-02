@@ -1072,6 +1072,7 @@ export function DataGrid({
         >
           {viewMode === "list" ? (
             <DocumentListView
+              scrollRef={scrollRef}
               columns={result.columns}
               rows={visibleRows}
               rowTypes={result.row_types}

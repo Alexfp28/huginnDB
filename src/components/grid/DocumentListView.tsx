@@ -40,12 +40,15 @@
 import {
   memo,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MutableRefObject,
+  type RefObject,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { notify } from "@/lib/notify";
@@ -140,6 +143,12 @@ interface DocumentListViewProps {
   ) => void;
   copyToClipboard: (text: string) => void;
   emptyLabel: string;
+  /**
+   * The grid's scroll container, owned by `DataGrid` and shared with the table
+   * view. Needed because this list windows its cards against it — see the note
+   * on the virtualizer below.
+   */
+  scrollRef: RefObject<HTMLDivElement | null>;
   /**
    * The just-saved pulse (`useSavedCellFlash`), split into "which document" and
    * "which field" because this component keys documents by position and fields
@@ -239,6 +248,7 @@ export function DocumentListView({
   onExpandField,
   copyToClipboard,
   emptyLabel,
+  scrollRef,
   flashedRowIndex,
   flashedPath,
   draft,
@@ -289,6 +299,63 @@ export function DocumentListView({
     copyToClipboard,
   };
 
+  /**
+   * Windowing, because a page here is not a page of rows — it is a page of
+   * *documents*, each expanded into one line per field. At the largest page
+   * size that is 500 cards of a dozen-plus fields each, so the table view's
+   * hundreds of DOM nodes become this view's thousands, all of them built in
+   * one synchronous commit. That is the pause when switching from table to list
+   * on a large collection, and the reason scrolling never felt right
+   * afterwards.
+   *
+   * Dynamic measurement, unlike the table's virtualizer next door. There every
+   * row is exactly `rowHeight` tall so `estimateSize` is the truth and no
+   * measurement is needed; here a card's height is its field count, which
+   * varies per document and changes when a nested container is folded. So each
+   * card reports its real height through `measureElement`, and `estimateSize`
+   * only has to be close enough to keep the scrollbar honest before the first
+   * measurement lands — the header plus a line per top-level field.
+   *
+   * It shares `DataGrid`'s scroll container rather than introducing one of its
+   * own. That element is also what the table's virtualizer watches, which is
+   * why that one is explicitly disabled in list mode (see its note); two
+   * virtualizers on one scroller, each with a different idea of the content
+   * height, is exactly the fight that note describes.
+   */
+  const estimatedCardHeight = useMemo(() => {
+    const line = typeof fontSize === "number" ? fontSize + 8 : 20;
+    return 28 + Math.max(1, columns.length) * line;
+  }, [fontSize, columns.length]);
+
+  /**
+   * The scroll element as *state*, not read straight off the ref.
+   *
+   * The ref belongs to a `<div>` this component is rendered *inside*, and React
+   * attaches host refs bottom-up in the same commit pass that runs layout
+   * effects — so a child's layout effect runs before its parent's ref is set.
+   * The virtualizer's own setup is a layout effect, so reading
+   * `scrollRef.current` there gets `null`, and nothing re-renders this
+   * component afterwards to make it look again: the list windows against
+   * nothing and shows an empty container of the right height.
+   *
+   * A passive effect runs after the whole commit, when the ref is populated,
+   * and setting state from it costs one extra render on mount and makes the
+   * dependency explicit instead of relying on the parent happening to re-render
+   * for some other reason. (`DataGrid`'s own virtualizer has no such problem —
+   * it renders the ref'd `<div>` itself, so its effects see it attached.)
+   */
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    setScrollEl(scrollRef.current);
+  }, [scrollRef]);
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollEl,
+    estimateSize: () => estimatedCardHeight,
+    overscan: 4,
+  });
+
   // An empty relation gets the shared branded empty frame, the same one the
   // table view shows in place of its rows — an unadorned grey line here was the
   // one place the list view fell out of that family. Suppressed while a draft
@@ -297,45 +364,72 @@ export function DocumentListView({
     return <EmptyState size="sm" icon={Inbox} title={emptyLabel} />;
   }
   return (
-    <div className="divide-y divide-border/60">
+    <div>
+      {/* The draft is pinned above the window, not inside it: it is one card at
+          a known position and virtualising it would mean it could scroll out of
+          view while it holds unsaved input. */}
       {draft && (
-        <DraftDocumentCard
-          columns={columns}
-          fontSize={fontSize}
-          showTypes={showTypes}
-          draft={draft}
-        />
+        <div className="border-b border-border/60">
+          <DraftDocumentCard
+            columns={columns}
+            fontSize={fontSize}
+            showTypes={showTypes}
+            draft={draft}
+          />
+        </div>
       )}
-      {rows.map((rowValues, i) => (
-        <DocumentCard
-          key={i}
-          index={i}
-          columns={columns}
-          rowValues={rowValues}
-          types={rowTypes?.[i]}
-          nullDisplay={nullDisplay}
-          striped={zebraStripes && i % 2 === 1}
-          fontSize={fontSize}
-          expandNested={expandNested}
-          showTypes={showTypes}
-          lineNumbers={lineNumbers}
-          // Capabilities as booleans, not the functions themselves — see
-          // `DocumentCardCallbacks` above. Each `!!x` is recomputed on every
-          // render, but a boolean's IDENTITY is itself (`Object.is` on a
-          // primitive), so the memo still bails out whenever the capability
-          // hasn't actually changed.
-          // A primitive, so the memo below still bails out for every card
-          // except the one holding the pulse.
-          flashedPath={flashedRowIndex === i ? (flashedPath ?? null) : null}
-          documentMode={!!onFieldDelete}
-          hasFieldSave={!!onFieldSave}
-          hasDeleteRow={!!onDeleteRow}
-          hasExpandField={!!onExpandField}
-          t={t}
-          labels={labels}
-          callbacksRef={callbacksRef}
-        />
-      ))}
+      <div
+        className="relative w-full"
+        style={{ height: virtualizer.getTotalSize() }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const i = virtualRow.index;
+          const rowValues = rows[i];
+          return (
+            <div
+              key={i}
+              // `data-index` + `measureElement` is how the virtualizer learns
+              // this card's real height; without both it keeps the estimate and
+              // the scrollbar drifts as you go.
+              data-index={i}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 top-0 w-full border-b border-border/60"
+              style={{ transform: `translateY(${virtualRow.start}px)` }}
+            >
+              <DocumentCard
+                key={i}
+                index={i}
+                columns={columns}
+                rowValues={rowValues}
+                types={rowTypes?.[i]}
+                nullDisplay={nullDisplay}
+                striped={zebraStripes && i % 2 === 1}
+                fontSize={fontSize}
+                expandNested={expandNested}
+                showTypes={showTypes}
+                lineNumbers={lineNumbers}
+                // Capabilities as booleans, not the functions themselves — see
+                // `DocumentCardCallbacks` above. Each `!!x` is recomputed on every
+                // render, but a boolean's IDENTITY is itself (`Object.is` on a
+                // primitive), so the memo still bails out whenever the capability
+                // hasn't actually changed.
+                // A primitive, so the memo below still bails out for every card
+                // except the one holding the pulse.
+                flashedPath={
+                  flashedRowIndex === i ? (flashedPath ?? null) : null
+                }
+                documentMode={!!onFieldDelete}
+                hasFieldSave={!!onFieldSave}
+                hasDeleteRow={!!onDeleteRow}
+                hasExpandField={!!onExpandField}
+                t={t}
+                labels={labels}
+                callbacksRef={callbacksRef}
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
