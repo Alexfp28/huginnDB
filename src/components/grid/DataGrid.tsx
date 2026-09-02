@@ -79,6 +79,7 @@ import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
 import { useGridColumns } from "@/lib/grid/useGridColumns";
 import { useGridKeyboardNav } from "@/lib/grid/useGridKeyboardNav";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
+import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
 import { useCellEditing } from "@/lib/grid/useCellEditing";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 import type { Driver } from "@/types";
@@ -341,7 +342,7 @@ export function DataGrid({
   tabId,
   driver,
   pkColumnNames,
-  onCellSave,
+  onCellSave: onCellSaveProp,
   onSortChange,
   sort,
   fkColumnNames,
@@ -358,7 +359,7 @@ export function DataGrid({
   onDuplicateRow,
   onDeleteRow,
   onBulkDelete,
-  onFieldSave,
+  onFieldSave: onFieldSaveProp,
   onFieldDelete,
   getRowKey,
   onSelectionChange,
@@ -465,6 +466,56 @@ export function DataGrid({
     toggleSelectAll,
     selectedColumnValues,
   } = useGridSelection({ visibleRows, getRowKey, onSelectionChange });
+
+  /**
+   * Success feedback for a write, decided once here rather than at each of the
+   * twelve places a save is fired from (inline commit, the keyboard's
+   * type-to-replace, the FK combobox, the ∅ button, the modal editor, the
+   * docked panel, the list view's fields). Wrapping the two callbacks *before*
+   * they are handed down means every one of those paths — and any added later —
+   * confirms itself without knowing this exists. Wrapping them individually
+   * would have been twelve chances to forget, which is how the app ended up
+   * with no confirmation anywhere in the first place.
+   *
+   * The mark is set only after the save resolves, and every save path refetches
+   * on its way through, so the pulse lands on the *refreshed* value — it says
+   * "this is what the database now holds", not "your keystrokes were accepted".
+   * A rejected write throws before it, so a failure can never look like a
+   * success.
+   */
+  const { flashed, markSaved } = useSavedCellFlash();
+
+  const onCellSave = useMemo(
+    () =>
+      onCellSaveProp &&
+      (async (
+        rowValues: CellValue[],
+        columnName: string,
+        value: string | null,
+      ) => {
+        await onCellSaveProp(rowValues, columnName, value);
+        markSaved(getRowKey?.(rowValues) ?? null, columnName);
+      }),
+    [onCellSaveProp, getRowKey, markSaved],
+  );
+
+  const onFieldSave = useMemo(
+    () =>
+      onFieldSaveProp &&
+      (async (
+        rowValues: CellValue[],
+        path: string[],
+        value: string | null,
+        type?: string,
+      ) => {
+        await onFieldSaveProp(rowValues, path, value, type);
+        // A nested field pulses its top-level column, which is the cell the
+        // table view actually draws; the list view renders the field itself and
+        // does not read this yet.
+        markSaved(getRowKey?.(rowValues) ?? null, path[0] ?? "");
+      }),
+    [onFieldSaveProp, getRowKey, markSaved],
+  );
 
   /**
    * Re-resolve `selectedCell` after a refetch replaces every row's array
@@ -1282,6 +1333,15 @@ export function DataGrid({
                               rowKey={rowKey}
                               activeColIdx={
                                 activeCell?.r === i ? activeCell.c : null
+                              }
+                              // Same shape as `activeColIdx`: the parent
+                              // answers "which column of *this* row", so the
+                              // row never has to know about the flash state.
+                              flashedColIdx={
+                                flashed && rowKey === flashed.rowKey
+                                  ? (columnIndexByName.get(flashed.column) ??
+                                    null)
+                                  : null
                               }
                               inlineEditHere={
                                 inlineEdit && inlineEdit.rowValues === rowValues

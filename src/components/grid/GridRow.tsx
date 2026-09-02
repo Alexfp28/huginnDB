@@ -104,6 +104,9 @@ interface GridRowProps {
   /** This row's column index for the keyboard-active cell, or `null` when
    *  the active cell belongs to a different row entirely. */
   activeColIdx: number | null;
+  /** Backend index of the column that just saved in this row, or `null`. Fed
+   *  the same way `activeColIdx` is — see `useSavedCellFlash`. */
+  flashedColIdx: number | null;
   /** The inline-edit state, but only when it belongs to this row's
    *  `rowValues` — `null` otherwise. Narrowing this in the parent (rather
    *  than passing the raw `inlineEdit` state) is what lets every row EXCEPT
@@ -203,6 +206,7 @@ export const GridRow = memo(function GridRow({
   isMultiSelected,
   rowKey,
   activeColIdx,
+  flashedColIdx,
   inlineEditHere,
   selectionEnabled,
   hasSelection,
@@ -359,6 +363,7 @@ export const GridRow = memo(function GridRow({
         const isFkCell =
           !!onNavigateFk && !!columnInfoByName.get(meta.name)?.referenced_table;
         const isActiveCell = activeColIdx === cIdx;
+        const isFlashing = flashedColIdx === cIdx;
         const isPinned = pinnedColumnSet.has(colName);
         const stickyLeft = isPinned ? pinnedLeftAcc : undefined;
         if (isPinned) pinnedLeftAcc += cell.column.getSize();
@@ -392,6 +397,13 @@ export const GridRow = memo(function GridRow({
                   // its own `pinnedBgColor` background.
                   // No transition — the ring must track keys instantly.
                   isActiveCell && "ring-2 ring-inset ring-brand",
+                  // "It saved." One 520ms pulse, fired once the write has
+                  // resolved and the page has been refetched, so it confirms
+                  // the stored value rather than the keystrokes. `relative` for
+                  // the same reason the active ring needs it — the pulse is a
+                  // box-shadow and a static cell would let the next one paint
+                  // over it.
+                  isFlashing && "relative animate-brand-flash",
                   isActiveCell && isPinned && "z-10",
                   isActiveCell && !isPinned && "relative",
                 )}
