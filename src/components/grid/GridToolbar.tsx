@@ -19,8 +19,6 @@ import {
   ChevronDown,
   MoreHorizontal,
   Plus,
-  Columns3,
-  UnfoldHorizontal,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -40,7 +38,7 @@ import {
 } from "@/components/grid/ServerFilterChips";
 import { useToolbarDensity } from "@/lib/grid/toolbarDensity";
 import { cn, formatNumber } from "@/lib/utils";
-import type { ColumnFilter, ColumnMeta } from "@/types";
+import type { ColumnFilter } from "@/types";
 
 /**
  * One toolbar action, in BOTH of its presentations.
@@ -110,14 +108,6 @@ interface GridToolbarProps {
    * a split control offering one choice is worse than no split at all.
    */
   insertAlternatives?: InsertAlternative[];
-  onFitColumns: (colIds: readonly string[]) => void;
-  /** Fit every column into the visible width, so the row needs no sideways
-   *  scroll. The companion to `onFitColumns`, not a replacement — see
-   *  `DataGrid.fitColumnsToWidth`. */
-  onFitColumnsToWidth: () => void;
-  columns: readonly ColumnMeta[];
-  /** No columns to fit in list view. */
-  viewMode: "table" | "list";
   showRowCount: boolean;
   /** Rows after the client filter — what the count reports. */
   visibleRowCount: number;
@@ -141,10 +131,6 @@ export function GridToolbar({
   onRemoveFilter,
   onInsertRow,
   insertAlternatives,
-  onFitColumns,
-  onFitColumnsToWidth,
-  columns,
-  viewMode,
   showRowCount,
   visibleRowCount,
   total,
@@ -166,9 +152,9 @@ export function GridToolbar({
    *   things in the bar, and they're deliberate operations nobody triggers
    *   twice a minute.
    * - `collapseChrome` — the icon-only controls: the parent's leading cluster
-   *   (refresh, advanced filter) and the view controls (fit columns, the
-   *   table/list toggle). Cheap in pixels, frequently used, so they only go
-   *   when the pane is genuinely too narrow for anything but the search box.
+   *   (refresh, advanced filter) and the view controls (the table/list
+   *   toggle). Cheap in pixels, frequently used, so they only go when the pane
+   *   is genuinely too narrow for anything but the search box.
    */
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const density = useToolbarDensity(toolbarRef);
@@ -179,7 +165,7 @@ export function GridToolbar({
    * The grid's own toolbar actions, in the same two-presentation shape the
    * parent's slots use (`GridToolbarItem`) so the bar and the overflow menu
    * are built from one list each. `null` when the action doesn't apply — no
-   * insert callback, or list view, which has no columns to fit. Insert itself
+   * insert callback. Insert itself
    * *is* offered in list view: the draft is drawn as a card there (see
    * `DraftDocumentCard`) and commits through the same `insert_row` call.
    */
@@ -283,59 +269,6 @@ export function GridToolbar({
       }
     : null;
 
-  // Same auto-fit as double-clicking a column's edge, applied to every column
-  // — the discoverable form of that gesture.
-  const fitItem: GridToolbarItem | null =
-    viewMode !== "list" && columns.length > 0
-      ? {
-          id: "fit-columns",
-          bar: (
-            <IconButton
-              icon={UnfoldHorizontal}
-              label={t("dataGrid.fitColumns")}
-              onClick={() => onFitColumns(columns.map((c) => c.name))}
-            />
-          ),
-          menu: (
-            <DropdownMenuItem
-              className="text-xs"
-              onSelect={() => onFitColumns(columns.map((c) => c.name))}
-            >
-              <UnfoldHorizontal className="mr-2 h-3.5 w-3.5" />
-              {t("dataGrid.fitColumns")}
-            </DropdownMenuItem>
-          ),
-        }
-      : null;
-
-  // The other half of the same question. Kept as its own control rather than a
-  // mode on the one above, because which of the two you want depends on what
-  // you are doing *right now* — reading one long value, or scanning whole rows
-  // — and a toggle would make the common case two clicks and hide the fact
-  // that there are two answers at all.
-  const fitWidthItem: GridToolbarItem | null =
-    viewMode !== "list" && columns.length > 0
-      ? {
-          id: "fit-columns-to-width",
-          bar: (
-            <IconButton
-              icon={Columns3}
-              label={t("dataGrid.fitColumnsToWidth")}
-              onClick={onFitColumnsToWidth}
-            />
-          ),
-          menu: (
-            <DropdownMenuItem
-              className="text-xs"
-              onSelect={onFitColumnsToWidth}
-            >
-              <Columns3 className="mr-2 h-3.5 w-3.5" />
-              {t("dataGrid.fitColumnsToWidth")}
-            </DropdownMenuItem>
-          ),
-        }
-      : null;
-
   /**
    * What the overflow menu holds right now, grouped so the menu keeps the
    * bar's reading order (leading · data · view) with a separator between
@@ -352,13 +285,7 @@ export function GridToolbar({
     },
     {
       id: "view",
-      items: collapseChrome
-        ? [
-            ...(fitItem ? [fitItem] : []),
-            ...(fitWidthItem ? [fitWidthItem] : []),
-            ...(toolbarTrailing ?? []),
-          ]
-        : [],
+      items: collapseChrome ? [...(toolbarTrailing ?? [])] : [],
     },
   ].filter((g) => g.items.length > 0);
 
@@ -378,7 +305,7 @@ export function GridToolbar({
         search box · filter chips  ——  then, right-aligned via the cluster's
         `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
         data/Bulk update, grouped right beside Insert) · optional row count ·
-        fit columns · trailing slot (view toggle) · elapsed time · overflow
+        trailing slot (view toggle) · elapsed time · overflow
         menu. The search box flex-grows (capped) so it's the visual anchor on
         the left; every action that adds, exports, or mass-edits data lives
         together on the right instead of crowding the filter cluster.
@@ -473,8 +400,6 @@ export function GridToolbar({
             {t("dataGrid.truncated")}
           </span>
         )}
-        {!collapseChrome && fitItem?.bar}
-        {!collapseChrome && fitWidthItem?.bar}
         {!collapseChrome &&
           toolbarTrailing?.map((item) => (
             <Fragment key={item.id}>{item.bar}</Fragment>

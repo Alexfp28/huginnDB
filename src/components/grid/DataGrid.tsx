@@ -30,7 +30,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { tableKey } from "@/stores/session/schema";
-import { Inbox, Pin } from "lucide-react";
+import { Columns3, Inbox, Pin, UnfoldHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { isBitType, isNumericType } from "@/lib/grid/columnKinds";
@@ -56,6 +56,7 @@ import type {
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
 import { CellPreview } from "@/components/grid/CellPreview";
 import { DraftRowView } from "@/components/grid/DraftRowView";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   GridToolbar,
   type GridToolbarItem,
@@ -791,6 +792,9 @@ export function DataGrid({
    * content box; the leading gutter is subtracted because it is a fixed column
    * the data columns do not get to spend.
    */
+  /** List view has no columns to size; an empty result has nothing to size. */
+  const showFitControls = viewMode !== "list" && result.columns.length > 0;
+
   function fitColumnsToWidth() {
     const port = scrollRef.current;
     if (!port) return;
@@ -1043,10 +1047,6 @@ export function DataGrid({
         serverFilters={serverFilters}
         onRemoveFilter={onRemoveFilter}
         onInsertRow={onInsertRow}
-        onFitColumns={autoFitColumns}
-        onFitColumnsToWidth={fitColumnsToWidth}
-        columns={result.columns}
-        viewMode={viewMode}
         showRowCount={showRowCount}
         visibleRowCount={visibleRows.length}
         total={result.total}
@@ -1456,8 +1456,36 @@ export function DataGrid({
           right (pagination) groups so they land on opposite edges instead of
           bunching together. Omitted entirely when the caller has nothing to
           put here (query/view result tabs, which don't paginate). */}
-      {footer && (
+      {(footer || showFitControls) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background px-3 py-1.5 text-xs">
+          {/* Column sizing sits with the row-height zoom, not in the header.
+              Both answer "how am I looking at this", which is what the footer
+              row is for — the header is data actions (insert, export, filter).
+              They lived up there until someone pointed out that the two halves
+              of the same question were on opposite edges of the grid.
+
+              Rendered here rather than handed to the caller as footer content
+              because the measurement needs the scroll container and the width
+              map, neither of which leaves this component. That is also why the
+              row now appears for a footerless grid: a query result has columns
+              worth fitting and no pagination, so gating the whole row on the
+              caller's footer would have taken both gestures away from it. */}
+          {showFitControls && (
+            <div className="flex items-center">
+              <IconButton
+                icon={UnfoldHorizontal}
+                label={t("dataGrid.fitColumns")}
+                onClick={() =>
+                  autoFitColumns(result.columns.map((c) => c.name))
+                }
+              />
+              <IconButton
+                icon={Columns3}
+                label={t("dataGrid.fitColumnsToWidth")}
+                onClick={fitColumnsToWidth}
+              />
+            </div>
+          )}
           {footer}
         </div>
       )}
