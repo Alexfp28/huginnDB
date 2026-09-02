@@ -533,6 +533,14 @@
     "unpinColumn": "Unpin column",
     "fitColumns": "Fit all columns to their content",
     "fitColumnsToWidth": "Fit all columns to the visible width",
+    "insertDocument": {
+      "action": "New document…",
+      "title": "New document in {{collection}}",
+      "hint": "Write the document in shell syntax — ObjectId(…), ISODate(…), unquoted keys and comments are all accepted. Paste an array to insert several at once.",
+      "confirm": "Insert",
+      "inserting": "Inserting…",
+      "failed": "Could not insert: {{message}}"
+    },
     "moreActions": "More actions",
     "activeFilterCount": "{{count}} filters",
     "openInSideEditor": "Open in side editor",

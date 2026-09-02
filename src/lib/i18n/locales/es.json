@@ -561,6 +561,14 @@
     "unpinColumn": "Dejar de fijar columna",
     "fitColumns": "Ajustar todas las columnas al contenido",
     "fitColumnsToWidth": "Ajustar todas las columnas al ancho visible",
+    "insertDocument": {
+      "action": "Nuevo documento…",
+      "title": "Nuevo documento en {{collection}}",
+      "hint": "Escribe el documento en sintaxis de shell: se aceptan ObjectId(…), ISODate(…), claves sin comillas y comentarios. Pega un array para insertar varios de una vez.",
+      "confirm": "Insertar",
+      "inserting": "Insertando…",
+      "failed": "No se pudo insertar: {{message}}"
+    },
     "moreActions": "Más acciones",
     "activeFilterCount": "{{count}} filtros",
     "openInSideEditor": "Abrir en el editor lateral",

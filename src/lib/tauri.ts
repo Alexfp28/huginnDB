@@ -175,8 +175,7 @@ export const api = {
     profile: ConnectionProfile,
     password?: string,
     sshSecret?: string,
-  ) =>
-    invoke<string>("test_connection", { profile, password, sshSecret }),
+  ) => invoke<string>("test_connection", { profile, password, sshSecret }),
 
   /** Open a long-lived pool for the profile and remember it. */
   connect: (id: string, password?: string, sshSecret?: string) =>
@@ -340,13 +339,19 @@ export const api = {
   }) => invoke<number>("apply_bulk_update", { args }),
 
   /** `DROP TABLE` for a catalog-sourced (schema, table) pair. */
-  dropTable: (connectionId: string, schema: string | undefined, table: string) =>
-    invoke<void>("drop_table", { connectionId, schema, table }),
+  dropTable: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) => invoke<void>("drop_table", { connectionId, schema, table }),
 
   /** Empty a table — remove every row but keep the table (#69). `TRUNCATE`
    *  on Postgres/MySQL, `DELETE FROM` on SQLite, `deleteMany({})` on MongoDB. */
-  emptyTable: (connectionId: string, schema: string | undefined, table: string) =>
-    invoke<void>("empty_table", { connectionId, schema, table }),
+  emptyTable: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) => invoke<void>("empty_table", { connectionId, schema, table }),
 
   /** `ALTER TABLE … RENAME TO` (or `RENAME TABLE` on MySQL) for a
    *  catalog-sourced (schema, table) pair — `renameCollection` on MongoDB.
@@ -474,7 +479,10 @@ export const api = {
   /** A collection's full index catalogue, with sizes and usage counters when
    *  the connection's role can read `$collStats` / `$indexStats`. */
   listMongoIndexes: (connectionId: string, collection: string) =>
-    invoke<MongoIndexInfo[]>("list_mongo_indexes", { connectionId, collection }),
+    invoke<MongoIndexInfo[]>("list_mongo_indexes", {
+      connectionId,
+      collection,
+    }),
 
   createMongoIndex: (args: {
     connectionId: string;
@@ -620,6 +628,25 @@ export const api = {
   }) => invoke<CellValue>("insert_row", args),
 
   /**
+   * Insert one MongoDB document — or an array of them — written as source
+   * text in the shell grammar (`ObjectId(…)`, unquoted keys, comments).
+   *
+   * MongoDB only. `insertRow` above takes column/value pairs, which is the
+   * right shape for a SQL row and the wrong one for a collection: the grid's
+   * column set is sampled from a page of documents, so it cannot describe a
+   * field that page did not contain. The text is parsed in Rust by the same
+   * parser the query editor and the aggregation builder use — the frontend
+   * never parses a pipeline or a document (gotcha #33).
+   *
+   * Returns the inserted `_id`, or an array of them for a bulk insert.
+   */
+  insertDocuments: (args: {
+    connectionId: string;
+    collection: string;
+    source: string;
+  }) => invoke<CellValue>("insert_documents", args),
+
+  /**
    * Fetch a page of valid values for a foreign-key column. When
    * `labelColumn` is omitted the backend picks the first textual non-PK
    * column from the target table; the resulting `label` is `null` when no
@@ -664,8 +691,7 @@ export const api = {
 
   /** Read the session-level inner-dockview geometry (or `null` for the
    *  default tabbed layout). Main-window-only, like the tab-state calls. */
-  getWorkspaceLayout: () =>
-    invoke<WorkspaceLayout>("get_workspace_layout"),
+  getWorkspaceLayout: () => invoke<WorkspaceLayout>("get_workspace_layout"),
 
   /** Persist the session-level inner-dockview geometry (`null` clears it). */
   saveWorkspaceLayout: (layout: WorkspaceLayout) =>
@@ -673,8 +699,7 @@ export const api = {
 
   /** The main window's launch-restore state (live connections, focused
    *  connection, active tab) for auto-reconnect + focus restore on launch. */
-  getLaunchState: () =>
-    invoke<LaunchState>("get_launch_state"),
+  getLaunchState: () => invoke<LaunchState>("get_launch_state"),
 
   /** Persist the launch-restore state so the next launch can restore it. */
   saveLaunchState: (launchState: LaunchState) =>
@@ -715,8 +740,7 @@ export const api = {
 
   /** Delete an environment and the session state it remembered. Rejects the
    *  last remaining one; connection profiles are never touched. */
-  deleteEnvironment: (id: string) =>
-    invoke<void>("delete_environment", { id }),
+  deleteEnvironment: (id: string) => invoke<void>("delete_environment", { id }),
 
   /** Detach an environment from the origin that mirrors it (#108), so it
    *  becomes an ordinary local environment — the "keep as mine" action for a
@@ -767,7 +791,8 @@ export const api = {
 
   /** Delete a schema and cascade to its bindings. Returns how many went, so the
    *  UI can say so; the confirmation itself is the caller's. */
-  deleteJsonSchema: (id: string) => invoke<number>("delete_json_schema", { id }),
+  deleteJsonSchema: (id: string) =>
+    invoke<number>("delete_json_schema", { id }),
 
   /** Create (empty `id`) or update one binding. Here the full record *is* the
    *  right payload — every field is the user's to set. */
@@ -821,7 +846,10 @@ export const api = {
 
   /** Draft a schema from sample values the caller already has in memory. */
   inferJsonSchema: (values: unknown[], closedObjects?: boolean) =>
-    invoke<JsonSchemaInferResult>("infer_json_schema", { values, closedObjects }),
+    invoke<JsonSchemaInferResult>("infer_json_schema", {
+      values,
+      closedObjects,
+    }),
 
   /** Write the selected schemas to a file the user picks; returns the path.
    *  No passphrase: a JSON Schema carries no secret. */
@@ -829,7 +857,9 @@ export const api = {
     invoke<string>("export_json_schemas", { ids, includeBindings }),
 
   analyzeJsonSchemaImport: (filePath: string) =>
-    invoke<JsonSchemaImportAnalysis>("analyze_json_schema_import", { filePath }),
+    invoke<JsonSchemaImportAnalysis>("analyze_json_schema_import", {
+      filePath,
+    }),
 
   importJsonSchemas: (
     filePath: string,
@@ -1100,8 +1130,11 @@ export const api = {
    * same format `exportDatabase` produces, scoped to a single table.
    * Rejects MongoDB; use `exportCollection` for a collection.
    */
-  exportTable: (connectionId: string, schema: string | undefined, table: string) =>
-    invoke<string>("export_table", { connectionId, schema, table }),
+  exportTable: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) => invoke<string>("export_table", { connectionId, schema, table }),
 
   /**
    * Export the rows of a SQL table matching `filters`/`search` as `INSERT`
@@ -1118,12 +1151,20 @@ export const api = {
    * JSON (#65). The save dialog opens on the Rust side; returns the written
    * path. Rejects if the user cancels.
    */
-  exportCollection: (connectionId: string, collection: string, filters?: ColumnFilter[]) =>
+  exportCollection: (
+    connectionId: string,
+    collection: string,
+    filters?: ColumnFilter[],
+  ) =>
     invoke<string>("export_collection", { connectionId, collection, filters }),
 
   /** Import documents from `filePath` (JSON array / object / JSONL) into a
    *  MongoDB collection (#65). Returns the number of inserted documents. */
-  importCollection: (connectionId: string, collection: string, filePath: string) =>
+  importCollection: (
+    connectionId: string,
+    collection: string,
+    filePath: string,
+  ) =>
     invoke<number>("import_collection", { connectionId, collection, filePath }),
 
   // CLI args ---------------------------------------------------------------
@@ -1172,8 +1213,11 @@ export const api = {
    * Build a `mailto:` URL prefilled with the report, for the "I don't have a
    * GitHub account" fallback. The caller opens it with `openUrl`.
    */
-  mailtoReportUrl: (report: { kind: FeedbackKind; title: string; body: string }) =>
-    invoke<string>("mailto_report_url", { report }),
+  mailtoReportUrl: (report: {
+    kind: FeedbackKind;
+    title: string;
+    body: string;
+  }) => invoke<string>("mailto_report_url", { report }),
 
   /**
    * Open an external URL in the OS default browser (or mail client, for

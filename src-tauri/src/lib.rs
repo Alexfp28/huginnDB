@@ -354,6 +354,7 @@ pub fn run() {
             commands::query::unset_field,
             commands::query::delete_rows,
             commands::query::insert_row,
+            commands::query::insert_documents,
             commands::query::fetch_fk_options,
             commands::prefs::get_preferences,
             commands::prefs::update_preferences,

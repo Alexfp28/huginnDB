@@ -2164,6 +2164,69 @@ pub async fn insert_row(
     .await
 }
 
+/// Insert one or more MongoDB documents written as source text.
+///
+/// The free-form counterpart to [`insert_row`]. That command takes
+/// column/value pairs, which is the right shape for a SQL row and the wrong
+/// one for a collection: the grid's column set is inferred from a sampled
+/// page, so it describes what the documents it happened to read contain, not
+/// what a document *may* contain. Through that path a field the sample did not
+/// show could not be added at all.
+///
+/// MongoDB only, and refused elsewhere rather than approximated. A SQL table
+/// has a column set the server will enforce, so there is nothing for free-form
+/// document text to express there that `insert_row` cannot.
+///
+/// Audited through the same sink as every other write, so the insert appears
+/// in the Console next to the statements around it.
+#[tauri::command]
+pub async fn insert_documents(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    collection: String,
+    source: String,
+) -> AppResult<Value> {
+    let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    let pool = state.pool_for(&connection_id)?;
+    let driver = pool.driver_name();
+    let DbPool::Mongo(conn) = &pool else {
+        return Err(AppError::UnsupportedDriver(
+            "insert_documents: writing a document as source text is MongoDB-only".into(),
+        ));
+    };
+
+    // Parse before touching the server, so a typo is a message and not a
+    // partially-applied insert.
+    let documents = crate::db::mongo::query::parse_insert_source(&source)?;
+    let count = documents.len() as u64;
+
+    let start = Instant::now();
+    let res = crate::db::mongo::query::insert_documents(conn, &collection, documents).await;
+    match &res {
+        Ok(_) => log_sql_sink(
+            &sink,
+            &connection_id,
+            driver,
+            "(mongo insert)",
+            start,
+            Some(count),
+            None,
+        ),
+        Err(e) => log_sql_sink(
+            &sink,
+            &connection_id,
+            driver,
+            "(mongo insert)",
+            start,
+            None,
+            Some(&e.to_string()),
+        ),
+    }
+    res
+}
+
 /// Tauri-independent core of [`insert_row`], shared with the headless MCP
 /// `insert_row` write tool.
 #[allow(clippy::too_many_arguments)]

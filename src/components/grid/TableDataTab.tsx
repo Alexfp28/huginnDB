@@ -32,6 +32,7 @@ import {
   ReplaceAll,
   Rows3,
   Table2,
+  FilePlus2,
   Upload,
   ZoomIn,
   ZoomOut,
@@ -67,6 +68,7 @@ import type {
 import { DataGrid, type GridToolbarItem } from "@/components/grid/DataGrid";
 import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
+import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -132,7 +134,8 @@ function duplicateDraft(
   resultColumns: string[],
   values: CellValue[],
   pkColumn:
-    { name: string; is_primary_key: boolean; data_type: string } | undefined,
+    | { name: string; is_primary_key: boolean; data_type: string }
+    | undefined,
 ): DraftRow {
   const cells: Record<string, DraftCell> = {};
   const pkIsAuto =
@@ -861,6 +864,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * sharing an `_id` stop the import, so it still goes through the
    * destructive-write confirmation like the tree version did.
    */
+  /** Free-form document insert (MongoDB). Tab-scoped, like the other two
+   *  dialogs below — it writes to this tab's collection and nothing else
+   *  needs to open it. */
+  const [insertDocOpen, setInsertDocOpen] = useState(false);
+
   const importCollectionJsonForTab = useCallback(async () => {
     const picked = await pickJsonFile(t("schema.importCollection.pickTitle"));
     if (!picked) return;
@@ -1096,6 +1104,35 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       // point in the tree unchanged.
       ...(isMongo
         ? [
+            // The answer to "add one record" on a schemaless store. The draft
+            // row next to this can only offer the fields the grid sampled, and
+            // the import below opens a file picker — which is right for a bulk
+            // load and absurd for a single document. See
+            // `InsertDocumentDialog`.
+            {
+              id: "insert-document",
+              bar: (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => setInsertDocOpen(true)}
+                  title={t("dataGrid.insertDocument.action")}
+                >
+                  <FilePlus2 className="h-3.5 w-3.5" />
+                  {t("dataGrid.insertDocument.action")}
+                </Button>
+              ),
+              menu: (
+                <DropdownMenuItem
+                  className="text-xs"
+                  onSelect={() => setInsertDocOpen(true)}
+                >
+                  <FilePlus2 className="mr-2 h-3.5 w-3.5" />
+                  {t("dataGrid.insertDocument.action")}
+                </DropdownMenuItem>
+              ),
+            },
             {
               id: "import-collection",
               bar: (
@@ -1523,6 +1560,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           isMongo={isMongo}
           onApplied={() => void fetchData()}
           onClose={() => setBulkUpdateOpen(false)}
+        />
+      )}
+
+      {isMongo && (
+        // Mounted rather than conditionally created, unlike the two above: the
+        // dialog owns Monaco, and tearing the editor down and rebuilding it on
+        // every open is the cost `open` exists to avoid. It resets its source
+        // when `open` flips true.
+        <InsertDocumentDialog
+          open={insertDocOpen}
+          onOpenChange={setInsertDocOpen}
+          connectionId={connectionId}
+          collection={table}
+          onInserted={() => void fetchData()}
         />
       )}
     </div>

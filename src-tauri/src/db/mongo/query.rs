@@ -11,7 +11,7 @@ use crate::commands::query::{
     BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, QueryResult, RowValue, SortSpec,
     StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
 };
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::MongoConn;
 use mongodb::bson::{doc, Bson, Document};
@@ -20,7 +20,9 @@ use std::time::Instant;
 
 use super::schema::resolve_db;
 use super::shell::{self, MongoOp};
-use super::values::{bson_to_json, bson_type_tree, id_to_bson, json_to_bson, string_to_bson};
+use super::values::{
+    bson_to_json, bson_type_name, bson_type_tree, id_to_bson, json_to_bson, string_to_bson,
+};
 
 /// Collect a cursor of documents without pulling in an external `Stream` trait
 /// (the `mongodb` cursor exposes `advance` + `deserialize_current` directly).
@@ -754,6 +756,111 @@ fn set_document(set_values: &[RowValue]) -> Document {
     set_doc
 }
 
+/// Turn hand-typed document source into the documents to insert.
+///
+/// Pure, and separated from the insert itself so the rules below are testable
+/// without a server — the same split `spec_is_view` has, and for the same
+/// reason: what stands between a typo and someone's collection should not
+/// require a live connection to exercise.
+///
+/// The grammar is [`shell::parse_relaxed_value`], not `serde_json`. That is the
+/// one-parser rule (gotcha #33) and it is load-bearing here rather than tidy:
+/// a document typed with `_id: ObjectId("…")`, `ISODate("…")` or
+/// `NumberLong(…)` has to mean the same thing in this box as it does in the
+/// query editor and the aggregation builder, and `serde_json` would either
+/// reject those outright or store them as strings. Unquoted keys, single
+/// quotes, trailing commas and comments come along for free, which matters
+/// because the text people paste here is copied out of a shell session.
+///
+/// An array is accepted as well as a single document, so pasting the output of
+/// a `find()` inserts all of it. `insert_documents` maps that onto
+/// `insert_many`.
+///
+/// Nothing is stripped on the way through — in particular a supplied `_id` is
+/// kept. `insert_row`'s column/value path drops a blank one because an empty
+/// text box there means "I did not fill this in"; here the document is written
+/// out in full, so an absent `_id` is absent and the driver generates one,
+/// while an explicit `_id: null` is a real null the server will reject. Both of
+/// those are what the author asked for.
+pub fn parse_insert_source(source: &str) -> AppResult<Vec<Document>> {
+    if source.trim().is_empty() {
+        return Err(AppError::InvalidInput(
+            "insert: nothing to insert (the document is empty)".into(),
+        ));
+    }
+    match shell::parse_relaxed_value(source)? {
+        Bson::Document(d) => Ok(vec![d]),
+        Bson::Array(items) => {
+            if items.is_empty() {
+                return Err(AppError::InvalidInput(
+                    "insert: the array is empty, so there is nothing to insert".into(),
+                ));
+            }
+            let mut out = Vec::with_capacity(items.len());
+            for (i, item) in items.into_iter().enumerate() {
+                match item {
+                    Bson::Document(d) => out.push(d),
+                    // Naming the index matters on a pasted array of fifty:
+                    // "expected a document" alone leaves the author to find it.
+                    other => {
+                        return Err(AppError::InvalidInput(format!(
+                            "insert: item {i} of the array is {}, not a document",
+                            bson_type_name(&other)
+                        )))
+                    }
+                }
+            }
+            Ok(out)
+        }
+        other => Err(AppError::InvalidInput(format!(
+            "insert: expected a document or an array of documents, found {}",
+            bson_type_name(&other)
+        ))),
+    }
+}
+
+/// Insert one or more documents written as source text.
+///
+/// The free-form counterpart to [`insert_row`], which can only ever set the
+/// fields the grid already discovered — a collection is schemaless, so the
+/// column set the browser inferred from a sampled page is a description of
+/// what happens to be there, not of what a document may contain. Adding a
+/// field the sample did not show was impossible through that path.
+///
+/// Returns the inserted `_id` for a single document and an array of them for
+/// several, so the caller can report what landed rather than just a count.
+pub async fn insert_documents(
+    conn: &MongoConn,
+    collection: &str,
+    documents: Vec<Document>,
+) -> AppResult<Value> {
+    let db = resolve_db(conn)?;
+    let coll = db.collection::<Document>(collection);
+
+    if documents.len() == 1 {
+        let res = coll
+            .insert_one(documents.into_iter().next().expect("len checked"))
+            .await?;
+        return Ok(bson_to_json(&res.inserted_id));
+    }
+
+    // Ordered (the driver's default): a failure stops at the offending
+    // document rather than carrying on and leaving the author to work out
+    // which of fifty went in. Partial inserts are still possible — MongoDB has
+    // no multi-document transaction outside a session — and the error carries
+    // the index, which is the most a caller can act on.
+    let res = coll.insert_many(documents).await?;
+    let mut ids: Vec<Value> = Vec::with_capacity(res.inserted_ids.len());
+    // `inserted_ids` is keyed by position; report them in that order rather
+    // than in whatever order the map iterates.
+    let mut keys: Vec<usize> = res.inserted_ids.keys().copied().collect();
+    keys.sort_unstable();
+    for k in keys {
+        ids.push(bson_to_json(&res.inserted_ids[&k]));
+    }
+    Ok(Value::Array(ids))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -764,6 +871,100 @@ mod tests {
             d.insert(k.to_string(), v.clone());
         }
         d
+    }
+
+    // -- parse_insert_source -------------------------------------------------
+    //
+    // The rules standing between a typo and a collection, exercised without a
+    // server. Everything here is about what reaches `insert_documents`; the
+    // grammar itself is `shell::parse_relaxed_value`'s and is tested there.
+
+    #[test]
+    fn parse_insert_source_takes_one_document() {
+        let docs = parse_insert_source(r#"{ "name": "ada", "n": 3 }"#).unwrap();
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].get_str("name").unwrap(), "ada");
+    }
+
+    #[test]
+    fn parse_insert_source_takes_an_array_for_a_bulk_insert() {
+        let docs = parse_insert_source(r#"[{ "a": 1 }, { "a": 2 }]"#).unwrap();
+        assert_eq!(docs.len(), 2);
+        assert_eq!(docs[1].get_i32("a").unwrap(), 2);
+    }
+
+    #[test]
+    fn parse_insert_source_speaks_the_shell_grammar_not_json() {
+        // The point of reusing the one parser: what someone pastes out of a
+        // shell session has to mean here what it means in the query editor.
+        // `serde_json` would reject every line of this.
+        let docs = parse_insert_source(
+            r#"{
+                 _id: ObjectId("507f1f77bcf86cd799439011"),
+                 when: ISODate("2024-01-02T03:04:05Z"),
+                 big: NumberLong(301353073),
+                 tags: ['a', 'b',], // trailing comma, single quotes, a comment
+               }"#,
+        )
+        .unwrap();
+        let d = &docs[0];
+        assert!(matches!(d.get("_id"), Some(Bson::ObjectId(_))));
+        assert!(matches!(d.get("when"), Some(Bson::DateTime(_))));
+        // Not an Int32: a `Long` narrowed on the way in is gotcha #29's trap,
+        // and it fits in an i32, so nothing downstream would notice.
+        assert!(matches!(d.get("big"), Some(Bson::Int64(301353073))));
+    }
+
+    #[test]
+    fn parse_insert_source_keeps_a_supplied_id() {
+        // `insert_row` drops a blank `_id` because an empty text box there
+        // means "not filled in". Here the document is written out in full, so
+        // what is present is deliberate.
+        let docs = parse_insert_source(r#"{ "_id": 7, "a": 1 }"#).unwrap();
+        assert_eq!(docs[0].get_i32("_id").unwrap(), 7);
+    }
+
+    #[test]
+    fn parse_insert_source_leaves_a_missing_id_absent() {
+        let docs = parse_insert_source(r#"{ "a": 1 }"#).unwrap();
+        assert!(!docs[0].contains_key("_id"));
+    }
+
+    #[test]
+    fn parse_insert_source_rejects_a_scalar() {
+        let err = parse_insert_source("42").unwrap_err().to_string();
+        assert!(err.contains("document"), "{err}");
+    }
+
+    #[test]
+    fn parse_insert_source_rejects_an_empty_source() {
+        assert!(parse_insert_source("   ").is_err());
+    }
+
+    #[test]
+    fn parse_insert_source_rejects_an_empty_array() {
+        // Distinct from a parse failure: the text is valid and means "insert
+        // nothing", which is never what was intended.
+        let err = parse_insert_source("[]").unwrap_err().to_string();
+        assert!(err.contains("empty"), "{err}");
+    }
+
+    #[test]
+    fn parse_insert_source_names_the_offending_array_index() {
+        // On a pasted array of fifty, "expected a document" alone leaves the
+        // author to find it.
+        let err = parse_insert_source(r#"[{ "a": 1 }, 2, { "a": 3 }]"#)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("item 1"), "{err}");
+    }
+
+    #[test]
+    fn parse_insert_source_rejects_trailing_junk() {
+        // Inherited from `parse_relaxed_value`, and worth pinning here: two
+        // documents pasted without an array around them must not silently
+        // insert only the first.
+        assert!(parse_insert_source(r#"{ "a": 1 } { "b": 2 }"#).is_err());
     }
 
     #[test]
