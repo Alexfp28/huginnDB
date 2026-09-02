@@ -186,7 +186,14 @@ four look like styling problems while having nothing to do with styling.
 **Adoption debt.** 139 raw `<button>` elements across 72 files and 81 native
 `title=` attributes across 41, both counted and ratcheted by
 `src/components/ui/uiAdoption.test.ts`. The budgets can only shrink, so this
-entry needs no separate tracking — read the maps. Worth naming individually:
+entry needs no separate tracking — read the maps. **They are not all
+migratable, and the target is not zero**: working `DocumentListView` established
+that a real class of text-level actions sits below the primitive layer's
+density floor (`IconButton`'s smallest shape is a fixed `h-6 w-6`, which inside
+a monospace field row pins the height and breaks the grid's Ctrl+wheel zoom),
+alongside affordances that render a glyph or a word rather than a Lucide icon.
+Those are documented exceptions in the test, not work. Read the reason before
+pushing a count down. Worth naming individually:
 
 - `GridToolbar.tsx:166` renders `<Button size="sm" title={t("dataGrid.insertNewRow")}>`
   — the OS tooltip on a labelled button in the grid's main toolbar.

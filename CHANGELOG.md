@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The grid confirms that a write landed.** Committing a cell edit ran the
+  `UPDATE`, refetched, and left the cell looking exactly as it did while you
+  were typing — the only signal of failure was a toast, so silence had to be
+  read as success. A single 520 ms pulse now marks the cell, or in the list view
+  the field, once the save has resolved and the page has been refetched, so it
+  confirms the *stored* value rather than the keystrokes.
+
+  Two notes on how rather than what. The token was already there and unused:
+  `brand-flash` is the "short blue pulse on a completed action" the visual brief
+  asked for, and until now the settings screen's scroll-to-preference highlight
+  was its only consumer in the app. And the confirmation is decided once, by
+  wrapping the two save callbacks in `DataGrid` before they are handed down —
+  there are twelve places a save is fired from across six files, and decorating
+  each would have been twelve chances to forget, which is how the app came to
+  have no confirmation at all.
+
 - **Write a MongoDB document by hand instead of picking a file.** Adding one
   record to a collection meant opening a file picker: "Import JSON" was the
   only path that could produce an arbitrary document, and it exists for bulk
