@@ -390,7 +390,17 @@ roadmaps for two subsystems are tracked separately and still current:
 
 ## When the user asks for "the next thing"
 
-- Default to the **top open item in `ROADMAP.md`** unless they say otherwise.
+- Default to the **top open item in `ROADMAP.md`'s numbered "Open" list** unless
+  they say otherwise.
+- **`ROADMAP.md` has a second list: "Fit and finish".** It is a standing track,
+  not a backlog that waits for the numbered one to empty, and the convention is
+  that **each minor release closes at least two of its entries**. Check it when
+  planning a release, not only when asked for "the next thing" — the reason it
+  exists is that polish was never in the queue at all, so the queue could never
+  produce one. Entries name something observable (a file and line, a count, a
+  behaviour) and fall into one of four classes; the adoption-debt class is
+  machine-counted by `src/components/ui/uiAdoption.test.ts`, whose budgets are
+  sorted by debt and double as its worklist.
 - Always ask before adding new dependencies; the user prefers a small, audited tree.
 - Keep PRs / commits scoped. The user values legible history and will read the long-form commit body.
 

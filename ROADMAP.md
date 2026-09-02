@@ -142,6 +142,93 @@ in a roadmap and now don't:
    bites a user who pages very deep, which is rare in practice. Revisit only
    if a real deep-navigation complaint appears.
 
+## Fit and finish
+
+A standing track, deliberately separate from the numbered list above.
+
+**Why it needs its own section rather than a place in that queue.** The
+convention for "what's next" is the top open item above, and until this section
+existed every item there was a feature or a piece of infrastructure. Polish did
+not lose that queue on merit — it was never in it, so the standing instruction
+for what to work on was structurally incapable of surfacing one. The practical
+consequence is visible in the 1.20.x history: every fix in that pass arrived
+because someone using the app noticed and said so. That is a fine way to find
+problems and a bad way to be the *only* way to find them.
+
+The section is a queue, not a wishlist. An entry earns a place by naming
+something observable — a file and line, a count, a reproducible behaviour — and
+by falling into one of the four classes below. "The grid feels clunky" is not
+an entry; the four things that make it feel clunky are.
+
+**Cadence: each minor release closes at least two of these.** Small enough that
+it never competes with a driver, regular enough that the list cannot only grow.
+
+### The four classes
+
+They are worth keeping apart because they fail differently, and three of the
+four look like styling problems while having nothing to do with styling.
+
+1. **Adoption debt.** A primitive already answers the question and the call
+   site never migrated. Cheap, mechanical, and the only class with a machine
+   count: `uiAdoption.test.ts` holds the budgets, sorted by debt, so it doubles
+   as this class's worklist.
+2. **Global behaviour with no owner.** A library default nobody chose, applied
+   app-wide. Usually one line; the cost is that it takes a user report to find,
+   because there is no file it is "missing from".
+3. **State that cannot express what the UI needs to say.** Looks like a
+   rendering bug and is not — no amount of styling fixes a store that does not
+   hold the fact being rendered.
+4. **A genuine interaction gap.** The app cannot do the thing. These are the
+   only ones that are features, and they are sized like features.
+
+### Open
+
+**Adoption debt.** 139 raw `<button>` elements across 72 files and 81 native
+`title=` attributes across 41, both counted and ratcheted by
+`src/components/ui/uiAdoption.test.ts`. The budgets can only shrink, so this
+entry needs no separate tracking — read the maps. Worth naming individually:
+
+- `GridToolbar.tsx:166` renders `<Button size="sm" title={t("dataGrid.insertNewRow")}>`
+  — the OS tooltip on a labelled button in the grid's main toolbar.
+  `uiContracts.test.ts`'s rule H exists for exactly this and misses it, because
+  it fires only on `size="icon"`. **Widening rule H is the fix and cannot be
+  merged yet**: as a contract it would fail on all 81. It becomes a one-line
+  change the moment that budget empties, which is the order to do it in.
+- The heaviest single files are `DocumentListView.tsx` (6 raw buttons, 4 OS
+  tooltips) and `ConnectionTreeRow.tsx` (8 OS tooltips). Both are row/list
+  components, so one pass over each clears a visible share of both budgets.
+- `ConnectionsTree`'s visible-databases button cannot become an `IconButton` as
+  it stands: it paints a subset badge over its glyph, and `IconButton` takes
+  the icon as a component with no room for a child. Either it gains a badge
+  slot or this one stays hand-rolled with a written reason — the decision, not
+  the migration, is the work.
+
+**Token adoption.** The design tokens exist and are almost unused:
+`brand-flash` (the "short blue pulse on a completed action" the visual brief
+asked for) has **two** call sites in the whole app, and the 180/220 ms motion
+band has **three** between both ends. This is the same shape as the class above
+one level down — a vocabulary written and then not spoken. The work is not
+"add animations": it is deciding which completions deserve confirmation at all,
+then either adopting the token or deleting it. A token with two uses is not a
+system.
+
+**Discoverability of the grid's sizing gestures.** Neither "fit to content" nor
+"fit to visible width" appears in `lib/keybindings/actions.ts`, so both are
+mouse-only in a keyboard-first app. Adding them to `ACTIONS` also gets them
+into the command palette and the settings shortcut list for free (gotcha #53),
+which is most of the value.
+
+**Class 2 and class 3 have no known open instances.** Stated rather than
+omitted, because an empty class is information: the tooltip-provider default
+and the environment switch target were each the only confirmed member of
+theirs, and both are fixed. The connection surfaces were checked at the same
+time and already model their targets correctly (`connecting: string | null`,
+`disconnecting: Set<string>`); `useSchema.loading` is per-connection inside its
+slice, and `useOriginSync.syncing` is a genuine batch flag over a pass that
+really does sweep every origin. The classes stay in the taxonomy because they
+describe how those two bugs happened and what the next one will look like, not
+because there is a backlog behind them.
+
 Have a different priority? Open a
 [feature request](.github/ISSUE_TEMPLATE/feature_request.md).
 
@@ -149,8 +236,6 @@ Have a different priority? Open a
 
 Don't propose these unless the user asks first:
 
-- Reorganising components into per-feature folders — flat layout is fine at
-  this size.
 - A linter beyond the existing `tsc --noEmit` + `cargo fmt` / `cargo clippy`
   advice in `CONTRIBUTING.md`.
 - AI features baked into the app itself (autocomplete suggestions via LLM,
