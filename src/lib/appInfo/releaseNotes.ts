@@ -87,6 +87,43 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.21.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_21_0.tagline",
+    highlights: [
+      {
+        icon: Bot,
+        titleKey: "whatsNew.releases.1_21_0.items.mcpConnections.title",
+        bodyKey: "whatsNew.releases.1_21_0.items.mcpConnections.body",
+      },
+      {
+        icon: Plug,
+        titleKey: "whatsNew.releases.1_21_0.items.mcpSetup.title",
+        bodyKey: "whatsNew.releases.1_21_0.items.mcpSetup.body",
+      },
+      {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_21_0.items.aggregationStages.title",
+        bodyKey: "whatsNew.releases.1_21_0.items.aggregationStages.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_21_0.items.gridWrites.title",
+        bodyKey: "whatsNew.releases.1_21_0.items.gridWrites.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_21_0.items.mongoReliability.title",
+        bodyKey: "whatsNew.releases.1_21_0.items.mongoReliability.body",
+      },
+      {
+        icon: Palette,
+        titleKey: "whatsNew.releases.1_21_0.items.designRefresh.title",
+        bodyKey: "whatsNew.releases.1_21_0.items.designRefresh.body",
+      },
+    ],
+  },
+  {
     version: "1.20.0",
     major: true,
     taglineKey: "whatsNew.releases.1_20_0.tagline",

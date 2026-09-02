@@ -1995,6 +1995,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_21_0": {
+        "tagline": "MCP connections are now managed from inside the app — pick what's exposed, install with one click — plus pipeline stage insert/duplicate, a grid that confirms your writes, and reliability fixes for very large MongoDB collections.",
+        "items": {
+          "mcpConnections": {
+            "title": "Pick which connections your AI client can reach",
+            "body": "Exposure is now a checkbox in Settings → MCP instead of a uuid list in the client's config file, and every tool takes a connection by name — no more copying ids around."
+          },
+          "mcpSetup": {
+            "title": "MCP setup in one click",
+            "body": "Claude Desktop installs the connector from a downloadable .mcpb bundle, and Settings → MCP can register it with Claude Code directly — no more hand-editing JSON config files."
+          },
+          "aggregationStages": {
+            "title": "Insert and duplicate aggregation stages",
+            "body": "Add a stage exactly where it belongs in the pipeline instead of dragging it up from the bottom, and duplicate a tuned $match or $lookup instead of retyping it."
+          },
+          "gridWrites": {
+            "title": "The grid confirms your writes",
+            "body": "A short pulse marks a cell or field once its edit is saved and reloaded, MongoDB documents can now be typed by hand instead of only imported from a file, and a new button fits every column into the visible width."
+          },
+          "mongoReliability": {
+            "title": "Large MongoDB collections stay responsive",
+            "body": "Field inference no longer hangs on a huge or time-series collection, filtered counts are capped instead of running for minutes, and the list view is now virtualized like the table view already was."
+          },
+          "designRefresh": {
+            "title": "A ground-up pass on the design system",
+            "body": "Checkboxes, buttons, tooltips, native dropdowns, spinners, and focus rings are unified across the app into shared, consistent primitives — plus dozens of small color, radius, and spacing fixes."
+          }
+        }
+      },
       "1_20_0": {
         "tagline": "Introducing HuginnDB Pulse — live server health for MySQL and MongoDB, right next to your workspace — plus in-place editing for shared origins, aggregation autocomplete, and a project-wide performance pass.",
         "items": {

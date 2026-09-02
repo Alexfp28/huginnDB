@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.21.0] — 2026-09-02
+
 ### Added
 
 - **The grid confirms that a write landed.** Committing a cell edit ran the
@@ -440,6 +442,97 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   origin" — a sync never publishes a narrower membership than the full
   bundle, so there was never a case where "no override" needed to mean
   anything else.
+
+### Added
+
+- **Insert a pipeline stage at any position, not only at the end.** A
+  pipeline's order is its meaning, so the common edit was the awkward one:
+  realizing a `$match` belongs *before* the `$lookup` already written meant
+  appending a stage at the foot of the list and dragging it up past
+  everything in between. Each stage card now offers an "insert above" of its
+  own, which is what reaches every gap in the pipeline including the very
+  top — the position that matters most, since filtering early is the most
+  common thing a pipeline wants put in front of what's already there. It
+  lives in the card header next to delete, rather than as a hover target in
+  the gap between cards, since that gap already belongs to drag-and-drop's
+  own drop indicator.
+
+- **Duplicate a pipeline stage.** The companion to the insert above: a
+  `$match` you've already tuned is usually the fastest starting point for the
+  next one, and retyping it was the only way to get a second. The copy lands
+  directly after its source — a duplicate means "another one like this,"
+  which is a different relationship to the card than an insert's "make room
+  here." Its body and enabled flag copy verbatim, so duplicating a stage
+  you'd switched off doesn't silently switch the copy on and join the next
+  preview run; its collapse state resets, since a card you just made is one
+  you're about to edit.
+
+### Changed
+
+- **The three ways to add data on MongoDB collapsed into one split Insert
+  button.** The inline draft row, the free-form document editor, and "Import
+  JSON" were three separate toolbar controls for one intent, in a bar that
+  already collapses into an overflow menu at ordinary widths. The button body
+  still performs the plain "insert" action with a single click — the most
+  frequent action in the grid, and one with no keyboard shortcut to fall back
+  on — and only its chevron opens the menu holding the other two. On the four
+  SQL drivers, which have no alternatives, it stays exactly the plain button
+  it always was; a split control offering one choice would be worse than no
+  split.
+
+- **Column-width controls moved to the grid's footer, beside the row-zoom
+  buttons.** They used to sit in the header toolbar, which split the two
+  halves of one question — how wide are the columns, how tall are the rows —
+  across opposite edges of the grid. It also unloads a header that was
+  overfull: on MongoDB it carried ten controls and collapsed into its
+  overflow menu at ordinary panel widths, and between this move and the split
+  Insert button above it sheds four. A divider now separates the two footer
+  clusters so they read as two groups rather than one row of four buttons.
+
+### Fixed
+
+- **A MongoDB collection's row total went stale after any write, and a
+  failed field-list load was invisible and permanent.** Refreshing — the
+  button, F5, or the refetch after a delete/insert/import — never re-ran the
+  row count, because the effect that counts is keyed on the query predicate
+  and nothing about adding or removing rows changes that, so the footer kept
+  showing whatever total it last computed. Separately, when inferring the
+  collection's fields failed, the tab recorded the error but never displayed
+  it or offered a retry — the only visible symptom was the advanced filter
+  dialog opening with an empty form, since it's built entirely from that
+  field list. One `reload` now backs refresh, F5, delete, insert and import
+  alike, and the tab surfaces the inference error — or a loading spinner
+  while it's in flight — instead of staying silently dead.
+
+- **Inferring a large MongoDB collection's fields could hang instead of
+  failing, and a filtered row count could run for minutes.** `$sample`'s fast
+  path needs a storage-engine precondition a time-series collection's backing
+  buckets can never satisfy, so inference on one fell through to reading the
+  whole collection and sorting it by a random key — which does not finish at
+  tens of millions of documents, and ran with no timeout at all. A catalog
+  check now skips straight to a bounded, both-ends `find().limit()` scan for
+  a collection that can't take the fast path, and a slow `$sample` elsewhere
+  fails over to that same scan after 2 seconds. A count against a filter — a
+  full collection scan with no index to answer it — is now capped at 10
+  seconds instead of running unbounded while holding a pooled connection; on
+  timeout the grid falls back to showing the page range without a total,
+  exactly as it already does for any other failed count.
+
+- **The MongoDB advanced-filter button's spinner never stopped.** A stale
+  `useMemo` dependency array — introduced alongside the spinner itself — left
+  the toolbar rendering the first render's JSX, from before the field list
+  had loaded, forever after. Reproduced on a 20,000-document collection where
+  sampling is instant, which is what pointed at the memo rather than at
+  anything server-side.
+
+- **Switching the grid to list view paused on a large page, and scrolling
+  never felt right afterward.** The table view has been windowed since it was
+  written; the list view — one line per field per document — never was, and
+  at the largest page size that's thousands of DOM nodes built in one
+  synchronous commit. It's windowed now, measuring each card's real height
+  dynamically rather than assuming a fixed row height: a document's height is
+  its field count, which varies per document and changes when a nested value
+  is folded.
 
 ## [1.20.0] — 2026-08-31
 

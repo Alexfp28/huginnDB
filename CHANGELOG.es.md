@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.21.0] — 2026-09-02
+
 ### Añadido
 
 - **El conector se distribuye como un MCP Bundle (`.mcpb`), así que Claude
@@ -368,6 +370,108 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   que es exactamente "volver a seguir al origen" — una sincronización nunca
   publica una membership más estrecha que el paquete completo, así que nunca
   hubo un caso en el que "sin override" tuviera que significar otra cosa.
+
+### Añadido
+
+- **Insertar una etapa del pipeline en cualquier posición, no solo al
+  final.** El orden de un pipeline es su significado, así que la edición más
+  común era la incómoda: darse cuenta de que un `$match` va *antes* del
+  `$lookup` ya escrito significaba añadir una etapa al final de la lista y
+  arrastrarla hacia arriba pasando por todo lo demás. Cada tarjeta de etapa
+  ofrece ahora su propio "insertar arriba", que es lo que alcanza cualquier
+  hueco del pipeline incluido el primero — la posición que más importa, ya
+  que filtrar pronto es lo más habitual que un pipeline quiere poner delante
+  de lo que ya tiene. Vive en la cabecera de la tarjeta junto al borrar, en
+  vez de como una zona sensible al hover en el hueco entre tarjetas, porque
+  ese hueco ya pertenece al indicador de soltar del arrastrar-y-soltar.
+
+- **Duplicar una etapa del pipeline.** El complemento del insertar arriba: un
+  `$match` ya afinado suele ser el punto de partida más rápido para el
+  siguiente, y volver a escribirlo era la única forma de conseguir un
+  segundo. La copia aterriza justo después de su origen — duplicar significa
+  "otro como este", una relación distinta con la tarjeta que la de un
+  insertar, que significa "haz sitio aquí". Su cuerpo y su flag de activada
+  se copian tal cual, así que duplicar una etapa desactivada no activa la
+  copia en silencio ni la mete en la siguiente vista previa; su estado de
+  colapso se reinicia, porque una tarjeta recién creada es una que estás a
+  punto de editar.
+
+### Cambiado
+
+- **Las tres formas de añadir datos en MongoDB se juntaron en un único botón
+  Insertar desplegable.** La fila de borrador en línea, el editor de
+  documentos libre y "Importar JSON" eran tres controles de barra separados
+  para una misma intención, en una barra que ya colapsa en un menú de
+  desbordamiento a anchos normales. El cuerpo del botón sigue realizando la
+  acción "insertar" simple con un solo clic — la acción más frecuente del
+  grid, y una sin atajo de teclado al que recurrir — y solo su flecha abre el
+  menú con las otras dos. En los cuatro motores SQL, que no tienen
+  alternativas, se queda exactamente como el botón simple que siempre fue; un
+  control desplegable que ofrece una sola opción sería peor que ningún
+  desplegable.
+
+- **Los controles de ancho de columna se movieron al pie del grid, junto a
+  los botones de zoom de fila.** Antes vivían en la barra de herramientas de
+  la cabecera, lo que dividía las dos mitades de una misma pregunta —qué
+  anchas son las columnas, qué altas son las filas— entre los dos extremos
+  opuestos del grid. También descarga una cabecera que iba sobrada: en
+  MongoDB llevaba diez controles y colapsaba en su menú de desbordamiento a
+  anchos de panel normales, y entre este movimiento y el botón Insertar
+  desplegable de arriba se quita cuatro. Un separador distingue ahora los dos
+  grupos del pie para que se lean como dos grupos y no como una sola fila de
+  cuatro botones.
+
+### Corregido
+
+- **El total de filas de una colección de MongoDB quedaba desactualizado
+  tras cualquier escritura, y un fallo al cargar la lista de campos era
+  invisible y permanente.** Actualizar —el botón, F5, o el refetch tras un
+  borrar/insertar/importar— nunca volvía a contar las filas, porque el efecto
+  que cuenta está indexado por el predicado de la consulta y nada de añadir
+  o quitar filas cambia eso, así que el pie seguía mostrando el último total
+  calculado. Por separado, cuando fallaba la inferencia de los campos de la
+  colección, la pestaña registraba el error pero nunca lo mostraba ni
+  ofrecía reintentar — el único síntoma visible era el diálogo de filtro
+  avanzado abriéndose con un formulario vacío, ya que se construye
+  enteramente a partir de esa lista de campos. Un único `reload` sostiene
+  ahora por igual actualizar, F5, borrar, insertar e importar, y la pestaña
+  muestra el error de inferencia —o un indicador de carga mientras está en
+  curso— en vez de quedarse muda en silencio.
+
+- **Inferir los campos de una colección grande de MongoDB podía colgarse en
+  vez de fallar, y un recuento filtrado podía tardar minutos.** El camino
+  rápido de `$sample` necesita una condición previa del motor de
+  almacenamiento que una colección de series temporales nunca puede cumplir
+  en sus buckets de respaldo, así que la inferencia sobre una de ellas caía
+  en leer la colección entera y ordenarla por una clave aleatoria — algo que
+  no termina con decenas de millones de documentos, y corría sin ningún
+  timeout. Una comprobación del catálogo salta ahora directamente a un
+  barrido acotado `find().limit()` por ambos extremos para una colección que
+  no puede tomar el camino rápido, y un `$sample` lento en cualquier otro
+  caso pasa a ese mismo barrido tras 2 segundos. Un recuento contra un
+  filtro —un barrido completo de la colección sin índice que lo responda—
+  está ahora limitado a 10 segundos en vez de correr sin límite mientras
+  retiene una conexión del pool; al agotarse el tiempo el grid recurre a
+  mostrar el rango de página sin un total, exactamente como ya hace con
+  cualquier otro recuento fallido.
+
+- **El indicador de carga del botón de filtro avanzado de MongoDB nunca se
+  detenía.** Un array de dependencias de `useMemo` desactualizado
+  —introducido junto al propio indicador— dejaba la barra de herramientas
+  pintando el JSX del primer render, de antes de que la lista de campos
+  cargara, para siempre. Reproducido en una colección de 20.000 documentos
+  donde el muestreo es instantáneo, lo que apuntó al memo y no a nada del
+  servidor.
+
+- **Cambiar el grid a vista de lista se pausaba en una página grande, y el
+  scroll nunca se sentía bien después.** La vista de tabla está virtualizada
+  desde que se escribió; la vista de lista —una línea por campo y
+  documento— nunca lo estuvo, y en el tamaño de página más grande son miles
+  de nodos del DOM construidos en un único commit síncrono. Ahora está
+  virtualizada, midiendo la altura real de cada tarjeta de forma dinámica en
+  vez de asumir una altura de fila fija: la altura de un documento es su
+  número de campos, que varía de un documento a otro y cambia al colapsar un
+  valor anidado.
 
 ## [1.20.0] — 2026-08-31
 

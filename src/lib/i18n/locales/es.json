@@ -1995,6 +1995,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_21_0": {
+        "tagline": "Las conexiones MCP se gestionan ahora desde la propia app — elige qué exponer, instala con un clic — además de insertar y duplicar etapas del pipeline, un grid que confirma tus escrituras, y correcciones de fiabilidad para colecciones de MongoDB muy grandes.",
+        "items": {
+          "mcpConnections": {
+            "title": "Elige a qué conexiones puede llegar tu cliente de IA",
+            "body": "La exposición es ahora una casilla en Configuración → MCP en vez de una lista de uuids en el fichero de configuración del cliente, y cada herramienta acepta una conexión por su nombre — sin copiar ids de un lado a otro."
+          },
+          "mcpSetup": {
+            "title": "Configurar MCP en un clic",
+            "body": "Claude Desktop instala el conector desde un bundle .mcpb descargable, y Configuración → MCP puede registrarlo con Claude Code directamente — sin editar ficheros JSON a mano."
+          },
+          "aggregationStages": {
+            "title": "Inserta y duplica etapas de agregación",
+            "body": "Añade una etapa justo donde le corresponde en el pipeline en vez de arrastrarla desde abajo, y duplica un $match o $lookup ya afinado en vez de volver a escribirlo."
+          },
+          "gridWrites": {
+            "title": "El grid confirma tus escrituras",
+            "body": "Un pulso breve marca una celda o campo en cuanto su edición se guarda y recarga, los documentos de MongoDB ya se pueden escribir a mano en vez de solo importarlos desde un fichero, y un nuevo botón ajusta todas las columnas al ancho visible."
+          },
+          "mongoReliability": {
+            "title": "Las colecciones grandes de MongoDB se mantienen ágiles",
+            "body": "Inferir los campos ya no se cuelga en una colección enorme o de series temporales, los recuentos filtrados están acotados en vez de correr durante minutos, y la vista de lista está virtualizada igual que ya lo estaba la vista de tabla."
+          },
+          "designRefresh": {
+            "title": "Una pasada de diseño desde la base",
+            "body": "Casillas, botones, tooltips, desplegables nativos, indicadores de carga y anillos de foco quedan unificados en primitivos compartidos y coherentes en toda la app — más docenas de pequeñas correcciones de color, radio y espaciado."
+          }
+        }
+      },
       "1_20_0": {
         "tagline": "Llega HuginnDB Pulse — el estado del servidor en vivo para MySQL y MongoDB, junto a tu espacio de trabajo — además de edición en el sitio para orígenes compartidos, autocompletado de agregación y una pasada de rendimiento a nivel de todo el proyecto.",
         "items": {
