@@ -44,7 +44,11 @@ in a roadmap and now don't:
 
 1. **Bulk row insert** in the data browser. Bulk delete shipped in 1.0.2;
    inserting several rows at once (paste-from-clipboard or a multi-row draft)
-   is still a one-row-at-a-time affair.
+   is still a one-row-at-a-time affair on the SQL drivers. **MongoDB is
+   covered**: the free-form document dialog accepts an array and inserts it
+   with `insert_many`, which falls out of the shell parser already accepting
+   one. What remains is the SQL side, where a multi-row draft has no
+   equivalent.
 2. **Schema diff & export** — DDL extraction and a side-by-side compare
    between two schemas or two points in time. No backend or UI work started.
 3. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in

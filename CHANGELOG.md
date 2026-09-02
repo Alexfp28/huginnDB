@@ -8,6 +8,66 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Write a MongoDB document by hand instead of picking a file.** Adding one
+  record to a collection meant opening a file picker: "Import JSON" was the
+  only path that could produce an arbitrary document, and it exists for bulk
+  loads. The inline draft row could not stand in for it either — it iterates
+  the columns the grid discovered, and on a schemaless store those are sampled
+  from one page of documents, so a field that page did not contain could not be
+  typed at all. Both paths stay; the draft row is faster whenever the shape is
+  already right.
+
+  The text is parsed in Rust by `shell::parse_relaxed_value`, the same parser
+  behind the query editor and the aggregation builder, so a document pasted out
+  of a shell session means here what it means everywhere else — `ObjectId(…)`,
+  `ISODate(…)`, `NumberLong(…)`, unquoted keys, comments. A `JSON.parse` would
+  reject most of that and would silently narrow a `NumberLong` that fits in an
+  `Int32`, which is invisible in testing and permanent in the data. An array is
+  accepted and inserted with `insert_many`, so pasting the output of a `find()`
+  works.
+
+- **Fit every column into the visible width.** The grid could size a column to
+  its content; it could not make a whole row readable without scrolling
+  sideways. Added as a second control rather than a mode on the first, because
+  the two answer different questions and both are right — one is for reading a
+  long value, the other for scanning rows. It starts from the content fit
+  rather than dividing the width evenly, so an `id` column stays narrow and a
+  `description` stays wide. Shrinking is water-filling: a flat scale drives
+  narrow columns under the floor, and clamping them afterwards overshoots the
+  target, leaving the scrollbar the gesture was meant to remove.
+
+### Fixed
+
+- **The environment switch spinner sat on the environment you were leaving.**
+  `switchTo` flushes the outgoing session and closes every one of its pools
+  before `activeId` moves, so a `switching` boolean paired with "is this the
+  active one?" pointed at the wrong row for the whole of the slow part. The
+  store now tracks the *target* (`switchingTo`), which is what a boolean could
+  not express. `WorkspacePicker` had already worked around it with a local copy
+  of exactly this state; that copy is gone.
+
+- **A tooltip lingered over its neighbour.** Radix's `disableHoverableContent`
+  defaults to off, which keeps a tooltip open while the pointer crosses a grace
+  area toward the content. Nothing in the app has hoverable tooltip content, so
+  that bought nothing and cost this: moving between two adjacent icon buttons
+  left the first tooltip up while the second opened with no delay. Set on the
+  app's own `TooltipProvider` rather than at each of the three window roots, so
+  a fourth root cannot be added without it.
+
+- **"Disconnect all" did not read as destructive.** It drops every live pool in
+  the tree and looked exactly like the filter button beside it. It is an
+  `IconButton` with `tone="destructive"` now — an affordance that shipped with
+  the primitive layer and that this call site had never adopted.
+
+- **The inline cell editor's expand button had a visible seam.** Its buttons
+  were flex siblings of a bordered input, each painting an opaque background so
+  `sticky` had something to sit on — a hard-edged pale rectangle against a
+  rounded, focus-haloed field, worst in exactly the state you edit in. The
+  affordances now live inside the field's box, sharing its surface, which is
+  what `SearchField` and `TreeFilterBox` already did. They also travel together
+  in one sticky group: only the expand button was pinned before, so on a wide
+  column "∅" scrolled away while its neighbour stayed.
+
 - **The component library's adoption gap is now a ratchet in CI
   (`src/components/ui/uiAdoption.test.ts`).** The primitive layer landed with a
   contract test, tokens and a motion band, and then only half the app adopted
