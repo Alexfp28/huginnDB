@@ -281,6 +281,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Los botones de icono mostraban el tooltip del sistema operativo, no el de la
+  app.** Veintinueve de ellos —los controles de zoom del pie del grid, la barra de
+  la consola, las acciones de fila de las consultas guardadas, el exportar y
+  borrar del panel de apariencia y más— eran `Button` con un `title` nativo, así
+  que al pasar el puntero salía un tooltip sin estilo y con el retardo del
+  sistema, justo al lado de botones ya migrados que mostraban el de la app. Todos
+  usan ya el tooltip con estilo. Los cinco cuyo aspecto tenía que mantenerse (una
+  flecha de transferencia con borde, un botón de filtro que lleva un contador)
+  conservan su botón y han ganado el tooltip con estilo alrededor.
+
 - **Costaba saber qué campo o control tenías enfocado.** Dieciséis sitios
   dibujaban el foco como `ring-1 ring-ring`: un pelo de un píxel en el color de
   anillo del tema que, a ese grosor, es casi invisible en cualquiera de los dos

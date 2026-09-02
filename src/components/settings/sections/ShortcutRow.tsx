@@ -15,7 +15,7 @@
 
 import { useTranslation } from "react-i18next";
 import { Plus, RotateCcw, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { formatForDisplay, type ActionSpec } from "@/lib/keybindings";
 import { PrefRow } from "./PrefRow";
 
@@ -104,23 +104,17 @@ export function ShortcutRow({
           </span>
         ))}
 
-        <Button
-          variant="ghost"
-          size="icon"
-          title={t("settings.shortcuts.addBinding")}
+        <IconButton
+          icon={Plus}
+          label={t("settings.shortcuts.addBinding")}
           onClick={() => onEdit(null)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
+        />
+        <IconButton
+          icon={RotateCcw}
+          label={t("settings.shortcuts.resetToDefault")}
           disabled={isDefault}
-          title={t("settings.shortcuts.resetToDefault")}
           onClick={onReset}
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-        </Button>
+        />
       </div>
     </PrefRow>
   );

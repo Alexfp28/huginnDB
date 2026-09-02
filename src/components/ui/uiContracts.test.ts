@@ -166,6 +166,49 @@ describe("F — className resolves conflicts", () => {
   });
 });
 
+describe("H — an icon button does not carry the OS tooltip", () => {
+  /**
+   * The hole the first `IconButton` sweep left, found by a user rather than by
+   * a rule: that sweep looked for raw `<button>` elements, and most of the
+   * app's icon buttons were already `Button` components with a native `title`.
+   * Twenty-nine of them, showing the OS tooltip — no theme, no shared delay —
+   * right next to migrated ones showing the app's.
+   *
+   * `IconButton`'s type omits `title`, which stops it there; nothing stopped it
+   * on a plain `Button`. This does.
+   *
+   * A `<Button size="icon">` whose body is not a lone icon (one carries a count
+   * badge) keeps its `Button` and wraps in `SimpleTooltip` — so the rule is
+   * about `title`, not about which component is used.
+   */
+  const openTag = (src: string, from: number) => {
+    let depth = 0;
+    for (let i = from; i < src.length; i++) {
+      const c = src[i];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) return i;
+    }
+    return -1;
+  };
+
+  it("no Button with size=icon* also sets a native title", () => {
+    const bad: string[] = [];
+    for (const file of ALL) {
+      const src = code(file);
+      for (const m of src.matchAll(/<Button\b/g)) {
+        const end = openTag(src, m.index + m[0].length);
+        if (end === -1) continue;
+        const attrs = src.slice(m.index + m[0].length, end);
+        if (attrs.includes('size="icon') && /\btitle=/.test(attrs)) {
+          bad.push(`${file}:${src.slice(0, m.index).split("\n").length}`);
+        }
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
 describe("G — the patterns that now have a primitive", () => {
   it("no raw select outside ui/native-select", () => {
     expect(hits(OUTSIDE_UI, /<select[\s/>]/)).toEqual([]);

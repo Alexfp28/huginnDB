@@ -330,18 +330,15 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
                 <td className="px-1 py-1.5">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={index.isId || busy === index.name}
-                        title={
+                      <IconButton
+                        icon={MoreHorizontal}
+                        label={
                           index.isId
                             ? t("indexes.idIndexLocked")
                             : t("indexes.actions")
                         }
-                      >
-                        <MoreHorizontal className="h-3.5 w-3.5" />
-                      </Button>
+                        disabled={index.isId || busy === index.name}
+                      />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="text-xs">
                       <DropdownMenuItem

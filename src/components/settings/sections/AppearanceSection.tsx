@@ -207,23 +207,17 @@ export function AppearanceSection() {
                 </SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              variant="ghost"
-              size="icon"
+            <IconButton
+              icon={Download}
+              label={t("settings.appearance.exportTooltip")}
               onClick={() => void handleExportTheme()}
-              title={t("settings.appearance.exportTooltip")}
-            >
-              <Download className="h-4 w-4" />
-            </Button>
+            />
             {!active.builtin && (
-              <Button
-                variant="ghost"
-                size="icon"
+              <IconButton
+                icon={Trash2}
+                label={t("settings.appearance.deleteTooltip")}
                 onClick={() => deleteCustom(active.id)}
-                title={t("settings.appearance.deleteTooltip")}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              />
             )}
           </div>
 

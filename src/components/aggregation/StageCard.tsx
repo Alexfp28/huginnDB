@@ -29,7 +29,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -219,15 +219,13 @@ export function StageCard({
             aria-label={t("aggregation.stage.toggle")}
             title={t("aggregation.stage.toggle")}
           />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          <IconButton
+            size="xs"
+            icon={Trash2}
+            label={t("aggregation.stage.delete")}
+            className="text-muted-foreground hover:text-destructive"
             onClick={onDelete}
-            title={t("aggregation.stage.delete")}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          />
         </div>
       </div>
 

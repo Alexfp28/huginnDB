@@ -254,6 +254,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Icon buttons showed the operating system's tooltip, not the app's.** Twenty-nine
+  of them — the grid footer's zoom controls, the console's toolbar, the saved-query
+  row actions, the appearance panel's export and delete, and more — were `Button`s
+  with a native `title`, so hovering them produced an unstyled OS tooltip on the
+  system's own delay, right beside migrated buttons showing the themed one. They
+  all use the themed tooltip now. The five whose appearance had to stay (an
+  outlined transfer arrow, a filter button carrying a count badge) keep their
+  button and gained the themed tooltip around it.
+
 - **A focused field or toolbar control was easy to lose track of.** Sixteen
   places drew focus as `ring-1 ring-ring` — a one-pixel hairline in the theme's
   ring colour, which at that width is close to invisible on either theme. It was

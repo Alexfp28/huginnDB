@@ -37,6 +37,7 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
@@ -1036,27 +1037,28 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       {
         id: "advanced-filter",
         bar: (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setAdvancedOpen(true)}
-            title={t("tableData.filter.title")}
-            // Brand-tint the icon while filters are active so it reads as "on"
-            // and doubles as an at-a-glance indicator, with the count as a badge.
-            className="relative"
-          >
-            <ListFilter
-              className={cn(
-                "h-3.5 w-3.5",
-                serverFilters.length ? "text-brand" : "",
+          <SimpleTooltip label={t("tableData.filter.title")}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setAdvancedOpen(true)}
+              // Brand-tint the icon while filters are active so it reads as "on"
+              // and doubles as an at-a-glance indicator, with the count as a badge.
+              className="relative"
+            >
+              <ListFilter
+                className={cn(
+                  "h-3.5 w-3.5",
+                  serverFilters.length ? "text-brand" : "",
+                )}
+              />
+              {serverFilters.length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
+                  {serverFilters.length}
+                </span>
               )}
-            />
-            {serverFilters.length > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
-                {serverFilters.length}
-              </span>
-            )}
-          </Button>
+            </Button>
+          </SimpleTooltip>
         ),
         menu: (
           <DropdownMenuItem
@@ -1222,30 +1224,24 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         // gap through the middle of a control whose two halves ARE the choice.
         bar: (
           <div className="flex items-center overflow-hidden rounded-md border border-border">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDocumentViewMode("table")}
-              title={t("dataGrid.viewModeTable")}
+            <IconButton
+              icon={Table2}
+              label={t("dataGrid.viewModeTable")}
               className={cn(
                 "h-7 w-7 rounded-none",
                 documentViewMode === "table" ? "bg-accent text-brand" : "",
               )}
-            >
-              <Table2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDocumentViewMode("list")}
-              title={t("dataGrid.viewModeList")}
+              onClick={() => setDocumentViewMode("table")}
+            />
+            <IconButton
+              icon={Rows3}
+              label={t("dataGrid.viewModeList")}
               className={cn(
                 "h-7 w-7 rounded-none",
                 documentViewMode === "list" ? "bg-accent text-brand" : "",
               )}
-            >
-              <Rows3 className="h-3.5 w-3.5" />
-            </Button>
+              onClick={() => setDocumentViewMode("list")}
+            />
           </div>
         ),
         // In the menu the segment becomes two checkable rows: the "which of the
@@ -1286,24 +1282,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     () => (
       <>
         <div className="flex items-center">
-          <Button
-            variant="ghost"
-            size="icon"
+          <IconButton
+            icon={ZoomOut}
+            label={t("dataGrid.zoomOut")}
             onClick={() => zoomRows(-2)}
             disabled={rowHeight <= 14}
-            title={t("dataGrid.zoomOut")}
-          >
-            <ZoomOut className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
+          />
+          <IconButton
+            icon={ZoomIn}
+            label={t("dataGrid.zoomIn")}
             onClick={() => zoomRows(2)}
             disabled={rowHeight >= 40}
-            title={t("dataGrid.zoomIn")}
-          >
-            <ZoomIn className="h-3.5 w-3.5" />
-          </Button>
+          />
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -1324,24 +1314,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             )}
           </span>
           <div className="flex items-center">
-            <Button
-              variant="ghost"
-              size="icon"
+            <IconButton
+              icon={ChevronLeft}
+              label={t("tableData.prevPage")}
               onClick={() => setOffset(prevOffset(offset, pageSize))}
               disabled={!page.canPrev || loading}
-              title={t("tableData.prevPage")}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
+            />
+            <IconButton
+              icon={ChevronRight}
+              label={t("tableData.nextPage")}
               onClick={() => setOffset(nextOffset(offset, pageSize))}
               disabled={!page.canNext || loading}
-              title={t("tableData.nextPage")}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
+            />
           </div>
           <NativeSelect
             value={pageSize}

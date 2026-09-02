@@ -42,6 +42,7 @@ import {
   X,
 } from "lucide-react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { IconButton } from "@/components/ui/icon-button";
 import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/tauri";
@@ -625,15 +626,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                       {history.length}
                     </span>
                     {history.length > 0 && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
+                      <IconButton
+                        size="xs"
+                        icon={Trash2}
+                        label={t("query.clearHistory")}
                         className="h-5 w-5"
                         onClick={clearHistory}
-                        title={t("query.clearHistory")}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      />
                     )}
                   </div>
                 </div>
@@ -688,15 +687,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                           )}
                         </div>
                       </button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                      <IconButton
+                        size="xs"
+                        icon={Play}
+                        label={t("query.runAgain")}
+                        className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
                         onClick={() => void runQuery(h.sql)}
-                        title={t("query.runAgain")}
-                      >
-                        <Play className="h-3 w-3" />
-                      </Button>
+                      />
                     </div>
                   ))}
                 </div>

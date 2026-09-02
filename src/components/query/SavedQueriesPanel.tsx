@@ -7,10 +7,10 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Bookmark, Pencil, Play, SearchX, Trash2 } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { SearchField } from "@/components/ui/search-field";
 import { EmptyState } from "@/components/common/EmptyState";
 import { useSavedQueries, type SavedQuery } from "@/stores/query/savedQueries";
-import { Button } from "@/components/ui/button";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
@@ -104,31 +104,25 @@ export function SavedQueriesPanel({
                 )}
               </div>
               <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6"
+                <IconButton
+                  size="xs"
+                  icon={Play}
+                  label={t("saved.openInTab")}
                   onClick={() => runQuery(q)}
-                  title={t("saved.openInTab")}
-                >
-                  <Play className="h-3 w-3" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6"
+                />
+                <IconButton
+                  size="xs"
+                  icon={Pencil}
+                  label={t("saved.edit")}
                   onClick={() => {
                     setEditing(q);
                     setDialogOpen(true);
                   }}
-                  title={t("saved.edit")}
-                >
-                  <Pencil className="h-3 w-3" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-6 w-6"
+                />
+                <IconButton
+                  size="xs"
+                  icon={Trash2}
+                  label={t("saved.delete")}
                   onClick={() => {
                     if (
                       confirmIrreversible(
@@ -137,10 +131,7 @@ export function SavedQueriesPanel({
                     )
                       remove(q.id);
                   }}
-                  title={t("saved.delete")}
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+                />
               </div>
             </div>
           </div>

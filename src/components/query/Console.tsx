@@ -28,6 +28,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { SearchField } from "@/components/ui/search-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -166,47 +167,30 @@ export function Console() {
     <div className="flex h-full flex-col bg-background text-foreground">
       {/* Toolbar */}
       <div className="flex items-center gap-1 border-b border-border px-2 py-1">
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
+        <IconButton
+          icon={paused ? Play : Pause}
+          label={paused ? t("console.resume") : t("console.pause")}
           onClick={() => setPaused(!paused)}
-          title={paused ? t("console.resume") : t("console.pause")}
-        >
-          {paused ? (
-            <Play className="h-3.5 w-3.5" />
-          ) : (
-            <Pause className="h-3.5 w-3.5" />
-          )}
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
+        />
+        <IconButton
+          icon={Trash2}
+          label={t("console.clear")}
           onClick={() => {
             clear();
             setSelectedId(null);
           }}
-          title={t("console.clear")}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
+        />
+        <IconButton
+          icon={ChevronsUp}
+          label={t("console.scrollTop")}
           disabled={filtered.length === 0}
           onClick={() =>
             listRef.current?.scrollToIndex({ index: 0, behavior: "smooth" })
           }
-          title={t("console.scrollTop")}
-        >
-          <ChevronsUp className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7"
+        />
+        <IconButton
+          icon={ChevronsDown}
+          label={t("console.scrollBottom")}
           disabled={filtered.length === 0}
           onClick={() =>
             listRef.current?.scrollToIndex({
@@ -214,10 +198,7 @@ export function Console() {
               behavior: "smooth",
             })
           }
-          title={t("console.scrollBottom")}
-        >
-          <ChevronsDown className="h-3.5 w-3.5" />
-        </Button>
+        />
         <div className="mx-1 h-5 w-px bg-border" />
         <label className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Checkbox
@@ -315,15 +296,13 @@ export function Console() {
                 {t("feedback.reportThisError")}
               </Button>
             )}
-            <Button
-              size="icon"
-              variant="ghost"
+            <IconButton
+              size="xs"
+              icon={X}
+              label={t("console.closeDetail")}
               className={cn("h-5 w-5 shrink-0", !selected.error && "ml-auto")}
               onClick={() => setSelectedId(null)}
-              title={t("console.closeDetail")}
-            >
-              <X className="h-3 w-3" />
-            </Button>
+            />
           </div>
           {selected.error && (
             <div className="border-b border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-2xs text-destructive">

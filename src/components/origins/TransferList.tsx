@@ -25,6 +25,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,32 +173,38 @@ export function TransferList({
         empty={leftEmpty}
       />
       <div className="flex flex-col justify-center gap-1.5">
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-7 w-7"
-          disabled={armedLeft.length === 0}
-          title={rightTitle}
-          onClick={() => {
-            onAdd(armedLeft);
-            leftSel.clear();
-          }}
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-7 w-7"
-          disabled={armedRight.length === 0}
-          title={leftTitle}
-          onClick={() => {
-            onRemove(armedRight);
-            rightSel.clear();
-          }}
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </Button>
+        {/* These two keep their outline rather than becoming `IconButton`s:
+            the border is what makes them read as this component's central
+            action rather than incidental chrome. Only the tooltip changes,
+            from the OS's to the themed one. */}
+        <SimpleTooltip label={rightTitle}>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-7 w-7"
+            disabled={armedLeft.length === 0}
+            onClick={() => {
+              onAdd(armedLeft);
+              leftSel.clear();
+            }}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </SimpleTooltip>
+        <SimpleTooltip label={leftTitle}>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-7 w-7"
+            disabled={armedRight.length === 0}
+            onClick={() => {
+              onRemove(armedRight);
+              rightSel.clear();
+            }}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+        </SimpleTooltip>
       </div>
       <Panel
         title={rightTitle}

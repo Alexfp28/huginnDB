@@ -34,6 +34,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -43,10 +44,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import Editor from "@monaco-editor/react";
-import { detectLanguage, tryFormat, type ContentLanguage } from "@/lib/grid/detectContentType";
-import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
+import {
+  detectLanguage,
+  tryFormat,
+  type ContentLanguage,
+} from "@/lib/grid/detectContentType";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
 import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
-import { useCellEditor, type CellBindingContext } from "@/stores/grid/cellEditor";
+import {
+  useCellEditor,
+  type CellBindingContext,
+} from "@/stores/grid/cellEditor";
 import { SchemaBindingBadge } from "@/components/jsonSchema/SchemaBindingBadge";
 import { cellModelPath, bindSchemaToModel } from "@/lib/monaco/monacoJson";
 import { useJsonSchemas, relationKey, schemaUri } from "@/stores/jsonSchemas";
@@ -133,7 +144,11 @@ export function CellEditorBody({
   // Derive from raw state (gotcha #1); never a selector that indexes.
   const resolved = useMemo(() => {
     if (!binding) return undefined;
-    const key = relationKey(binding.connectionId, binding.dbSchema, binding.table);
+    const key = relationKey(
+      binding.connectionId,
+      binding.dbSchema,
+      binding.table,
+    );
     return resolvedAll[key]?.[binding.column];
     // `revision` is in the deps so a freshly created binding lights up without
     // reopening the cell.
@@ -178,7 +193,9 @@ export function CellEditorBody({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="plaintext">{t("cellEditor.langPlain")}</SelectItem>
+            <SelectItem value="plaintext">
+              {t("cellEditor.langPlain")}
+            </SelectItem>
             <SelectItem value="json">JSON</SelectItem>
             <SelectItem value="xml">XML</SelectItem>
             <SelectItem value="sql">SQL</SelectItem>
@@ -213,8 +230,14 @@ export function CellEditorBody({
           onChange={handleEditorChange}
           onMount={(editor, monacoNs) => {
             const save = () => onSubmitRef.current?.();
-            editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.KeyS, save);
-            editor.addCommand(monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.Enter, save);
+            editor.addCommand(
+              monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.KeyS,
+              save,
+            );
+            editor.addCommand(
+              monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.Enter,
+              save,
+            );
           }}
           options={editorOptions}
         />
@@ -235,7 +258,10 @@ export function CellEditor({
 }: Props) {
   const { t } = useTranslation();
   const [value, setValue] = useState(initialValue);
-  const detected = useMemo(() => detectLanguage(initialValue ?? ""), [initialValue]);
+  const detected = useMemo(
+    () => detectLanguage(initialValue ?? ""),
+    [initialValue],
+  );
   const [language, setLanguage] = useState<ContentLanguage>(detected);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -254,7 +280,11 @@ export function CellEditor({
   const revision = useJsonSchemas((s) => s.revision);
   const hasResolvedSchema = useMemo(() => {
     if (!binding) return false;
-    const key = relationKey(binding.connectionId, binding.dbSchema, binding.table);
+    const key = relationKey(
+      binding.connectionId,
+      binding.dbSchema,
+      binding.table,
+    );
     return !!resolvedAll[key]?.[binding.column];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binding, resolvedAll, revision]);
@@ -290,12 +320,13 @@ export function CellEditor({
       // `SideEditorPanel.loadFresh`. The mere presence of `binding`
       // (coordinates only, no confirmed schema) is not enough — that used to
       // force JSON mode on almost every cell of a real table.
-      setLanguage(hasResolvedSchema ? "json" : detectLanguage(initialValue ?? ""));
+      setLanguage(
+        hasResolvedSchema ? "json" : detectLanguage(initialValue ?? ""),
+      );
       setSaveError(null);
       setEditorKey((k) => k + 1);
     }
   }, [open, initialValue]);
-
 
   async function handleSave() {
     if (!onSave) return;
@@ -368,14 +399,11 @@ export function CellEditor({
             </span>
           </DialogTitle>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
+            <IconButton
+              icon={PanelRight}
+              label={t("cellEditor.moveToSide")}
               onClick={moveToSidePanel}
-              title={t("cellEditor.moveToSide")}
-            >
-              <PanelRight className="h-4 w-4" />
-            </Button>
+            />
             {/* Fullscreen reads as a small sticker chip carrying its own
                 shortcut rather than an anonymous icon button: F11 is already
                 bound here (see the keydown handler above), and the key was
@@ -420,9 +448,7 @@ export function CellEditor({
         <DialogFooter className="items-center border-t border-border px-4 py-3 sm:justify-between">
           {canSave && (
             <span className="mr-auto flex items-center gap-1 text-2xs text-muted-foreground">
-              <Kbd>
-                {saveHint}
-              </Kbd>
+              <Kbd>{saveHint}</Kbd>
               {t("common.save")}
             </span>
           )}

@@ -28,6 +28,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
 import { baseName } from "@/lib/filePath";
@@ -357,16 +358,21 @@ export function ExportDatabaseDialog({
                     )}
                     onClick={() => void pickDestination()}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={() => void pickDestination()}
-                    title={t("schema.exportDatabaseDialog.browse")}
+                  {/* Keeps its outline: it sits against a field as its browse
+                      affordance, which a borderless button would not read as. */}
+                  <SimpleTooltip
+                    label={t("schema.exportDatabaseDialog.browse")}
                   >
-                    <FolderOpen className="h-3.5 w-3.5" />
-                  </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => void pickDestination()}
+                    >
+                      <FolderOpen className="h-3.5 w-3.5" />
+                    </Button>
+                  </SimpleTooltip>
                 </div>
               </div>
             </div>

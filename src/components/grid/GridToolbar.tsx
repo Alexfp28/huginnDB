@@ -27,6 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import { GridSearchInput } from "@/components/grid/GridSearchInput";
 import {
@@ -178,16 +179,11 @@ export function GridToolbar({
       ? {
           id: "fit-columns",
           bar: (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
+            <IconButton
+              icon={UnfoldHorizontal}
+              label={t("dataGrid.fitColumns")}
               onClick={() => onFitColumns(columns.map((c) => c.name))}
-              title={t("dataGrid.fitColumns")}
-              aria-label={t("dataGrid.fitColumns")}
-            >
-              <UnfoldHorizontal className="h-3.5 w-3.5" />
-            </Button>
+            />
           ),
           menu: (
             <DropdownMenuItem
@@ -235,7 +231,7 @@ export function GridToolbar({
   const rowCountInBar = density !== "narrow" || !hasOverflow;
   const elapsedInBar = density === "wide" || !hasOverflow;
 
-    /* Toolbar layout: leading actions (refresh · advanced filter) · growing
+  /* Toolbar layout: leading actions (refresh · advanced filter) · growing
         search box · filter chips  ——  then, right-aligned via the cluster's
         `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
         data/Bulk update, grouped right beside Insert) · optional row count ·
@@ -255,9 +251,10 @@ export function GridToolbar({
       ref={toolbarRef}
       className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs"
     >
-      {!collapseChrome && toolbarLeading?.map((item) => (
-        <Fragment key={item.id}>{item.bar}</Fragment>
-      ))}
+      {!collapseChrome &&
+        toolbarLeading?.map((item) => (
+          <Fragment key={item.id}>{item.bar}</Fragment>
+        ))}
       {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
         <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
       )}
@@ -275,8 +272,9 @@ export function GridToolbar({
           Collapsing them only at `narrow` was measured and wasn't enough:
           two chips still pushed a 700 px pane onto a second row, which is
           the exact wrap this whole mechanism exists to prevent. */}
-      {serverFilters && serverFilters.length > 0 && (
-        density !== "wide" ? (
+      {serverFilters &&
+        serverFilters.length > 0 &&
+        (density !== "wide" ? (
           <ServerFilterSummary
             filters={serverFilters}
             onRemove={onRemoveFilter}
@@ -289,8 +287,7 @@ export function GridToolbar({
               onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
             />
           ))
-        )
-      )}
+        ))}
       {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
           search box (+ filter chips) on the left and this group. Contents:
           Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
@@ -360,15 +357,10 @@ export function GridToolbar({
         {overflowGroups.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                title={t("dataGrid.moreActions")}
-                aria-label={t("dataGrid.moreActions")}
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </Button>
+              <IconButton
+                icon={MoreHorizontal}
+                label={t("dataGrid.moreActions")}
+              />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[13rem]">
               {overflowGroups.map((group, gi) => (
@@ -388,8 +380,7 @@ export function GridToolbar({
                   <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
                     {showRowCount && !rowCountInBar && (
                       <>
-                        {formatNumber(visibleRowCount)}{" "}
-                        {t("dataGrid.rows")}
+                        {formatNumber(visibleRowCount)} {t("dataGrid.rows")}
                         {total !== null &&
                           total !== undefined &&
                           ` ${t("dataGrid.of")} ${formatNumber(total)}`}

@@ -25,6 +25,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -242,17 +243,14 @@ export function IndexEditorDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Button
-                      size="icon"
-                      variant="ghost"
+                    <IconButton
+                      icon={Trash2}
+                      label={t("indexes.editor.removeKey")}
                       disabled={rows.length === 1}
                       onClick={() =>
                         setRows((prev) => prev.filter((_, j) => j !== i))
                       }
-                      title={t("indexes.editor.removeKey")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    />
                   </div>
                 ))}
                 <Button

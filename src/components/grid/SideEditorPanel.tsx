@@ -35,6 +35,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -336,23 +337,17 @@ export function SideEditorPanel() {
         <span className="text-2xs text-muted-foreground">
           {t("cellEditor.chars", { count: value.length })}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="ml-auto h-6 w-6"
-          onClick={() => setFullscreen((v) => !v)}
-          title={
+        <IconButton
+          size="xs"
+          icon={fullscreen ? Minimize2 : Maximize2}
+          label={
             fullscreen
               ? t("cellEditor.exitFullscreen")
               : t("cellEditor.fullscreen")
           }
-        >
-          {fullscreen ? (
-            <Minimize2 className="h-3.5 w-3.5" />
-          ) : (
-            <Maximize2 className="h-3.5 w-3.5" />
-          )}
-        </Button>
+          className="ml-auto"
+          onClick={() => setFullscreen((v) => !v)}
+        />
       </div>
       <CellEditorBody
         value={value}
