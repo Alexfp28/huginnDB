@@ -479,9 +479,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   de acciones destructivas del grid se aplicaba en el instante del clic.
   `NULL` sigue siendo alcanzable desde el menú contextual de la fila —un
   segundo paso deliberado en vez de una tecla junto a donde estás escribiendo.
-  El botón de expandir que queda ahora es el primitivo `IconButton`
-  compartido en vez de uno hecho a mano, lo que además deja `CellInput.tsx` a
-  cero en las dos ratchets de deuda de adopción.
+  El botón de expandir que queda ahora muestra el tooltip con estilo de la
+  app en vez del del sistema operativo, lo que además deja `CellInput.tsx`
+  a cero en la ratchet de deuda de tooltips nativos; sigue siendo un botón
+  hecho a mano en vez del primitivo `IconButton` compartido, porque la forma
+  más pequeña de ese primitivo es un cuadrado fijo de 24px —exactamente el
+  alto del propio campo—, sin margen para respirar dentro de su borde. El
+  botón "∅" gemelo de la vista de lista de MongoDB (`DocumentListView`)
+  desaparece por el mismo motivo.
 
 - **Una celda en edición en línea mostraba dos cuadrados azules anidados.**
   El anillo `ring-2 ring-inset ring-brand` de la celda activa por teclado

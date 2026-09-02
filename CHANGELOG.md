@@ -539,9 +539,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   inline sat directly beside the text caret, and unlike the grid's other
   destructive actions it took effect the instant it was clicked. `NULL` stays
   reachable from the row's right-click menu — a deliberate second step rather
-  than a key next to where you're typing. The remaining expand button is now
-  built on the shared `IconButton` primitive instead of a hand-rolled one,
-  which also clears `CellInput.tsx` off both adoption-debt ratchets.
+  than a key next to where you're typing. The remaining expand button now
+  shows the app's themed tooltip instead of the operating system's, which
+  also clears `CellInput.tsx` off the OS-tooltip adoption-debt ratchet; it
+  stays a hand-rolled button rather than the shared `IconButton` primitive,
+  since that primitive's smallest shape is a fixed 24px square — exactly this
+  field's own height, leaving it no room to breathe inside the field's
+  border. The MongoDB list view's matching "∅" button (`DocumentListView`)
+  is gone for the same reason.
 
 - **A cell being edited inline showed two nested blue squares.** The
   keyboard-active cell's `ring-2 ring-inset ring-brand` stayed lit while

@@ -226,7 +226,6 @@ interface DocFieldLabels {
   deleteField: string;
   collapse: string;
   expand: string;
-  setNull: string;
   expandEditor: string;
   opaqueType: string;
   changeType: string;
@@ -258,7 +257,7 @@ export function DocumentListView({
    * One `useTranslation()` subscription for the whole page of cards, instead
    * of one per `DocumentCard` and one per `FieldRow` (up to ~100 + ~4,000 on
    * a page of wide documents — each a live i18next subscription, each
-   * re-rendering on a language change). All ten strings here are static (no
+   * re-rendering on a language change). All nine strings here are static (no
    * interpolation), so they're resolved once into plain strings and handed
    * down as `labels`, which stays referentially stable across renders that
    * don't actually change the language.
@@ -276,7 +275,6 @@ export function DocumentListView({
       deleteField: t("dataGrid.list.deleteField"),
       collapse: t("dataGrid.list.collapse"),
       expand: t("dataGrid.list.expand"),
-      setNull: t("cellEditor.setNull"),
       expandEditor: t("dataGrid.expandEditor"),
       opaqueType: t("dataGrid.list.opaqueType"),
       changeType: t("dataGrid.list.changeType"),
@@ -1177,37 +1175,27 @@ const FieldRow = memo(function FieldRow({
         </span>
         <span className="shrink-0 text-muted-foreground/60">:</span>
         {editing ? (
-          <span className="flex min-w-0 flex-1 items-center gap-1">
-            <input
-              autoFocus
-              className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
-              placeholder={text === null ? nullDisplay : ""}
-              value={text ?? ""}
-              onChange={(e) => actionsRef.current.editChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  actionsRef.current.commitEdit(f);
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  actionsRef.current.cancelEdit();
-                }
-              }}
-              onBlur={() => actionsRef.current.commitEdit(f)}
-            />
-            <button
-              type="button"
-              tabIndex={-1}
-              title={labels.setNull}
-              className="shrink-0 rounded-sm px-1 text-3xs text-muted-foreground/60 hover:text-foreground"
-              // Keep focus on the input: a blur here would commit the old
-              // text before the NULL ever lands.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => actionsRef.current.editChange(null)}
-            >
-              ∅
-            </button>
-          </span>
+          // No inline "set NULL" button here (there used to be one) — same
+          // one-stray-click risk `CellInput` dropped it for, and the same
+          // fix: `canExpand`'s full-editor escalation still takes `null` as
+          // a deliberate typed value.
+          <input
+            autoFocus
+            className="h-5 w-full min-w-0 rounded-sm border border-input bg-background px-1 font-mono text-inherit focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
+            placeholder={text === null ? nullDisplay : ""}
+            value={text ?? ""}
+            onChange={(e) => actionsRef.current.editChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                actionsRef.current.commitEdit(f);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                actionsRef.current.cancelEdit();
+              }
+            }}
+            onBlur={() => actionsRef.current.commitEdit(f)}
+          />
         ) : (
           <span
             className={cn(

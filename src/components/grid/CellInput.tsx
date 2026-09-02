@@ -28,13 +28,24 @@
  * documents for exactly this shape), the input is transparent inside it, and
  * the button shares the field's own surface so there is nothing to seam
  * against. It stays `sticky` so a very wide column doesn't scroll it away.
+ *
+ * **The expand button is hand-rolled, not `IconButton`, and that is
+ * deliberate.** `IconButton`'s smallest shape is a fixed 24px square —
+ * exactly this field's own total height (`h-6`), so nesting one inside
+ * leaves it no room to breathe: it touches the field's top and bottom edges
+ * with nothing left for the rounded border to show around it. Same wall
+ * `DocumentListView`'s inline field actions hit (see its own note on the
+ * primitive layer's density floor) — this field is that same class of
+ * control, just a row taller. What it keeps from the primitive is the themed
+ * tooltip (`SimpleTooltip`, not a native `title=`), sized by its own padding
+ * instead of a fixed box.
  */
 
 import { forwardRef } from "react";
 import { Braces, Maximize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fieldFocus } from "@/components/ui/styles";
-import { IconButton } from "@/components/ui/icon-button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 
 interface CellInputProps {
   /** Current value; `null` renders a "NULL" placeholder. */
@@ -118,19 +129,29 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
           // painting the *field's* own surface from inside its border rather
           // than a rectangle of its own over the row.
           <span className="sticky right-0 z-[1] flex shrink-0 items-center bg-background pl-0.5 pr-1">
-            <IconButton
-              size="xs"
-              tabIndex={-1}
-              disabled={disabled}
-              icon={schemaBound ? Braces : Maximize2}
-              label={expandTitle ?? ""}
-              tone={schemaBound ? "brand" : "quiet"}
-              className={schemaBound ? "text-brand" : undefined}
-              // Keep focus on the input so blur-commit doesn't fire before we
-              // hand the current value off to the modal editor.
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onExpand}
-            />
+            <SimpleTooltip label={expandTitle}>
+              <button
+                type="button"
+                tabIndex={-1}
+                disabled={disabled}
+                className={cn(
+                  "rounded-sm p-1 transition-colors",
+                  schemaBound
+                    ? "text-brand hover:text-brand/80"
+                    : "text-muted-foreground/80 hover:text-foreground",
+                )}
+                // Keep focus on the input so blur-commit doesn't fire before we
+                // hand the current value off to the modal editor.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onExpand}
+              >
+                {schemaBound ? (
+                  <Braces className="h-3 w-3" />
+                ) : (
+                  <Maximize2 className="h-3 w-3" />
+                )}
+              </button>
+            </SimpleTooltip>
           </span>
         )}
       </div>

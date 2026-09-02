@@ -158,10 +158,10 @@ describe("raw <button> outside ui/", () => {
    */
   const BUDGET: Record<string, number> = {
     "src/components/grid/CellPreview.tsx": 5,
-    "src/components/grid/DocumentListView.tsx": 5,
     "src/components/shell/NotificationCard.tsx": 5,
     "src/components/shell/StatusBar.tsx": 5,
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 4,
+    "src/components/grid/DocumentListView.tsx": 4,
     "src/components/pulse/PulseWindow.tsx": 4,
     "src/components/settings/sections/NotificationsSection.tsx": 4,
     "src/components/connection/ConnectionTreeRow.tsx": 3,
@@ -206,6 +206,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/connection/EnvironmentSwitcher.tsx": 1,
     "src/components/connection/GroupHeader.tsx": 1,
     "src/components/connection/WorkspacePicker.tsx": 1,
+    "src/components/grid/CellInput.tsx": 1,
     "src/components/grid/DataGrid.tsx": 1,
     "src/components/grid/dialogs/CellEditor.tsx": 1,
     "src/components/grid/DraftRowView.tsx": 1,
@@ -230,7 +231,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${136} in ${71} files`, () => {
+  it(`is down to ${136} in ${72} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -281,11 +282,11 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/pulse/PulseWindow.tsx": 4,
     "src/components/settings/sections/JsonSchemasSection.tsx": 4,
     "src/components/connection/StatusConnections.tsx": 3,
-    "src/components/grid/DocumentListView.tsx": 3,
     "src/components/connection/TreeFilterBox.tsx": 3,
     "src/components/common/VanishedOriginNotice.tsx": 2,
     "src/components/connection/ConnectionRailRow.tsx": 2,
     "src/components/grid/CellPreview.tsx": 2,
+    "src/components/grid/DocumentListView.tsx": 2,
     "src/components/grid/GridSearchInput.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
     "src/components/query/QueryEditorTab.tsx": 2,
@@ -316,7 +317,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${77} in ${40} files`, () => {
+  it(`is down to ${76} in ${40} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -330,6 +331,6 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(77);
+    expect(total(BUDGET)).toBeLessThanOrEqual(76);
   });
 });
