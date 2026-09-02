@@ -347,6 +347,33 @@ export function AggregationTab({
     });
   }, []);
 
+  /**
+   * Insert a fresh stage at `index`, pushing whatever was there down.
+   *
+   * The pipeline is ordered and the order is the meaning, so "add" alone —
+   * which could only append — made the common edit awkward: realising a
+   * `$match` belongs *before* the `$lookup` you already wrote meant appending
+   * one and dragging it up past everything. Each card offers this for its own
+   * position; the foot of the list still appends. See `StageCard`'s note on why
+   * one button per card is above rather than below.
+   */
+  const insertStageAt = useCallback((index: number) => {
+    const stage = newStage("$match");
+    setStages((prev) => {
+      const next = [...prev];
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, stage);
+      return next;
+    });
+    // Same one-frame wait `addStage` needs: the card has to mount before it can
+    // be scrolled to.
+    requestAnimationFrame(() => {
+      cardRefs.current[index]?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    });
+  }, []);
+
   const moveStage = useCallback((from: number, to: number) => {
     setStages((prev) => {
       if (from === to || from < 0 || from >= prev.length) return prev;
@@ -693,6 +720,7 @@ export function AggregationTab({
                     return next;
                   })
                 }
+                onInsertBefore={() => insertStageAt(i)}
                 onDelete={() =>
                   setStages((prev) => prev.filter((s) => s.id !== stage.id))
                 }

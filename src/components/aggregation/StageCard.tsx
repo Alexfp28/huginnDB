@@ -22,6 +22,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  BetweenHorizontalStart,
   ChevronDown,
   ChevronRight,
   GripVertical,
@@ -65,6 +66,19 @@ interface Props {
   onChange: (body: string) => void;
   onToggleEnabled: () => void;
   onToggleCollapsed: () => void;
+  /**
+   * Insert a fresh stage immediately *above* this one.
+   *
+   * Above rather than below, and it is the difference between covering every
+   * position and covering all but one: with the "add stage" button at the foot
+   * of the list appending, one "insert above" per card reaches every gap in the
+   * pipeline including the very top — and the top is the position that matters
+   * most, since filtering early with a `$match` is the single most common thing
+   * a pipeline wants added in front of what is already there. "Insert below"
+   * would need a second button, or a special case on the first card, to reach
+   * it at all.
+   */
+  onInsertBefore: () => void;
   onDelete: () => void;
   onRun: () => void;
   onDragStart: () => void;
@@ -94,6 +108,7 @@ export function StageCard({
   onChange,
   onToggleEnabled,
   onToggleCollapsed,
+  onInsertBefore,
   onDelete,
   onRun,
   onDragStart,
@@ -221,9 +236,17 @@ export function StageCard({
           />
           <IconButton
             size="xs"
+            icon={BetweenHorizontalStart}
+            label={t("aggregation.stage.insertBefore")}
+            onClick={onInsertBefore}
+          />
+          <IconButton
+            size="xs"
             icon={Trash2}
+            // `tone`, not a hand-rolled hover colour: same treatment as every
+            // other destructive control, decided once in `IconButton`.
+            tone="destructive"
             label={t("aggregation.stage.delete")}
-            className="text-muted-foreground hover:text-destructive"
             onClick={onDelete}
           />
         </div>

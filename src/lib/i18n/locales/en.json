@@ -781,6 +781,7 @@
       "pick": "Pick a stage",
       "toggle": "Include this stage",
       "delete": "Delete stage",
+        "insertBefore": "Insert a stage above this one",
       "collapse": "Collapse",
       "expand": "Expand",
       "reorder": "Drag to reorder",

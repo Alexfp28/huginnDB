@@ -781,6 +781,7 @@
       "pick": "Elige una etapa",
       "toggle": "Incluir esta etapa",
       "delete": "Eliminar etapa",
+        "insertBefore": "Insertar una etapa encima de esta",
       "collapse": "Plegar",
       "expand": "Desplegar",
       "reorder": "Arrastra para reordenar",
