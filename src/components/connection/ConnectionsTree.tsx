@@ -47,6 +47,7 @@ import { useTranslation } from "react-i18next";
 import { DatabaseBackup, DatabaseZap, ListFilter, PlugZap } from "lucide-react";
 import { SearchField } from "@/components/ui/search-field";
 import { MICRO_HEADING } from "@/components/ui/styles";
+import { IconButton } from "@/components/ui/icon-button";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useConnections } from "@/stores/session/connections";
@@ -538,24 +539,23 @@ export function ConnectionsTree() {
           <span className={cn("flex-1 truncate", MICRO_HEADING)}>
             {t("panels.schema")}
           </span>
-          <SimpleTooltip label={t("menu.file.disconnectAll")}>
-            <button
-              type="button"
-              disabled={active.size === 0 || disconnectingAll}
-              onClick={() => void handleDisconnectAll()}
-              aria-label={t("menu.file.disconnectAll")}
-              className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40 disabled:hover:bg-transparent"
-            >
-              {/* Closing a pool through a tunnel or a pooler is a round trip
-                  per database, so this is not always instant — the button says
-                  it is working instead of looking ignored. */}
-              {disconnectingAll ? (
-                <Spinner size="sm" />
-              ) : (
-                <PlugZap className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </SimpleTooltip>
+          {/* `tone="destructive"`: this drops every live pool in the tree, and
+              as a hand-rolled button in the resting muted grey it read exactly
+              like the filter button beside it. The tone shows the intent on
+              hover only, so the header stays calm at rest — see `IconButton`.
+              `loading` covers the rest: closing a pool through a tunnel or a
+              pooler is a round trip per database, so this is not always
+              instant, and the button says it is working instead of looking
+              ignored. */}
+          <IconButton
+            icon={PlugZap}
+            tone="destructive"
+            label={t("menu.file.disconnectAll")}
+            disabled={active.size === 0}
+            loading={disconnectingAll}
+            onClick={() => void handleDisconnectAll()}
+            className="shrink-0"
+          />
           {/* The "N of M connections" line folds into a brand dot on the icon
               that describes it — the subset is still announced, on the control
               that changes it, and its count is in the tooltip. */}

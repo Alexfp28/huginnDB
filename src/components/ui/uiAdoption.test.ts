@@ -120,7 +120,7 @@ describe("raw <button> outside ui/", () => {
    * `IconButton` and `Button` exist so that a control's height, hover alpha,
    * focus ring and disabled treatment are decided once. Before them the app
    * had four hover alphas and three paddings across visually identical
-   * buttons, and that is what these 140 remaining elements still are: each one
+   * buttons, and that is what these 139 remaining elements still are: each one
    * re-decides, in isolation, something the primitives already answer.
    *
    * Two examples of what the count is actually measuring, both found while
@@ -143,7 +143,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 4,
     "src/components/pulse/PulseWindow.tsx": 4,
     "src/components/settings/sections/NotificationsSection.tsx": 4,
-    "src/components/connection/ConnectionsTree.tsx": 3,
     "src/components/connection/ConnectionTreeRow.tsx": 3,
     "src/components/connection/dialogs/ConnectionDialog.tsx": 3,
     "src/components/connection/EnvironmentRail.tsx": 3,
@@ -157,6 +156,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/common/VanishedEnvironmentNotice.tsx": 2,
     "src/components/common/VanishedOriginNotice.tsx": 2,
     "src/components/connection/ConnectionRailSection.tsx": 2,
+    "src/components/connection/ConnectionsTree.tsx": 2,
     "src/components/connection/TreeFilterBox.tsx": 2,
     "src/components/grid/CellInput.tsx": 2,
     "src/components/grid/GridSearchInput.tsx": 2,
@@ -210,7 +210,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${140} in ${72} files`, () => {
+  it(`is down to ${139} in ${72} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -218,7 +218,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(140);
+    expect(total(BUDGET)).toBeLessThanOrEqual(139);
   });
 });
 
