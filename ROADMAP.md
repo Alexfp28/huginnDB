@@ -203,6 +203,13 @@ pushing a count down. Worth naming individually:
   — as a contract it would fail on the 79 remaining — so it stays a one-line
   change for the moment that budget empties. That ordering is the point: the
   budget is what makes the contract mergeable later.
+- **A `Separator` primitive is a candidate.** Nine hand-rolled group dividers
+  across the app in four spellings (`h-3`/`h-4`/`h-5`, with and without
+  `mx-0.5`/`mx-1`, `<div>` and `<span>`), all of them the same `w-px bg-border`
+  rule. Not extracted yet on the norm `styles.ts` records — created on first
+  adoption, never speculatively — and the honest reading is that it is now past
+  that bar. Worth doing with the heights reconciled rather than preserving four,
+  which is the decision the migration actually contains.
 - The heaviest single files are `DocumentListView.tsx` (6 raw buttons, 4 OS
   tooltips) and `ConnectionTreeRow.tsx` (8 OS tooltips). Both are row/list
   components, so one pass over each clears a visible share of both budgets.

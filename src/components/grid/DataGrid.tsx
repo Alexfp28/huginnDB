@@ -1486,6 +1486,14 @@ export function DataGrid({
               />
             </div>
           )}
+          {/* Column sizing and row zoom are neighbours but not one group, and a
+              gap alone does not say so — the same separator `GridToolbar` uses
+              between its own groups. Only when something follows: with no
+              caller footer (a query result) this cluster is the whole row and a
+              trailing rule would divide it from nothing. */}
+          {showFitControls && footer && (
+            <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+          )}
           {footer}
         </div>
       )}
