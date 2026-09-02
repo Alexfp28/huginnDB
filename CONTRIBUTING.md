@@ -101,6 +101,72 @@ When in doubt, read `src-tauri/src/lib.rs` and `src/App.tsx` first — they're t
 - A new primitive is created on first adoption, never speculatively, and arrives with its own `*.test.tsx`. Note that `cva` does not merge classes: assert "the consumer's `className` wins" against rendered output, not against the variant function's return value.
 - Avoid CDN-loaded assets. Anything needed at runtime must be bundled (Monaco is the canonical example — see `src/lib/monaco/monaco-setup.ts`).
 
+### Feedback and transition state
+
+Four decisions the app kept re-making, differently, until each cost a bug. They
+are behavioural rather than visual, which is why they are not in the list above
+and why three of the four look like styling problems while having nothing to do
+with styling. Each is stated with the question that decides whether it applies —
+a rule you apply everywhere is as wrong as one nobody applies.
+
+**An async transition names its subject, not a flag.** *Does the operation act
+on one of several things the user can see at once?* Then the state holds which
+one — `switchingTo: string | null`, `connecting: string | null`,
+`disconnecting: Set<string>` — and the boolean is derived at the point of use.
+A single-subject operation (a dialog submitting) is a boolean, and that is fine.
+The trap is that the "current" pointer usually does not move until the operation
+*ends*: `switchTo` flushes the outgoing session and closes every one of its
+pools before `activeId` changes, so `switching && isActive` parked the spinner
+on the environment being left for the whole of the slow part. No styling fixes
+that — the state could not express where you were going. Read the field as a
+primitive and derive; a selector returning a fresh object re-renders every
+consumer.
+
+**Destructive intent shows on hover; confirmation is a separate tier.** *Would
+someone regret this click?* Then the control is muted at rest and destructive on
+hover (`IconButton`'s `tone="destructive"`). Red at rest turns a panel into a
+warning nobody reads; no red at all is how "disconnect all" — which drops every
+live pool in the tree — came to look exactly like the filter button beside it.
+Whether it also needs a *confirmation* is a different question with three
+answers, not one. `confirmDestructive` is gated on the user's preference and is
+for things they could redo — a row they can re-insert, a table they can
+repopulate. `confirmIrreversible` ignores that preference and is for anything
+that exists nowhere else: an environment's tabs and layout, an origin's stored
+passphrase, interrupting someone else's live AI session. And a destructive
+action that has to explain *why* it failed uses `ConfirmDialog`, whose `error`
+slot keeps the dialog open — a toast is the wrong surface for that. The
+preference was never a blanket "never ask me anything", and reading it as one
+turns one stale toggle into silent data loss.
+
+**Busy belongs to the control.** *Can this be a round trip?* Then pass `loading`
+to `Button` / `IconButton` rather than swapping in a `Spinner` by hand — it
+disables the control at the same time, which the hand-rolled version usually
+forgets. Closing a pool through a tunnel or a pooler is a round trip *per
+database*, so "instant" is not a safe assumption anywhere a connection is
+involved. In a dialog use `useAsyncSubmit`, and note that its refusal to clear
+the flag on success is deliberate: the success path closes or replaces the
+dialog, so clearing first re-enables the buttons for the frames before the
+unmount lands.
+
+**Confirm a write only when its effect is not self-evident.** *Would the screen
+look identical whether this succeeded or not?* A delete removes the row and an
+insert adds one — the result is the confirmation, and a flash on top is noise.
+An in-place update is the case that needs one, because the new value was on
+screen while you typed it and nothing distinguishes "stored" from "typed"; the
+grid had no confirmation at all, so silence had to be read as success. Use
+`animate-brand-flash`, one shot, on the thing that changed, and fire it **after
+the result has landed** — every save path refetches, so the pulse then confirms
+the stored value rather than the keystrokes, and a rejected write throws before
+it can ever look like a success.
+
+**Where the decision goes matters as much as the decision.** All four are easy
+to apply at a call site and wrong to leave there. The grid fires a save from
+twelve places across six files; the confirmation is one wrapper around the two
+callbacks in `DataGrid`, before they are handed down, so every existing path and
+any added later confirms itself without knowing the rule exists. Twelve
+decorations would have been twelve chances to forget — which is exactly how the
+app came to have no confirmation anywhere. Prefer the seam.
+
 ### Commits
 
 We use a lightweight [Conventional Commits](https://www.conventionalcommits.org/) style:

@@ -81,6 +81,17 @@ It gives an objective answer to the question that used to be settled by feel:
 | `uiContracts.test.ts` | —                                      | the drift guards, with the rejected rules listed and reasoned                                               |
 | `uiAdoption.test.ts`  | —                                      | the migration ratchet: per-file budgets for the two patterns that cannot be contracts yet                   |
 
+## Where behaviour is decided
+
+This directory answers "what does a control look like". It deliberately does not
+answer "what does the app _say_ when something is happening" — that spans
+primitives, stores and domain components at once, so it lives in `CONTRIBUTING.md`
+under **Feedback and transition state**: how an async transition is modelled,
+when a control reads as destructive, who owns the busy state, and which writes
+get confirmed. Read it before adding a `loading`, a `tone="destructive"`, or a
+new spinner; each of those rules exists because the decision had already been
+made somewhere else in the app and was re-made differently.
+
 ## Contracts vs. budgets
 
 Two test files guard this layer and they answer different questions.
