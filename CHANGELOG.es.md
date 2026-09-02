@@ -473,6 +473,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   número de campos, que varía de un documento a otro y cambia al colapsar un
   valor anidado.
 
+- **El botón "∅" del editor de celda en línea —un clic perdido de borrar un
+  valor, sin confirmación— ha desaparecido.** Ponerlo a `NULL` mientras se
+  editaba en línea estaba justo al lado del cursor, y a diferencia del resto
+  de acciones destructivas del grid se aplicaba en el instante del clic.
+  `NULL` sigue siendo alcanzable desde el menú contextual de la fila —un
+  segundo paso deliberado en vez de una tecla junto a donde estás escribiendo.
+  El botón de expandir que queda ahora es el primitivo `IconButton`
+  compartido en vez de uno hecho a mano, lo que además deja `CellInput.tsx` a
+  cero en las dos ratchets de deuda de adopción.
+
+- **Una celda en edición en línea mostraba dos cuadrados azules anidados.**
+  El anillo `ring-2 ring-inset ring-brand` de la celda activa por teclado
+  seguía encendido mientras `CellInput` (o el `<select>` de una columna BIT)
+  dibujaba su propio borde azul de marca más halo justo encima, dentro de la
+  misma celda —dos contornos de foco compitiendo por un mismo campo. El
+  anillo exterior ahora se suprime justo en la celda que se está editando en
+  línea, ya que el propio campo ya lo indica.
+
 ## [1.20.0] — 2026-08-31
 
 ### Añadido

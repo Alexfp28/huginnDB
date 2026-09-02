@@ -179,7 +179,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/connection/ConnectionRailSection.tsx": 2,
     "src/components/connection/ConnectionsTree.tsx": 2,
     "src/components/connection/TreeFilterBox.tsx": 2,
-    "src/components/grid/CellInput.tsx": 2,
     "src/components/grid/GridSearchInput.tsx": 2,
     "src/components/grid/ServerFilterChips.tsx": 2,
     "src/components/indexes/dialogs/IndexEditorDialog.tsx": 2,
@@ -231,7 +230,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${138} in ${72} files`, () => {
+  it(`is down to ${136} in ${71} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -239,7 +238,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(138);
+    expect(total(BUDGET)).toBeLessThanOrEqual(136);
   });
 });
 
@@ -286,7 +285,6 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/connection/TreeFilterBox.tsx": 3,
     "src/components/common/VanishedOriginNotice.tsx": 2,
     "src/components/connection/ConnectionRailRow.tsx": 2,
-    "src/components/grid/CellInput.tsx": 2,
     "src/components/grid/CellPreview.tsx": 2,
     "src/components/grid/GridSearchInput.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
@@ -318,7 +316,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${79} in ${41} files`, () => {
+  it(`is down to ${77} in ${40} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -332,6 +330,6 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(79);
+    expect(total(BUDGET)).toBeLessThanOrEqual(77);
   });
 });

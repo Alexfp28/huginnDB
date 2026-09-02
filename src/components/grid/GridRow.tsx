@@ -363,6 +363,15 @@ export const GridRow = memo(function GridRow({
         const isFkCell =
           !!onNavigateFk && !!columnInfoByName.get(meta.name)?.referenced_table;
         const isActiveCell = activeColIdx === cIdx;
+        // The inline control rendered here (CellInput, or BitInput's
+        // <select>) already draws its own bordered box with the same
+        // brand-blue focus treatment (`fieldFocus`) — the cell's own
+        // active-cell ring on top of that was two blue squares nested inside
+        // each other, not one legible focus state. `fkEditHere` isn't read
+        // here on purpose (see its prop doc): it exists only to make
+        // `React.memo` re-render this row, not as a value this render body
+        // can use, so the FK combobox keeps its own ring for now.
+        const isEditingHere = inlineEditHere?.column.name === meta.name;
         const isFlashing = flashedColIdx === cIdx;
         const isPinned = pinnedColumnSet.has(colName);
         const stickyLeft = isPinned ? pinnedLeftAcc : undefined;
@@ -396,7 +405,7 @@ export const GridRow = memo(function GridRow({
                   // cell being pinned itself, so its ring stays visible over
                   // its own `pinnedBgColor` background.
                   // No transition — the ring must track keys instantly.
-                  isActiveCell && "ring-2 ring-inset ring-brand",
+                  isActiveCell && !isEditingHere && "ring-2 ring-inset ring-brand",
                   // "It saved." One 520ms pulse, fired once the write has
                   // resolved and the page has been refetched, so it confirms
                   // the stored value rather than the keystrokes. `relative` for

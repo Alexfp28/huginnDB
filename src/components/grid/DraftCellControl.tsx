@@ -98,8 +98,8 @@ export function DraftCellControl({
   }
 
   // Single-column FK: pick a valid referenced value instead of typing one. The
-  // combobox owns its own NULL handling when the column is nullable, so the
-  // separate "∅" button used for plain inputs is not rendered.
+  // combobox owns its own NULL handling when the column is nullable — a
+  // deliberate pick from the dropdown's own NULL option, not a stray button.
   if (info?.referenced_table && connectionId) {
     return (
       <FkCombobox
@@ -137,8 +137,6 @@ export function DraftCellControl({
     <CellInput
       ref={focusRef as MutableRefObject<HTMLInputElement | null> | undefined}
       value={cell.value}
-      nullable={info?.nullable}
-      nullActive={cell.value === null && cell.touched}
       disabled={saving}
       onChange={(v) => onChange({ ...cell, value: v, touched: true })}
     />

@@ -348,8 +348,6 @@ export function useGridColumns(
               <CellInput
                 autoFocus
                 value={inlineEdit.value}
-                nullable={colInfo?.nullable ?? false}
-                nullActive={inlineEdit.value === null}
                 onChange={(nv) =>
                   setInlineEdit((prev) => (prev ? { ...prev, value: nv } : prev))
                 }

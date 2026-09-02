@@ -534,6 +534,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   its field count, which varies per document and changes when a nested value
   is folded.
 
+- **The inline cell editor's "∅" button — one stray click from wiping a value,
+  with no confirmation — is gone.** Setting a cell to `NULL` while editing it
+  inline sat directly beside the text caret, and unlike the grid's other
+  destructive actions it took effect the instant it was clicked. `NULL` stays
+  reachable from the row's right-click menu — a deliberate second step rather
+  than a key next to where you're typing. The remaining expand button is now
+  built on the shared `IconButton` primitive instead of a hand-rolled one,
+  which also clears `CellInput.tsx` off both adoption-debt ratchets.
+
+- **A cell being edited inline showed two nested blue squares.** The
+  keyboard-active cell's `ring-2 ring-inset ring-brand` stayed lit while
+  `CellInput` (or a BIT column's `<select>`) drew its own `border-brand` +
+  halo directly on top of it inside the same cell — two competing focus
+  outlines for one field. The outer ring is now suppressed for the exact cell
+  being inline-edited, since the field's own border already says so.
+
 ## [1.20.0] — 2026-08-31
 
 ### Added
