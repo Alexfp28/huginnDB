@@ -15,9 +15,27 @@ use crate::error::{AppError, AppResult};
 use crate::state::MongoConn;
 use mongodb::bson::{doc, Document};
 use mongodb::results::CollectionType;
+use std::time::Duration;
 
 /// Number of documents sampled when inferring a collection's field list.
 const SAMPLE_SIZE: i64 = 100;
+
+/// Ceiling on how long field inference may spend on the server.
+///
+/// `$sample` is normally the cheap way to do this — under the conditions we
+/// meet (first stage, N far below 5% of the collection, more than 100
+/// documents) MongoDB serves it from a pseudo-random cursor rather than a
+/// scan. "Normally" is the operative word: that fast path is a storage-engine
+/// optimisation with its own preconditions, and when any of them does not hold
+/// the server silently falls back to reading the collection and sorting it by
+/// a random key. On a collection of tens of millions that is not slow, it is
+/// effectively never — and with no `maxTimeMS` the driver simply waits, so the
+/// symptom is a field list that never arrives rather than an error anyone can
+/// act on.
+///
+/// Eight seconds matches the pool's `server_selection_timeout`, so the two
+/// ways this call can hang time out on the same scale.
+const INFER_TIMEOUT_MS: u64 = 8_000;
 
 /// Resolve the [`mongodb::Database`] a connection handle targets, or fail if no
 /// database has been selected (the parent cluster connection before the user
@@ -235,9 +253,30 @@ pub async fn infer_columns(conn: &MongoConn, collection: &str) -> AppResult<Vec<
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
 
-    let mut cursor = coll
+    // `$sample` first: a random sample describes a heterogeneous collection far
+    // better than its first N documents, which on an append-ordered collection
+    // are simply its oldest and may predate half the fields in use.
+    //
+    // Bounded, and with a fallback, because it is the one part of this that can
+    // degrade without warning on a large collection (see `INFER_TIMEOUT_MS`).
+    // The fallback is a plain natural-order read: a worse sample, but O(N) in
+    // the page size rather than in the collection, so it cannot fail for being
+    // big. A worse field list beats none — with none, the advanced filter has
+    // nothing to offer and the tab silently loses a feature.
+    let sampled = coll
         .aggregate(vec![doc! {"$sample": {"size": SAMPLE_SIZE}}])
-        .await?;
+        .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
+        .await;
+
+    let mut cursor = match sampled {
+        Ok(c) => c,
+        Err(_) => {
+            coll.find(doc! {})
+                .limit(SAMPLE_SIZE)
+                .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
+                .await?
+        }
+    };
 
     // Preserve first-seen field order; track type + how many docs contained it.
     let mut order: Vec<String> = Vec::new();

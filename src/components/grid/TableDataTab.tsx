@@ -226,6 +226,21 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const cols = useSchema(
     (s) => s.byConnection[connectionId]?.columns[tableKey],
   );
+  /**
+   * Why the column list is missing, when it is. Read as a primitive (a string
+   * or `undefined`), so it costs no re-render on unrelated slice writes.
+   *
+   * The tab used to ignore this entirely: `loadColumns` records the failure,
+   * but the effect below only fires while `cols` is absent and its deps do not
+   * change when the load rejects, so a failed inference left the tab with no
+   * columns, no retry and nothing on screen saying so. On a big MongoDB
+   * collection — where inference is a sample over the whole thing and is the
+   * load most likely to time out — the visible symptom was the advanced filter
+   * silently offering no fields to filter on.
+   */
+  const colError = useSchema(
+    (s) => s.byConnection[connectionId]?.columnErrors[tableKey],
+  );
 
   const [result, setResult] = useState<QueryResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -550,6 +565,38 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
   }, [connectionId, schema, table, serverFilters, appliedFilter]);
 
+  /**
+   * Reload the page **and** the row total — what "refresh" means to a user.
+   *
+   * `fetchData` alone leaves the footer's total showing whatever it was last
+   * counted for, because `refreshCount` only ever ran from its own effect,
+   * keyed on the predicate (connection, relation, filters, search). Nothing in
+   * that key changes when rows are added or removed, so pressing refresh, or
+   * F5, or deleting fifty rows, all left the count stale — and on a collection
+   * where the count is the only thing telling you how big it is, a stale one is
+   * worse than none.
+   *
+   * Deliberately **not** used after a cell edit or a bulk update. Those change
+   * values, never the number of documents, and an exact count over a filtered
+   * predicate is the one genuinely expensive thing on this screen — issue #77
+   * moved it off the first-paint path precisely so it would not be paid
+   * casually. Paying it per keystroke-committed cell would put it back.
+   *
+   * Mirrors the two effects below rather than calling them: the fetch promise
+   * has to be stashed *before* the count starts, since `refreshCount` awaits it
+   * to let the data page release its pooled connection first.
+   */
+  const reloadAll = useCallback(() => {
+    fetchPromiseRef.current = fetchData();
+    void refreshCount();
+    // Retry the field list too. It is loaded once on mount and never again, so
+    // before this a failed inference was permanent for the life of the tab —
+    // there was no way to ask for it a second time short of closing and
+    // reopening. "Refresh" is exactly when someone expects that to be retried.
+    if (!cols) void loadColumns(connectionId, schema, table);
+    return fetchPromiseRef.current;
+  }, [fetchData, refreshCount, cols, loadColumns, connectionId, schema, table]);
+
   useEffect(() => {
     if (!cols) loadColumns(connectionId, schema, table);
   }, [cols, connectionId, schema, table, loadColumns]);
@@ -566,12 +613,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
 
   // Registered so the global F5 / Ctrl+R interceptor (App.tsx) can reload
   // this tab's data when it's the active one, instead of the WebView's
-  // default full-page reload. Re-registered whenever `fetchData`'s identity
+  // default full-page reload. Re-registered whenever `reloadAll`'s identity
   // changes so the handler always closes over the current filters/sort/page.
   useEffect(() => {
-    registerTableRefresh(tabId, fetchData);
+    registerTableRefresh(tabId, reloadAll);
     return () => unregisterTableRefresh(tabId);
-  }, [tabId, fetchData]);
+  }, [tabId, reloadAll]);
 
   /**
    * Indices of every PK column inside `result.columns`, memoised so cell
@@ -790,7 +837,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         pkValueRows,
       });
       setPendingDelete(null);
-      await fetchData();
+      await reloadAll();
     } catch (e) {
       setError(String(e));
     }
@@ -886,7 +933,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     try {
       const count = await api.importCollection(connectionId, table, picked);
       notify.success(t("schema.importCollection.success", { count }));
-      await fetchData();
+      await reloadAll();
     } catch (e) {
       notify.error(String(e));
     }
@@ -951,7 +998,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         values,
       });
       setDraft(null);
-      await fetchData();
+      await reloadAll();
     } catch (e) {
       setDraft((prev) =>
         prev ? { ...prev, saving: false, error: String(e) } : prev,
@@ -1032,14 +1079,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             icon={RefreshCw}
             label={t("tableData.refresh")}
             loading={loading}
-            onClick={fetchData}
+            onClick={reloadAll}
           />
         ),
         menu: (
           <DropdownMenuItem
             className="text-xs"
             disabled={loading}
-            onSelect={fetchData}
+            onSelect={reloadAll}
           >
             <RefreshCw className="mr-2 h-3.5 w-3.5" />
             {t("tableData.refresh")}
@@ -1049,10 +1096,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       {
         id: "advanced-filter",
         bar: (
-          <SimpleTooltip label={t("tableData.filter.title")}>
+          // Without a field list the dialog is an empty form, so it says why
+          // instead of opening. The message names refresh because `reloadAll`
+          // retries the inference — the button is the fix, not just a report.
+          <SimpleTooltip
+            label={
+              cols
+                ? t("tableData.filter.title")
+                : colError
+                  ? t("tableData.filter.schemaFailed", { message: colError })
+                  : t("tableData.filter.noSchema")
+            }
+          >
             <Button
               variant="ghost"
               size="icon"
+              disabled={!cols}
               onClick={() => setAdvancedOpen(true)}
               // Brand-tint the icon while filters are active so it reads as "on"
               // and doubles as an at-a-glance indicator, with the count as a badge.
@@ -1552,7 +1611,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           onOpenChange={setInsertDocOpen}
           connectionId={connectionId}
           collection={table}
-          onInserted={() => void fetchData()}
+          onInserted={() => void reloadAll()}
         />
       )}
     </div>
