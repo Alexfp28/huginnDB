@@ -415,15 +415,16 @@ function DraftDocumentCard({
           >
             {t("common.save")}
           </Button>
-          <button
-            type="button"
-            className="rounded-sm p-1 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            title={t("common.cancel")}
+          {/* Card chrome, so it is a real `IconButton` — unlike the inline
+              affordances inside a field row below, which cannot be (see the
+              note in `uiAdoption.test.ts`). */}
+          <IconButton
+            icon={X}
+            size="xs"
+            label={t("common.cancel")}
             disabled={saving}
             onClick={draft.onCancel}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          />
         </span>
       </div>
 

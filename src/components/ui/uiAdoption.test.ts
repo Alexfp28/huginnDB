@@ -120,7 +120,7 @@ describe("raw <button> outside ui/", () => {
    * `IconButton` and `Button` exist so that a control's height, hover alpha,
    * focus ring and disabled treatment are decided once. Before them the app
    * had four hover alphas and three paddings across visually identical
-   * buttons, and that is what these 139 remaining elements still are: each one
+   * buttons, and that is what these 138 remaining elements still are: each one
    * re-decides, in isolation, something the primitives already answer.
    *
    * Two examples of what the count is actually measuring, both found while
@@ -134,10 +134,31 @@ describe("raw <button> outside ui/", () => {
    *
    * Counted as elements, not files: a file is not migrated until its last one
    * is gone, and only a per-element count can say how far in it is.
+   *
+   * **Not every entry is migratable, and `DocumentListView` is the worked
+   * example.** Of its six, exactly one was chrome (the draft card's cancel) and
+   * became an `IconButton`. The rest cannot, for two reasons worth writing down
+   * before someone forces them through to make a number go down:
+   *
+   * - Three are not icon buttons at all. They render a glyph or a word — `∅`,
+   *   the field's type name, "save" — and `IconButton` takes a `LucideIcon`.
+   * - Two are inline affordances inside a field row, which is a flex line of
+   *   monospace text at `leading-relaxed` whose `fontSize` is driven by the
+   *   grid's Ctrl+wheel zoom. `IconButton`'s smallest shape is a fixed
+   *   `h-6 w-6`; dropping one into that line pins the row height and **breaks
+   *   the zoom**. The app has a real class of text-level actions that sit below
+   *   the primitive layer's density floor, and the honest answer is that they
+   *   are not buttons in the chrome sense rather than that `ui/` needs a
+   *   sub-24px icon shape.
+   *
+   * So this budget stalls above zero, which is the case the header describes:
+   * the reason lives next to the entry and the rule never graduates to a
+   * contract. A number that would only go to zero by making the list view worse
+   * is a number to stop pushing on.
    */
   const BUDGET: Record<string, number> = {
-    "src/components/grid/DocumentListView.tsx": 6,
     "src/components/grid/CellPreview.tsx": 5,
+    "src/components/grid/DocumentListView.tsx": 5,
     "src/components/shell/NotificationCard.tsx": 5,
     "src/components/shell/StatusBar.tsx": 5,
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 4,
@@ -210,7 +231,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${139} in ${72} files`, () => {
+  it(`is down to ${138} in ${72} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -218,7 +239,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(139);
+    expect(total(BUDGET)).toBeLessThanOrEqual(138);
   });
 });
 
@@ -228,13 +249,13 @@ describe("the OS tooltip outside ui/", () => {
    * look, no theme, and no coordination with the app's. `IconButton` omits
    * `title` from its props type to make that a compile error, and
    * `uiContracts.test.ts`'s rule H catches a `<Button size="icon" title=>`.
-   * Neither reaches the 81 counted here.
+   * Neither reaches the 80 counted here.
    *
    * Rule H's shape is why: it fires only on `size="icon"`, so
    * `GridToolbar.tsx`'s `<Button size="sm" title={t("dataGrid.insertNewRow")}>`
    * — a labelled button showing an OS tooltip in the grid's main toolbar —
    * passes it cleanly. Widening rule H is not the fix, because a contract with
-   * 81 violations cannot be merged; counting them is.
+   * 80 violations cannot be merged; counting them is.
    *
    * **What counts.** A `title` that reaches the DOM: any lowercase (host) tag,
    * plus `Button` / `Switch` / `SelectTrigger`, which spread their props onto
@@ -257,11 +278,11 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/connection/ConnectionTreeRow.tsx": 8,
     "src/components/aggregation/StageCard.tsx": 4,
     "src/components/connection/EnvironmentSwitcher.tsx": 4,
-    "src/components/grid/DocumentListView.tsx": 4,
     "src/components/grid/ServerFilterChips.tsx": 4,
     "src/components/pulse/PulseWindow.tsx": 4,
     "src/components/settings/sections/JsonSchemasSection.tsx": 4,
     "src/components/connection/StatusConnections.tsx": 3,
+    "src/components/grid/DocumentListView.tsx": 3,
     "src/components/connection/TreeFilterBox.tsx": 3,
     "src/components/common/VanishedOriginNotice.tsx": 2,
     "src/components/connection/ConnectionRailRow.tsx": 2,
@@ -297,7 +318,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${81} in ${41} files`, () => {
+  it(`is down to ${80} in ${41} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -311,6 +332,6 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(81);
+    expect(total(BUDGET)).toBeLessThanOrEqual(80);
   });
 });
