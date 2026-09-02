@@ -1161,7 +1161,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         ),
       },
     ],
-    [fetchData, loading, t, serverFilters],
+    // `cols`/`colError`/`colsLoading` are load-bearing here and were missing:
+    // the filter button renders from them, and `fetchData` — the only thing in
+    // this list that moves on its own — deliberately does NOT depend on `cols`
+    // (see its own note on reading `searchColumns` through a ref). So when the
+    // field list arrived, nothing in this array changed, the memo kept its
+    // first render's JSX, and the button spun forever regardless of how small
+    // the collection was. The project runs no `exhaustive-deps` lint by design,
+    // so a dependency array is read by hand or not at all — read it.
+    [reloadAll, loading, t, serverFilters, cols, colError, colsLoading],
   );
 
   // Rendered right beside DataGrid's own "Insert" button (via `insertExtra`),
