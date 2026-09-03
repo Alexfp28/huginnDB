@@ -26,7 +26,16 @@
 import type { SettingsSection } from "@/components/settings/useSettingsDialog";
 import { POSITION_LABEL_KEYS } from "@/lib/notificationPosition";
 import type { PrefId } from "@/lib/prefId";
-import type { Preferences } from "@/types";
+import type { Preferences, SchemaTableMetric } from "@/types";
+
+/** Label key per schema-tree metric. Total by construction, so adding a value
+ *  to the union is a compile error here rather than a silent fall-through. */
+const SCHEMA_METRIC_KEYS: Record<SchemaTableMetric, string> = {
+  none: "menu.view.metricHide",
+  "row-count": "menu.view.metricRowCount",
+  size: "menu.view.metricSize",
+  both: "menu.view.metricBoth",
+};
 
 /** Preference-store writers the registry needs to flip a boolean. */
 export interface PrefsWriters {
@@ -289,14 +298,11 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     labelKey: "settings.grid.schemaMetric.label",
     descKey: "settings.grid.schemaMetric.desc",
     keywords: "schema metric row count size métrica esquema tamaño",
-    value: (p) => ({
-      i18nKey:
-        p.ui.schemaTableMetric === "row-count"
-          ? "menu.view.metricRowCount"
-          : p.ui.schemaTableMetric === "size"
-            ? "menu.view.metricSize"
-            : "menu.view.metricHide",
-    }),
+    // A `Record` rather than the ternary chain this was: the chain needed a
+    // new branch per value and silently fell through to "hide" for one it did
+    // not know, whereas a total map is a compile error until the new value is
+    // named.
+    value: (p) => ({ i18nKey: SCHEMA_METRIC_KEYS[p.ui.schemaTableMetric] }),
   },
   {
     prefId: "ui.tabAccentStyle",

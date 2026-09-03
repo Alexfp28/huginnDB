@@ -25,6 +25,7 @@ const METRIC_KEYS: Record<SchemaTableMetric, string> = {
   none: "menu.view.metricHide",
   "row-count": "menu.view.metricRowCount",
   size: "menu.view.metricSize",
+  both: "menu.view.metricBoth",
 };
 
 const TAB_ACCENT_KEYS: Record<TabAccentStyle, string> = {

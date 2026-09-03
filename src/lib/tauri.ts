@@ -26,6 +26,7 @@ import type {
   McpWritePolicy,
   ConnectionTabState,
   DatabaseInfo,
+  DatabaseSize,
   DataMode,
   Diagnostics,
   EnvironmentImportAnalysis,
@@ -239,6 +240,16 @@ export const api = {
 
   listDatabases: (connectionId: string) =>
     invoke<DatabaseInfo[]>("list_databases", { connectionId }),
+
+  /**
+   * Approximate on-disk size per database. Deliberately separate from
+   * `listDatabases` and never awaited alongside it: on Postgres this is
+   * `pg_database_size`, which walks the database directory calling `stat` per
+   * file rather than reading a catalog, so folding it into the call that
+   * expands a connection would put seconds on that path.
+   */
+  getDatabaseSizes: (connectionId: string) =>
+    invoke<DatabaseSize[]>("get_database_sizes", { connectionId }),
 
   createDatabase: (connectionId: string, name: string) =>
     invoke<void>("create_database", { connectionId, name }),

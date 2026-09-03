@@ -13,7 +13,7 @@
  * the memo says the same thing; both are load-bearing.
  */
 
-import { memo, useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -45,7 +45,7 @@ import { matchesPatterns } from "@/lib/schema/matchesFilter";
 import { useOpenTableKeys } from "@/lib/schema/useOpenTableKeys";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { api } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useEnsureSchemaLoaded, useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -91,6 +91,20 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   // Needed by the context menu to compose a driver-correct "Copy SELECT"
   // snippet.
   const driver = useConnectionDriver(connectionId);
+
+  // SQLite's whole-file size, shown on the schema node (#153). Gated on the
+  // driver rather than fetched everywhere: see the badge's own comment.
+  const isSqlite = driver === "sqlite";
+  const loadDatabaseSizes = useSchema((s) => s.loadDatabaseSizes);
+  // A primitive out of the record, not a derived object (gotcha #1).
+  const sqliteBytes = useSchema((s) =>
+    s.byConnection[connectionId]?.databaseSizes["main"],
+  );
+  useEffect(() => {
+    if (isSqlite) void loadDatabaseSizes(connectionId);
+  }, [isSqlite, loadDatabaseSizes, connectionId]);
+  const fileSize =
+    isSqlite && sqliteBytes != null ? formatBytes(sqliteBytes) : null;
   // One O(tabs) pass for every row's "you are here" state, instead of two
   // per row (see the hook's own doc comment).
   const { activeTableKey, openTableKeys } = useOpenTableKeys();
@@ -280,7 +294,19 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                         )}
                         <Database className="h-3.5 w-3.5 text-muted-foreground" />
                         <span className="truncate text-xs">{schema}</span>
-                        <span className="ml-auto text-3xs text-muted-foreground">
+                        <span className="ml-auto text-3xs tabular-nums text-muted-foreground">
+                          {/* The file's size, ahead of the object count.
+                              SQLite only: this connection *is* one file, so
+                              the number is the one the OS file browser shows
+                              and the node it belongs on is the only node the
+                              driver has. Everywhere else this component
+                              renders a schema inside a larger server, where
+                              `get_database_sizes` answers for the whole server
+                              and has nothing to say about one schema —
+                              per-schema sizing on Postgres is a different
+                              query (`SUM(pg_total_relation_size)` grouped by
+                              `nspname`) and is out of scope here. */}
+                          {fileSize !== null && `${fileSize} · `}
                           {tables.length + views.length}
                         </span>
                       </button>

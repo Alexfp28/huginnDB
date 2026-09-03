@@ -93,7 +93,8 @@
       "metricRowCount": "Show row count",
       "metricSize": "Show table size",
       "preferences": "Preferences…",
-      "help": "Counts and sizes are engine estimates."
+      "help": "Counts and sizes are engine estimates.",
+      "metricBoth": "Both"
     },
     "help": {
       "label": "Help",
@@ -745,7 +746,8 @@
     "indexManagerHint": "MongoDB indexes are edited in the index manager — this view is read-only.",
     "openIndexManager": "Open index manager",
     "readOnlySqlServer": "Read-only (SQL Server)",
-    "jsonSchemaRenameFailed": "The table was altered, but a JSON Schema binding could not follow the rename: {{message}}"
+    "jsonSchemaRenameFailed": "The table was altered, but a JSON Schema binding could not follow the rename: {{message}}",
+    "rowCount": "{{count}} rows"
   },
   "view": {
     "loading": "Loading view…",

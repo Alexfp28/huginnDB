@@ -299,6 +299,7 @@ pub fn run() {
             commands::connection::open_pulse_window,
             commands::connection::take_pulse_window_intent,
             commands::schema::list_databases,
+            commands::schema::get_database_sizes,
             commands::schema::create_database,
             commands::schema::drop_database,
             commands::schema::create_collection,

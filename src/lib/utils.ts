@@ -19,9 +19,14 @@ export function cn(...inputs: ClassValue[]) {
  *  caller renders no badge instead of crashing on `null.toFixed`. */
 export function formatBytes(n: number) {
   if (!Number.isFinite(n)) return "";
-  const units = ["B", "KB", "MB", "GB"];
+  // Through `TB`, not `GB`. While this only ever labelled one table it could
+  // not overflow in practice; a whole-database size can, and the old ceiling
+  // rendered a 5 TB server as "5120.0 GB".
+  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
   let i = 0;
-  while (n > 1024 && i < units.length - 1) {
+  // `>=`, not `>`: at exactly 1024 the old comparison stopped one unit short
+  // and printed "1024.0 B".
+  while (n >= 1024 && i < units.length - 1) {
     n /= 1024;
     i++;
   }

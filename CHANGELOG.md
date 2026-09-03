@@ -8,7 +8,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-
 - **"Open in new window" on a connection's context menu.** Right-click a
   connection in the tree and it opens in its own window, already connected —
   the gesture the CLI could already express (`--connect-profile` into a second
@@ -33,6 +32,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   and fails to connect, with the error in its Console panel. The entry is
   deliberately not gated on having a stored secret: the failure is legible,
   and gating would hide the majority case to spare the minority one.
+
+- **Disk size per database in the schema tree (#153).** The issue asked for a
+  way to see how much space a database and its tables take. Half of that was
+  already built and switched off: `TableInfo.size_bytes` has been populated by
+  all five drivers for a long time and the tree already renders it, but
+  `ui.schemaTableMetric` shipped defaulting to `"none"`. What was genuinely
+  missing is the database level — `DatabaseInfo` was literally `{ name }`.
+
+  A new deferred `get_database_sizes` command answers it for all five drivers,
+  and the badge appears on the database node (and, on SQLite, on the schema
+  node, which is the only node that driver has). It is **not** folded into
+  `list_databases`: on Postgres this is `pg_database_size`, which is not a
+  catalog read but a walk of the database's directory calling `stat` per file
+  — seconds on a server with nineteen large databases, on the path that
+  expands a connection, under a 20 s timeout. It is fetched when a database
+  node renders, once, and cleared by "Refresh" along with the rest of the
+  schema.
+
+  **The five numbers do not agree with each other, and cannot.** Postgres
+  counts the whole directory, free space included; MySQL sums
+  `DATA_LENGTH + INDEX_LENGTH` and cannot see free space at all; SQLite
+  multiplies out the page count, freelist in, `-wal` out; MongoDB reports
+  `sizeOnDisk`, which is *compressed*; SQL Server sums the allocated data
+  files and excludes the log. They will not match the sum of the per-table
+  badges either. Each driver's source is documented where it is queried.
+
+  **An engine that will not answer produces no badge — never a `0`.** The case
+  this is built around is real: a MariaDB 11.4 with a low-privilege login
+  returns `NULL` for the aggregate on a schema with 31 tables, and rendering
+  that as zero would say the data is gone.
+
+- **The schema-tree metric can show both numbers at once.** `ui.schemaTableMetric`
+  gains `"both"`, rendering `12.1k · 4.3 MB`. The app has had both figures for
+  every driver since the metric existed and made you pick one.
+
+- **The structure editor shows the table's size and row count.** A chip beside
+  the table name in edit mode, read from the `TableInfo` the tree already
+  holds — no additional query.
 
 - **`IN` / `NOT IN` can be built by hand, and a filter chip is editable.**
   The two operators already worked end to end — the backend deduplicates the
@@ -61,6 +98,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   ordered comparisons, while the backend restricted neither. "The invoice
   number contains 4471" is a thing people ask for, and the SQL builder already
   casts the column to text to answer it.
+
+### Changed
+
+- **`ui.schemaTableMetric` now defaults to `"size"` instead of `"none"`.**
+  This is the one change in this release that alters what somebody sees
+  without their asking, so it is worth being straight about the trade: a
+  number beside every table is visual noise, and `"row-count"` is arguably
+  more useful day to day. What settles it is that `"none"` was never saving
+  anything — every driver fills `size_bytes` whatever the preference says, and
+  on SQLite that is N `dbstat` queries the backend runs because it cannot see
+  the preference at all. So the old default paid the cost and hid the result.
+
+  Only fresh installs move. `save_preferences` writes the whole struct, so
+  anyone who has ever touched a single preference already has an explicit
+  value on disk.
 
 ### Fixed
 
@@ -103,6 +155,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   whatever `String(value)` produced. A row the user did not touch now returns
   its original payload untouched. Editing such a value still re-types it from
   the column's catalog type, which is documented where the coercion lives.
+
+- **`formatBytes` stopped at GB, so a 5 TB database would have rendered as
+  "5120.0 GB".** It now runs through PB. Its loop also used `n > 1024`, which
+  printed exactly 1024 bytes as "1024.0 B". Neither could bite while the
+  helper only ever labelled one table; both are reachable with database-level
+  sizes.
 
 ## [1.21.0] — 2026-09-02
 

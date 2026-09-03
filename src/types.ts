@@ -192,6 +192,26 @@ export interface DatabaseInfo {
   name: string;
 }
 
+/**
+ * A database's approximate on-disk size, from `get_database_sizes` (#153).
+ *
+ * Mirrors `DatabaseSize` in `src-tauri/src/commands/schema.rs`. `size_bytes`
+ * is **optional, and its absence means "the engine would not say"** — never
+ * "empty". A MySQL login without the privilege on a 31-table schema is the
+ * case this exists for, and rendering that as `0` would tell the user their
+ * data is gone. The backend omits the key rather than sending `null`, matching
+ * `TableInfo.size_bytes`; guard with `!= null` all the same, since a `null`
+ * once slipped through and crashed `formatBytes`.
+ *
+ * The five drivers measure genuinely different things and their numbers do not
+ * reconcile — with each other, with the sum of the per-table badges, or with
+ * Pulse. See the Rust DTO for what each one counts.
+ */
+export interface DatabaseSize {
+  name: string;
+  size_bytes?: number;
+}
+
 /** Table or view row in the schema explorer. */
 export interface TableInfo {
   schema: string;
@@ -971,7 +991,21 @@ export interface GridPrefs {
 }
 
 /** Schema-tree metric column. Source of truth for the enum is the frontend. */
-export type SchemaTableMetric = "none" | "row-count" | "size";
+/**
+ * What the schema tree shows beside a table's name.
+ *
+ * `"both"` renders `12.1k · 4.3 MB`. The app has had both numbers for every
+ * driver since the metric existed and made the user pick one, for no reason
+ * anyone recorded.
+ *
+ * Rust stores this as a plain `String` it declares it does not interpret
+ * (`prefs.rs`), so widening the union needs no backend migration and an older
+ * `prefs.json` still reads. In the other direction an older build reading
+ * `"both"` falls through both branches of `tableMetricLabel` and renders no
+ * badge — a clean degradation, unlike the keybindings trade in gotcha #53
+ * where a downgrade loses every preference.
+ */
+export type SchemaTableMetric = "none" | "row-count" | "size" | "both";
 
 /** Supported UI languages. Add a locale here, a translation file under
  *  `src/lib/i18n/locales/`, and a `<SelectItem>` entry in GeneralSection. */

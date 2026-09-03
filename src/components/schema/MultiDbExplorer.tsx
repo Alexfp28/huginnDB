@@ -64,7 +64,7 @@ import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
 import { api } from "@/lib/tauri";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { useEnsureSchemaLoaded, useSchema } from "@/stores/session/schema";
@@ -364,6 +364,21 @@ function DatabaseRoot({
   const [childId, setChildId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
+
+  // Subscribe to the primitive, never to a derived object (gotcha #1): this
+  // is one number out of a record, compared by value.
+  const sizeBytes = useSchema(
+    (s) => s.byConnection[parentId]?.databaseSizes[dbName],
+  );
+  const loadDatabaseSizes = useSchema((s) => s.loadDatabaseSizes);
+  // Asked for when a database node actually renders, not when the connection
+  // opens. `loadDatabaseSizes` is idempotent and guarded, so the nineteen
+  // nodes of a nineteen-database server produce one sweep between them — see
+  // its doc comment for why that guard is the point rather than a nicety.
+  useEffect(() => {
+    void loadDatabaseSizes(parentId);
+  }, [loadDatabaseSizes, parentId]);
+  const sizeBadge = sizeBytes != null ? formatBytes(sizeBytes) : null;
   // See `ConnectionActionsMenu`'s matching state: the row that was
   // right-clicked stops looking hovered as soon as the pointer moves onto
   // the open menu, so this drives the same ring explicitly instead.
@@ -571,6 +586,15 @@ function DatabaseRoot({
             >
               {dbName}
             </span>
+            {/* One `ml-auto` slot, two possible occupants, and the filter wins.
+                A search is a transient question the user just asked and the
+                match count is its answer; the size is ambient. Rendering both
+                would also wrap the row at the width this panel is docked at. */}
+            {!filterActive && sizeBadge !== null && (
+              <span className="ml-auto shrink-0 pl-2 text-3xs tabular-nums text-muted-foreground">
+                {sizeBadge}
+              </span>
+            )}
             {filterActive && (
               <span
                 className={cn(

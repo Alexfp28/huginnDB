@@ -72,7 +72,13 @@ const DEFAULT_PREFS: Preferences = {
     queryHistoryLimit: 50,
     restoreTabsOnOpen: true,
     reconnectOnLaunch: true,
-    schemaTableMetric: "none",
+    // `"size"`, not `"none"`. Every driver populates `TableInfo.size_bytes`
+    // whatever this says — SQLite even pays N `dbstat` queries for it, since
+    // the backend never sees the preference — so `"none"` bought nothing and
+    // only hid a number the app had already computed. Only new installs move:
+    // `save_preferences` writes the whole struct, so anyone who has ever
+    // touched a single preference already has an explicit value on disk.
+    schemaTableMetric: "size",
     language: "en",
     cellEditorMode: "modal",
     defaultDriver: null,
@@ -200,9 +206,24 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     // localStorage blob and then clear the key. We only seed when the disk
     // file is still at the default value — once the user has touched the
     // setting in the dialog, the disk value wins.
+    //
+    // Both comparisons read `DEFAULT_PREFS` rather than the literal `"none"`
+    // they were written as. That literal *was* the default, so the two said
+    // the same thing; once the default became `"size"` they stopped agreeing,
+    // and the guard would have quietly stopped firing for exactly the users it
+    // exists for — someone with `"row-count"` in the legacy blob and a
+    // still-default `prefs.json`. The second clause matters for the same
+    // reason in reverse: a legacy `"none"` used to be a no-op against a
+    // `"none"` default and is now a real choice to preserve, since it means
+    // the user had deliberately hidden the badge.
     const legacy = readLegacyViewPrefs();
+    const metricDefault = DEFAULT_PREFS.ui.schemaTableMetric;
     let seeded = false;
-    if (legacy && loaded.ui.schemaTableMetric === "none" && legacy !== "none") {
+    if (
+      legacy &&
+      loaded.ui.schemaTableMetric === metricDefault &&
+      legacy !== metricDefault
+    ) {
       loaded = {
         ...loaded,
         ui: { ...loaded.ui, schemaTableMetric: legacy },
