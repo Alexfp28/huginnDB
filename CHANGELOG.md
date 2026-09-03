@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.21.1] — 2026-09-03
+
 ### Added
 
 - **The aggregation editor's inline autocomplete now inserts a stage's whole

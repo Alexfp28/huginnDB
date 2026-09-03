@@ -8,6 +8,269 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.21.1] — 2026-09-03
+
+### Añadido
+
+- **El autocompletado en línea del editor de agregación ahora inserta la
+  estructura completa de una etapa, no solo su nombre.** Elegir `$group`
+  desde el `Select` de la cabecera ya sustituía el cuerpo por el snippet
+  completo (`_id`, un acumulador); escribir `$group` en el editor y aceptar
+  la sugerencia solo insertaba `$group: `, dejando el resto para escribirlo
+  a mano — el hueco que esto cierra. Cada etapa del catálogo tiene ahora un
+  snippet de Monaco (sintaxis de tabstops, `InsertAsSnippet`) junto al
+  plano, así que Tab recorre `_id`, el acumulador, el nombre del campo — la
+  misma interacción que tiene el autocompletado de etapas de Compass.
+
+  **Un acumulador de `$group`/`$bucket`/`$bucketAuto`/`$setWindowFields`
+  (`$sum`, `$avg`, `$push`, …) recibe el mismo tratamiento, y necesitó su
+  propio catálogo para hacerlo bien.** Un acumulador nunca es válido a secas
+  — solo `{ $sum: 1 }` es legal, no `$sum: 1` suelto — así que no podía
+  compartir la lista plana de operadores de expresión que sí comparten
+  `$concat`/`$cond`; se ofrece solo mientras el cursor está definiendo el
+  valor de un campo de salida dentro de una de esas cuatro etapas (nunca
+  para el propio `_id` de `$group`, que es una expresión, no una
+  reducción), e inserta el objeto envolvente completo.
+
+  Otro arreglo de propina: escribir `$` en cualquier sitio volcaba antes
+  los 28 nombres de etapa en la lista sin importar la posición — dentro de
+  un filtro `$match` anidado, por ejemplo. Las sugerencias de etapa ahora
+  solo se ofrecen en la clave de nivel superior del propio cuerpo de una
+  etapa, o en la raíz del documento de etapas de una subpipeline anidada
+  (`$lookup.pipeline`, una rama de `$facet`, `$unionWith.pipeline`).
+
+  Escapar `$` a mano en 28 snippets (`\$` allí donde es un carácter
+  literal, nunca un tabstop — la gramática de snippets de Monaco lee un
+  `$nombre` suelto como una variable TextMate sin resolver y la descarta
+  en silencio) es justo el tipo de cambio en el que se esconde una errata;
+  `stages.test.ts` despoja la sintaxis de tabstops de cada snippet hasta
+  dejarla en texto plano y comprueba que reproduce el snippet plano
+  existente byte a byte.
+
+  Dogfooding contra un `$group` real sacó a la luz cuatro huecos más:
+
+  - La rama de acumulador de arriba solo reconocía el hueco *a secas*
+    (`count: $su`, sin llaves todavía) — pero al hacer Tab dentro del
+    propio snippet que describe esta entrada, el cursor aterriza *dentro*
+    de un `{ }` ya abierto (el tabstop de acumulador que él mismo
+    sembró), un nivel más adentro. Es un segundo hueco, igual de válido,
+    que la primera versión nunca cubrió, así que el widget recurría a
+    cualquier operador de expresión sin relación que compartiera el
+    prefijo escrito.
+  - Un operador de expresión (`$concat`, `$cond`, …) siempre es una
+    *clave* de objeto — nunca es válido como valor a secas — pero la
+    lista de completado ofrecía el conjunto entero de ~50 entradas en
+    *cualquier* posición precedida por `$`, incluida una referencia a
+    campo tan plana como el propio `_id: "$field"` de `$group`. Eso
+    enterraba la única sugerencia realmente útil ahí (un nombre de campo
+    real de la colección) bajo ruido de operadores; la lista ahora solo
+    se ofrece donde el cursor está eligiendo una clave.
+  - Editar ese mismo valor de `_id` a mano nunca reabría el popup de
+    sugerencias: `quickSuggestions` de Monaco deja `strings` desactivado
+    por defecto, así que el widget solo se abre con el carácter
+    disparador inicial (`"`/`$`), nunca de nuevo mientras se escriben
+    letras normales después — exactamente lo que ocurre al sobrescribir
+    el propio placeholder de un snippet.
+  - Y una vez arreglados esos tres, las sugerencias de nombre de campo
+    *seguían* sin aparecer, en silencio: Monaco filtra cada elemento de
+    completado comparando su propia **label** con el texto que abarca en
+    ese momento el rango a reemplazar, y un valor prefijado con `"$"`
+    reemplaza un rango que incluye el `$` que el usuario ya escribió —
+    pero la label de los elementos de campo era el nombre a secas
+    (`"entity"`), que nunca coincidía con `"$en"`. El `insertText` del
+    elemento ya era correcto (`"$entity"`); lo que fallaba era solo la
+    label, que es la que se compara al filtrar. Ahora lleva el mismo
+    prefijo que lo que realmente se va a reemplazar.
+
+  Una pipeline de una sola etapa que falla también solía mostrar el mismo
+  error exactamente dos veces — una en la propia tarjeta de la etapa que
+  falla, otra más en un resumen a nivel de pestaña bajo la lista de
+  etapas, ya que en una pipeline de una etapa esa única etapa es también
+  la *última*. Ese resumen existe para cuando la columna de salida por
+  etapa está oculta y ninguna tarjeta muestra nada en absoluto; simplemente
+  no estaba condicionado a eso, así que saltaba incluso cuando la tarjeta
+  justo encima ya decía lo mismo.
+
+- **Una cinta de color en el chrome de cada ventana en cuanto hay más de una abierta, que indica de cuál se trata.** "New window", una pestaña separada y la ventana de Pulse se veían idénticas desde fuera — mismo título, todo igual — así que con varias abiertas a la vez no había forma de distinguir "esta es mi sesión principal" de "esta es el duplicado que abrí sin querer" salvo cerrarlas una a una. Cada ventana deriva ahora un tono de su propia etiqueta de Tauri y muestra una cinta con un punto de acento de ese color, el tipo de ventana ("Main window" / "New window" / "Floating tab" / "Pulse panel") y cuántas ventanas hay abiertas en total. La cinta desaparece en cuanto queda una sola ventana — todo el problema es distinguir ventanas entre sí, y eso deja de ser un problema cuando no hay nada con lo que confundirlas.
+
+  La etiqueta de la ventana principal es la cadena fija `"main"`, así que siempre obtiene el mismo tono sesión tras sesión; cualquier otra ventana recibe un UUID nuevo al crearse, así que en la práctica los duplicados caen en su propio color sin nada guardado que mantener sincronizado. El recuento de ventanas viene directamente del propio registro de ventanas de Tauri (`getAllWindows()`), mantenido al día entre ventanas mediante un nuevo broadcast `huginndb://window-list-changed` emitido tanto al crear como al destruir una ventana — un broadcast de verdad, no un `emit_to` a una sola ventana, ya que la cinta de cada ventana necesita el total, no solo los cambios que ella misma provocó.
+
+- **"Open in new window" en el menú contextual de una conexión.** Clic
+  derecho sobre una conexión en el árbol y se abre en su propia ventana, ya
+  conectada — el gesto que la CLI ya podía expresar (`--connect-profile`
+  en un segundo lanzamiento) pero sin forma de llegar a él desde la
+  interfaz. Se ofrece tanto si la conexión está activa como si no; el caso
+  desconectado es el principal ("abrir este servidor en su propia ventana
+  sin tocar la que ya tengo"), y hasta ahora esa rama del menú solo
+  ofrecía "Connect".
+
+  **No se abre un segundo pool.** `AppState` es por proceso y se comparte
+  entre ventanas, y el retorno anticipado de `connect_inner` ya gestiona
+  que una segunda ventana se conecte a un perfil que la primera tiene
+  abierto — así que no hay una segunda reserva de endpoint ni un segundo
+  túnel SSH. Cada ventana sigue listando como activo solo lo que ella
+  misma abrió, lo cual es deliberado (issue #50).
+
+  Dos comportamientos heredados que conviene conocer, ninguno nuevo:
+  desconectar desde cualquier ventana cierra el pool para todas ellas, y
+  cerrar una ventana secundaria deja vivo hasta que la app termine un pool
+  que solo ella había abierto. La vía de la CLI se ha comportado siempre
+  así.
+
+  Si el perfil no tiene contraseña en el keychain — un lanzamiento
+  `ephemeral` desde la CLI, o una contraseña escrita en el diálogo solo
+  para esta sesión — la nueva ventana se abre y falla al conectar, con el
+  error en su panel Console. La entrada deliberadamente no está
+  condicionada a tener un secreto guardado: el fallo es legible, y
+  condicionarla ocultaría el caso mayoritario para ahorrarle el
+  minoritario.
+
+- **Tamaño en disco por base de datos en el árbol de esquema (#153).** El
+  issue pedía una forma de ver cuánto espacio ocupan una base de datos y
+  sus tablas. Media parte ya estaba construida y apagada: `TableInfo.size_bytes`
+  llevaba mucho tiempo poblado por los cinco drivers y el árbol ya lo
+  renderizaba, pero `ui.schemaTableMetric` se publicaba con `"none"` por
+  defecto. Lo que faltaba de verdad era el nivel de base de datos —
+  `DatabaseInfo` era literalmente `{ name }`.
+
+  Un nuevo comando diferido `get_database_sizes` lo resuelve para los
+  cinco drivers, y el badge aparece en el nodo de base de datos (y, en
+  SQLite, en el nodo de esquema, que es el único nodo que tiene ese
+  driver). **No** está plegado dentro de `list_databases`: en Postgres
+  esto es `pg_database_size`, que no es una lectura de catálogo sino un
+  recorrido del directorio de la base de datos llamando a `stat` por cada
+  fichero — segundos en un servidor con diecinueve bases de datos grandes,
+  en la ruta que expande una conexión, bajo un timeout de 20 s. Se pide
+  cuando se renderiza un nodo de base de datos, una sola vez, y se limpia
+  con "Refresh" junto con el resto del esquema.
+
+  **Los cinco números no coinciden entre sí, y no pueden hacerlo.**
+  Postgres cuenta el directorio entero, espacio libre incluido; MySQL suma
+  `DATA_LENGTH + INDEX_LENGTH` y no puede ver el espacio libre en
+  absoluto; SQLite multiplica el recuento de páginas, con la freelist
+  dentro y el `-wal` fuera; MongoDB informa `sizeOnDisk`, que está
+  *comprimido*; SQL Server suma los ficheros de datos asignados y excluye
+  el log. Tampoco coincidirán con la suma de los badges por tabla. La
+  fuente de cada driver está documentada donde se consulta.
+
+  **Un motor que no responde no produce badge — nunca un `0`.** El caso
+  sobre el que está construido esto es real: un MariaDB 11.4 con un login
+  de bajo privilegio devuelve `NULL` para el agregado en un esquema con 31
+  tablas, y renderizar eso como cero diría que los datos han desaparecido.
+
+- **La métrica del árbol de esquema puede mostrar ambos números a la
+  vez.** `ui.schemaTableMetric` gana `"both"`, que renderiza
+  `12.1k · 4.3 MB`. La app ha tenido ambas cifras para todos los drivers
+  desde que existe la métrica, y obligaba a elegir una.
+
+- **El editor de estructura muestra el tamaño y el recuento de filas de la
+  tabla.** Un chip junto al nombre de la tabla en modo edición, leído del
+  `TableInfo` que el árbol ya tiene — sin consulta adicional.
+
+- **`IN` / `NOT IN` se pueden construir a mano, y un chip de filtro es
+  editable.** Los dos operadores ya funcionaban de punta a punta — el
+  backend deduplica la lista, eleva un miembro `null` a su propia rama
+  `IS NULL`, y la limita a 1000 valores — pero la única forma de conseguir
+  uno era la acción "filtrar por las filas seleccionadas" de la grid. El
+  filtro avanzado los retiraba de su lista de operadores y dejaba a un
+  lado, sin tocar, cualquiera que le llegara, porque su fila de condición
+  no tenía control para una lista de valores. Ahora sí lo tiene: un
+  textarea de un valor por línea con una casilla **Include NULL**
+  separada.
+
+  La casilla es la parte que merece explicación. `NULL` como *token*
+  mágico en la lista sería indistinguible de la cadena literal de cuatro
+  caracteres `"NULL"`, que es un valor legal en una columna de texto y
+  que entonces no habría forma de buscar. Separarlos refleja lo que el
+  backend ya hace. El textarea divide por `\r?\n`, así que una columna
+  pegada desde Excel no llega con un retorno de carro invisible pegado a
+  cada valor.
+
+  Como ahora toda forma de filtro tiene un control, el diálogo edita la
+  lista de filtros completa y en orden en lugar de un subconjunto — lo
+  cual es lo que convierte la posición de un chip de la toolbar en un
+  índice de fila, y ese es todo el mecanismo detrás de la segunda mitad:
+  **hacer clic en un chip abre el filtro avanzado desplazado hasta esa
+  condición.** Sin ids, sin DTO nuevo, sin cambios en el backend.
+
+- **Todos los operadores se ofrecen en todas las columnas.** Una columna
+  numérica o de fecha perdía `contains`/`starts with`/`ends with` y una
+  columna de texto perdía las comparaciones ordenadas, mientras que el
+  backend no restringía ninguna de las dos. "El número de factura contiene
+  4471" es algo que la gente pide, y el generador de SQL ya convierte la
+  columna a texto para responderlo.
+
+### Cambiado
+
+- **`ui.schemaTableMetric` ahora usa `"size"` por defecto en lugar de
+  `"none"`.** Este es el único cambio de esta versión que altera lo que
+  alguien ve sin haberlo pedido, así que merece la pena ser claros sobre
+  el trade-off: un número junto a cada tabla es ruido visual, y
+  `"row-count"` es, discutiblemente, más útil en el día a día. Lo que
+  decanta la balanza es que `"none"` nunca ahorraba nada — cada driver
+  rellena `size_bytes` sea cual sea la preferencia, y en SQLite eso son N
+  consultas `dbstat` que el backend ejecuta porque no puede ver la
+  preferencia en absoluto. Así que el valor por defecto anterior pagaba
+  el coste y ocultaba el resultado.
+
+  Solo se mueven las instalaciones nuevas. `save_preferences` escribe la
+  estructura entera, así que cualquiera que haya tocado alguna vez una
+  sola preferencia ya tiene un valor explícito en disco.
+
+### Corregido
+
+- **Una coincidencia de texto contra un campo de MongoDB que no es string
+  no coincidía con nada, en silencio.** `$regex` de BSON solo inspecciona
+  strings, así que `contains` sobre un `long`, una fecha o un `ObjectId`
+  devolvía cero filas — no un error, solo un resultado vacío que se lee
+  como "aquí no hay nada". `db.entityLog.countDocuments({ts: {$regex:
+  "1788"}})` responde 0 en una colección donde todo `ts` empieza por esos
+  dígitos, y `{ts: {$gte: 1788422462450}}` responde 6. Los drivers SQL
+  nunca tuvieron este punto ciego, porque su generador ya envuelve la
+  columna en `CAST(col AS TEXT)` primero.
+
+  `contains` / `not contains` / `starts with` / `ends with` ahora emiten
+  dos ramas: el `$regex` plano, que sigue usando un índice sobre un campo
+  de tipo string — el caso común, y la razón por la que no se sustituye
+  sin más — y un `$expr` que convierte el campo a string en el servidor
+  para cubrir todo lo demás. **La rama `$expr` no puede usar índice**, así
+  que una coincidencia de texto sobre una colección grande degrada a un
+  scan; ese es el coste de que el operador responda con la verdad en vez
+  de devolver nada, y por eso el arreglo llegó antes de que esos
+  operadores se ofrecieran en columnas numéricas, no después. Requiere
+  MongoDB 4.2 (para `$regexMatch`), una versión menor por encima del
+  mínimo propio del driver.
+
+- **"Bulk update" ampliaba su propia condición sin avisar.** Abrirlo con
+  un chip `IN (…)` activo descartaba ese filtro al sembrar la condición de
+  coincidencia, convirtiendo una actualización acotada a cuarenta filas en
+  una acotada a la tabla entera. La confirmación de "sin filtro" tampoco
+  lo detectaba, ya que los demás filtros seguían ahí y la lista, por
+  tanto, no estaba vacía. Ahora siembra cualquier forma de filtro.
+
+- **El límite de 1000 valores en `IN` no se aplicaba en la vía de
+  actualización.** `validate_filters` era privado de la vía de
+  exploración, así que `apply_bulk_update` — que comparte ese mismo
+  generador de filtros — aceptaba una lista sin límite, en el `WHERE` de
+  un `UPDATE` en vez del de un `SELECT` paginado. El filtro avanzado ahora
+  también bloquea Apply con un contador en rojo, en lugar de truncar la
+  lista o dejar que la llamada falle después.
+
+- **Abrir el filtro avanzado ya no degrada los filtros que contiene.** Una
+  fila de condición solo puede llevar un valor como texto, así que pulsar
+  Apply reescribía antes un `Int64` de MongoDB, un objeto JSON o un valor
+  con un salto de línea como lo que produjera `String(value)`. Una fila
+  que el usuario no ha tocado ahora devuelve su payload original intacto.
+  Editar ese valor sigue retipándolo a partir del tipo de catálogo de la
+  columna, lo cual está documentado donde vive la coerción.
+
+- **`formatBytes` se paraba en GB, así que una base de datos de 5 TB se
+  habría renderizado como "5120.0 GB".** Ahora llega hasta PB. Su bucle
+  también usaba `n > 1024`, que imprimía exactamente 1024 bytes como
+  "1024.0 B". Ninguno de los dos podía morder mientras el helper solo
+  etiquetaba una tabla; ambos son alcanzables ahora con tamaños a nivel de
+  base de datos.
+
 ## [1.21.0] — 2026-09-02
 
 ### Añadido
