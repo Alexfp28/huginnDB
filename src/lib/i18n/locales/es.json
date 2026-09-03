@@ -546,6 +546,7 @@
     "filterRows": "Filtrar filas… (Enter)",
     "serverSideFilter": "Filtro del servidor",
     "removeFilter": "Quitar filtro",
+    "editFilter": "Editar filtro",
     "rows": "filas",
     "of": "de",
     "truncated": "truncado",
@@ -619,8 +620,8 @@
     "delete": "Eliminar",
     "filter": {
       "title": "Filtro avanzado",
-        "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
-        "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
+      "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
+      "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
       "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
       "empty": "Aún no hay condiciones — añade una abajo.",
       "addRow": "Añadir condición",
@@ -633,6 +634,8 @@
       "op": {
         "eq": "igual a",
         "ne": "distinto de",
+        "in": "es uno de",
+        "not_in": "no es uno de",
         "contains": "contiene",
         "not_contains": "no contiene",
         "starts_with": "empieza por",
@@ -644,7 +647,12 @@
         "between": "entre",
         "is_null": "es nulo",
         "is_not_null": "no es nulo"
-      }
+      },
+      "listPlaceholder": "Un valor por línea",
+      "includeNull": "Incluir NULL",
+      "listCount_one": "{{count}} valor",
+      "listCount_other": "{{count}} valores",
+      "listTooLong": "{{count}} valores — el límite es {{max}}"
     },
     "exportData": {
       "label": "Exportar datos",
@@ -781,8 +789,8 @@
       "pick": "Elige una etapa",
       "toggle": "Incluir esta etapa",
       "delete": "Eliminar etapa",
-        "insertBefore": "Insertar una etapa encima de esta",
-        "duplicate": "Duplicar esta etapa",
+      "insertBefore": "Insertar una etapa encima de esta",
+      "duplicate": "Duplicar esta etapa",
       "collapse": "Plegar",
       "expand": "Desplegar",
       "reorder": "Arrastra para reordenar",

@@ -567,6 +567,7 @@
     "filterRows": "Filter rows… (Enter)",
     "serverSideFilter": "Server-side filter",
     "removeFilter": "Remove filter",
+    "editFilter": "Edit filter",
     "rows": "rows",
     "of": "of",
     "truncated": "truncated",
@@ -619,8 +620,8 @@
     "delete": "Delete",
     "filter": {
       "title": "Advanced filter",
-        "loadingSchema": "Advanced filter — loading the field list…",
-        "schemaFailed": "Advanced filter needs the field list, which failed to load ({{message}}) — press refresh to try again",
+      "loadingSchema": "Advanced filter — loading the field list…",
+      "schemaFailed": "Advanced filter needs the field list, which failed to load ({{message}}) — press refresh to try again",
       "description": "Filter rows by one or more columns. All conditions must match (AND).",
       "empty": "No conditions yet — add one below.",
       "addRow": "Add condition",
@@ -633,6 +634,8 @@
       "op": {
         "eq": "equals",
         "ne": "not equals",
+        "in": "is one of",
+        "not_in": "is not one of",
         "contains": "contains",
         "not_contains": "does not contain",
         "starts_with": "starts with",
@@ -644,7 +647,12 @@
         "between": "between",
         "is_null": "is null",
         "is_not_null": "is not null"
-      }
+      },
+      "listPlaceholder": "One value per line",
+      "includeNull": "Include NULL",
+      "listCount_one": "{{count}} value",
+      "listCount_other": "{{count}} values",
+      "listTooLong": "{{count}} values — the limit is {{max}}"
     },
     "exportData": {
       "label": "Export data",
@@ -781,8 +789,8 @@
       "pick": "Pick a stage",
       "toggle": "Include this stage",
       "delete": "Delete stage",
-        "insertBefore": "Insert a stage above this one",
-        "duplicate": "Duplicate this stage",
+      "insertBefore": "Insert a stage above this one",
+      "duplicate": "Duplicate this stage",
       "collapse": "Collapse",
       "expand": "Expand",
       "reorder": "Drag to reorder",

@@ -211,6 +211,8 @@ interface Props {
   serverFilters?: ColumnFilter[];
   onAddFilter?: (f: ColumnFilter) => void;
   onRemoveFilter?: (index: number) => void;
+  /** Open the advanced filter focused on the condition at this index. */
+  onEditFilter?: (index: number) => void;
 
   /**
    * Row-level mutations. Only wired when the table has a PK. Like
@@ -360,6 +362,7 @@ export function DataGrid({
   serverFilters,
   onAddFilter,
   onRemoveFilter,
+  onEditFilter,
   onInsertRow,
   onDuplicateRow,
   onDeleteRow,
@@ -1046,6 +1049,7 @@ export function DataGrid({
         searchHistory={searchHistory}
         serverFilters={serverFilters}
         onRemoveFilter={onRemoveFilter}
+        onEditFilter={onEditFilter}
         onInsertRow={onInsertRow}
         showRowCount={showRowCount}
         visibleRowCount={visibleRows.length}

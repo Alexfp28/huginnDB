@@ -303,8 +303,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   );
   /** Free-text search bound to the toolbar input (uncommitted draft). */
   const [filter, setFilter] = useState(() => restoredViewState?.search ?? "");
-  /** Advanced per-column filter builder dialog (#66). */
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  /**
+   * Advanced per-column filter builder dialog (#66). `null` when closed;
+   * `focusIndex` names the `serverFilters` entry the dialog should open on,
+   * set when the user clicked a toolbar chip rather than the filter button.
+   * A boolean would have been enough for the button, but not for the chip.
+   */
+  const [advanced, setAdvanced] = useState<{
+    focusIndex: number | null;
+  } | null>(null);
   /** What was actually committed via Enter — drives the backend fetch. */
   const [appliedFilter, setAppliedFilter] = useState(
     () => restoredViewState?.search ?? "",
@@ -797,6 +804,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     setOffset(0);
   }
 
+  /**
+   * Open the advanced builder on the condition a chip stands for.
+   *
+   * No id is needed and none exists: `AdvancedFilterDialog` renders one row
+   * per `serverFilters` entry, in order, for every filter shape — so the
+   * chip's index *is* the row's. That correspondence is the whole mechanism,
+   * and it is stated in that dialog's docstring too.
+   */
+  function onEditFilter(index: number) {
+    setAdvanced({ focusIndex: index });
+  }
+
   /** Stage rows for deletion. With `ui.confirmDestructive` on (default) this
    *  opens the confirmation dialog; with it off the rows are deleted straight
    *  away (the toggle's whole purpose is to skip the prompt). */
@@ -1117,7 +1136,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               variant="ghost"
               size="icon"
               disabled={!cols}
-              onClick={() => setAdvancedOpen(true)}
+              onClick={() => setAdvanced({ focusIndex: null })}
               // Brand-tint the icon while filters are active so it reads as "on"
               // and doubles as an at-a-glance indicator, with the count as a badge.
               className="relative"
@@ -1143,7 +1162,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         menu: (
           <DropdownMenuItem
             className="text-xs"
-            onSelect={() => setAdvancedOpen(true)}
+            onSelect={() => setAdvanced({ focusIndex: null })}
           >
             <ListFilter
               className={cn(
@@ -1493,6 +1512,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             serverFilters={serverFilters}
             onAddFilter={onAddFilter}
             onRemoveFilter={onRemoveFilter}
+            onEditFilter={onEditFilter}
             onInsertRow={hasPk ? onInsertRow : undefined}
             onDuplicateRow={hasPk ? onDuplicateRow : undefined}
             onDeleteRow={hasPk ? onDeleteRow : undefined}
@@ -1593,15 +1613,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         </DialogContent>
       </Dialog>
 
-      {advancedOpen && (
+      {advanced && (
         <AdvancedFilterDialog
           columns={cols ?? []}
           initial={serverFilters}
+          focusIndex={advanced.focusIndex}
           onApply={(filters) => {
             setServerFilters(filters);
             setOffset(0);
           }}
-          onClose={() => setAdvancedOpen(false)}
+          onClose={() => setAdvanced(null)}
         />
       )}
 

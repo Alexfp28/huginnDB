@@ -20,6 +20,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { IconButton } from "@/components/ui/icon-button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 
 import { formatValue } from "@/lib/grid/formatValue";
 import type { ColumnFilter } from "@/types";
@@ -67,36 +69,77 @@ function filterValuesTooltip(f: ColumnFilter): string | undefined {
     .join(", ");
 }
 
-/** One active server-side filter, as a removable chip in the toolbar. */
+/**
+ * One active server-side filter: a chip whose body opens the advanced filter
+ * focused on this condition, plus a ✕ that removes it.
+ *
+ * **The body is the button, and the ✕ is its sibling — never its child.** A
+ * button inside a button is invalid HTML, and the browser's recovery is to
+ * un-nest them, so the ✕ would stop being inside the chip at all.
+ *
+ * Editing works by *index*: the chip's position in `serverFilters` is the row
+ * index in `AdvancedFilterDialog`. That holds only because the dialog now
+ * renders every filter shape, `in`/`not_in` included — see its docstring
+ * before changing either side.
+ */
 export function ServerFilterChip({
   filter: f,
+  index,
+  onEdit,
   onRemove,
 }: {
   filter: ColumnFilter;
+  /** Position in `serverFilters`, handed back to `onEdit`. */
+  index: number;
+  onEdit?: (index: number) => void;
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();
   const value = filterValueLabel(f, t);
-  return (
-    <span
-      className="flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 font-mono text-2xs"
-      title={t("dataGrid.serverSideFilter")}
-    >
+  const values = filterValuesTooltip(f);
+
+  // One themed tooltip for the whole chip body, rather than the three native
+  // `title=`s this used to carry. The value list, when there is one, is the
+  // more useful half — an `IN` chip shows only a count.
+  const tip = [
+    onEdit ? t("dataGrid.editFilter") : t("dataGrid.serverSideFilter"),
+    values,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+
+  const body = (
+    <>
       <span className="text-muted-foreground">{f.column}</span>
       <span className="text-muted-foreground/70">{FILTER_LABEL[f.op]}</span>
-      {value !== null && (
-        <span className="max-w-[10rem] truncate" title={filterValuesTooltip(f)}>
-          {value}
-        </span>
-      )}
+      {value !== null && <span className="max-w-[10rem] truncate">{value}</span>}
+    </>
+  );
+
+  return (
+    <span className="flex items-center gap-1 rounded-full border border-border bg-muted/40 py-0.5 pl-2 pr-1 font-mono text-2xs">
+      <SimpleTooltip label={tip}>
+        {onEdit ? (
+          <button
+            type="button"
+            className="flex items-center gap-1 rounded-sm hover:text-foreground"
+            onClick={() => onEdit(index)}
+          >
+            {body}
+          </button>
+        ) : (
+          <span className="flex items-center gap-1">{body}</span>
+        )}
+      </SimpleTooltip>
       {onRemove && (
-        <button
-          className="ml-1 text-muted-foreground/60 hover:text-foreground"
+        // `quiet`: dropping a filter destroys no data, and gotcha #61 says red
+        // at rest is read as decoration.
+        <IconButton
+          size="xs"
+          icon={X}
+          label={t("dataGrid.removeFilter")}
           onClick={onRemove}
-          title={t("dataGrid.removeFilter")}
-        >
-          <X className="h-3 w-3" />
-        </button>
+        />
       )}
     </span>
   );

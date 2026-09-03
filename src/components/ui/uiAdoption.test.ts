@@ -278,7 +278,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/connection/ConnectionTreeRow.tsx": 8,
     "src/components/aggregation/StageCard.tsx": 4,
     "src/components/connection/EnvironmentSwitcher.tsx": 4,
-    "src/components/grid/ServerFilterChips.tsx": 4,
+    "src/components/grid/ServerFilterChips.tsx": 1,
     "src/components/pulse/PulseWindow.tsx": 4,
     "src/components/settings/sections/JsonSchemasSection.tsx": 4,
     "src/components/connection/StatusConnections.tsx": 3,
@@ -317,7 +317,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${76} in ${40} files`, () => {
+  it(`is down to ${73} in ${40} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -331,6 +331,6 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(76);
+    expect(total(BUDGET)).toBeLessThanOrEqual(73);
   });
 });

@@ -38,23 +38,19 @@ import {
 import { api } from "@/lib/tauri";
 import { FilterConditionRow } from "./FilterConditionRow";
 import {
-  coerceFilterValue,
-  VALUELESS_OPS,
+  draftFromFilter,
+  emptyDraft,
+  filterFromDraft,
+  overlongListRows,
+  patchDraft,
   type FilterConditionDraft,
 } from "./filterConditions";
 import type {
   BulkUpdatePreview,
   ColumnFilter,
   ColumnInfo,
-  FilterOp,
   RowValue,
 } from "@/types";
-
-/** Same rationale as `AdvancedFilterDialog`'s `LIST_OPS`: `in`/`not_in`
- *  filters carry a `values` array this row editor has no field for, so they
- *  are dropped when seeding the match condition rather than silently
- *  mis-rendered. The user can always add an equivalent `eq`/`ne` row here. */
-const LIST_OPS: FilterOp[] = ["in", "not_in"];
 
 interface SetFieldDraft {
   key: number;
@@ -85,16 +81,14 @@ export function BulkUpdateDialog({
 }) {
   const { t } = useTranslation();
 
+  // Every incoming filter is seeded, `in`/`not_in` included. Dropping those
+  // was not a cosmetic simplification: this dialog's match condition IS the
+  // update's `WHERE`, so silently discarding an active `IN (…)` chip widened
+  // the write from the forty rows the user was looking at to the whole table —
+  // and the `confirmUnfiltered` checkbox could not catch it, because the other
+  // filters remained and the list was therefore not empty.
   const [matchRows, setMatchRows] = useState<FilterConditionDraft[]>(() =>
-    initialFilters
-      .filter((f) => !LIST_OPS.includes(f.op))
-      .map((f) => ({
-        key: nextKey++,
-        column: f.column,
-        op: f.op,
-        value: f.value == null ? "" : String(f.value),
-        value2: f.value2 == null ? "" : String(f.value2),
-      })),
+    initialFilters.map((f) => draftFromFilter(f, nextKey++)),
   );
   const [setRows, setSetRows] = useState<SetFieldDraft[]>([]);
   const [confirmUnfiltered, setConfirmUnfiltered] = useState(false);
@@ -110,21 +104,12 @@ export function BulkUpdateDialog({
 
   const patchMatchRow = (key: number, patch: Partial<FilterConditionDraft>) =>
     setMatchRows((prev) =>
-      prev.map((r) => (r.key === key ? { ...r, ...patch } : r)),
+      prev.map((r) => (r.key === key ? patchDraft(r, patch) : r)),
     );
   const removeMatchRow = (key: number) =>
     setMatchRows((prev) => prev.filter((r) => r.key !== key));
   const addMatchRow = () =>
-    setMatchRows((prev) => [
-      ...prev,
-      {
-        key: nextKey++,
-        column: columnNames[0] ?? "",
-        op: "eq",
-        value: "",
-        value2: "",
-      },
-    ]);
+    setMatchRows((prev) => [...prev, emptyDraft(columnNames[0] ?? "", nextKey++)]);
 
   const patchSetRow = (key: number, patch: Partial<SetFieldDraft>) =>
     setSetRows((prev) =>
@@ -141,21 +126,7 @@ export function BulkUpdateDialog({
   function buildFilters(): ColumnFilter[] {
     return matchRows
       .filter((r) => r.column)
-      .map((r) => {
-        const valueless = VALUELESS_OPS.includes(r.op);
-        const dataType = typeByColumn.get(r.column);
-        return {
-          column: r.column,
-          op: r.op,
-          value: valueless
-            ? undefined
-            : coerceFilterValue(r.value, r.op, dataType),
-          value2:
-            r.op === "between"
-              ? coerceFilterValue(r.value2, r.op, dataType)
-              : undefined,
-        };
-      });
+      .map((r) => filterFromDraft(r, typeByColumn.get(r.column)));
   }
 
   function buildSetValues(): RowValue[] {
@@ -206,7 +177,12 @@ export function BulkUpdateDialog({
 
   const hasMatch = matchRows.some((r) => r.column);
   const hasSet = setRows.some((r) => r.column);
-  const canApply = hasSet && (hasMatch || confirmUnfiltered) && !applying;
+  // The same cap the advanced filter enforces, and for the stronger reason:
+  // here an over-cap list is rejected by `validate_args` only after the user
+  // has already committed to a write.
+  const overlong = overlongListRows(matchRows);
+  const canApply =
+    hasSet && (hasMatch || confirmUnfiltered) && !applying && overlong.size === 0;
 
   async function apply() {
     if (!canApply) return;

@@ -20,7 +20,8 @@
 //! filter or explicitly acknowledged the unfiltered case.
 
 use crate::commands::query::{
-    build_filter_clause_at, count_table_rows_inner, ColumnFilter, RowValue, TableFilter, TableScan,
+    build_filter_clause_at, count_table_rows_inner, validate_filters, ColumnFilter, RowValue,
+    TableFilter, TableScan,
 };
 use crate::commands::schema::list_columns_inner;
 use crate::db::mysql;
@@ -77,6 +78,12 @@ fn validate_args(args: &BulkUpdateArgs) -> AppResult<()> {
             "bulk update: no columns to set".into(),
         ));
     }
+    // The same `MAX_IN_VALUES` cap the browse path enforces. This route shares
+    // `build_filter_clause`, so an oversize `IN` list built the identical SQL
+    // here — only inside an `UPDATE`'s `WHERE`, where a pathological predicate
+    // is more expensive than in a paginated `SELECT`, and where it ran
+    // unchecked until `validate_filters` was made reachable.
+    validate_filters(&args.filters)?;
     Ok(())
 }
 
@@ -380,5 +387,47 @@ mod tests {
         )
         .await;
         assert!(sql.contains("CONVERT(varbinary(max)"), "{sql}");
+    }
+
+    fn args_with_filters(filters: Vec<ColumnFilter>) -> BulkUpdateArgs {
+        BulkUpdateArgs {
+            connection_id: "conn".into(),
+            schema: None,
+            table: "t".into(),
+            filters,
+            set_values: vec![rv("name", "x", None)],
+            confirm_unfiltered: false,
+        }
+    }
+
+    #[test]
+    fn an_oversize_in_list_is_rejected_on_the_update_path_too() {
+        // Mirrors `commands::query`'s `oversize_in_list_is_rejected`. The cap
+        // lived in a private `validate_filters` that only the browse path
+        // called, so the identical `IN (...)` predicate went unchecked here —
+        // in an `UPDATE`'s `WHERE`, which is the more expensive of the two.
+        use crate::commands::query::MAX_IN_VALUES;
+
+        let over: Vec<serde_json::Value> =
+            (0..=MAX_IN_VALUES).map(|i| serde_json::json!(i)).collect();
+        let filter = ColumnFilter {
+            column: "id".into(),
+            op: crate::commands::query::FilterOp::In,
+            value: serde_json::Value::Null,
+            value2: serde_json::Value::Null,
+            values: over,
+        };
+        assert!(validate_args(&args_with_filters(vec![filter])).is_err());
+
+        let under: Vec<serde_json::Value> =
+            (0..MAX_IN_VALUES).map(|i| serde_json::json!(i)).collect();
+        let filter = ColumnFilter {
+            column: "id".into(),
+            op: crate::commands::query::FilterOp::In,
+            value: serde_json::Value::Null,
+            value2: serde_json::Value::Null,
+            values: under,
+        };
+        assert!(validate_args(&args_with_filters(vec![filter])).is_ok());
     }
 }
