@@ -40,6 +40,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   syntax back down to plain text and asserts it reproduces the existing
   plain snippet byte for byte.
 
+  Four more gaps turned up dogfooding it against a real `$group`:
+
+  - The accumulator branch above only recognised the *bare* slot
+    (`count: $su`, no braces yet) — but tabbing into the very snippet this
+    entry describes lands the cursor *inside* an already-open `{ }` (the
+    accumulator tabstop it seeded), one frame deeper. That's a second,
+    equally valid slot the first cut never covered, so the widget fell back
+    to whatever unrelated expression operator shared the typed prefix.
+  - An expression operator (`$concat`, `$cond`, …) is always an object
+    *key* — it's never legal as a bare value — but the completion list
+    offered the whole ~50-entry set at *any* `$`-prefixed position,
+    including a plain field reference like `$group`'s own `_id: "$field"`.
+    That buried the one suggestion actually useful there (a real collection
+    field name) under operator noise; the list is now offered only where
+    the cursor is choosing a key.
+  - Editing that same `_id` value by hand never reopened the suggestion
+    popup at all: Monaco's `quickSuggestions` leaves `strings` off by
+    default, so the widget only opens on the initial `"`/`$` trigger
+    character, never again while typing plain letters afterward — exactly
+    what overwriting a snippet's own placeholder does.
+  - And once all three of those were fixed, the field-name suggestions
+    *still* silently failed to appear: Monaco filters every completion item
+    by comparing its own **label** against whatever text the replaced range
+    currently spans, and a `"$"`-prefixed value replaces a range that
+    includes the `$` the user already typed — but the field items' label
+    was the bare name (`"entity"`), never matching `"$en"`. The item's
+    `insertText` was already correct (`"$entity"`); only the label,
+    compared for filtering, was wrong. It now carries the same prefix as
+    what's actually being replaced.
+
+  A single-stage pipeline that fails also used to show the exact same
+  error twice — once in the failing stage's own card, once more in a
+  tab-level summary below the stage list, since a one-stage pipeline's
+  only stage is also its *last* one. That summary exists for when the
+  per-stage output column is hidden and no card shows anything at all; it
+  just wasn't gated on that, so it fired even when the card right above it
+  already said the same thing.
+
 - **A colored ribbon in each window's chrome once more than one is open, naming which window it is.** "New window", a detached tab and the Pulse window all used to look identical from the outside — same title, same everything — so with a few open at once there was no way to tell "this is my main session" from "this is the duplicate I opened by accident" short of closing them one by one. Every window now derives a hue from its own Tauri label and shows a ribbon carrying an accent dot in that color, the window's kind ("Main window" / "New window" / "Floating tab" / "Pulse panel"), and how many windows are open in total. The ribbon disappears the moment only one window remains — the whole problem is telling windows apart, which stops being a problem with nothing to confuse it with.
 
   The main window's label is the fixed string `"main"`, so it always gets the same hue session after session; every other window gets a fresh UUID at creation, so duplicates land on their own color in practice with nothing stored to keep in sync. The window count itself comes straight from Tauri's own window registry (`getAllWindows()`), kept fresh across windows via a new `huginndb://window-list-changed` broadcast emitted on both window creation and destruction — a genuine broadcast, not `emit_to` a single window, since every window's ribbon needs the total count, not just changes it caused itself.

@@ -321,15 +321,31 @@ export function ensureMongoLanguage(monaco: Monaco) {
           );
         }
 
+        // An expression operator is always an object *key* ($concat, $cond,
+        // … only ever appear as `{ $op: … }`) — never a bare value. Offering
+        // the whole 50-odd-entry list at a plain field-reference slot like
+        // $group's `_id: "$|"` buried the one thing that actually belongs
+        // there (a real field name) under operator noise. `slot === "key"`
+        // covers both the stage's own top level (before `atNestedPipelineStage`
+        // narrows it further above) and a freshly-opened nested expression
+        // object ($project's `total: { $|`); `slot === "value"` is exactly
+        // the field-reference position this must stay out of.
+        if (cursor.slot !== "value") {
+          suggestions.push(
+            ...EXPRESSION_OPERATORS.map((op) => ({
+              label: op,
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: `${op}: `,
+              detail: "expression",
+              sortText: `1${op}`,
+              range: dollarRange,
+            })),
+          );
+        }
+        // A BSON constructor call, unlike an operator, *is* a legitimate bare
+        // value (`_id: ObjectId("…")`), so it stays available regardless of
+        // slot.
         suggestions.push(
-          ...EXPRESSION_OPERATORS.map((op) => ({
-            label: op,
-            kind: monaco.languages.CompletionItemKind.Function,
-            insertText: `${op}: `,
-            detail: "expression",
-            sortText: `1${op}`,
-            range: dollarRange,
-          })),
           ...CONSTRUCTORS.map((name) => ({
             label: name,
             kind: monaco.languages.CompletionItemKind.Constructor,
@@ -359,7 +375,16 @@ export function ensureMongoLanguage(monaco: Monaco) {
           }
           suggestions.push(
             ...fields.map((f) => ({
-              label: f,
+              // Monaco filters each item by comparing its own label against
+              // whatever text `range` currently spans — for the `"$"`-prefix
+              // call (a bare field-reference value, e.g. $group's own `_id:
+              // "$|"`) that span already includes the `$` the user typed, so
+              // a bare `label: f` silently failed to match ("$en" fuzzy-match
+              // "entity"? no) and Monaco discarded the item before it ever
+              // reached the widget — even though `insertText` was already
+              // correct. The label has to carry the same prefix as the text
+              // being replaced.
+              label: `${prefix}${f}`,
               kind: monaco.languages.CompletionItemKind.Field,
               insertText: `${prefix}${f}`,
               detail: "field",

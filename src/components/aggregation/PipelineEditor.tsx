@@ -148,6 +148,15 @@ export function PipelineEditor({
       automaticLayout: true,
       padding: { top: 8, bottom: 8 },
       scrollbar: { alwaysConsumeMouseWheel: false },
+      // Monaco's default leaves `strings` off, so the suggest widget only
+      // ever opens on the `"` / `$` trigger characters (`monacoMongo.ts`'s
+      // `triggerCharacters`) and never again while the user keeps typing
+      // inside that same string — exactly the flow of overwriting a stage
+      // snippet's own placeholder (`$group`'s `_id: "$field"`, say): neither
+      // character retyped there is a trigger, so the field-name safety net
+      // never appeared. With it on, every keystroke inside a `"$…"` field
+      // reference re-offers the live field list.
+      quickSuggestions: { other: true, comments: false, strings: true },
       // A stage card sits inside `AggregationTab`'s scrollable stage list
       // (`overflow-auto`), which clips the suggest widget's default
       // absolutely-positioned popup the moment it would overflow the card —
