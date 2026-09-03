@@ -74,6 +74,19 @@ describe("completionPositionAt", () => {
     expect(pos.slot).toBe("key");
   });
 
+  it("reports an accumulator picked inside an already-open $group field as a key one level under $group", () => {
+    // The exact shape a $group stage snippet's own accumulator tabstop
+    // produces: the braces are already there, so the cursor sits at the
+    // *key* position of the field's own object, one frame below $group —
+    // not at $group's own value slot (monacoMongo.ts's completion provider
+    // has to tell these two cases apart to insert the right shape).
+    const text = '{ $group: { _id: "$_entity", count: { $su';
+    const pos = completionPositionAt(text, text.length);
+    expect(pos.slot).toBe("key");
+    expect(pos.path.at(-1)?.key).toBe("count");
+    expect(pos.path.at(-2)?.key).toBe("$group");
+  });
+
   it("recognises from/localField/foreignField inside $lookup", () => {
     const from = completionPositionAt('{ $lookup: { from: "', '{ $lookup: { from: "'.length);
     expect(from.path.at(-1)?.key).toBe("$lookup");

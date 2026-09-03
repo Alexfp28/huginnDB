@@ -244,6 +244,11 @@ export function ensureMongoLanguage(monaco: Monaco) {
       const cursor = completionPositionAt(text, offset);
       const innermost = cursor.path[cursor.path.length - 1];
 
+      // The frame directly enclosing `innermost` — used both to recognise a
+      // nested sub-pipeline's stage doc and to tell a $group/$bucket/…
+      // accumulator slot from an unrelated nested object.
+      const parentFrame = cursor.path[cursor.path.length - 2];
+
       const dollarContext = hasDollar || context.triggerCharacter === "$";
       if (dollarContext) {
         // A stage operator only makes sense at the stage body's own
@@ -254,7 +259,6 @@ export function ensureMongoLanguage(monaco: Monaco) {
         // stage). One level deeper than that (inside $match's filter,
         // $group's accumulator, …) it would just be noise alongside the
         // field/expression suggestions that actually apply there.
-        const parentFrame = cursor.path[cursor.path.length - 2];
         const atNestedPipelineStage =
           innermost.type === "object" && parentFrame?.type === "array";
         if (cursor.path.length === 2 || atNestedPipelineStage) {
@@ -276,22 +280,38 @@ export function ensureMongoLanguage(monaco: Monaco) {
         }
 
         // An accumulator is never valid bare (`count: $sum: 1` isn't legal —
-        // only `count: { $sum: 1 }` is), so it gets its own snippet-shaped
-        // branch rather than the bare `op: ` insertion below: offered only
-        // while defining an output field's value inside $group or one of the
-        // `output: { … }` stages ($bucket, $bucketAuto, $setWindowFields),
-        // and never for $group's own `_id` (an expression, not a reduction).
-        if (
+        // only `count: { $sum: 1 }` is), so it needs one of two different
+        // insertions depending on whether the wrapping object already
+        // exists at the cursor:
+        //  - bare slot   `count: $su|`   → the whole `{ $op: expr }`, built
+        //    here by wrapping `ACCUMULATOR_CATALOG`'s bare fragment.
+        //  - braced slot `count: { $su|` → the braces are already there —
+        //    either hand-typed, or, the common case, the accumulator
+        //    tabstop a $group/$bucket/… stage snippet itself seeded — so
+        //    only the bare fragment goes in.
+        // Offered only while defining an output field's value inside
+        // $group, or the `output: { … }` object $bucket/$bucketAuto/
+        // $setWindowFields wrap theirs in — never for $group's own `_id`
+        // (an expression, not a reduction).
+        const bareAccumulatorSlot =
           cursor.slot === "value" &&
           cursor.forKey &&
           cursor.forKey !== "_id" &&
-          (innermost.key === "$group" || innermost.key === "output")
-        ) {
+          (innermost.key === "$group" || innermost.key === "output");
+        const bracedAccumulatorSlot =
+          cursor.slot === "key" &&
+          innermost.type === "object" &&
+          innermost.key !== null &&
+          innermost.key !== "_id" &&
+          (parentFrame?.key === "$group" || parentFrame?.key === "output");
+        if (bareAccumulatorSlot || bracedAccumulatorSlot) {
           suggestions.push(
             ...ACCUMULATOR_CATALOG.map((acc, i) => ({
               label: acc.operator,
               kind: monaco.languages.CompletionItemKind.Function,
-              insertText: acc.insertSnippet,
+              insertText: bracedAccumulatorSlot
+                ? acc.insertSnippet
+                : `{ ${acc.insertSnippet} }`,
               insertTextRules:
                 monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
               detail: "accumulator",

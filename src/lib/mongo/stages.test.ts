@@ -60,11 +60,11 @@ describe("accumulator insertSnippet", () => {
   );
 
   it.each(ACCUMULATOR_CATALOG.map((a) => [a.operator, a] as const))(
-    "%s wraps the operator in its own object — never valid bare",
+    "%s is a bare `$op: expr` fragment, never pre-wrapped in braces",
     (operator, acc) => {
       const plain = stripSnippetSyntax(acc.insertSnippet);
-      expect(plain.trim().startsWith("{")).toBe(true);
-      expect(plain).toContain(operator);
+      expect(plain.startsWith(`${operator}: `)).toBe(true);
+      expect(plain.trim().startsWith("{")).toBe(false);
     },
   );
 });

@@ -784,7 +784,14 @@ export function AggregationTab({
               {t("aggregation.emptyPipeline")}
             </div>
           )}
-          {finalPreview?.error && (
+          {/* Guarded on `!showPreview`: when the per-stage output column is
+              visible, the last stage's own card already shows this exact
+              error in its `PipelineOutput` — repeating it here duplicated
+              every stage-level error the moment the failing stage was also
+              the last one (the common case with a short pipeline). With the
+              preview column hidden, no card shows anything at all, and this
+              is the only place a failure surfaces. */}
+          {!showPreview && finalPreview?.error && (
             <div className="rounded-lg bg-destructive/10 p-3 font-mono text-2xs text-destructive">
               {finalPreview.error}
             </div>
