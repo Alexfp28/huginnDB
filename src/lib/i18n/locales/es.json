@@ -93,7 +93,8 @@
       "metricRowCount": "Mostrar nº de filas",
       "metricSize": "Mostrar tamaño de tabla",
       "preferences": "Preferencias…",
-      "help": "Los recuentos y tamaños son estimaciones del motor."
+      "help": "Los recuentos y tamaños son estimaciones del motor.",
+      "metricBoth": "Ambos"
     },
     "help": {
       "label": "Ayuda",
@@ -737,7 +738,8 @@
     "indexManagerHint": "Los índices de MongoDB se editan en el gestor de índices; esta vista es de solo lectura.",
     "openIndexManager": "Abrir el gestor de índices",
     "readOnlySqlServer": "Solo lectura (SQL Server)",
-    "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}"
+    "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}",
+    "rowCount": "{{count}} filas"
   },
   "view": {
     "loading": "Cargando vista…",

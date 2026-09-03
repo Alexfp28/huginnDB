@@ -56,6 +56,12 @@ describe("the compact formatters are locale-independent by design", () => {
   it("formatBytes / formatCount / formatDuration", () => {
     expect(formatBytes(2048)).toBe("2.0 KB");
     expect(formatBytes(Number.NaN)).toBe("");
+    // Both fail before the per-database sizes landed: the unit list stopped at
+    // GB (a 5 TB server rendered "5120.0 GB"), and the loop's `>` left exactly
+    // 1024 bytes one unit short.
+    expect(formatBytes(5 * 1024 ** 4)).toBe("5.0 TB");
+    expect(formatBytes(1024)).toBe("1.0 KB");
+    expect(formatBytes(0)).toBe("0.0 B");
     expect(formatCount(1500)).toBe("1.5k");
     expect(formatCount(2_500_000)).toBe("2.5M");
     expect(formatCount(999)).toBe("999");

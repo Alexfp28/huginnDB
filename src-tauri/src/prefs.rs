@@ -183,9 +183,11 @@ pub struct UiPrefs {
     /// Independent of `restore_tabs_on_open`, which governs whether a
     /// connection's tabs/layout come back *once* it is connected.
     pub reconnect_on_launch: bool,
-    /// Schema-tree metric column. One of "none" | "row-count" | "size".
+    /// Schema-tree metric column. One of "none" | "row-count" | "size" | "both".
     /// Stringly-typed so the frontend `ViewMenu` enum stays the source of
-    /// truth; the backend doesn't interpret the value.
+    /// truth; the backend doesn't interpret the value — which is what made
+    /// adding "both" a frontend-only change, with an old `prefs.json` still
+    /// parsing and an older build degrading to no badge rather than failing.
     pub schema_table_metric: String,
     /// UI language. BCP-47-ish short code ("en", "es"). The frontend's
     /// i18next instance owns the list of supported locales; the backend
@@ -459,7 +461,12 @@ impl Default for UiPrefs {
             query_history_limit: 50,
             restore_tabs_on_open: true,
             reconnect_on_launch: true,
-            schema_table_metric: "none".into(),
+            // Mirrors `DEFAULT_PREFS` in `src/stores/preferences/preferences.ts`.
+            // `"size"` rather than `"none"`: every driver fills
+            // `TableInfo.size_bytes` regardless of this setting, so hiding the
+            // badge saved no work — it only withheld a number the app had
+            // already paid for.
+            schema_table_metric: "size".into(),
             language: "en".into(),
             cell_editor_mode: "modal".into(),
             default_driver: None,

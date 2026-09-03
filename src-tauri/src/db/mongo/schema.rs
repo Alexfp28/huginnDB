@@ -8,7 +8,7 @@
 //! frontend tree renders MongoDB without a separate code path.
 
 use crate::commands::schema::{
-    ColumnInfo, DatabaseInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo,
+    ColumnInfo, DatabaseInfo, DatabaseSize, IndexInfo, PrivilegeInfo, TableInfo, UserInfo,
 };
 use crate::db::ddl::{ColumnDef, IndexDef, TableStructure};
 use crate::error::{AppError, AppResult};
@@ -71,6 +71,43 @@ pub async fn list_databases(conn: &MongoConn) -> AppResult<Vec<DatabaseInfo>> {
         .into_iter()
         .map(|name| DatabaseInfo { name })
         .collect())
+}
+
+/// On-disk size per database, from `listDatabases`' `sizeOnDisk`.
+///
+/// **The fallback is not defensive padding — it is the difference between
+/// losing the sizes and losing the tree.** `DatabaseSpecification` declares
+/// `size_on_disk: u64` and `empty: bool` with neither `Option` nor
+/// `serde(default)`, so a server or a role that omits either field fails the
+/// *whole* deserialize, and `list_databases()` returns an error rather than a
+/// partial list. Since this is a best-effort badge, that error must degrade to
+/// "no sizes" and never to "no databases": the name-only call is the same one
+/// [`list_databases`] already makes, so whatever the tree could show before it
+/// can still show.
+///
+/// `sizeOnDisk` is WiredTiger's **compressed** on-disk figure, which is why it
+/// is typically far below the sum of this database's collection sizes and does
+/// not compare with any other driver's number.
+pub async fn database_sizes(conn: &MongoConn) -> AppResult<Vec<DatabaseSize>> {
+    match conn.client.list_databases().await {
+        Ok(specs) => Ok(specs
+            .into_iter()
+            .map(|d| DatabaseSize {
+                name: d.name,
+                size_bytes: Some(d.size_on_disk),
+            })
+            .collect()),
+        Err(_) => Ok(conn
+            .client
+            .list_database_names()
+            .await?
+            .into_iter()
+            .map(|name| DatabaseSize {
+                name,
+                size_bytes: None,
+            })
+            .collect()),
+    }
 }
 
 /// List the collections (and views) of the target database, with approximate

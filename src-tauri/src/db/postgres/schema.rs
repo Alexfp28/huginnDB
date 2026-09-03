@@ -11,8 +11,8 @@
 
 use sqlx::PgPool;
 
-use crate::commands::schema::DatabaseInfo;
 use crate::commands::schema::{ColumnInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo};
+use crate::commands::schema::{DatabaseInfo, DatabaseSize};
 use crate::error::AppResult;
 use sqlx::Row;
 
@@ -28,6 +28,42 @@ pub async fn list_databases(pool: &PgPool) -> AppResult<Vec<DatabaseInfo>> {
     Ok(names
         .into_iter()
         .map(|name| DatabaseInfo { name })
+        .collect())
+}
+
+/// On-disk size per database.
+///
+/// **`pg_database_size` is not a catalog read.** It is
+/// `calculate_database_size()`, which walks the database's directory calling
+/// `stat` on every file, so this is measured in seconds on a large server —
+/// the reason the sizes are a deferred command rather than part of
+/// [`list_databases`]. It counts everything in the directory, free space
+/// included.
+///
+/// The `CASE` is what makes the failure per-row. `pg_database_size` raises
+/// `permission denied` for a database the login cannot `CONNECT` to, and one
+/// raise aborts the whole statement — so without the guard, a single
+/// inaccessible database on a shared server costs every other database its
+/// size. With it, that database alone answers `NULL`.
+pub async fn database_sizes(pool: &PgPool) -> AppResult<Vec<DatabaseSize>> {
+    let rows = sqlx::query(
+        "SELECT datname, \
+                CASE WHEN has_database_privilege(datname, 'CONNECT') \
+                     THEN pg_database_size(oid) END AS size_bytes \
+         FROM pg_database \
+         WHERE datistemplate = false \
+         ORDER BY datname",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| DatabaseSize {
+            name: r.get::<String, _>("datname"),
+            size_bytes: r
+                .get::<Option<i64>, _>("size_bytes")
+                .and_then(|n| u64::try_from(n).ok()),
+        })
         .collect())
 }
 
