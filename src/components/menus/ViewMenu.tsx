@@ -28,6 +28,7 @@ const METRIC_OPTIONS: { value: SchemaTableMetric; i18nKey: string }[] = [
   { value: "none", i18nKey: "menu.view.metricHide" },
   { value: "row-count", i18nKey: "menu.view.metricRowCount" },
   { value: "size", i18nKey: "menu.view.metricSize" },
+  { value: "both", i18nKey: "menu.view.metricBoth" },
 ];
 
 export function ViewMenu() {

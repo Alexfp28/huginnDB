@@ -55,6 +55,21 @@ interface ConnectionSchema {
   columnErrors: Record<string, string>;
   /** Same as `columnErrors`, for `loadIndexes`. */
   indexErrors: Record<string, string>;
+  /**
+   * On-disk size per database name, from `getDatabaseSizes` (#153).
+   *
+   * A name is present only once the engine answered a size for it. A database
+   * the engine would not size is simply absent, which is the same thing the
+   * absent `size_bytes` key means and keeps "would not say" distinct from
+   * "empty" all the way to the badge.
+   */
+  databaseSizes: Record<string, number>;
+  /** True while `loadDatabaseSizes` is in flight, so it can't be re-entered. */
+  databaseSizesLoading: boolean;
+  /** True once a `loadDatabaseSizes` pass has settled — success or failure.
+   *  Distinguishes "no badge because nothing was asked for" from "asked, and
+   *  this engine would not say". */
+  databaseSizesLoaded: boolean;
   /** Set of tree-node keys (e.g. `schema:public`, `table:public.users`). */
   expanded: Set<string>;
   loading: boolean;
@@ -106,6 +121,20 @@ interface SchemaState {
     schema: string | undefined,
     table: string,
   ) => Promise<void>;
+  /**
+   * Fetch the per-database sizes for `connectionId`, once.
+   *
+   * **Deferred on purpose, and never part of the launch refresh.** On Postgres
+   * this is `pg_database_size`, which is not a catalog read but a walk of the
+   * database's directory calling `stat` per file — seconds on a server with
+   * nineteen large databases, against a 20 s backend timeout. It is called
+   * when the tree actually renders a database node, not when a connection
+   * opens.
+   *
+   * Failure is swallowed: this is a badge, and an engine that will not answer
+   * should cost the badge and nothing else.
+   */
+  loadDatabaseSizes: (connectionId: string) => Promise<void>;
   /** Drop all cached data for `connectionId` (called on disconnect). */
   drop: (connectionId: string) => void;
   /**
@@ -124,6 +153,9 @@ function emptyState(): ConnectionSchema {
     indexes: {},
     columnErrors: {},
     indexErrors: {},
+    databaseSizes: {},
+    databaseSizesLoading: false,
+    databaseSizesLoaded: false,
     expanded: new Set(),
     loading: false,
     error: null,
@@ -192,6 +224,16 @@ export const useSchema = create<SchemaState>((set, get) => ({
               indexes: {},
               columnErrors: {},
               indexErrors: {},
+              // Sizes go with them, for the reason the comment above gives:
+              // "Refresh" means the schema. A database that grew — or was
+              // dropped and recreated — outside the app would otherwise keep
+              // showing the size it had when the tree was first opened, with
+              // no way to correct it short of disconnecting. Cleared rather
+              // than re-fetched: the next database node to render asks again,
+              // so the cost is only paid if something is actually on screen.
+              databaseSizes: {},
+              databaseSizesLoading: false,
+              databaseSizesLoaded: false,
               loading: false,
               initialized: true,
             },
@@ -353,6 +395,57 @@ export const useSchema = create<SchemaState>((set, get) => ({
         [connectionId]: { ...cur, expanded },
       },
     }));
+  },
+  loadDatabaseSizes: async (connectionId) => {
+    const cs = get().byConnection[connectionId];
+    // The guard is the whole reason this is not just a call: a database node
+    // renders once per database, so without it expanding a nineteen-database
+    // server fires nineteen `pg_database_size` sweeps at once.
+    if (!cs || cs.databaseSizesLoading || cs.databaseSizesLoaded) return;
+
+    set((state) => {
+      const current = state.byConnection[connectionId];
+      if (!current) return state;
+      return {
+        byConnection: {
+          ...state.byConnection,
+          [connectionId]: { ...current, databaseSizesLoading: true },
+        },
+      };
+    });
+
+    let sizes: Record<string, number> = {};
+    try {
+      for (const row of await api.getDatabaseSizes(connectionId)) {
+        // `!= null` and no `?? 0`: an absent size means the engine would not
+        // say, and defaulting it to zero here would tell the user a database
+        // with 31 tables is empty — the exact case the MySQL arm exists for.
+        if (row.size_bytes != null) sizes[row.name] = row.size_bytes;
+      }
+    } catch {
+      // Swallowed by design. This is a badge; an engine that will not answer
+      // costs the badge and nothing else. `databaseSizesLoaded` still flips,
+      // so a permanently unprivileged connection is asked once, not per
+      // render.
+      sizes = {};
+    }
+
+    set((state) => {
+      const current = state.byConnection[connectionId];
+      // The connection may have been dropped while this was in flight.
+      if (!current) return state;
+      return {
+        byConnection: {
+          ...state.byConnection,
+          [connectionId]: {
+            ...current,
+            databaseSizes: sizes,
+            databaseSizesLoading: false,
+            databaseSizesLoaded: true,
+          },
+        },
+      };
+    });
   },
   drop: (connectionId) => {
     set((state) => {

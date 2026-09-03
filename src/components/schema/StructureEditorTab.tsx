@@ -36,7 +36,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import { SchemaBindingBadge } from "@/components/jsonSchema/SchemaBindingBadge";
 import { useJsonSchemas } from "@/stores/jsonSchemas";
@@ -141,6 +141,35 @@ export function StructureEditorTab({
   // is missing). Both reject preview/apply, so the Apply action is replaced by
   // a badge instead of failing on click.
   const isReadOnly = !supportsDdlEditing(driver);
+
+  /**
+   * `4.3 MB · 12.1k rows` beside the table name, in edit mode.
+   *
+   * Costs nothing: the numbers are already on the `TableInfo` the schema tree
+   * fetched, so this reads the store rather than adding a call. Both halves
+   * are best-effort per driver (SQLite reports no row count, a view reports no
+   * size), so each is rendered only when present and the chip disappears when
+   * neither is — an empty pill would say less than nothing.
+   *
+   * `!= null` rather than truthiness: a genuine `row_count` of 0 is a fact
+   * worth showing, and this is the guard `tableMetricLabel` documents.
+   */
+  const tableStats = useSchema((s) =>
+    mode === "edit" && table
+      ? s.byConnection[connectionId]?.tables.find(
+          (t) => t.name === table && (schema === undefined || t.schema === schema),
+        )
+      : undefined,
+  );
+  const statsChip = useMemo(() => {
+    if (!tableStats) return null;
+    const parts: string[] = [];
+    if (tableStats.size_bytes != null) parts.push(formatBytes(tableStats.size_bytes));
+    if (tableStats.row_count != null) {
+      parts.push(t("structure.rowCount", { count: formatCount(tableStats.row_count) }));
+    }
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [tableStats, t]);
 
   const [original, setOriginal] = useState<TableStructure | null>(null);
   const [name, setName] = useState(table ?? "");
@@ -390,6 +419,11 @@ export function StructureEditorTab({
           disabled={isReadOnly}
         />
         <div className="ml-auto flex items-center gap-2">
+          {statsChip && (
+            <span className="rounded-sm bg-muted px-2 py-1 text-2xs tabular-nums text-muted-foreground">
+              {statsChip}
+            </span>
+          )}
           {mode === "edit" && (
             <IconButton
               icon={RefreshCw}

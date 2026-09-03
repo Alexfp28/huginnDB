@@ -3,8 +3,8 @@
 
 use sqlx::MySqlPool;
 
-use crate::commands::schema::DatabaseInfo;
 use crate::commands::schema::{ColumnInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo};
+use crate::commands::schema::{DatabaseInfo, DatabaseSize};
 use crate::db::sql::Dialect;
 use crate::error::AppResult;
 use sqlx::Row;
@@ -25,6 +25,56 @@ pub async fn list_databases(pool: &MySqlPool) -> AppResult<Vec<DatabaseInfo>> {
     Ok(names
         .into_iter()
         .map(|name| DatabaseInfo { name })
+        .collect())
+}
+
+/// On-disk size per schema, summed from `information_schema`.
+///
+/// A `LEFT JOIN` from `schemata` rather than a `GROUP BY` over `tables`, so a
+/// schema the login can see but whose tables it cannot still appears — with a
+/// `NULL` size rather than being missing from the list entirely.
+///
+/// **`NULL` is reported as `None`, never `0`.** Two different situations
+/// produce it and neither means "empty": a schema with no tables, and — the
+/// one confirmed in the field, against a MariaDB 11.4 with a low-privilege
+/// login — a schema with 31 tables whose `DATA_LENGTH` the login may not read.
+/// Rendering either as `0` would tell the user their data is gone.
+///
+/// This measures `DATA_LENGTH + INDEX_LENGTH`, so unlike Postgres it does
+/// **not** include free space (`DATA_FREE` is a separate column, deliberately
+/// left out), and for a compressed row format it is the compressed size.
+///
+/// There is no eager fallback to `SHOW TABLE STATUS` when the aggregate comes
+/// back `NULL`: that is one expensive statement per database, on the path the
+/// user has just opened.
+pub async fn database_sizes(pool: &MySqlPool) -> AppResult<Vec<DatabaseSize>> {
+    let rows = sqlx::query(
+        "SELECT s.schema_name AS name, \
+                CAST(SUM(t.data_length + t.index_length) AS UNSIGNED) AS size_bytes \
+         FROM information_schema.schemata s \
+         LEFT JOIN information_schema.tables t \
+                ON t.table_schema = s.schema_name \
+         WHERE s.schema_name NOT IN ('information_schema', 'performance_schema', \
+                                     'mysql', 'sys') \
+         GROUP BY s.schema_name \
+         ORDER BY s.schema_name",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .iter()
+        .map(|r| DatabaseSize {
+            name: r.get::<String, _>("name"),
+            // `CAST(... AS UNSIGNED)` in the statement, not a decode here:
+            // `SUM` over `BIGINT UNSIGNED` columns yields `NEWDECIMAL`, which
+            // sqlx will not hand out as an integer at all (gotcha #15's family
+            // of width- and type-specific decodes). The cast makes it a plain
+            // `BIGINT UNSIGNED`, and `CAST(NULL AS UNSIGNED)` stays `NULL`.
+            //
+            // `try_get` rather than `get`: `get` panics on a decode surprise,
+            // and a best-effort badge must never take the call down with it.
+            size_bytes: r.try_get::<Option<u64>, _>("size_bytes").ok().flatten(),
+        })
         .collect())
 }
 

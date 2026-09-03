@@ -85,13 +85,16 @@ export function tableMetricLabel(
   // `!= null` covers both `undefined` (field omitted) and `null` (older
   // payloads / drivers that serialized a null stat). `formatCount`/`formatBytes`
   // additionally guard non-finite input, so a stray null can never crash here.
-  if (metric === "row-count" && t.row_count != null) {
-    return formatCount(t.row_count);
-  }
-  if (metric === "size" && t.size_bytes != null) {
-    return formatBytes(t.size_bytes);
-  }
-  return null;
+  // It also has to stay `!= null` rather than a truthiness check: a genuine
+  // `row_count` of 0 is information, and `if (t.row_count)` would hide it.
+  const wantsCount = metric === "row-count" || metric === "both";
+  const wantsSize = metric === "size" || metric === "both";
+  const parts: string[] = [];
+  if (wantsCount && t.row_count != null) parts.push(formatCount(t.row_count));
+  if (wantsSize && t.size_bytes != null) parts.push(formatBytes(t.size_bytes));
+  // `null`, not `""` — the caller renders the badge element only when this is
+  // non-null, so an empty string would paint an empty pill.
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**

@@ -3,8 +3,8 @@
 
 use sqlx::SqlitePool;
 
-use crate::commands::schema::DatabaseInfo;
 use crate::commands::schema::{ColumnInfo, IndexInfo, TableInfo};
+use crate::commands::schema::{DatabaseInfo, DatabaseSize};
 use crate::db::sql::Dialect;
 use crate::error::AppResult;
 use sqlx::Row;
@@ -20,6 +20,42 @@ pub fn list_databases() -> Vec<DatabaseInfo> {
     vec![DatabaseInfo {
         name: "main".to_string(),
     }]
+}
+
+/// Bytes occupied by `pages` pages of `page_size` bytes each.
+///
+/// Pure and `checked_mul`-guarded so a nonsensical pragma pair (a negative
+/// page count from a corrupt header, or a product past `u64`) yields `None` —
+/// "the engine would not say" — rather than a wrapped number presented as a
+/// size. Split out from [`database_sizes`] because it is the only part of that
+/// function a test can reach without a database.
+pub(crate) fn pages_to_bytes(pages: i64, page_size: i64) -> Option<u64> {
+    let pages = u64::try_from(pages).ok()?;
+    let page_size = u64::try_from(page_size).ok()?;
+    pages.checked_mul(page_size)
+}
+
+/// Size of the SQLite file behind this connection.
+///
+/// `page_count * page_size` is the number the OS file browser shows, which
+/// makes it the most directly meaningful of the five drivers' answers. It
+/// includes pages on the freelist (space the file holds but no longer uses)
+/// and excludes the `-wal` and `-shm` sidecars, which can be substantial
+/// between checkpoints.
+///
+/// Separate from [`list_databases`], which is sync and needs no pool, because
+/// this one is neither — two functions rather than one contorted signature.
+pub async fn database_sizes(pool: &SqlitePool) -> AppResult<Vec<DatabaseSize>> {
+    let pages: i64 = sqlx::query_scalar("PRAGMA page_count")
+        .fetch_one(pool)
+        .await?;
+    let page_size: i64 = sqlx::query_scalar("PRAGMA page_size")
+        .fetch_one(pool)
+        .await?;
+    Ok(vec![DatabaseSize {
+        name: "main".to_string(),
+        size_bytes: pages_to_bytes(pages, page_size),
+    }])
 }
 
 /// Engine and version, as `sqlite <version>`.
@@ -221,4 +257,28 @@ pub async fn view_definition(
     Ok(create_sql
         .flatten()
         .map(|sql| crate::db::view_ddl::strip_view_header(&sql)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pages_to_bytes_multiplies_the_pragma_pair() {
+        // SQLite's own default page size, and the number the OS file browser
+        // shows for such a file.
+        assert_eq!(pages_to_bytes(2_560, 4_096), Some(10_485_760));
+        assert_eq!(pages_to_bytes(0, 4_096), Some(0));
+    }
+
+    #[test]
+    fn pages_to_bytes_refuses_nonsense_rather_than_wrapping() {
+        // A corrupt header can hand back a negative page count, and a wrapped
+        // product presented as a size is worse than no badge at all — the
+        // best-effort contract says `None` means "would not say", and a
+        // silently truncated number cannot say that.
+        assert_eq!(pages_to_bytes(-1, 4_096), None);
+        assert_eq!(pages_to_bytes(4_096, -1), None);
+        assert_eq!(pages_to_bytes(i64::MAX, i64::MAX), None);
+    }
 }

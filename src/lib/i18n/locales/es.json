@@ -93,7 +93,8 @@
       "metricRowCount": "Mostrar nº de filas",
       "metricSize": "Mostrar tamaño de tabla",
       "preferences": "Preferencias…",
-      "help": "Los recuentos y tamaños son estimaciones del motor."
+      "help": "Los recuentos y tamaños son estimaciones del motor.",
+      "metricBoth": "Ambos"
     },
     "help": {
       "label": "Ayuda",
@@ -619,8 +620,8 @@
     "delete": "Eliminar",
     "filter": {
       "title": "Filtro avanzado",
-        "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
-        "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
+      "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
+      "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
       "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
       "empty": "Aún no hay condiciones — añade una abajo.",
       "addRow": "Añadir condición",
@@ -736,7 +737,8 @@
     "indexManagerHint": "Los índices de MongoDB se editan en el gestor de índices; esta vista es de solo lectura.",
     "openIndexManager": "Abrir el gestor de índices",
     "readOnlySqlServer": "Solo lectura (SQL Server)",
-    "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}"
+    "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}",
+    "rowCount": "{{count}} filas"
   },
   "view": {
     "loading": "Cargando vista…",
@@ -781,8 +783,8 @@
       "pick": "Elige una etapa",
       "toggle": "Incluir esta etapa",
       "delete": "Eliminar etapa",
-        "insertBefore": "Insertar una etapa encima de esta",
-        "duplicate": "Duplicar esta etapa",
+      "insertBefore": "Insertar una etapa encima de esta",
+      "duplicate": "Duplicar esta etapa",
       "collapse": "Plegar",
       "expand": "Desplegar",
       "reorder": "Arrastra para reordenar",

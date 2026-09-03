@@ -17,6 +17,44 @@ pub struct DatabaseInfo {
     pub name: String,
 }
 
+/// A database's approximate on-disk size, answered by [`get_database_sizes`].
+///
+/// **A separate command, not a field on [`DatabaseInfo`], for three reasons.**
+/// Cost: `pg_database_size` is not a catalog read but
+/// `calculate_database_size()`, which walks the database's directory calling
+/// `stat` per file — seconds on a server with nineteen large databases, and
+/// `list_databases` sits on the critical path of expanding a connection, under
+/// a 20 s `with_timeout`. Honesty: an `Option<u64>` populated by one driver in
+/// five is a field that lies by omission. And contract: `list_databases` is
+/// also an MCP tool that travels over the bridge, so a new command touches
+/// nothing that already ships.
+///
+/// **Every number here is best-effort and they do not agree with each other.**
+/// Postgres counts the whole directory including free space; MySQL sums
+/// `DATA_LENGTH + INDEX_LENGTH` and cannot see free space at all; SQLite
+/// multiplies out the page count, freelist included but the `-wal` sidecar
+/// excluded; MongoDB reports `sizeOnDisk`, which is *compressed*; SQL Server
+/// sums the allocated `ROWS` files and excludes the log. They also will not
+/// match the sum of the per-table badges, nor the Pulse storage panel. There
+/// is no reconciling them — the engines disagree about what a database's size
+/// is — so the UI names its source per driver instead of pretending otherwise.
+#[derive(Debug, Serialize)]
+pub struct DatabaseSize {
+    pub name: String,
+    /// `None` means "the engine would not say", never "empty".
+    ///
+    /// The distinction is the whole contract: a MySQL login without the
+    /// privilege gets `NULL` from the aggregate, and reporting that as `0`
+    /// would tell the user a database with 31 tables is empty.
+    ///
+    /// Omitted from the JSON rather than serialized as `null`, matching
+    /// [`TableInfo::size_bytes`] — the note there records that emitting `null`
+    /// once already slipped past the frontend's `undefined` guard and crashed
+    /// `formatBytes`.
+    #[serde(rename = "size_bytes", skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+}
+
 /// One row in the table/view list.
 #[derive(Debug, Serialize)]
 pub struct TableInfo {
@@ -164,6 +202,44 @@ pub async fn list_databases_inner(
         DbPool::Sqlite(_) => Ok(crate::db::sqlite::schema::list_databases()),
         DbPool::Mongo(conn) => crate::db::mongo::schema::list_databases(&conn).await,
         DbPool::MsSql(p) => crate::db::mssql::schema::list_databases(&p).await,
+    }
+}
+
+/// Approximate on-disk size per database, for the schema tree's badge (#153).
+///
+/// Deliberately deferred rather than folded into [`list_databases`] — see
+/// [`DatabaseSize`] for why, and for what each driver's number actually
+/// measures. Failure is per-database, never per-call: a database the login
+/// cannot read comes back with `size_bytes: None` and the rest still answer.
+#[tauri::command]
+pub async fn get_database_sizes(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<DatabaseSize>> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout(
+        "get_database_sizes",
+        get_database_sizes_inner(state.inner(), &connection_id),
+    )
+    .await
+}
+
+/// Borrowed-state core of [`get_database_sizes`].
+///
+/// Five explicit arms and no `_ =>` (gotcha #30): a new driver must state what
+/// its size means rather than silently inheriting Postgres's.
+pub async fn get_database_sizes_inner(
+    state: &AppState,
+    connection_id: &str,
+) -> AppResult<Vec<DatabaseSize>> {
+    match state.pool_for(connection_id)? {
+        DbPool::Postgres(p) => crate::db::postgres::schema::database_sizes(&p).await,
+        DbPool::Mysql(p) => crate::db::mysql::schema::database_sizes(&p).await,
+        DbPool::Sqlite(p) => crate::db::sqlite::schema::database_sizes(&p).await,
+        DbPool::Mongo(conn) => crate::db::mongo::schema::database_sizes(&conn).await,
+        DbPool::MsSql(p) => crate::db::mssql::schema::database_sizes(&p).await,
     }
 }
 
@@ -708,5 +784,54 @@ pub async fn list_privileges_inner(
         DbPool::Sqlite(_) => Ok(vec![]),
         DbPool::Mongo(conn) => crate::db::mongo::schema::list_privileges(&conn, &user).await,
         DbPool::MsSql(p) => crate::db::mssql::schema::list_privileges(&p, &user).await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `DatabaseSize` is a wire contract, and the difference between an absent
+    /// key and a `null` one has already cost this codebase a crash once — the
+    /// note on `TableInfo::size_bytes` records it. These pin the serialised
+    /// shape without touching a database or the disk (gotcha #52).
+    #[test]
+    fn an_unknown_size_omits_the_key_rather_than_emitting_null() {
+        let json = serde_json::to_value(DatabaseSize {
+            name: "prod".into(),
+            size_bytes: None,
+        })
+        .unwrap();
+        assert_eq!(json, serde_json::json!({ "name": "prod" }));
+        assert!(
+            json.get("size_bytes").is_none(),
+            "a null here slips past the frontend's `undefined` guard and crashes formatBytes"
+        );
+    }
+
+    #[test]
+    fn a_genuine_zero_is_still_reported() {
+        // The other half of the contract. `skip_serializing_if` keys on `None`,
+        // not on falsiness, so an engine that really does answer 0 must not be
+        // rounded off into "would not say".
+        let json = serde_json::to_value(DatabaseSize {
+            name: "empty".into(),
+            size_bytes: Some(0),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({ "name": "empty", "size_bytes": 0 })
+        );
+    }
+
+    #[test]
+    fn a_known_size_serialises_as_a_number() {
+        let json = serde_json::to_value(DatabaseSize {
+            name: "prod".into(),
+            size_bytes: Some(5_497_558_138_880),
+        })
+        .unwrap();
+        assert_eq!(json["size_bytes"], serde_json::json!(5_497_558_138_880u64));
     }
 }

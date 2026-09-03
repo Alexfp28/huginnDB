@@ -12,7 +12,7 @@
 //! command layer's SQL Server arms are one-liners.
 
 use crate::commands::schema::{
-    ColumnInfo, DatabaseInfo, IndexInfo, PrivilegeInfo, TableInfo, UserInfo,
+    ColumnInfo, DatabaseInfo, DatabaseSize, IndexInfo, PrivilegeInfo, TableInfo, UserInfo,
 };
 use crate::db::ddl::{ColumnDef, ForeignKeyDef, IndexDef, TableStructure};
 use crate::db::mssql::values::{first_i64, first_string, mssql_value};
@@ -93,6 +93,51 @@ pub async fn list_databases(pool: &MsSqlPool) -> AppResult<Vec<DatabaseInfo>> {
         .iter()
         .filter_map(first_string)
         .map(|name| DatabaseInfo { name })
+        .collect())
+}
+
+/// On-disk size per database, from the allocated data files.
+///
+/// `sys.master_files.size` is a page count, and a SQL Server page is 8 KB —
+/// hence the `* 8192`. `type_desc = 'ROWS'` restricts it to the data files:
+/// the transaction log is excluded on purpose, since it is a function of the
+/// recovery model and backup cadence rather than of the data, and including it
+/// makes an idle database in FULL recovery look enormous.
+///
+/// This is *allocated* size, so it includes free space inside the files.
+///
+/// No privilege guard is needed, unlike the Postgres arm: `sys.master_files`
+/// filters rows the login may not see rather than raising, so an inaccessible
+/// database's subquery sums nothing and yields `NULL` — the `None` this wants,
+/// for free.
+pub async fn database_sizes(pool: &MsSqlPool) -> AppResult<Vec<DatabaseSize>> {
+    let mut c = pool.acquire().await?;
+    let rows = c
+        .query_rows(
+            "SELECT d.name, \
+                    (SELECT SUM(CAST(mf.size AS BIGINT)) * 8192 \
+                     FROM sys.master_files mf \
+                     WHERE mf.database_id = d.database_id \
+                       AND mf.type_desc = 'ROWS') AS size_bytes \
+             FROM sys.databases d \
+             WHERE d.state = 0 AND HAS_DBACCESS(d.name) = 1 \
+             ORDER BY d.name",
+            &[],
+        )
+        .await?;
+    Ok(rows
+        .iter()
+        .filter_map(|r| {
+            let name = first_string(r)?;
+            // Named, not positional-by-index-into-cells: the subquery is
+            // aliased `size_bytes`, and `Row::get` resolves either. `i64`
+            // because `CAST(... AS BIGINT) * 8192` is a bigint, and `NULL`
+            // (an inaccessible database) arrives as `None`.
+            let size_bytes = r
+                .get::<i64, _>("size_bytes")
+                .and_then(|n| u64::try_from(n).ok());
+            Some(DatabaseSize { name, size_bytes })
+        })
         .collect())
 }
 
