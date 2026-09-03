@@ -103,6 +103,7 @@
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
+    "openInNewWindow": "Abrir en una ventana nueva",
     "selectConnections": {
       "action": "Conexiones a mostrar",
       "title": "Conexiones a mostrar",
@@ -619,8 +620,8 @@
     "delete": "Eliminar",
     "filter": {
       "title": "Filtro avanzado",
-        "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
-        "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
+      "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
+      "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
       "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
       "empty": "Aún no hay condiciones — añade una abajo.",
       "addRow": "Añadir condición",
@@ -781,8 +782,8 @@
       "pick": "Elige una etapa",
       "toggle": "Incluir esta etapa",
       "delete": "Eliminar etapa",
-        "insertBefore": "Insertar una etapa encima de esta",
-        "duplicate": "Duplicar esta etapa",
+      "insertBefore": "Insertar una etapa encima de esta",
+      "duplicate": "Duplicar esta etapa",
       "collapse": "Plegar",
       "expand": "Desplegar",
       "reorder": "Arrastra para reordenar",

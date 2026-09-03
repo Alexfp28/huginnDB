@@ -908,3 +908,66 @@ impl AppState {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Pins the exact JSON the frontend's `profileIntent` sends to
+    /// `open_new_window`.
+    ///
+    /// This is gotcha #14's shape from the other side. `StartupArgs` derives
+    /// `Default` but carries no `#[serde(default)]`, and serde only fills a
+    /// missing key for `Option` fields — so `connect_by_id`, a bare `bool`,
+    /// is *required* in the payload. Omitting it fails the whole deserialize
+    /// at the IPC boundary, at runtime, and the new window boots with no
+    /// intent while `tsc` sees nothing wrong. The mirror test lives in
+    /// `src/lib/cli/startupArgs.test.ts`.
+    #[test]
+    fn a_profile_intent_from_the_frontend_deserialises() {
+        let args: StartupArgs = serde_json::from_value(serde_json::json!({
+            "connect_profile": "7f3c-uuid",
+            "connect_by_id": true,
+            "adhoc_host": null,
+            "adhoc_port": null,
+            "adhoc_database": null,
+            "adhoc_username": null,
+            "adhoc_driver": null,
+            "adhoc_connection_string": null,
+            "adhoc_auth_source": null,
+            "adhoc_name": null,
+            "adhoc_password": null,
+        }))
+        .expect("the payload `profileIntent` builds must deserialize");
+
+        assert_eq!(args.connect_profile.as_deref(), Some("7f3c-uuid"));
+        assert!(
+            args.connect_by_id,
+            "by id, not by name — display names are not unique"
+        );
+        assert!(args.adhoc_password.is_none(), "no secret ever travels here");
+    }
+
+    #[test]
+    fn a_payload_missing_connect_by_id_is_rejected() {
+        // The regression this guards. If serde ever starts tolerating this,
+        // the helper's "spell out all eleven fields" rule loses its teeth and
+        // the reason for it should be re-examined rather than silently kept.
+        let err = serde_json::from_value::<StartupArgs>(serde_json::json!({
+            "connect_profile": "7f3c-uuid",
+        }));
+        assert!(err.is_err(), "a bare `bool` field cannot be defaulted away");
+    }
+
+    #[test]
+    fn omitted_option_fields_are_none() {
+        // The other half of the same rule, and why only `connect_by_id` is the
+        // problem: serde does fill a missing `Option` with `None`.
+        let args: StartupArgs = serde_json::from_value(serde_json::json!({
+            "connect_by_id": false,
+        }))
+        .expect("Option fields may be omitted");
+        assert!(args.connect_profile.is_none());
+        assert!(args.adhoc_host.is_none());
+    }
+}

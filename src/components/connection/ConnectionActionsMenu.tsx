@@ -25,6 +25,7 @@
 import { cloneElement, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  AppWindow,
   DatabaseZap,
   Download,
   FolderPlus,
@@ -62,8 +63,10 @@ import {
   supportsCreateDatabase,
   supportsSqlDump,
 } from "@/lib/db/driver";
+import { profileIntent } from "@/lib/cli/startupArgs";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
+import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
@@ -97,6 +100,40 @@ export function ConnectionActionsMenu({
   const [importStatements, setImportStatements] = useState<string[] | null>(
     null,
   );
+  /**
+   * Open this connection in its own window, already connected.
+   *
+   * Zero backend: `open_new_window` has always taken an optional
+   * `StartupArgs` intent, stores it per window label, and the secondary window
+   * drains it on boot via `take_window_startup_intent` (`useCliIntents`). This
+   * just supplies the intent the CLI path already supplies.
+   *
+   * **No second pool is opened.** `AppState` is per *process* and shared
+   * across windows, and `connect_inner`'s early return is idempotent — its own
+   * comment names this exact scenario — so connecting to a profile the main
+   * window already has open reuses that pool: no second endpoint reservation,
+   * no second SSH tunnel. Each window shows as active only what it opened
+   * itself, because the frontend deliberately does not listen to
+   * `huginndb://connection-opened` (see `connection-sync-bridge.ts`, issue
+   * #50). Two inherited consequences, neither introduced here: a `disconnect`
+   * in any window closes the pool for all of them, and closing the secondary
+   * leaves a pool it alone opened alive until the app exits — the CLI path
+   * behaves the same way.
+   *
+   * Nothing here touches `tab_state.json`: every writer sits behind
+   * `isMainWindow()` (gotcha #8), including the non-obvious path where
+   * `connectToProfile` reaches `useEnvironments.switchTo`. Note that if the
+   * frontend ever did start listening to `-connection-opened`, the main
+   * window would adopt this connection and its next `persistLaunchState`
+   * would write it into the environment's launch state — at which point this
+   * gesture would begin altering what the app reopens at boot.
+   */
+  const openInNewWindow = () => {
+    void api.openNewWindow(profileIntent(connectionId)).catch((e) => {
+      notify.error(String(e));
+    });
+  };
+
   // Right-clicking to open the menu doesn't keep the row hovered (the
   // pointer moves onto the menu itself), so without this the row you
   // targeted looks indistinguishable from any other once the menu is open.
@@ -208,25 +245,43 @@ export function ConnectionActionsMenu({
                 label={t("security.title")}
                 onSelect={() => openSecurityTab(connectionId, t("security.title"))}
               />
+              {/* Tail group: where this connection *lives*, rather than what
+                  it contains. "Open in new window" and "Disconnect" are both
+                  lifecycle/placement actions, so they share one separator
+                  instead of earning a third. */}
+              <ContextMenuSeparator />
+              <ContextMenuAction
+                icon={AppWindow}
+                label={t("connectionsTree.openInNewWindow")}
+                onSelect={openInNewWindow}
+              />
               {onDisconnect && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={PlugZap}
-                    label={t("statusBar.disconnect")}
-                    onSelect={onDisconnect}
-                  />
-                </>
+                <ContextMenuAction
+                  icon={PlugZap}
+                  label={t("statusBar.disconnect")}
+                  onSelect={onDisconnect}
+                />
               )}
             </>
           ) : (
-            onConnect && (
+            <>
+              {onConnect && (
+                <ContextMenuAction
+                  icon={Plug}
+                  label={t("connectionsTree.connect")}
+                  onSelect={onConnect}
+                />
+              )}
+              {/* Offered while disconnected too, and this is the primary case:
+                  "open this server in its own window without disturbing the one
+                  I have". Until now that branch offered only "Connect", which
+                  is exactly the gap. */}
               <ContextMenuAction
-                icon={Plug}
-                label={t("connectionsTree.connect")}
-                onSelect={onConnect}
+                icon={AppWindow}
+                label={t("connectionsTree.openInNewWindow")}
+                onSelect={openInNewWindow}
               />
-            )
+            </>
           )}
         </ContextMenuContent>
       </ContextMenu>

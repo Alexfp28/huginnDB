@@ -103,6 +103,7 @@
   "connectionsTree": {
     "empty": "No saved connections yet. Add one from File → New connection.",
     "connect": "Connect",
+    "openInNewWindow": "Open in new window",
     "selectConnections": {
       "action": "Connections to show",
       "title": "Connections to show",
@@ -619,8 +620,8 @@
     "delete": "Delete",
     "filter": {
       "title": "Advanced filter",
-        "loadingSchema": "Advanced filter — loading the field list…",
-        "schemaFailed": "Advanced filter needs the field list, which failed to load ({{message}}) — press refresh to try again",
+      "loadingSchema": "Advanced filter — loading the field list…",
+      "schemaFailed": "Advanced filter needs the field list, which failed to load ({{message}}) — press refresh to try again",
       "description": "Filter rows by one or more columns. All conditions must match (AND).",
       "empty": "No conditions yet — add one below.",
       "addRow": "Add condition",
@@ -781,8 +782,8 @@
       "pick": "Pick a stage",
       "toggle": "Include this stage",
       "delete": "Delete stage",
-        "insertBefore": "Insert a stage above this one",
-        "duplicate": "Duplicate this stage",
+      "insertBefore": "Insert a stage above this one",
+      "duplicate": "Duplicate this stage",
       "collapse": "Collapse",
       "expand": "Expand",
       "reorder": "Drag to reorder",
