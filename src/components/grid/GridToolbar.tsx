@@ -96,6 +96,9 @@ interface GridToolbarProps {
   searchHistory?: string[];
   serverFilters?: ColumnFilter[];
   onRemoveFilter?: (index: number) => void;
+  /** Open the advanced filter focused on the condition at this index — the
+   *  chip's position in `serverFilters` is the dialog's row index. */
+  onEditFilter?: (index: number) => void;
   onInsertRow?: () => void;
   /** Fit every column to its widest visible value. */
   /**
@@ -129,6 +132,7 @@ export function GridToolbar({
   searchHistory,
   serverFilters,
   onRemoveFilter,
+  onEditFilter,
   onInsertRow,
   insertAlternatives,
   showRowCount,
@@ -354,6 +358,8 @@ export function GridToolbar({
             <ServerFilterChip
               key={`${f.column}-${f.op}-${i}`}
               filter={f}
+              index={i}
+              onEdit={onEditFilter}
               onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
             />
           ))

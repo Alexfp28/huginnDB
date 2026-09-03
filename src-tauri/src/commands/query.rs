@@ -1049,7 +1049,13 @@ where
 /// wrapper, so it guards every caller of the shared core — today that's the GUI
 /// command (the only one that sends filters; the MCP `browse_table` tool passes
 /// `None`), and tomorrow anything else built on it.
-fn validate_filters(filters: &[ColumnFilter]) -> AppResult<()> {
+///
+/// `pub(crate)` because the browse path is no longer the only one that takes a
+/// filter list: `commands::bulk` feeds the very same `build_filter_clause` from
+/// its own `BulkUpdateArgs`, and while it was private the 1000-value cap went
+/// unenforced on exactly the route where a pathological list costs the most —
+/// an `UPDATE`'s `WHERE`, not a paginated `SELECT`'s.
+pub(crate) fn validate_filters(filters: &[ColumnFilter]) -> AppResult<()> {
     for f in filters {
         if matches!(f.op, FilterOp::In | FilterOp::NotIn) && f.values.len() > MAX_IN_VALUES {
             return Err(AppError::InvalidInput(format!(

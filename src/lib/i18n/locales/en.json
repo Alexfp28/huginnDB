@@ -569,6 +569,7 @@
     "filterRows": "Filter rows… (Enter)",
     "serverSideFilter": "Server-side filter",
     "removeFilter": "Remove filter",
+    "editFilter": "Edit filter",
     "rows": "rows",
     "of": "of",
     "truncated": "truncated",
@@ -635,6 +636,8 @@
       "op": {
         "eq": "equals",
         "ne": "not equals",
+        "in": "is one of",
+        "not_in": "is not one of",
         "contains": "contains",
         "not_contains": "does not contain",
         "starts_with": "starts with",
@@ -646,7 +649,12 @@
         "between": "between",
         "is_null": "is null",
         "is_not_null": "is not null"
-      }
+      },
+      "listPlaceholder": "One value per line",
+      "includeNull": "Include NULL",
+      "listCount_one": "{{count}} value",
+      "listCount_other": "{{count}} values",
+      "listTooLong": "{{count}} values — the limit is {{max}}"
     },
     "exportData": {
       "label": "Export data",

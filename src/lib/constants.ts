@@ -24,6 +24,18 @@ export const DEFAULT_PORTS = {
   sqlserver: 1433,
 } as const satisfies Record<Driver, number>;
 
+/**
+ * Largest `IN` / `NOT IN` value list the backend accepts, mirroring
+ * `MAX_IN_VALUES` in `src-tauri/src/commands/query.rs`.
+ *
+ * Mirrored rather than derived because there is no wire surface that reports
+ * it, and the filter dialog needs it *before* it calls: over the cap it
+ * disables Apply and says so, instead of truncating the list (silent loss) or
+ * letting the call through to come back as a raw error string in a toast, long
+ * after the user stopped looking at what they pasted. Keep the two in step.
+ */
+export const MAX_FILTER_LIST_VALUES = 1000;
+
 /** localStorage keys used by zustand persist middleware. */
 export const STORAGE_KEYS = {
   theme: "huginndb.theme.v2",

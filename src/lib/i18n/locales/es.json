@@ -548,6 +548,7 @@
     "filterRows": "Filtrar filas… (Enter)",
     "serverSideFilter": "Filtro del servidor",
     "removeFilter": "Quitar filtro",
+    "editFilter": "Editar filtro",
     "rows": "filas",
     "of": "de",
     "truncated": "truncado",
@@ -635,6 +636,8 @@
       "op": {
         "eq": "igual a",
         "ne": "distinto de",
+        "in": "es uno de",
+        "not_in": "no es uno de",
         "contains": "contiene",
         "not_contains": "no contiene",
         "starts_with": "empieza por",
@@ -646,7 +649,12 @@
         "between": "entre",
         "is_null": "es nulo",
         "is_not_null": "no es nulo"
-      }
+      },
+      "listPlaceholder": "Un valor por línea",
+      "includeNull": "Incluir NULL",
+      "listCount_one": "{{count}} valor",
+      "listCount_other": "{{count}} valores",
+      "listTooLong": "{{count}} valores — el límite es {{max}}"
     },
     "exportData": {
       "label": "Exportar datos",

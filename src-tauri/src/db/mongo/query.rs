@@ -462,17 +462,24 @@ pub(crate) fn build_filter(
             FilterOp::Gte => doc! { &f.column: { "$gte": field_value(&f.column, &f.value) } },
             FilterOp::Lt => doc! { &f.column: { "$lt": field_value(&f.column, &f.value) } },
             FilterOp::Lte => doc! { &f.column: { "$lte": field_value(&f.column, &f.value) } },
+            // The three text-match operators go through `text_match_branches`
+            // so they also see non-string fields — see that function for why a
+            // bare `$regex` silently matches nothing on a numeric field.
             FilterOp::Contains => {
-                doc! { &f.column: { "$regex": regex_escape(&raw), "$options": "i" } }
+                doc! { "$or": text_match_branches(&f.column, &regex_escape(&raw)) }
             }
+            // `$nor` negates the *union* of the two branches. Negating each
+            // branch separately (`$and` of two `$not`s) would be a different
+            // predicate: a document whose field matched the indexed branch
+            // would still have to fail the `$expr` one, which it cannot.
             FilterOp::NotContains => {
-                doc! { &f.column: { "$not": { "$regex": regex_escape(&raw), "$options": "i" } } }
+                doc! { "$nor": text_match_branches(&f.column, &regex_escape(&raw)) }
             }
             FilterOp::StartsWith => {
-                doc! { &f.column: { "$regex": format!("^{}", regex_escape(&raw)), "$options": "i" } }
+                doc! { "$or": text_match_branches(&f.column, &format!("^{}", regex_escape(&raw))) }
             }
             FilterOp::EndsWith => {
-                doc! { &f.column: { "$regex": format!("{}$", regex_escape(&raw)), "$options": "i" } }
+                doc! { "$or": text_match_branches(&f.column, &format!("{}$", regex_escape(&raw))) }
             }
             FilterOp::Between => doc! {
                 &f.column: {
@@ -499,6 +506,13 @@ pub(crate) fn build_filter(
     }
 
     if let Some(q) = search {
+        // Deliberately still a bare `$regex` per column, unlike the three
+        // operators above: the free-text box fans out over every visible
+        // column, so pairing each with an `$expr` branch would double an
+        // already-wide `$or`. The same non-string blind spot applies — a
+        // numeric column is not searchable from this box. Left as a known gap
+        // rather than widened here; the per-column `contains` filter is the
+        // surface that had to be correct.
         if !q.is_empty() && !search_columns.is_empty() {
             let escaped = regex_escape(q);
             let ors: Vec<Document> = search_columns
@@ -526,6 +540,60 @@ fn field_value(column: &str, value: &Value) -> Bson {
     } else {
         json_to_bson(value)
     }
+}
+
+/// The two branches of a case-insensitive text match against `column`.
+///
+/// BSON's `$regex` only ever inspects **strings**: against a numeric, date or
+/// ObjectId field it matches nothing at all, and — this is the part that makes
+/// it dangerous — it does so *silently*, reporting zero rows rather than an
+/// error. `db.entityLog.countDocuments({ts: {$regex: "1788"}})` returns 0 on a
+/// collection where every `ts` is a `long` beginning with those digits, while
+/// `{ts: {$gte: 1788422462450}}` over the same documents returns 6. The SQL
+/// drivers have no such blind spot: their builder wraps the column in
+/// `CAST(col AS TEXT)` before comparing (`commands::query`), so `contains` on
+/// an `INT` works everywhere except here.
+///
+/// So a text match emits both:
+///
+/// 1. the plain `$regex`, which is the fast path and **can use an index** on a
+///    string field — the overwhelmingly common case, and the reason this is
+///    not simply replaced by branch 2; and
+/// 2. an `$expr` that stringifies the field server-side first, covering
+///    numbers, dates and ObjectIds.
+///
+/// **Cost, deliberately accepted:** branch 2 cannot use an index, so a text
+/// match over a large collection degrades to a scan. That is the price of the
+/// operator telling the truth instead of returning an empty result set; the
+/// alternative — offering `contains` on a numeric column and having it always
+/// answer "no rows" — is the failure mode gotchas #29/#30/#39 exist to prevent.
+///
+/// The `$convert` (rather than a bare `$toString`) is not decoration:
+/// `$toString` raises a query-killing error when the field is missing, or holds
+/// a document or an array. `onError`/`onNull` fold all three into the empty
+/// string, which simply fails to match.
+///
+/// **Server floor: MongoDB 4.2**, for `$regexMatch` (`$convert` and `$expr`
+/// landed earlier, in 4.0 and 3.6). The Rust driver's own floor is 4.0, so a
+/// 4.0/4.1 server — EOL since April 2022 — would now fail these three
+/// operators with an unknown-operator error instead of silently returning
+/// nothing.
+fn text_match_branches(column: &str, pattern: &str) -> Vec<Document> {
+    vec![
+        doc! { column: { "$regex": pattern, "$options": "i" } },
+        doc! { "$expr": { "$regexMatch": {
+            "input": {
+                "$convert": {
+                    "input": format!("${column}"),
+                    "to": "string",
+                    "onError": "",
+                    "onNull": "",
+                }
+            },
+            "regex": pattern,
+            "options": "i",
+        } } },
+    ]
 }
 
 /// Escape regex metacharacters so a free-text search is matched literally.
@@ -1170,5 +1238,130 @@ mod tests {
     fn describe_find_omits_skip_and_limit_when_zero() {
         let s = describe_find("events", &TableFilter::default(), &[], 0, 0);
         assert_eq!(s, "db.events.find({})");
+    }
+
+    /// Pull the field-level `$regex` out of a text-match clause's first branch.
+    fn first_branch_regex(clause: &Document, key: &str, column: &str) -> String {
+        let branches = clause.get_array(key).unwrap();
+        branches[0]
+            .as_document()
+            .unwrap()
+            .get_document(column)
+            .unwrap()
+            .get_str("$regex")
+            .unwrap()
+            .to_string()
+    }
+
+    /// Pull the `$regexMatch` regex out of a text-match clause's `$expr` branch.
+    fn expr_branch_regex(clause: &Document, key: &str) -> String {
+        let branches = clause.get_array(key).unwrap();
+        branches[1]
+            .as_document()
+            .unwrap()
+            .get_document("$expr")
+            .unwrap()
+            .get_document("$regexMatch")
+            .unwrap()
+            .get_str("regex")
+            .unwrap()
+            .to_string()
+    }
+
+    fn text_filter(op: FilterOp, column: &str, value: &str) -> Vec<ColumnFilter> {
+        vec![ColumnFilter {
+            column: column.to_string(),
+            op,
+            value: serde_json::json!(value),
+            value2: serde_json::Value::Null,
+            values: Vec::new(),
+        }]
+    }
+
+    #[test]
+    fn contains_emits_both_an_indexed_and_a_stringifying_branch() {
+        // A bare `$regex` never matches a numeric field, and says so by
+        // returning zero rows rather than an error. The `$expr` branch is what
+        // makes `contains` on a `long` behave like the SQL drivers' CAST.
+        let f = build_filter(&text_filter(FilterOp::Contains, "ts", "1788"), None, &[]);
+        assert_eq!(f.get_array("$or").unwrap().len(), 2);
+        assert_eq!(first_branch_regex(&f, "$or", "ts"), "1788");
+        assert_eq!(expr_branch_regex(&f, "$or"), "1788");
+
+        // The stringification has to tolerate a missing field or a subdocument;
+        // a bare `$toString` would abort the whole query on either.
+        let convert = f.get_array("$or").unwrap()[1]
+            .as_document()
+            .unwrap()
+            .get_document("$expr")
+            .unwrap()
+            .get_document("$regexMatch")
+            .unwrap()
+            .get_document("input")
+            .unwrap()
+            .get_document("$convert")
+            .unwrap();
+        assert_eq!(convert.get_str("input").unwrap(), "$ts");
+        assert_eq!(convert.get_str("to").unwrap(), "string");
+        assert_eq!(convert.get_str("onError").unwrap(), "");
+        assert_eq!(convert.get_str("onNull").unwrap(), "");
+    }
+
+    #[test]
+    fn not_contains_negates_the_whole_branch_set() {
+        // `$nor`, not an `$and` of two negations: a document matching the
+        // indexed branch can never also fail the `$expr` one, so per-branch
+        // negation would be a different — and always-empty — predicate.
+        let f = build_filter(&text_filter(FilterOp::NotContains, "ts", "1788"), None, &[]);
+        assert!(
+            f.get_array("$or").is_err(),
+            "NotContains must not emit a union"
+        );
+        assert_eq!(f.get_array("$nor").unwrap().len(), 2);
+        assert_eq!(first_branch_regex(&f, "$nor", "ts"), "1788");
+        assert_eq!(expr_branch_regex(&f, "$nor"), "1788");
+    }
+
+    #[test]
+    fn starts_with_and_ends_with_anchor_both_branches() {
+        // An anchor applied to only one branch would make the two disagree
+        // about what matches, which is worse than either alone.
+        let f = build_filter(&text_filter(FilterOp::StartsWith, "code", "AB"), None, &[]);
+        assert_eq!(first_branch_regex(&f, "$or", "code"), "^AB");
+        assert_eq!(expr_branch_regex(&f, "$or"), "^AB");
+
+        let f = build_filter(&text_filter(FilterOp::EndsWith, "code", "AB"), None, &[]);
+        assert_eq!(first_branch_regex(&f, "$or", "code"), "AB$");
+        assert_eq!(expr_branch_regex(&f, "$or"), "AB$");
+    }
+
+    #[test]
+    fn text_match_escapes_metacharacters_in_both_branches() {
+        let f = build_filter(&text_filter(FilterOp::Contains, "note", "a.b*c"), None, &[]);
+        assert_eq!(first_branch_regex(&f, "$or", "note"), "a\\.b\\*c");
+        assert_eq!(expr_branch_regex(&f, "$or"), "a\\.b\\*c");
+    }
+
+    #[test]
+    fn text_match_on_a_dotted_path_builds_a_nested_field_path() {
+        // A Mongo column can be a dotted path (gotcha #29); the `$expr` branch
+        // has to address it as `$a.b`, not as a literal key.
+        let f = build_filter(
+            &text_filter(FilterOp::Contains, "customData.format", "pdf"),
+            None,
+            &[],
+        );
+        let convert = f.get_array("$or").unwrap()[1]
+            .as_document()
+            .unwrap()
+            .get_document("$expr")
+            .unwrap()
+            .get_document("$regexMatch")
+            .unwrap()
+            .get_document("input")
+            .unwrap()
+            .get_document("$convert")
+            .unwrap();
+        assert_eq!(convert.get_str("input").unwrap(), "$customData.format");
     }
 }

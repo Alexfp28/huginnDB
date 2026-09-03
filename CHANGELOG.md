@@ -8,7 +8,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-
 - **"Open in new window" on a connection's context menu.** Right-click a
   connection in the tree and it opens in its own window, already connected —
   the gesture the CLI could already express (`--connect-profile` into a second
@@ -72,6 +71,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the table name in edit mode, read from the `TableInfo` the tree already
   holds — no additional query.
 
+- **`IN` / `NOT IN` can be built by hand, and a filter chip is editable.**
+  The two operators already worked end to end — the backend deduplicates the
+  list, lifts a `null` member into its own `IS NULL` branch, and caps it at
+  1000 values — but the only way to get one was the grid's "filter by the
+  selected rows" action. The advanced filter withheld them from its operator
+  list and set any it was handed aside, untouched, because its condition row
+  had no control for a value list. It has one now: a one-value-per-line
+  textarea with a separate **Include NULL** checkbox.
+
+  The checkbox is the part worth explaining. `NULL` as a magic *token* in the
+  list would be indistinguishable from the literal four-character string
+  `"NULL"`, which is a legal value in a text column and one you would then have
+  no way to search for. Splitting them mirrors what the backend already does.
+  The textarea splits on `\r?\n`, so a column pasted from Excel does not
+  arrive with an invisible carriage return glued to every value.
+
+  Because every filter shape now has a control, the dialog edits the whole
+  filter list in order rather than a subset of it — which is what makes a
+  toolbar chip's position a row index, and that is the entire mechanism behind
+  the second half: **clicking a chip opens the advanced filter scrolled to
+  that condition.** No ids, no new DTO, no backend change.
+
+- **Every operator is offered on every column.** A numeric or date column used
+  to lose `contains`/`starts with`/`ends with` and a text column lost the
+  ordered comparisons, while the backend restricted neither. "The invoice
+  number contains 4471" is a thing people ask for, and the SQL builder already
+  casts the column to text to answer it.
+
 ### Changed
 
 - **`ui.schemaTableMetric` now defaults to `"size"` instead of `"none"`.**
@@ -88,6 +115,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   value on disk.
 
 ### Fixed
+
+- **A text match against a non-string MongoDB field silently matched nothing.**
+  BSON's `$regex` inspects strings only, so `contains` on a `long`, a date or
+  an `ObjectId` returned zero rows — not an error, just an empty result set
+  that reads as "there is nothing here".
+  `db.entityLog.countDocuments({ts: {$regex: "1788"}})` answers 0 on a
+  collection where every `ts` begins with those digits and
+  `{ts: {$gte: 1788422462450}}` answers 6. The SQL drivers never had the blind
+  spot, because their builder wraps the column in `CAST(col AS TEXT)` first.
+
+  `contains` / `not contains` / `starts with` / `ends with` now emit two
+  branches: the plain `$regex`, which still uses an index on a string field —
+  the common case, and the reason it is not simply replaced — and an `$expr`
+  that stringifies the field server-side to cover everything else.
+  **The `$expr` branch cannot use an index**, so a text match over a large
+  collection degrades to a scan; that is the cost of the operator answering
+  truthfully instead of returning nothing, and it is why the fix landed before
+  those operators were offered on numeric columns rather than after. Requires
+  MongoDB 4.2 (for `$regexMatch`), one minor above the driver's own floor.
+
+- **"Bulk update" silently widened its own match.** Opening it with an
+  `IN (…)` chip active dropped that filter while seeding the match condition,
+  turning an update scoped to forty rows into one scoped to the whole table.
+  The "no filter" acknowledgement could not catch it either, since the other
+  filters remained and the list was therefore not empty. It seeds every filter
+  shape now.
+
+- **The 1000-value `IN` cap was not enforced on the update path.**
+  `validate_filters` was private to the browse path, so `apply_bulk_update` —
+  which shares the very same filter builder — accepted an unbounded list, in
+  an `UPDATE`'s `WHERE` rather than a paginated `SELECT`'s. The advanced
+  filter also now blocks Apply with a count in red rather than truncating the
+  list or letting the call fail after the fact.
+
+- **Opening the advanced filter no longer degrades the filters it holds.** A
+  condition row can only carry a value as text, so pressing Apply used to
+  rewrite a MongoDB `Int64`, a JSON object or a value containing a newline as
+  whatever `String(value)` produced. A row the user did not touch now returns
+  its original payload untouched. Editing such a value still re-types it from
+  the column's catalog type, which is documented where the coercion lives.
 
 - **`formatBytes` stopped at GB, so a 5 TB database would have rendered as
   "5120.0 GB".** It now runs through PB. Its loop also used `n > 1024`, which
