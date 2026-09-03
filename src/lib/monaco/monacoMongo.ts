@@ -31,25 +31,46 @@
  * them up once the fetch lands. No parsing of the pipeline happens here
  * either: `completionPositionAt` (gotcha #33's sibling) only tracks cursor
  * position, never the document's meaning.
+ *
+ * Two things make this behave like Compass rather than a flat word list:
+ *
+ * - **A stage operator is only offered at the stage body's own top-level
+ *   key** (`cursor.path.length === 2` — the virtual root plus the one `{`
+ *   the body itself opens). Typing `$` inside a nested value (say, a field
+ *   reference inside `$match`) used to also dump all 28 stage names into the
+ *   list, which is noise Compass never shows.
+ * - **Picking a stage inserts its whole structure as a real Monaco snippet**
+ *   (`StageSpec.insertSnippet`, tabstop syntax, `InsertAsSnippet`), not just
+ *   the bare operator name — Tab walks `_id`, the accumulator, the field
+ *   name, exactly like Compass's stage autocomplete. Likewise, an
+ *   accumulator (`$sum`, `$avg`, …) picked while defining an output field
+ *   inside `$group`/`$bucket`/`$bucketAuto`/`$setWindowFields` inserts the
+ *   whole `{ $op: expr }` object (`ACCUMULATOR_CATALOG`) rather than the bare
+ *   name — an accumulator is never valid unwrapped, so a bare insert always
+ *   needed a second pass by hand.
  */
 
 import type { Monaco } from "@monaco-editor/react";
 import { STAGE_CATALOG } from "@/lib/mongo/stages";
+import { ACCUMULATOR_CATALOG } from "@/lib/mongo/accumulators";
 import { completionPositionAt, siblingStringValue } from "@/lib/mongo/completionContext";
 
 export const MONGO_PIPELINE_LANGUAGE = "mongodb-pipeline";
 
 /** Expression operators offered after `$` inside a stage body. Not exhaustive
- *  by design — the common ones, so the list stays scannable. */
+ *  by design — the common ones, so the list stays scannable. The group
+ *  accumulators (`$sum`, `$avg`, `$first`, …) are deliberately absent —
+ *  they're never valid bare, so they live in `ACCUMULATOR_CATALOG` and get
+ *  their own contextual, snippet-shaped branch below instead. */
 const EXPRESSION_OPERATORS = [
-  "$abs", "$add", "$addToSet", "$and", "$arrayElemAt", "$avg", "$ceil",
+  "$abs", "$add", "$and", "$arrayElemAt", "$ceil",
   "$concat", "$concatArrays", "$cond", "$dateAdd", "$dateDiff",
   "$dateFromString", "$dateToString", "$dateTrunc", "$dayOfMonth", "$divide",
-  "$eq", "$exists", "$expr", "$filter", "$first", "$floor", "$gt", "$gte",
-  "$ifNull", "$in", "$inc", "$isArray", "$last", "$let", "$literal", "$lt",
-  "$lte", "$map", "$max", "$mergeObjects", "$min", "$month", "$multiply",
-  "$ne", "$nin", "$not", "$or", "$push", "$reduce", "$regex", "$regexMatch",
-  "$round", "$size", "$slice", "$split", "$strLenCP", "$subtract", "$sum",
+  "$eq", "$exists", "$expr", "$filter", "$floor", "$gt", "$gte",
+  "$ifNull", "$in", "$inc", "$isArray", "$let", "$literal", "$lt",
+  "$lte", "$map", "$month", "$multiply",
+  "$ne", "$nin", "$not", "$or", "$reduce", "$regex", "$regexMatch",
+  "$round", "$size", "$slice", "$split", "$strLenCP", "$subtract",
   "$switch", "$toDate", "$toDouble", "$toInt", "$toLong", "$toObjectId",
   "$toString", "$toUpper", "$toLower", "$trim", "$type", "$year",
 ];
@@ -213,21 +234,74 @@ export function ensureMongoLanguage(monaco: Monaco) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const suggestions: any[] = [];
 
+      // `getModel()`'s value is the live buffer including everything after
+      // the cursor; `completionPositionAt` only looks at the slice up to
+      // `offset`, so what's typed later can never affect this result. Needed
+      // below regardless of whether a live `entry` is registered — the
+      // stage/accumulator gating is static, schema-agnostic context.
+      const text = model.getValue();
+      const offset = model.getOffsetAt(position);
+      const cursor = completionPositionAt(text, offset);
+      const innermost = cursor.path[cursor.path.length - 1];
+
       const dollarContext = hasDollar || context.triggerCharacter === "$";
       if (dollarContext) {
+        // A stage operator only makes sense at the stage body's own
+        // top-level key — `path.length === 2` is [virtual root, the body's
+        // own `{`] — or at the root of a *nested* pipeline's stage doc
+        // ($lookup's `pipeline`, $facet's branches, $unionWith's `pipeline`:
+        // in every case an array element that is itself an object is a fresh
+        // stage). One level deeper than that (inside $match's filter,
+        // $group's accumulator, …) it would just be noise alongside the
+        // field/expression suggestions that actually apply there.
+        const parentFrame = cursor.path[cursor.path.length - 2];
+        const atNestedPipelineStage =
+          innermost.type === "object" && parentFrame?.type === "array";
+        if (cursor.path.length === 2 || atNestedPipelineStage) {
+          suggestions.push(
+            ...STAGE_CATALOG.map((stage, i) => ({
+              label: stage.operator,
+              kind: monaco.languages.CompletionItemKind.Snippet,
+              // The whole stage structure, as a real snippet — Tab walks
+              // `_id`, the accumulator, the field name, same as Compass.
+              insertText: stage.insertSnippet,
+              insertTextRules:
+                monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "stage",
+              documentation: { value: "```js\n" + stage.snippet + "\n```" },
+              sortText: `0${String(i).padStart(3, "0")}`,
+              range: dollarRange,
+            })),
+          );
+        }
+
+        // An accumulator is never valid bare (`count: $sum: 1` isn't legal —
+        // only `count: { $sum: 1 }` is), so it gets its own snippet-shaped
+        // branch rather than the bare `op: ` insertion below: offered only
+        // while defining an output field's value inside $group or one of the
+        // `output: { … }` stages ($bucket, $bucketAuto, $setWindowFields),
+        // and never for $group's own `_id` (an expression, not a reduction).
+        if (
+          cursor.slot === "value" &&
+          cursor.forKey &&
+          cursor.forKey !== "_id" &&
+          (innermost.key === "$group" || innermost.key === "output")
+        ) {
+          suggestions.push(
+            ...ACCUMULATOR_CATALOG.map((acc, i) => ({
+              label: acc.operator,
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: acc.insertSnippet,
+              insertTextRules:
+                monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+              detail: "accumulator",
+              sortText: `0${String(i).padStart(2, "0")}`,
+              range: dollarRange,
+            })),
+          );
+        }
+
         suggestions.push(
-          ...STAGE_CATALOG.map((stage, i) => ({
-            label: stage.operator,
-            kind: monaco.languages.CompletionItemKind.Snippet,
-            // The catalogue snippet is the whole stage document; inside a body
-            // the user wants just the operator, so only the operator is
-            // inserted and the snippet is shown as documentation.
-            insertText: `${stage.operator}: `,
-            detail: "stage",
-            documentation: { value: "```js\n" + stage.snippet + "\n```" },
-            sortText: `0${String(i).padStart(3, "0")}`,
-            range: dollarRange,
-          })),
           ...EXPRESSION_OPERATORS.map((op) => ({
             label: op,
             kind: monaco.languages.CompletionItemKind.Function,
@@ -251,13 +325,6 @@ export function ensureMongoLanguage(monaco: Monaco) {
 
       const entry = registry.get(model.uri.toString());
       if (entry) {
-        // `getModel()`'s value is the live buffer including everything after
-        // the cursor; `completionPositionAt` only looks at the slice up to
-        // `offset`, so what's typed later can never affect this result.
-        const text = model.getValue();
-        const offset = model.getOffsetAt(position);
-        const cursor = completionPositionAt(text, offset);
-        const innermost = cursor.path[cursor.path.length - 1];
         const insideLookup = innermost.key === "$lookup";
 
         const pushFields = (

@@ -8,6 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The aggregation editor's inline autocomplete now inserts a stage's whole
+  structure, not just its name.** Picking `$group` from the header `Select`
+  already replaced the body with the full snippet (`_id`, an accumulator);
+  typing `$group` in the editor and accepting the completion only inserted
+  `$group: `, leaving the rest to be typed by hand — the gap this closes.
+  Every stage in the catalogue now has a Monaco snippet (tabstop syntax,
+  `InsertAsSnippet`) alongside its plain one, so Tab walks `_id`, the
+  accumulator, the field name — the same interaction Compass's stage
+  autocomplete has.
+
+  **A `$group`/`$bucket`/`$bucketAuto`/`$setWindowFields` accumulator
+  (`$sum`, `$avg`, `$push`, …) gets the same treatment, and needed its own
+  catalogue to get it right.** An accumulator is never valid bare — only
+  `{ $sum: 1 }` is legal, not `$sum: 1` on its own — so it couldn't share the
+  flat expression-operator list the way `$concat`/`$cond` do; it's offered
+  only while the cursor is defining an output field's value inside one of
+  those four stages (never for `$group`'s own `_id`, which is an expression,
+  not a reduction), and inserts the whole wrapped object.
+
+  One more fix riding along: typing `$` anywhere used to dump all 28 stage
+  names into the list regardless of position — inside a nested `$match`
+  filter, say. Stage suggestions are now offered only at a stage body's own
+  top-level key, or at the root of a nested sub-pipeline's stage doc
+  (`$lookup.pipeline`, a `$facet` branch, `$unionWith.pipeline`).
+
+  Hand-escaping `$` across 28 snippets (`\$` where it's a literal character,
+  never a tabstop — Monaco's snippet grammar reads a bare `$name` as an
+  unresolved TextMate variable and silently drops it) is exactly the kind of
+  change a typo hides in; `stages.test.ts` strips every snippet's tabstop
+  syntax back down to plain text and asserts it reproduces the existing
+  plain snippet byte for byte.
+
 - **"Open in new window" on a connection's context menu.** Right-click a
   connection in the tree and it opens in its own window, already connected —
   the gesture the CLI could already express (`--connect-profile` into a second
