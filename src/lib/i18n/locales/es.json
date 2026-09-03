@@ -103,6 +103,7 @@
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
+    "openInNewWindow": "Abrir en una ventana nueva",
     "selectConnections": {
       "action": "Conexiones a mostrar",
       "title": "Conexiones a mostrar",
