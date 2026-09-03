@@ -45,7 +45,10 @@ import { IconButton } from "@/components/ui/icon-button";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
+import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
+import { useBridge } from "@/lib/bridges/useBridge";
+import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertList } from "@/components/pulse/sections/AlertList";
 import { Sparkline } from "@/components/pulse/charts/Sparkline";
@@ -933,10 +936,13 @@ export function PulseWindow() {
     setLanguage(language);
   }, [language]);
 
+  useBridge(startWindowListBridge);
+
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <SandboxRibbon />
+        <WindowColorBadge />
         <div className="min-h-0 flex-1">
           {connectionId === undefined ? null : connectionId === null ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

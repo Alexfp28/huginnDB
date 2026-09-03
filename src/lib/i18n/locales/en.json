@@ -981,6 +981,14 @@
     "console": {
       "collapse": "Collapse console",
       "expand": "Show console"
+    },
+    "windowCount": "{{count}} windows open",
+    "windowLabelTooltip": "Internal id: {{label}}",
+    "windowKind": {
+      "main": "Main window",
+      "secondary": "New window",
+      "tabWindow": "Floating tab",
+      "pulseWindow": "Pulse panel"
     }
   },
   "commandPalette": {

@@ -981,6 +981,14 @@
     "console": {
       "collapse": "Colapsar consola",
       "expand": "Mostrar consola"
+    },
+    "windowCount": "{{count}} ventanas abiertas",
+    "windowLabelTooltip": "Identificador interno: {{label}}",
+    "windowKind": {
+      "main": "Ventana principal",
+      "secondary": "Ventana nueva",
+      "tabWindow": "Pestaña flotante",
+      "pulseWindow": "Panel Pulse"
     }
   },
   "commandPalette": {

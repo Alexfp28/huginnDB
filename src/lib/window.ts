@@ -36,3 +36,21 @@ export const MAIN_WINDOW_LABEL = "main";
 export function isMainWindow(): boolean {
   return getCurrentWindow().label === MAIN_WINDOW_LABEL;
 }
+
+/**
+ * Which of the four window shapes a label identifies — the same distinction
+ * `main.tsx` already makes to pick a window's React root, restated here as a
+ * pure classifier so `WindowColorBadge` can label a window ("Main window" /
+ * "Secondary window" / …) without re-deriving the prefixes a third time.
+ * Order matters: check the specific prefixes before falling back to
+ * "secondary", since a `win-<uuid>` label ("New window") shares no prefix
+ * with the other two but must still be told apart from `main`.
+ */
+export type WindowKind = "main" | "secondary" | "tabWindow" | "pulseWindow";
+
+export function windowKindOf(label: string): WindowKind {
+  if (label === MAIN_WINDOW_LABEL) return "main";
+  if (label.startsWith("tabwin-")) return "tabWindow";
+  if (label.startsWith("pulsewin-")) return "pulseWindow";
+  return "secondary";
+}

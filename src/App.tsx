@@ -72,6 +72,8 @@ import {
 } from "@/lib/cli/useCliIntents";
 import { startConnectionHealthBridge } from "@/lib/bridges/connection-health-bridge";
 import { startConnectionSyncBridge } from "@/lib/bridges/connection-sync-bridge";
+import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
+import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { startPrefsSyncBridge } from "@/lib/bridges/prefs-sync-bridge";
 import { startJsonSchemaBridge } from "@/lib/bridges/json-schema-bridge";
 import { startOriginsBridge } from "@/lib/bridges/origins-bridge";
@@ -267,6 +269,11 @@ export default function App() {
   // of `active`/`profiles`/`prefs` with no way to learn about another
   // window's connect/disconnect/profile edit/settings change.
   useBridge(startConnectionSyncBridge);
+
+  // Cross-window window-count tracking (the color badge below): a new
+  // window opened anywhere, or any window closing, changes what every
+  // window's badge should show.
+  useBridge(startWindowListBridge);
 
   // The other half of #18: preference writes from any window.
   useBridge(startPrefsSyncBridge);
@@ -465,6 +472,7 @@ export default function App() {
       <SplashScreen />
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <SandboxRibbon />
+        <WindowColorBadge />
         <header className="relative flex h-9 items-center border-b border-border px-2">
           {/* Left — File + Window + View + Help menus */}
           <FileMenu selectedConnectionId={selected} onSelect={setSelected} />

@@ -40,6 +40,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   syntax back down to plain text and asserts it reproduces the existing
   plain snippet byte for byte.
 
+- **A colored ribbon in each window's chrome once more than one is open, naming which window it is.** "New window", a detached tab and the Pulse window all used to look identical from the outside — same title, same everything — so with a few open at once there was no way to tell "this is my main session" from "this is the duplicate I opened by accident" short of closing them one by one. Every window now derives a hue from its own Tauri label and shows a ribbon carrying an accent dot in that color, the window's kind ("Main window" / "New window" / "Floating tab" / "Pulse panel"), and how many windows are open in total. The ribbon disappears the moment only one window remains — the whole problem is telling windows apart, which stops being a problem with nothing to confuse it with.
+
+  The main window's label is the fixed string `"main"`, so it always gets the same hue session after session; every other window gets a fresh UUID at creation, so duplicates land on their own color in practice with nothing stored to keep in sync. The window count itself comes straight from Tauri's own window registry (`getAllWindows()`), kept fresh across windows via a new `huginndb://window-list-changed` broadcast emitted on both window creation and destruction — a genuine broadcast, not `emit_to` a single window, since every window's ribbon needs the total count, not just changes it caused itself.
+
 - **"Open in new window" on a connection's context menu.** Right-click a
   connection in the tree and it opens in its own window, already connected —
   the gesture the CLI could already express (`--connect-profile` into a second

@@ -270,6 +270,21 @@ pub fn run() {
             });
             Ok(())
         })
+        // The other half of `WINDOW_LIST_CHANGED_EVENT`: `open_new_window` /
+        // `open_tab_window` / `open_pulse_window` emit it on creation, this
+        // catches every window's destruction (main window included, so
+        // closing back down to one window hides the last badge too). A
+        // global handler rather than one registered per window at creation
+        // time — the main window is never created by our own code, so there
+        // is no single call site to attach it from.
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                use tauri::{Emitter, Manager};
+                let _ = window
+                    .app_handle()
+                    .emit(commands::connection::WINDOW_LIST_CHANGED_EVENT, ());
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
             commands::connection::save_profile,

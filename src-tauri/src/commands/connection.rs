@@ -29,6 +29,14 @@ pub const CONNECTION_OPENED_EVENT: &str = "huginndb://connection-opened";
 pub const CONNECTION_CLOSED_EVENT: &str = "huginndb://connection-closed";
 pub const PROFILES_CHANGED_EVENT: &str = "huginndb://profiles-changed";
 
+/// Broadcast whenever the number of open OS windows changes — a new one is
+/// created (here) or an existing one is destroyed (the global handler in
+/// `lib.rs`). Every window's `WindowColorBadge` re-derives its visibility
+/// from a fresh `getAllWindows()` count on this event; the payload carries
+/// nothing because Tauri's own window registry is the source of truth, not
+/// anything tracked on this side.
+pub const WINDOW_LIST_CHANGED_EVENT: &str = "huginndb://window-list-changed";
+
 /// Payload for [`CONNECTION_OPENED_EVENT`] / [`CONNECTION_CLOSED_EVENT`].
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ConnectionSyncPayload {
@@ -1827,6 +1835,7 @@ pub async fn open_new_window(app: AppHandle, intent: Option<StartupArgs>) -> App
         // matching the main window exactly.
         .disable_drag_drop_handler()
         .build()?;
+    let _ = app.emit(WINDOW_LIST_CHANGED_EVENT, ());
     Ok(label)
 }
 
@@ -1876,6 +1885,7 @@ pub async fn open_tab_window(
         // interactions rely on the same native HTML5 DnD path.
         .disable_drag_drop_handler()
         .build()?;
+    let _ = app.emit(WINDOW_LIST_CHANGED_EVENT, ());
     Ok(label)
 }
 
@@ -1922,6 +1932,7 @@ pub async fn open_pulse_window(
         // drag-drop handler would swallow any HTML5 drag this window grows.
         .disable_drag_drop_handler()
         .build()?;
+    let _ = app.emit(WINDOW_LIST_CHANGED_EVENT, ());
     Ok(label)
 }
 

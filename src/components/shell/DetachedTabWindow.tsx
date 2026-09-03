@@ -29,7 +29,10 @@ import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
+import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
+import { useBridge } from "@/lib/bridges/useBridge";
+import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
@@ -142,10 +145,13 @@ export function DetachedTabWindow() {
     setLanguage(language);
   }, [language]);
 
+  useBridge(startWindowListBridge);
+
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <SandboxRibbon />
+        <WindowColorBadge />
         <div className="min-h-0 flex-1">
           {tab === undefined ? null : tab === null ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
