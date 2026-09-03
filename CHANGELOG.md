@@ -8,6 +8,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+
+- **"Open in new window" on a connection's context menu.** Right-click a
+  connection in the tree and it opens in its own window, already connected —
+  the gesture the CLI could already express (`--connect-profile` into a second
+  launch) with no way to reach it from the UI. Offered whether or not the
+  connection is currently active; the disconnected case is the primary one
+  ("open this server in its own window without disturbing the one I have"),
+  and until now that branch of the menu offered only "Connect".
+
+  **No second pool is opened.** `AppState` is per process and shared across
+  windows, and `connect_inner`'s early return already handles a second window
+  connecting to a profile the first has open — so there is no second endpoint
+  reservation and no second SSH tunnel. Each window still lists as active only
+  what it opened itself, which is deliberate (issue #50).
+
+  Two inherited behaviours worth knowing, neither new: disconnecting in any
+  window closes the pool for all of them, and closing a secondary window
+  leaves a pool it alone opened alive until the app exits. The CLI path has
+  always behaved this way.
+
+  If the profile has no password in the keychain — an `ephemeral` CLI launch,
+  or a password typed into the dialog only this session — the new window opens
+  and fails to connect, with the error in its Console panel. The entry is
+  deliberately not gated on having a stored secret: the failure is legible,
+  and gating would hide the majority case to spare the minority one.
+
 - **Disk size per database in the schema tree (#153).** The issue asked for a
   way to see how much space a database and its tables take. Half of that was
   already built and switched off: `TableInfo.size_bytes` has been populated by
