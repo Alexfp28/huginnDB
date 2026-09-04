@@ -15,6 +15,7 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - User communicates in **Spanish**; reply in Spanish. Code, comments, commit messages, and docs are **English**.
 - Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, …) with **long-form bodies** explaining the *why*. The user explicitly values verbose commits — never punt with a one-liner on non-trivial changes.
 - Keep `CHANGELOG.md` in sync (Keep a Changelog format). Add to `Unreleased` as you go; the user will cut releases manually.
+- **`CHANGELOG.es.md` is the Spanish translation of `CHANGELOG.md` and must be updated in the same turn, never as a follow-up.** Every entry added to `CHANGELOG.md`'s `Unreleased` section gets its translated counterpart added to `CHANGELOG.es.md`'s `[Sin publicar]` section right away — this is the thing that keeps getting forgotten, so treat "update the changelog" as meaning both files unless told otherwise.
 
 ## Tech stack quick reference
 
