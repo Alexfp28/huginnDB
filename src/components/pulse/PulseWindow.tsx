@@ -401,9 +401,7 @@ function StorageView({ view }: { view: PulseView }) {
     );
   }
 
-  const max = Math.max(
-    ...items.map((i) => i.dataBytes + i.indexBytes + i.freeBytes),
-  );
+  const max = Math.max(...items.map((i) => i.totalBytes));
 
   return (
     <Panel
@@ -412,7 +410,7 @@ function StorageView({ view }: { view: PulseView }) {
     >
       <div className="flex flex-col gap-2">
         {items.map((item) => {
-          const total = item.dataBytes + item.indexBytes + item.freeBytes;
+          const total = item.totalBytes;
           const pct = (n: number) =>
             total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "0%";
           return (
@@ -425,7 +423,7 @@ function StorageView({ view }: { view: PulseView }) {
               </span>
               <span className="flex h-4 overflow-hidden rounded-sm bg-accent">
                 <span
-                  className="flex h-full"
+                  className="relative flex h-full"
                   style={{ width: `${((total / max) * 100).toFixed(1)}%` }}
                 >
                   <span
@@ -440,12 +438,28 @@ function StorageView({ view }: { view: PulseView }) {
                       background: "var(--fk)",
                     }}
                   />
-                  <span
-                    style={{
-                      width: pct(item.freeBytes),
-                      background: "var(--warning)",
-                    }}
-                  />
+                  {item.freeIsWithinData ? (
+                    // Reclaimable space already inside the data segment
+                    // (MongoDB) — an overlay at its trailing edge, not a
+                    // segment that would add its own width on top of a total
+                    // that already includes it.
+                    <span
+                      className="absolute inset-y-0 opacity-60"
+                      style={{
+                        right: pct(item.indexBytes),
+                        width: pct(item.freeBytes),
+                        backgroundImage:
+                          "repeating-linear-gradient(45deg, var(--warning) 0, var(--warning) 2px, transparent 2px, transparent 4px)",
+                      }}
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        width: pct(item.freeBytes),
+                        background: "var(--warning)",
+                      }}
+                    />
+                  )}
                 </span>
               </span>
               <span className="font-mono text-2xs tabular-nums text-muted-foreground">

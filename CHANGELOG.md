@@ -6,6 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pulse's storage totals no longer double-count free space on MongoDB.**
+  `StorageItem::total()` summed `data_bytes + index_bytes + free_bytes`
+  unconditionally, which is right for MySQL — `Data_free` sits outside
+  `Data_length` — but wrong for MongoDB, where `freeStorageSize` is WiredTiger's
+  *reclaimable portion of* `storageSize`, already inside `data_bytes`. Every
+  MongoDB collection's reported total was therefore inflated by its own free
+  space, which also skewed the top-N ranking (`sort_unstable_by_key` on that
+  same total) — a fragmented collection could outrank a genuinely larger one
+  and get pushed out of the list.
+
+  `StorageItem` now carries `free_is_within_data` (set per driver at
+  construction — `false` for MySQL, `true` for MongoDB) and a backend-computed
+  `total_bytes` that reads it, so the frontend no longer re-derives the sum
+  itself — the two Pulse surfaces (`PulsePanel`, `PulseWindow`) and
+  `usePulseView`'s grand total were each duplicating the same formula, which is
+  exactly what let it drift for MongoDB in the first place. The segmented
+  storage bar now reflects the corrected semantics too: on MongoDB, the free
+  portion renders as a hatched overlay at the trailing edge of the data
+  segment (it's *inside* it) instead of a third segment that used to add its
+  own width on top of an already-too-large total.
+
 ## [1.21.1] — 2026-09-03
 
 ### Added

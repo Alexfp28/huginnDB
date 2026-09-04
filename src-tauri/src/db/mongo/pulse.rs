@@ -174,9 +174,12 @@ pub async fn sample(conn: &MongoConn) -> AppResult<Vec<MetricSample>> {
 /// N+1 of a `collStats` per collection is what that avoided and this must not
 /// reintroduce. Views have no storage stats and drop out on their own.
 ///
-/// `freeStorageSize` lands in `free_bytes`, which lines up exactly with what
-/// MySQL's `Data_free` means: allocated but unused, and reclaimable by a
-/// rebuild. Servers before 4.4 do not report it and simply read as zero.
+/// `freeStorageSize` lands in `free_bytes` with `free_is_within_data: true`:
+/// WiredTiger reports it as the reclaimable portion *of* `storageSize`, not
+/// something alongside it the way MySQL's `Data_free` sits outside
+/// `Data_length` — so `StorageItem::new` leaves it out of `total_bytes`
+/// rather than double-counting it (issue #163). Servers before 4.4 do not
+/// report it and simply read as zero.
 pub async fn storage(conn: &MongoConn, limit: usize) -> AppResult<Vec<StorageItem>> {
     let db = crate::db::mongo::schema::resolve_db(conn)?;
     let db_name = db.name().to_string();
@@ -202,16 +205,17 @@ pub async fn storage(conn: &MongoConn, limit: usize) -> AppResult<Vec<StorageIte
             continue;
         };
         let take = |key: &str| num(s, &[key]).unwrap_or(0.0).max(0.0) as u64;
-        items.push(StorageItem {
-            name: name.to_string(),
-            schema: Some(db_name.clone()),
-            data_bytes: take("storageSize"),
-            index_bytes: take("totalIndexSize"),
-            free_bytes: take("freeStorageSize"),
-        });
+        items.push(StorageItem::new(
+            name.to_string(),
+            Some(db_name.clone()),
+            take("storageSize"),
+            take("totalIndexSize"),
+            take("freeStorageSize"),
+            true,
+        ));
     }
 
-    items.sort_unstable_by_key(|i| std::cmp::Reverse(i.total()));
+    items.sort_unstable_by_key(|i| std::cmp::Reverse(i.total_bytes));
     items.truncate(limit);
     Ok(items)
 }

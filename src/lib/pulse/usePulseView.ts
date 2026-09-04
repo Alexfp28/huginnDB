@@ -70,11 +70,7 @@ export function usePulseView(connectionId: string | null): PulseView {
   }, [samples]);
 
   const storageTotalBytes = useMemo(
-    () =>
-      (storage?.items ?? []).reduce(
-        (sum, i) => sum + i.dataBytes + i.indexBytes + i.freeBytes,
-        0,
-      ),
+    () => (storage?.items ?? []).reduce((sum, i) => sum + i.totalBytes, 0),
     [storage],
   );
 

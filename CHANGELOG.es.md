@@ -8,6 +8,31 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Los totales de almacenamiento de Pulse ya no cuentan el espacio libre dos
+  veces en MongoDB.** `StorageItem::total()` sumaba
+  `data_bytes + index_bytes + free_bytes` sin condiciones, lo cual es correcto
+  para MySQL — `Data_free` está fuera de `Data_length` — pero incorrecto para
+  MongoDB, donde `freeStorageSize` es *la porción reclamable de*
+  `storageSize` según WiredTiger, ya incluida dentro de `data_bytes`. El total
+  reportado de cada colección de MongoDB estaba por tanto inflado por su
+  propio espacio libre, lo que además distorsionaba el ranking del top-N
+  (`sort_unstable_by_key` sobre ese mismo total) — una colección fragmentada
+  podía superar a una genuinamente más grande y dejarla fuera de la lista.
+
+  `StorageItem` ahora lleva `free_is_within_data` (fijado por driver en la
+  construcción — `false` en MySQL, `true` en MongoDB) y un `total_bytes`
+  calculado en el backend que lo tiene en cuenta, así que el frontend ya no
+  vuelve a derivar la suma por su cuenta — las dos superficies de Pulse
+  (`PulsePanel`, `PulseWindow`) y el gran total de `usePulseView` duplicaban
+  cada una la misma fórmula, que es exactamente lo que permitió que
+  divergieran para MongoDB en primer lugar. La barra de almacenamiento
+  segmentada también refleja ahora la semántica corregida: en MongoDB, la
+  porción libre se pinta como una superposición rayada en el borde final del
+  segmento de datos (está *dentro* de él) en lugar de un tercer segmento que
+  antes sumaba su propio ancho sobre un total ya inflado.
+
 ## [1.21.1] — 2026-09-03
 
 ### Añadido

@@ -139,7 +139,7 @@ function QueryRow({ query }: { query: PulseTopQuery }) {
 }
 
 function StorageRow({ item, max }: { item: PulseStorageItem; max: number }) {
-  const total = item.dataBytes + item.indexBytes + item.freeBytes;
+  const total = item.totalBytes;
   const share = max > 0 ? total / max : 0;
   const pct = (n: number) =>
     total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "0%";
@@ -161,7 +161,7 @@ function StorageRow({ item, max }: { item: PulseStorageItem; max: number }) {
           rather than each one filling its own row. */}
       <div className="h-2 w-full overflow-hidden rounded-sm bg-accent">
         <div
-          className="flex h-full"
+          className="relative flex h-full"
           style={{ width: `${(share * 100).toFixed(1)}%` }}
         >
           <span
@@ -170,9 +170,24 @@ function StorageRow({ item, max }: { item: PulseStorageItem; max: number }) {
           <span
             style={{ width: pct(item.indexBytes), background: "var(--fk)" }}
           />
-          <span
-            style={{ width: pct(item.freeBytes), background: "var(--warning)" }}
-          />
+          {item.freeIsWithinData ? (
+            // Reclaimable space already inside the data segment (MongoDB) —
+            // an overlay at its trailing edge, not a segment that would add
+            // its own width on top of a total that already includes it.
+            <span
+              className="absolute inset-y-0 opacity-60"
+              style={{
+                right: pct(item.indexBytes),
+                width: pct(item.freeBytes),
+                backgroundImage:
+                  "repeating-linear-gradient(45deg, var(--warning) 0, var(--warning) 2px, transparent 2px, transparent 4px)",
+              }}
+            />
+          ) : (
+            <span
+              style={{ width: pct(item.freeBytes), background: "var(--warning)" }}
+            />
+          )}
         </div>
       </div>
     </div>

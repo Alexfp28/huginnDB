@@ -282,15 +282,41 @@ pub struct StorageItem {
     pub schema: Option<String>,
     pub data_bytes: u64,
     pub index_bytes: u64,
-    /// Allocated but unused — space a rebuild would hand back. Reported
-    /// separately rather than folded into `data_bytes` because the two lead to
-    /// completely different actions.
+    /// Allocated but unused — space a rebuild would hand back.
     pub free_bytes: u64,
+    /// Whether `free_bytes` is already counted inside `data_bytes` (MongoDB's
+    /// `freeStorageSize` is the reclaimable portion of `storageSize`) rather
+    /// than sitting alongside it (MySQL's `Data_free` is separate from
+    /// `Data_length`). `total_bytes` is derived from this at construction so
+    /// no caller has to know which engine it is looking at.
+    pub free_is_within_data: bool,
+    /// `data_bytes + index_bytes`, plus `free_bytes` only when it is not
+    /// already inside `data_bytes`. Computed once here — the ranking and both
+    /// frontend panels read this instead of re-deriving the sum, which is
+    /// exactly what let the two drift for MongoDB in the first place.
+    pub total_bytes: u64,
 }
 
 impl StorageItem {
-    pub fn total(&self) -> u64 {
-        self.data_bytes + self.index_bytes + self.free_bytes
+    pub fn new(
+        name: String,
+        schema: Option<String>,
+        data_bytes: u64,
+        index_bytes: u64,
+        free_bytes: u64,
+        free_is_within_data: bool,
+    ) -> Self {
+        let total_bytes =
+            data_bytes + index_bytes + if free_is_within_data { 0 } else { free_bytes };
+        Self {
+            name,
+            schema,
+            data_bytes,
+            index_bytes,
+            free_bytes,
+            free_is_within_data,
+            total_bytes,
+        }
     }
 }
 

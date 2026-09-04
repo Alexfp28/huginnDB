@@ -2058,4 +2058,11 @@ export interface PulseStorageItem {
   indexBytes: number;
   /** Allocated but unused — what a rebuild would hand back. */
   freeBytes: number;
+  /** Whether `freeBytes` is already counted inside `dataBytes` (MongoDB) rather
+   * than sitting alongside it (MySQL) — see `totalBytes`. */
+  freeIsWithinData: boolean;
+  /** `dataBytes + indexBytes`, plus `freeBytes` only when it is not already
+   * inside `dataBytes`. Backend-computed — don't re-derive this sum, that is
+   * exactly what let it drift from the backend's own ranking for MongoDB. */
+  totalBytes: number;
 }

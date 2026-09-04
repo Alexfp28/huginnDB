@@ -322,16 +322,19 @@ pub async fn storage(pool: &MySqlPool, limit: usize) -> AppResult<Vec<StorageIte
                 .flatten()
                 .is_some()
         })
-        .map(|r| StorageItem {
-            name: r.try_get("Name").unwrap_or_default(),
-            schema: Some(db.clone()),
-            data_bytes: num_at(&r, "Data_length"),
-            index_bytes: num_at(&r, "Index_length"),
-            free_bytes: num_at(&r, "Data_free"),
+        .map(|r| {
+            StorageItem::new(
+                r.try_get("Name").unwrap_or_default(),
+                Some(db.clone()),
+                num_at(&r, "Data_length"),
+                num_at(&r, "Index_length"),
+                num_at(&r, "Data_free"),
+                false,
+            )
         })
         .collect();
 
-    items.sort_unstable_by_key(|i| std::cmp::Reverse(i.total()));
+    items.sort_unstable_by_key(|i| std::cmp::Reverse(i.total_bytes));
     items.truncate(limit);
     Ok(items)
 }
@@ -573,14 +576,17 @@ mod tests {
     }
 
     #[test]
-    fn storage_total_adds_free_space_in() {
-        let item = StorageItem {
-            name: "orders".into(),
-            schema: Some("shop".into()),
-            data_bytes: 100,
-            index_bytes: 40,
-            free_bytes: 10,
-        };
-        assert_eq!(item.total(), 150);
+    fn storage_total_adds_free_space_alongside_data_on_mysql() {
+        // MySQL's Data_free sits next to Data_length, not inside it.
+        let item = StorageItem::new("orders".into(), Some("shop".into()), 100, 40, 10, false);
+        assert_eq!(item.total_bytes, 150);
+    }
+
+    #[test]
+    fn storage_total_excludes_free_space_already_inside_data_on_mongo() {
+        // MongoDB's freeStorageSize is the reclaimable portion of storageSize,
+        // already counted in data_bytes — adding it again would double-count it.
+        let item = StorageItem::new("orders".into(), Some("shop".into()), 100, 40, 10, true);
+        assert_eq!(item.total_bytes, 140);
     }
 }
