@@ -8,7 +8,31 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.21.2] — 2026-09-04
+
 ### Corregido
+
+- **Los editores de estructura y de vista ya no cierran toda la aplicación en
+  una build de Windows en release.** Abrir la estructura de una tabla o una
+  vista — en cualquier driver, en cualquier tabla — mataba el proceso de
+  forma sistemática justo cuando terminaba la pantalla de "cargando", sin
+  dejar más rastro que `thread 'main' has overflowed its stack` en stderr,
+  invisible en una instalación normal porque release enlaza la app como
+  binario de subsistema `windows` (sin consola). Nunca se reproducía con
+  `pnpm tauri:dev`, lo que hacía parecer que el problema estaba en el
+  frontend; la comprobación por bisección demostró lo contrario — una build
+  `--debug` sin optimizar del mismo bundle de frontend de producción tampoco
+  fallaba, solo lo hacía una build real de `tauri:build` en release. La
+  variable real era el optimizador de Rust: el enlazador de MSVC reserva por
+  defecto 1 MiB de stack para el hilo principal (8 MiB en Linux/macOS), y el
+  inlining de release colapsa la cadena de llamadas de introspección de
+  estructura/vista (`ensure_view` → `pool_for` → las consultas a
+  `information_schema`) en marcos de pila más grandes de lo que necesita esa
+  misma cadena sin optimizar — de sobra por debajo de 1 MiB en dev, justo por
+  encima una vez optimizada. Solucionado reservando 8 MiB para el hilo
+  principal vía `/STACK` en el enlazador
+  (`src-tauri/.cargo/config.toml`, solo Windows) en lugar de reestructurar la
+  cadena de llamadas para encajar en un presupuesto arbitrariamente pequeño.
 
 - **Los totales de almacenamiento de Pulse ya no cuentan el espacio libre dos
   veces en MongoDB.** `StorageItem::total()` sumaba

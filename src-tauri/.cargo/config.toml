@@ -1,0 +1,13 @@
+# Windows' MSVC linker reserves a 1 MiB stack for a binary's main thread by
+# default (vs. 8 MiB on Linux/macOS). That is too little headroom for the
+# structure/view editors' introspection call chain once release's inlining
+# collapses `ensure_view` -> `pool_for` -> the `information_schema` catalog
+# queries into fewer, larger stack frames than the same chain needs
+# unoptimized — the app builds and runs fine in dev (and in an unoptimized
+# `--debug` build of the production frontend bundle), but a real
+# `tauri:build` release crashes the whole process with "thread 'main' has
+# overflowed its stack" the instant a structure/view tab finishes loading.
+# 8 MiB matches the Unix default and gives enough headroom without the
+# app needing to restructure that call chain.
+[target.'cfg(windows)']
+rustflags = ["-C", "link-args=/STACK:8388608"]

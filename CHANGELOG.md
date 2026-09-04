@@ -6,7 +6,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.21.2] — 2026-09-04
+
 ### Fixed
+
+- **The structure and view editors no longer crash the whole app on a
+  Windows release build.** Opening a table's structure or a view — on any
+  driver, any table — reliably killed the process right as the "loading"
+  screen finished, with nothing to show for it but
+  `thread 'main' has overflowed its stack` on stderr, invisible in a normal
+  install because release links the app as a `windows`-subsystem binary
+  (no console). It never reproduced in `pnpm tauri:dev`, which made it look
+  frontend-related; bisecting confirmed otherwise — an unoptimized `--debug`
+  build of the *same* production frontend bundle didn't crash either, only a
+  real `tauri:build` release did. The actual variable was Rust's optimizer:
+  MSVC's linker reserves a 1 MiB main-thread stack by default (8 MiB on
+  Linux/macOS), and release's inlining collapses the structure/view
+  introspection call chain (`ensure_view` → `pool_for` → the
+  `information_schema` catalog queries) into fewer, larger stack frames than
+  the same chain needs unoptimized — comfortably under 1 MiB in dev, just
+  over it once optimized. Fixed by reserving 8 MiB for the main thread via
+  `/STACK` at link time (`src-tauri/.cargo/config.toml`, Windows only)
+  instead of restructuring the call chain to fit an arbitrarily small
+  budget.
 
 - **Pulse's storage totals no longer double-count free space on MongoDB.**
   `StorageItem::total()` summed `data_bytes + index_bytes + free_bytes`
