@@ -12,9 +12,18 @@ cambia.
 ## Conectar
 
 El diálogo de conexión es por campos (host, puerto, base de datos, usuario,
-**Origen de autenticación**) y construye la URI `mongodb://` en vivo con lo que
-escribes. La contraseña se guarda en el llavero del sistema y *no* se incrusta en
-la URI.
+**Origen de autenticación**, **Conexión directa**) y construye la URI
+`mongodb://` en vivo con lo que escribes. La contraseña se guarda en el llavero
+del sistema y *no* se incrusta en la URI.
+
+**Conexión directa** añade `directConnection=true`. Actívala cuando estés
+llegando a un miembro concreto de un replica set a propósito — a través de una
+máquina puente, o para leer de un secundario en particular. Sin ella el driver
+toma el host que le has dado como semilla, lee de él las direcciones reales de
+los miembros del conjunto e intenta llegar a *esas*; cuando son nombres internos
+que esta máquina no resuelve, la conexión falla aunque el host que escribiste
+fuera perfectamente alcanzable. Déjala apagada para una conexión normal a un
+replica set o a un standalone.
 
 **Editar cadena de conexión** desbloquea la URI para lo que el formulario no
 puede expresar: Atlas (`mongodb+srv://…`), replica sets y cualquier opción extra

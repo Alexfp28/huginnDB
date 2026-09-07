@@ -8,8 +8,17 @@ This page is what changes.
 ## Connecting
 
 The connection dialog is field-driven (host, port, database, username, **Auth
-source**) and builds the `mongodb://` URI live from what you type. The password
-is stored in the OS keychain and is *not* embedded in the URI.
+source**, **Direct connection**) and builds the `mongodb://` URI live from what
+you type. The password is stored in the OS keychain and is *not* embedded in the
+URI.
+
+**Direct connection** adds `directConnection=true`. Turn it on when you are
+reaching one member of a replica set on purpose — through a jump box, or to read
+from a specific secondary. Without it the driver takes the host you gave as a
+seed, reads the set's real member addresses from it, and tries to reach *those*
+instead; when they are internal names this machine cannot resolve, the connect
+fails even though the host you typed was perfectly reachable. Leave it off for a
+normal replica-set or standalone connection.
 
 **Edit connection string** unlocks the URI for what the form can't express:
 Atlas (`mongodb+srv://…`), replica sets, and any extra URI option. Once you

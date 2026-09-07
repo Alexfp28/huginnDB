@@ -25,7 +25,7 @@ lo mismo:
 | PostgreSQL | Host, puerto, usuario, contraseña. La base de datos es opcional — ver más abajo. |
 | MySQL / MariaDB | Lo mismo. |
 | SQLite | Solo la **ruta del fichero de base de datos**. Sin host, sin usuario y sin contraseña: el fichero *es* la base de datos, y los permisos del sistema de ficheros son su control de acceso. |
-| MongoDB | El formulario construye la URI `mongodb://` en vivo a partir de host/puerto/base/usuario + **Origen de autenticación**. **Editar cadena de conexión** desbloquea la URI para lo que el formulario no cubre: Atlas (`mongodb+srv://`), replica sets, opciones extra de la URI. |
+| MongoDB | El formulario construye la URI `mongodb://` en vivo a partir de host/puerto/base/usuario + **Origen de autenticación** + **Conexión directa** (`directConnection=true`, para llegar a un miembro concreto de un replica set a propósito — ver [`MONGODB.es.md`](MONGODB.es.md)). **Editar cadena de conexión** desbloquea la URI para lo que el formulario no cubre: Atlas (`mongodb+srv://`), replica sets, opciones extra de la URI. |
 | SQL Server | Host y puerto, más **Nombre de instancia**, **Confiar en el certificado del servidor** y **Autenticación** (inicio de sesión de SQL Server, o Windows/NTLM solo en Windows). Ver [`SQL_SERVER.es.md`](SQL_SERVER.es.md). |
 
 **Nombre** y **Grupo** son solo presentación. El grupo es texto libre: escribe la

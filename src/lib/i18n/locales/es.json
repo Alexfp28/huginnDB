@@ -213,6 +213,8 @@
       "mssqlAuth_windows": "Windows (NTLM)",
       "authSource": "Origen de autenticación",
       "authSourcePlaceholder": "admin",
+      "directConnection": "Conexión directa",
+      "directConnectionHint": "Hablar solo con este host y omitir el descubrimiento del replica set. Necesario cuando los miembros del conjunto no son alcanzables con los nombres que él mismo anuncia.",
       "connectionString": "Cadena de conexión",
       "connectionStringPlaceholder": "mongodb://localhost:27017  o  mongodb+srv://user:pass@cluster.mongodb.net/db",
       "connectionStringHint": "Se construye automáticamente a partir de los campos de arriba. La contraseña se guarda de forma segura y no se incrusta en la cadena.",

@@ -147,6 +147,8 @@ export function ConnectionDialog({
     setConnectionString,
     authSource,
     setAuthSource,
+    mongoDirectConnection,
+    setMongoDirectConnection,
     mongoUriManual,
     onToggleMongoUriManual,
     effectiveMongoUri,
@@ -777,6 +779,30 @@ export function ConnectionDialog({
                               )}
                             />
                           </Field>
+                          {/* Same shape as the two switch rows below/above in
+                              the other driver branches. Disabled in raw-edit
+                              mode like every field here: there the URI text is
+                              the source of truth, and a toggle that silently
+                              rewrote it would fight the user's own edits. */}
+                          <div className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2">
+                            <div className="min-w-0">
+                              <Label className="text-sm">
+                                {t(
+                                  "connectionDialog.fields.directConnection",
+                                )}
+                              </Label>
+                              <p className="mt-0.5 text-2xs text-muted-foreground">
+                                {t(
+                                  "connectionDialog.fields.directConnectionHint",
+                                )}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={mongoDirectConnection}
+                              disabled={mongoUriManual}
+                              onCheckedChange={setMongoDirectConnection}
+                            />
+                          </div>
 
                           {/* Derived connection string + raw-edit escape hatch. */}
                           <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">

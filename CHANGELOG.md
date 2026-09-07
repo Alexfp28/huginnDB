@@ -6,6 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **A "Direct connection" toggle in the MongoDB connection form** (new and edit
+  alike), which adds `directConnection=true` to the derived URI. It is what you
+  need when you are reaching one member of a replica set on purpose — through a
+  jump box, or to read from a specific secondary: without it the driver treats
+  the host you typed as a seed, reads the set's real member addresses out of its
+  `hello` response, and tries to reach *those* instead, so a connection to a
+  perfectly reachable host fails because the names it advertises are internal
+  ones this machine cannot resolve. Until now the only way to set it was the
+  "Edit connection string" escape hatch, which had a sting in the tail: the
+  form's parser rejected any URI option it did not model, so a profile saved
+  that way reopened in raw-edit mode forever after, with host, port and database
+  greyed out.
+
+  Modelled as a query option on the derived URI rather than as a new profile
+  field, which is why nothing in the backend changed: the driver reads
+  `directConnection` straight off the connection string, and a MongoDB profile
+  always stores its URI. It exports, imports and syncs through a shared origin
+  for free as a result — and it is deliberately *not* added to the fields a
+  shared-origin refresh preserves locally, because unlike the MCP and Pulse
+  toggles it is a fact about the server's topology, not a decision belonging to
+  this machine. The publisher dictates it, the same as host and port.
+
 ### Fixed
 
 - **The schema tree and the tab area are no longer live while an environment

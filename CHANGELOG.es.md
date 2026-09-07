@@ -8,6 +8,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Un toggle de "Conexión directa" en el formulario de conexión de MongoDB**
+  (tanto en el de nueva conexión como en el de editar), que añade
+  `directConnection=true` a la URI derivada. Es lo que hace falta cuando estás
+  llegando a un miembro concreto de un replica set a propósito — a través de una
+  máquina puente, o para leer de un secundario en particular: sin él el driver
+  toma el host que escribiste como semilla, lee de su respuesta `hello` las
+  direcciones reales de los miembros del conjunto e intenta llegar a *esas*, así
+  que una conexión a un host perfectamente alcanzable falla porque los nombres
+  que anuncia son internos y esta máquina no los resuelve. Hasta ahora la única
+  forma de ponerlo era la escotilla de "Editar cadena de conexión", que tenía
+  trampa: el parser del formulario rechazaba cualquier opción de URI que no
+  modelara, así que un perfil guardado por esa vía volvía a abrirse en modo de
+  edición manual para siempre, con host, puerto y base de datos en gris.
+
+  Modelado como una opción de consulta dentro de la URI derivada y no como un
+  campo nuevo del perfil, que es la razón de que no haya cambiado nada en el
+  backend: el driver lee `directConnection` directamente de la cadena de
+  conexión, y un perfil de MongoDB siempre guarda su URI. Como consecuencia se
+  exporta, se importa y se sincroniza por un origen compartido sin trabajo
+  extra — y deliberadamente *no* se añade a los campos que una sincronización de
+  origen preserva en local, porque a diferencia de los toggles de MCP y Pulse
+  esto es un hecho sobre la topología del servidor, no una decisión de esta
+  máquina. Lo dicta quien publica, igual que el host y el puerto.
+
 ### Corregido
 
 - **El árbol de esquema y el área de pestañas ya no siguen vivos mientras un

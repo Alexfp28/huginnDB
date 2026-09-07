@@ -213,6 +213,8 @@
       "mssqlAuth_windows": "Windows (NTLM)",
       "authSource": "Auth source",
       "authSourcePlaceholder": "admin",
+      "directConnection": "Direct connection",
+      "directConnectionHint": "Talk only to this host and skip replica-set discovery. Needed when the set's members aren't reachable under the names it reports.",
       "connectionString": "Connection string",
       "connectionStringPlaceholder": "mongodb://localhost:27017  or  mongodb+srv://user:pass@cluster.mongodb.net/db",
       "connectionStringHint": "Built automatically from the fields above. The password is stored securely and is not embedded.",

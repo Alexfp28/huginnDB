@@ -21,7 +21,7 @@ don't need the same things:
 | PostgreSQL | Host, port, username, password. Database optional — see below. |
 | MySQL / MariaDB | Same. |
 | SQLite | Just the **database file path**. No host, no user, no password: the file *is* the database, and the filesystem's permissions are its access control. |
-| MongoDB | The form builds the `mongodb://` URI live from host/port/database/user + **Auth source**. **Edit connection string** unlocks the URI for the cases the form can't express: Atlas (`mongodb+srv://`), replica sets, extra URI options. |
+| MongoDB | The form builds the `mongodb://` URI live from host/port/database/user + **Auth source** + **Direct connection** (`directConnection=true`, for reaching one replica-set member on purpose — see [`MONGODB.md`](MONGODB.md)). **Edit connection string** unlocks the URI for the cases the form can't express: Atlas (`mongodb+srv://`), replica sets, extra URI options. |
 | SQL Server | Host and port, plus **Instance name**, **Trust server certificate** and **Authentication** (SQL Server login, or Windows/NTLM on Windows only). See [`SQL_SERVER.md`](SQL_SERVER.md). |
 
 **Name** and **Group** are display-only. A group is free text — type the same

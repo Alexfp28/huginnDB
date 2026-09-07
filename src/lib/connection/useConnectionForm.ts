@@ -78,6 +78,13 @@ export function useConnectionForm(open: boolean) {
   const [connectionString, setConnectionString] = useState("");
   /** MongoDB `authSource` form field (e.g. `admin`). */
   const [authSource, setAuthSource] = useState("");
+  /**
+   * MongoDB `directConnection=true`. Like `authSource`, it is a discrete field
+   * that rides *inside* the derived URI rather than a separate profile column:
+   * the driver reads it off the connection string, so there is nothing for the
+   * backend to store or apply (see `lib/db/mongoUri.ts`).
+   */
+  const [mongoDirectConnection, setMongoDirectConnection] = useState(false);
   /** When true, the MongoDB connection string is edited by hand (Compass-style
    *  escape hatch for SRV / replica sets / extra URI options) and the discrete
    *  fields are disabled. */
@@ -147,10 +154,16 @@ export function useConnectionForm(open: boolean) {
             // outside the URI — fall back to those when the URI omits them.
             if (parsed.username) setUsername(parsed.username);
             if (parsed.authSource) setAuthSource(parsed.authSource);
+            // Unconditional, unlike the two above: their `if` guards exist to
+            // preserve the legacy 1.1.0 shape where user/authSource lived
+            // outside the URI. A boolean has no such legacy — an absent option
+            // means off, not "keep whatever was there".
+            setMongoDirectConnection(parsed.directConnection);
           }
         }
       } else {
         setMongoUriManual(false);
+        setMongoDirectConnection(false);
       }
 
       const tunnel = p.ssh_tunnel;
@@ -192,6 +205,7 @@ export function useConnectionForm(open: boolean) {
       setConnectionString("");
       setAuthSource("");
       setMongoUriManual(false);
+      setMongoDirectConnection(false);
       setMssqlInstance("");
       setMssqlTrustCert(true);
       setMssqlAuth("sql");
@@ -212,8 +226,16 @@ export function useConnectionForm(open: boolean) {
   /** URI derived live from the discrete MongoDB fields (form mode). The
    *  password is intentionally excluded — it travels via the keychain. */
   const builtMongoUri = useMemo(
-    () => buildMongoUri({ host, port, database, username, authSource }),
-    [host, port, database, username, authSource],
+    () =>
+      buildMongoUri({
+        host,
+        port,
+        database,
+        username,
+        authSource,
+        directConnection: mongoDirectConnection,
+      }),
+    [host, port, database, username, authSource, mongoDirectConnection],
   );
 
   /** The URI this profile will actually connect with: the hand-edited buffer
@@ -274,6 +296,7 @@ export function useConnectionForm(open: boolean) {
       setDatabase(parsed.database);
       setUsername(parsed.username);
       setAuthSource(parsed.authSource);
+      setMongoDirectConnection(parsed.directConnection);
       setMongoUriManual(false);
     }
     // else: parse failed — keep raw-edit on (the Switch reflects mongoUriManual,
@@ -316,6 +339,7 @@ export function useConnectionForm(open: boolean) {
     // MongoDB
     connectionString, setConnectionString,
     authSource, setAuthSource,
+    mongoDirectConnection, setMongoDirectConnection,
     mongoUriManual, onToggleMongoUriManual,
     builtMongoUri,
     effectiveMongoUri,
