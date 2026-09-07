@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.21.3] — 2026-09-07
+
 ### Añadido
 
 - **Un toggle de "Conexión directa" en el formulario de conexión de MongoDB**

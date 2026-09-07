@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.21.3] — 2026-09-07
+
 ### Added
 
 - **A "Direct connection" toggle in the MongoDB connection form** (new and edit
