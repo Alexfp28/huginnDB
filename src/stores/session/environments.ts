@@ -117,8 +117,22 @@ interface EnvironmentsState {
   /** Active environment id, or `null` before the first `load()` resolves. */
   activeId: string | null;
   /**
-   * The environment `switchTo` is currently moving *to*, or `null` when idle.
-   * Guards against re-entry and lets the switcher disable itself.
+   * The environment the session is currently being rebuilt *for*, or `null`
+   * when idle. Guards against re-entry, lets the switcher disable itself, and
+   * is what `EnvironmentSwitchGuard` reads to seal the schema tree and the tab
+   * area off while the swap is in flight.
+   *
+   * Set by both ways into an environment, not just `switchTo`: `createAndEnter`
+   * holds it across its seeding pass too, because the `restoreSession()` it
+   * runs at the end (after the cheap `switchTo` into an empty environment) is
+   * the one that actually opens the replicated connections. Leaving it clear
+   * there meant the slower of the two paths was the unguarded one.
+   *
+   * NOT held for the launch restore (`App.tsx` → `restoreSession`): that path
+   * has no teardown — no pool is closed, no tab store is emptied under the
+   * user — so the hazard this field describes does not exist there, and
+   * curtaining the tree for the whole of a launch reconnect would trade a real
+   * bug for a worse first impression.
    *
    * The target, not a boolean, and that is the whole point. `activeId` does not
    * move until step 5 of `switchTo` — after the outgoing session is flushed and
@@ -515,6 +529,14 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     await get().switchTo(created.id);
     if (get().activeId !== created.id) return; // switch failed; don't seed
 
+    // Re-raise the flag `switchTo` just cleared. The switch above was the cheap
+    // half — it entered an environment that had nothing in it yet; the pass
+    // below writes the launch state and then reconnects every replicated
+    // connection for real, which is the slow, tear-down-and-rebuild window the
+    // UI has to be sealed off for. Without this, "New environment → start from
+    // X" was the one route into an environment that left the schema tree live
+    // while its pools were coming up.
+    set({ switchingTo: created.id });
     try {
       for (const [id, tabState] of sourceTabs) {
         if (tabState) await api.saveTabState(id, tabState);
@@ -535,6 +557,8 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
       console.error("[environments] seeding the new environment failed", e);
+    } finally {
+      set({ switchingTo: null });
     }
   },
 

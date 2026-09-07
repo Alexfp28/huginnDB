@@ -7,11 +7,25 @@ import type { LaunchState } from "@/types";
 const getLaunchState = vi.fn<() => Promise<LaunchState>>();
 const saveLaunchState = vi.fn().mockResolvedValue(undefined);
 const setActiveEnvironment = vi.fn().mockResolvedValue(undefined);
+// The extra half `createAndEnter` needs: it reads the outgoing session, mints
+// the environment, re-enters it and then seeds it.
+const getTabState = vi.fn().mockResolvedValue(null);
+const saveTabState = vi.fn().mockResolvedValue(undefined);
+const getWorkspaceLayout = vi.fn().mockResolvedValue(null);
+const saveWorkspaceLayout = vi.fn().mockResolvedValue(undefined);
+const saveEnvironment = vi.fn();
+const listEnvironments = vi.fn();
 vi.mock("@/lib/tauri", () => ({
   api: {
     getLaunchState: (...args: unknown[]) => getLaunchState(...(args as [])),
     saveLaunchState: (...args: unknown[]) => saveLaunchState(...args),
     setActiveEnvironment: (...args: unknown[]) => setActiveEnvironment(...args),
+    getTabState: (...args: unknown[]) => getTabState(...args),
+    saveTabState: (...args: unknown[]) => saveTabState(...args),
+    getWorkspaceLayout: (...args: unknown[]) => getWorkspaceLayout(...args),
+    saveWorkspaceLayout: (...args: unknown[]) => saveWorkspaceLayout(...args),
+    saveEnvironment: (...args: unknown[]) => saveEnvironment(...args),
+    listEnvironments: (...args: unknown[]) => listEnvironments(...args),
   },
 }));
 
@@ -135,5 +149,108 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
     // outgoing one with — it must not stay pinned to an environment that
     // isn't active anymore.
     expect(useUi.getState().visibleConnections).toBeNull();
+  });
+});
+
+describe("useEnvironments.createAndEnter — the guard flag spans the seeding pass", () => {
+  const ENV_A = {
+    id: "env-a",
+    name: "A",
+    color: null,
+    icon: null,
+    order: 0,
+    themeId: null,
+  };
+  const ENV_NEW = {
+    id: "env-new",
+    name: "New",
+    color: null,
+    icon: null,
+    order: 1,
+    themeId: null,
+  };
+
+  beforeEach(() => {
+    reconnectOnLaunch = false;
+    getLaunchState.mockReset();
+    getLaunchState.mockResolvedValue({
+      activeConnections: [],
+      selectedConnectionId: null,
+      activeTabId: null,
+      collapsedConnections: [],
+      visibleConnections: [],
+      databaseVisibility: {},
+    });
+    saveLaunchState.mockClear();
+    setActiveEnvironment.mockClear();
+    getTabState.mockClear().mockResolvedValue(null);
+    saveTabState.mockClear();
+    getWorkspaceLayout.mockClear().mockResolvedValue(null);
+    saveWorkspaceLayout.mockReset().mockResolvedValue(undefined);
+    saveEnvironment.mockReset().mockResolvedValue(ENV_NEW);
+    // `create` refreshes the list from the backend, which has NOT switched the
+    // active pointer yet — that is `switchTo`'s job a line later.
+    listEnvironments.mockReset().mockResolvedValue({
+      environments: [ENV_A, ENV_NEW],
+      activeEnvironmentId: "env-a",
+    });
+
+    useEnvironments.setState({
+      environments: [ENV_A],
+      activeId: "env-a",
+      switchingTo: null,
+      error: null,
+    });
+    useConnections.setState({
+      profiles: [],
+      active: new Set(["outgoing-conn"]),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    });
+    useUi.setState({
+      selectedConnectionId: "outgoing-conn",
+      collapsedConnections: [],
+      visibleConnections: ["outgoing-conn"],
+      databaseVisibility: {},
+    });
+  });
+
+  it("keeps switchingTo raised while the new environment is being seeded", async () => {
+    // Park the run inside the seeding block. `switchTo` has already finished
+    // (and cleared its own flag) by the time this is reached, so anything
+    // still true here is `createAndEnter`'s doing.
+    let resolveLayoutSave!: () => void;
+    saveWorkspaceLayout.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveLayoutSave = resolve;
+        }),
+    );
+
+    const creating = useEnvironments
+      .getState()
+      .createAndEnter(
+        { name: "New" },
+        { connections: true, layout: true },
+      );
+    await flushMicrotasks(20);
+
+    expect(useEnvironments.getState().activeId).toBe("env-new");
+    expect(useEnvironments.getState().switchingTo).toBe("env-new");
+
+    resolveLayoutSave();
+    await creating;
+
+    expect(useEnvironments.getState().switchingTo).toBeNull();
+  });
+
+  it("clears switchingTo even when the seeding pass throws", async () => {
+    saveWorkspaceLayout.mockRejectedValue(new Error("boom"));
+
+    await useEnvironments
+      .getState()
+      .createAndEnter({ name: "New" }, { connections: true, layout: true });
+
+    expect(useEnvironments.getState().switchingTo).toBeNull();
+    expect(useEnvironments.getState().error).toContain("boom");
   });
 });

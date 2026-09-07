@@ -32,6 +32,7 @@
   },
   "environments": {
     "defaultName": "Predeterminado",
+    "switching": "Cambiando a «{{name}}»…",
     "switcherTooltip": "Entorno — las conexiones en juego y su sesión",
     "create": "Nuevo entorno…",
     "createTitle": "Nuevo entorno",

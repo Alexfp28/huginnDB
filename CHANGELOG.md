@@ -6,6 +6,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The schema tree and the tab area are no longer live while an environment
+  switch is tearing the session down.** Switching environments is not a pointer
+  move: `switchTo` flushes the outgoing tab state, empties `useTabs`, clears the
+  selected connection, then closes every live pool **one at a time** — each a
+  round trip, and one *per database* through an SSH tunnel or a pooler — before
+  reconnecting the incoming set and replaying the saved layout. For that whole
+  window, which is seconds rather than frames on a real workload, the connections
+  tree stayed fully interactive on top of a deliberately half-torn-down store: a
+  click could open a pool belonging to the environment being *left* while its
+  siblings were being dropped, or aim a `list_tables` at a pool mid-teardown and
+  leave a stale "not connected" error over a connection that ends up perfectly
+  healthy. The store already modelled the transition correctly (`switchingTo`
+  names the environment being entered, not a boolean — see gotcha #61), but only
+  the three environment *pickers* consumed it; nothing in the tree or the centre
+  column knew a switch was happening at all. Both are now sealed off by a single
+  `EnvironmentSwitchGuard` seam, which curtains them with a real pointer target
+  and marks the content `inert` so the keyboard cannot walk past it either — the
+  tree carries its own key handling and a `data-kb-scope`, so a veil alone would
+  not have stopped an already-focused row. The environment rail deliberately
+  stays outside the guard: it already models the same transition and is the one
+  surface that must stay legible while the swap runs.
+
+- **"New environment → start from X" is now covered by the same guard.** That
+  route enters the new environment twice: a cheap `switchTo` into something still
+  empty, and then — after the replicated launch state is written — a second
+  `restoreSession` that actually opens the copied connections. `switchTo` had
+  already cleared `switchingTo` by then, so the slower of the two passes was the
+  one running unguarded. `createAndEnter` now holds the flag across its whole
+  seeding pass and clears it in a `finally`, so a failure there cannot leave the
+  UI curtained.
+
+  The launch restore is deliberately *not* guarded: it closes no pool and empties
+  no tab store, so the hazard does not exist there, and curtaining the tree for
+  the whole of a launch reconnect would trade a real bug for a worse first
+  impression.
+
 ## [1.21.2] — 2026-09-04
 
 ### Fixed

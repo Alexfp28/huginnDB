@@ -8,6 +8,46 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **El árbol de esquema y el área de pestañas ya no siguen vivos mientras un
+  cambio de entorno desmonta la sesión.** Cambiar de entorno no es mover un
+  puntero: `switchTo` vuelca el estado de pestañas saliente, vacía `useTabs`,
+  limpia la conexión seleccionada y luego cierra cada pool vivo **de uno en
+  uno** — cada uno un viaje de ida y vuelta, y uno *por base de datos* a través
+  de un túnel SSH o un pooler — antes de reconectar el conjunto entrante y
+  reponer la distribución guardada. Durante toda esa ventana, que en una carga
+  real son segundos y no fotogramas, el árbol de conexiones seguía siendo
+  plenamente interactivo sobre un store deliberadamente a medio desmontar: un
+  clic podía abrir un pool del entorno que se estaba *abandonando* mientras se
+  cerraban sus hermanos, o lanzar un `list_tables` contra un pool en pleno
+  desmontaje y dejar un error obsoleto de "no conectado" sobre una conexión que
+  acaba perfectamente sana. El store ya modelaba bien la transición
+  (`switchingTo` nombra el entorno al que se entra, no un booleano — ver el
+  gotcha #61), pero solo lo consumían los tres *selectores* de entorno; nada del
+  árbol ni de la columna central sabía siquiera que había un cambio en marcha.
+  Ahora ambos quedan sellados por una única costura, `EnvironmentSwitchGuard`,
+  que los cubre con una cortina que sí recibe el puntero y marca el contenido
+  como `inert` para que el teclado tampoco pueda atravesarla — el árbol tiene su
+  propio manejo de teclas y su `data-kb-scope`, así que una cortina por sí sola
+  no habría detenido a una fila que ya tuviera el foco. El rail de entornos se
+  queda fuera de la guardia a propósito: ya modela esa misma transición y es la
+  superficie que debe seguir siendo legible mientras dura el cambio.
+
+- **"Nuevo entorno → partir de X" queda cubierto por la misma guardia.** Esa ruta
+  entra dos veces en el entorno nuevo: un `switchTo` barato contra algo todavía
+  vacío y, después de escribir el estado de lanzamiento replicado, un segundo
+  `restoreSession` que es el que realmente abre las conexiones copiadas. Para
+  entonces `switchTo` ya había limpiado `switchingTo`, así que la más lenta de
+  las dos pasadas era justo la que corría sin guardia. Ahora `createAndEnter`
+  mantiene el flag durante toda su pasada de siembra y lo limpia en un `finally`,
+  de modo que un fallo ahí no puede dejar la interfaz cubierta.
+
+  La restauración de arranque queda deliberadamente *sin* guardia: no cierra
+  ningún pool ni vacía ningún store de pestañas, así que ahí el riesgo no existe,
+  y cubrir el árbol durante todo el reconnect de arranque cambiaría un fallo real
+  por una peor primera impresión.
+
 ## [1.21.2] — 2026-09-04
 
 ### Corregido

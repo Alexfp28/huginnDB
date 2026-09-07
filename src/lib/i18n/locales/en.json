@@ -32,6 +32,7 @@
   },
   "environments": {
     "defaultName": "Default",
+    "switching": "Switching to “{{name}}”…",
     "switcherTooltip": "Environment — the connections in play and their session",
     "create": "New environment…",
     "createTitle": "New environment",
