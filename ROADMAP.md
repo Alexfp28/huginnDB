@@ -234,6 +234,17 @@ mouse-only in a keyboard-first app. Adding them to `ACTIONS` also gets them
 into the command palette and the settings shortcut list for free (gotcha #53),
 which is most of the value.
 
+**A class 4 instance, found and closed:** the schema tree and the tab area
+stayed fully interactive for the whole of an environment switch — seconds, on a
+set of connections that includes an SSH tunnel — while `switchTo` emptied the
+tab store and closed every pool one at a time underneath them. The state was
+not the problem this time (`switchingTo` already named its subject correctly);
+the gap was that nothing outside the three environment *pickers* consumed it,
+so the app could not act on a fact it already held. Closed by
+`EnvironmentSwitchGuard`, one seam over both regions, and by widening
+`switchingTo` to cover `createAndEnter`'s seeding pass, which was the slower of
+the two routes into an environment and the unguarded one.
+
 **Class 2 and class 3 have no known open instances.** Stated rather than
 omitted, because an empty class is information: the tooltip-provider default
 and the environment switch target were each the only confirmed member of
