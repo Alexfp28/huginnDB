@@ -63,7 +63,7 @@ import {
   type InsertAlternative,
 } from "@/components/grid/GridToolbar";
 import { GridRow, type GridRowCallbacks } from "@/components/grid/GridRow";
-import { copyToClipboard } from "@/lib/grid/clipboard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { toBulk } from "@/lib/grid/copyFormats";
 import {
   formatValue,

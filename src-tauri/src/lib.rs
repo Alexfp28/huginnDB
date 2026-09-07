@@ -251,6 +251,10 @@ pub fn run() {
         // Opens external URLs in the OS default browser. The in-app issue
         // reporter relies on this: `window.open` is a no-op in the WebView.
         .plugin(tauri_plugin_opener::init())
+        // The OS clipboard, read and written natively rather than through the
+        // WebView's Clipboard API — see gotcha #63 and the capability, which
+        // grants only the two text commands.
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::new_with_args(parse_startup_args()))
         // Background eviction of idle per-database pools. Started here rather
         // than lazily on first connect so the sweep also covers pools left

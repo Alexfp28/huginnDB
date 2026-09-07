@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Segmented } from "@/components/ui/segmented";
 import { exportPipeline, type ExportFormat } from "@/lib/mongo/pipeline";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface Props {
   open: boolean;
@@ -55,8 +56,10 @@ export function ExportPipelineDialog({
       ? exportPipeline(format, pipelineText, source, viewName)
       : "";
 
-  function copy() {
-    void navigator.clipboard.writeText(snippet);
+  async function copy() {
+    // The confirmation follows the write rather than racing it — see the same
+    // note in `McpSection`.
+    await copyToClipboard(snippet);
     setCopied(true);
     notify.success(t("aggregation.export.copied"));
     setTimeout(() => setCopied(false), 1500);

@@ -48,6 +48,42 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   y cubrir el árbol durante todo el reconnect de arranque cambiaría un fallo real
   por una peor primera impresión.
 
+- **Copiar ya llega al portapapeles del sistema, y pegar ya no pide permiso.**
+  Las dos mitades del portapapeles pasaban por la API del propio webview, y eso
+  estaba mal por dos motivos distintos. Ctrl+V llamaba a
+  `navigator.clipboard.readText()`, y WebView2 responde a eso con su propio
+  diálogo de "permitir que este sitio vea el texto e imágenes copiados en el
+  portapapeles" — correcto en una pestaña de navegador, absurdo en una
+  aplicación de escritorio instalada y en un pegado que el usuario acaba de
+  pedir, e imposible de estilar, reescribir o preconceder desde la app porque es
+  del motor, no de HuginnDB. En paralelo, todas las rutas de copia llamaban a
+  `writeText()`, que aterriza en el canal propio del webview: pegar de vuelta
+  *dentro* de HuginnDB funcionaba, que es justo lo que hacía que esto pareciera
+  sano, pero el valor nunca estaba en el portapapeles del sistema — copia
+  cualquier otra cosa en cualquier otra aplicación y la celda que habías copiado
+  simplemente había desaparecido, y tampoco aparecía nunca en el historial del
+  portapapeles del sistema. Ahora ambas pasan por el plugin de portapapeles de
+  Tauri, así que la lectura ocurre en Rust (no hay modelo de permisos del webview
+  al que preguntar) y la escritura va al portapapeles del SO, donde mira el resto
+  del escritorio.
+
+  De paso, `navigator.clipboard` ha dejado de estar disperso: el helper existía
+  pero seis puntos lo saltaban por completo — "Copiar nombre" y "Copiar SELECT"
+  del árbol de esquema, la salida de pipeline y su diálogo de exportación, el
+  botón de copiar de los ajustes de MCP, el respaldo del historial de la barra de
+  estado y el copiador de errores del diálogo de conexión — cada uno con su
+  propio (inexistente) manejo de errores. Los siete comparten ahora una única
+  costura, que además ha salido de `lib/grid/` porque el sistema de
+  notificaciones llevaba tiempo importándola. Tres confirmaciones de "Copiado"
+  que se disparaban sin esperar a la escritura ahora la siguen, porque por fin
+  un fallo es algo observable.
+
+  Dos límites que conviene dejar dichos: en Linux el portapapeles pertenece al
+  proceso que lo fija, así que un valor copiado desde HuginnDB sigue
+  desapareciendo al cerrar HuginnDB (es una propiedad de la plataforma; Windows
+  no se ve afectado), y Ctrl+C/Ctrl+V siguen sin llegar a la vista de lista de
+  documentos de MongoDB, algo anterior a este cambio.
+
 ## [1.21.2] — 2026-09-04
 
 ### Corregido

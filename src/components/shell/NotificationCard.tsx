@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
-import { copyToClipboard } from "@/lib/grid/clipboard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { dirName } from "@/lib/filePath";
 import { cn } from "@/lib/utils";
 import type { NotificationFile, NotificationKind } from "@/stores/notifications";

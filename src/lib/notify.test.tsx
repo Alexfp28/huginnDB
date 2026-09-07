@@ -31,7 +31,7 @@ vi.mock("sonner", () => ({
 vi.mock("@/components/shell/NotificationCard", () => ({
   NotificationCard: () => null,
 }));
-vi.mock("@/lib/grid/clipboard", () => ({ copyToClipboard: vi.fn() }));
+vi.mock("@/lib/clipboard", () => ({ copyToClipboard: vi.fn() }));
 vi.mock("@/lib/i18n", () => ({ default: { t: (k: string) => k } }));
 
 const prefs = {

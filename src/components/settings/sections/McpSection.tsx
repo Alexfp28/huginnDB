@@ -44,6 +44,7 @@ import type {
 
 import { McpConnectionTree } from "./McpConnectionTree";
 import { WRITE_LEVELS } from "./McpWritePolicySelect";
+import { copyToClipboard } from "@/lib/clipboard";
 
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation();
@@ -54,8 +55,12 @@ function CopyButton({ text }: { text: string }) {
       size="sm"
       className="h-6 gap-1 px-2 text-2xs"
       onClick={() => {
-        void navigator.clipboard.writeText(text);
-        notify.success(t("settings.mcp.copied"));
+        // Awaited, unlike the fire-and-forget version this replaced: now that
+        // the write is a real IPC round trip to the OS clipboard, a failure is
+        // detectable and the toast must not claim success ahead of it.
+        void copyToClipboard(text).then(() =>
+          notify.success(t("settings.mcp.copied")),
+        );
       }}
     >
       <Copy className="h-3 w-3" />

@@ -12,6 +12,8 @@
     "updater:default",
     "process:default",
     "opener:allow-reveal-item-in-dir",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     {
       "identifier": "opener:allow-open-url",
       "allow": [

@@ -44,6 +44,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the whole of a launch reconnect would trade a real bug for a worse first
   impression.
 
+- **Copying now reaches the system clipboard, and pasting no longer asks
+  permission.** Both halves of the clipboard went through the webview's own
+  Clipboard API, which was wrong in two separate ways. Ctrl+V called
+  `navigator.clipboard.readText()`, and WebView2 answers that with its own
+  "allow this site to see text and images copied to the clipboard" dialog —
+  correct in a browser tab, absurd in an installed desktop app on a paste the
+  user just asked for, and impossible to style, reword or pre-grant from the app
+  because it belongs to the engine, not to HuginnDB. Meanwhile every copy path
+  called `writeText()`, which lands in the webview's own channel: pasting back
+  *into* HuginnDB worked, which is what made this look healthy, but the value
+  was never in the system clipboard — copy anything else in any other app and
+  the cell you copied was simply gone, and it never appeared in the OS clipboard
+  history either. Both now go through Tauri's clipboard plugin, so the read
+  happens in Rust (no webview permission model to ask) and the write goes to the
+  OS clipboard where the rest of the desktop looks for it.
+
+  Along the way, `navigator.clipboard` stopped being scattered: the helper
+  existed but six call sites bypassed it entirely — the schema tree's "Copy
+  name" and "Copy SELECT", the pipeline output and its export dialog, the MCP
+  settings copy button, the status bar's history fallback and the connection
+  dialog's error copier — each with its own (absent) error handling. All seven
+  now share one seam, which also moved out of `lib/grid/` since the notification
+  system had been importing it for a while. Three "Copied" confirmations that
+  used to fire without waiting for the write now follow it, because a failure is
+  finally something that can be observed.
+
+  Two limits worth stating: on Linux the clipboard belongs to the process that
+  set it, so a value copied from HuginnDB still disappears when HuginnDB exits
+  (a platform property; Windows is unaffected), and Ctrl+C/Ctrl+V still do not
+  reach the MongoDB document list view, which predates this change.
+
 ## [1.21.2] — 2026-09-04
 
 ### Fixed

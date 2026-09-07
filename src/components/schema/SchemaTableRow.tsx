@@ -42,6 +42,7 @@ import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import { tableKey } from "@/stores/session/schema";
 import { tableTabKey } from "@/lib/schema/useOpenTableKeys";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { TableActions } from "@/components/schema/SchemaTableSection";
 import type { ColumnInfo, SchemaTableMetric, TableInfo } from "@/types";
 
@@ -164,12 +165,10 @@ export const TableRow = memo(function TableRow({
   const isOpen = openTableKeys.has(thisTableKey);
 
   const copyName = () => {
-    void navigator.clipboard.writeText(t.name);
+    void copyToClipboard(t.name);
   };
   const copySelect = () => {
-    void navigator.clipboard.writeText(
-      selectSnippet(actions.driver, t.schema, t.name),
-    );
+    void copyToClipboard(selectSnippet(actions.driver, t.schema, t.name));
   };
 
   const isMongo = actions.driver === "mongodb";

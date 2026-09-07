@@ -33,7 +33,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { NotificationCard } from "@/components/shell/NotificationCard";
 import type { NotificationAction } from "@/components/shell/NotificationCard";
-import { copyToClipboard } from "@/lib/grid/clipboard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { baseName } from "@/lib/filePath";
 import i18n from "@/lib/i18n";
 import { usePreferences } from "@/stores/preferences/preferences";

@@ -36,6 +36,14 @@ tauri-plugin-opener = "2.0"
 # spawning a new window, so the CLI consolidates into one window (see lib.rs
 # `handle_second_instance`). Desktop-only; registered under `#[cfg(desktop)]`.
 tauri-plugin-single-instance = "2.0"
+# Reads and writes the OS clipboard from Rust (arboard) instead of the
+# WebView's own async Clipboard API. Two reasons, both user-visible: the
+# webview's `readText()` triggers WebView2's native "allow this site to see
+# your clipboard" prompt, which the app cannot style, suppress or even
+# reword, and its `writeText()` lands in the webview's own channel rather
+# than the system clipboard, so a copied cell was gone the moment anything
+# else was copied. See gotcha #63.
+tauri-plugin-clipboard-manager = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

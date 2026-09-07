@@ -80,6 +80,7 @@ import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { isWindows } from "@/lib/platform";
 import { driverMismatchHint, supportsSshTunnel } from "@/lib/db/driver";
+import { copyToClipboard } from "@/lib/clipboard";
 
 interface Props {
   open: boolean;
@@ -517,9 +518,11 @@ export function ConnectionDialog({
   const isErrorStatus =
     testStatus.kind === "error" || testStatus.kind === "saveError";
 
-  function onCopyError() {
+  async function onCopyError() {
     if (testStatus.kind !== "error" && testStatus.kind !== "saveError") return;
-    void navigator.clipboard.writeText(testStatus.message);
+    // The "Copied" state waits for the write, same reason as the other two
+    // optimistic confirmations this replaced.
+    await copyToClipboard(testStatus.message);
     setErrorCopied(true);
     window.setTimeout(() => setErrorCopied(false), 1500);
   }

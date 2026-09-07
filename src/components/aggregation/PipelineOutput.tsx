@@ -21,6 +21,7 @@ import {
   selectGridPrefs,
 } from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { QueryResult } from "@/types";
 
 interface Props {
@@ -102,7 +103,7 @@ export function PipelineOutput({
           expandNested={grid.listExpandNested}
           showTypes={grid.listShowTypes}
           lineNumbers={grid.listLineNumbers}
-          copyToClipboard={(text) => void navigator.clipboard.writeText(text)}
+          copyToClipboard={(text) => void copyToClipboard(text)}
           emptyLabel={t("aggregation.noDocuments")}
         />
       </div>

@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent, type RefObject } from "react";
 import type { Table } from "@tanstack/react-table";
 import type { Virtualizer } from "@tanstack/react-virtual";
-import { copyToClipboard } from "@/lib/grid/clipboard";
+import { copyToClipboard, readFromClipboard } from "@/lib/clipboard";
 import { normalizeBitValue } from "@/lib/grid/columnKinds";
 import { formatValue, rawCellText } from "@/lib/grid/formatValue";
 import { matchesBinding } from "@/lib/keybindings";
@@ -163,31 +163,33 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     const info = columnInfoByName.get(cell.column.name);
     if (info?.referenced_table) return;
     const isBit = bitColNames.has(cell.column.name);
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        const cur =
-          cell.rowValues[grid.columnIndexByName.get(cell.column.name) ?? -1];
-        const original =
-          cur === null || cur === undefined ? null : formatValue(cur);
-        if (isBit) {
-          const normalized = normalizeBitValue(text);
-          const value = normalized === "" ? null : normalized;
-          if (value === original) return;
-          onCellSave(cell.rowValues, cell.column.name, value).catch(() => {});
-          return;
-        }
-        editing.setInlineEdit({
-          rowValues: cell.rowValues,
-          column: cell.column,
-          value: text,
-          original,
-        });
-      })
-      .catch(() => {
-        // Clipboard read denied/unsupported in this webview — silent no-op,
-        // matching `copyToClipboard`'s own convention.
+    // Through the shared seam, which reads the clipboard in Rust. Reading it
+    // from JS here is what used to make Ctrl+V raise WebView2's own "allow
+    // this site to see your clipboard" prompt — inside a desktop app, on a
+    // paste the user just asked for (gotcha #63).
+    void readFromClipboard().then((text) => {
+      // `null` is "nothing readable in the clipboard", not an error: there is
+      // nothing useful to say about an empty clipboard, same convention as
+      // `copyToClipboard` swallowing a failed write.
+      if (text === null) return;
+      const cur =
+        cell.rowValues[grid.columnIndexByName.get(cell.column.name) ?? -1];
+      const original =
+        cur === null || cur === undefined ? null : formatValue(cur);
+      if (isBit) {
+        const normalized = normalizeBitValue(text);
+        const value = normalized === "" ? null : normalized;
+        if (value === original) return;
+        onCellSave(cell.rowValues, cell.column.name, value).catch(() => {});
+        return;
+      }
+      editing.setInlineEdit({
+        rowValues: cell.rowValues,
+        column: cell.column,
+        value: text,
+        original,
       });
+    });
   }
 
   /**

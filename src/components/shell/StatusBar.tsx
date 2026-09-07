@@ -46,6 +46,7 @@ import {
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
+import { copyToClipboard } from "@/lib/clipboard";
 
 /** Thin vertical divider between status bar sections. */
 function Sep() {
@@ -159,7 +160,7 @@ function HistoryMenu({ count }: { count: number }) {
       setSelected(connectionId);
     } else {
       // The connection isn't live — fall back to copying the SQL.
-      void navigator.clipboard.writeText(sql);
+      void copyToClipboard(sql);
     }
   }
 
