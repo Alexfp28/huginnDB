@@ -6,6 +6,38 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Sin publicar]
+
+### Corregido
+
+- **`describe_table` no podía describir una vista de MongoDB — justamente la
+  única relación cuya descripción es la forma de leerla.** El pipeline
+  almacenado de una vista *es* su definición, y `describe_relation_inner` lo
+  lee: primero la estructura, después el cuerpo de la vista. Ambas mitades eran
+  estrictas, así que en una vista la primera decidía si la segunda llegaba a
+  ejecutarse — y en una vista siempre fallaba. `listIndexes` responde
+  `CommandNotSupportedOnView` (código 166) en toda vista, porque una vista no
+  tiene índices propios; y antes incluso de eso, `$sample` no puede coger su
+  camino rápido en una vista — el servidor reescribe la agregación para
+  ejecutar primero el pipeline de la vista, con lo que nuestra etapa deja de
+  ser la primera y nunca obtiene el cursor aleatorio. Sobre una vista de
+  millones de documentos degenera en leer todo lo que la vista produce, así que
+  la inferencia de campos agotaba su tiempo. En ambos casos quien llamaba
+  recibía un error y nunca el pipeline, que no se había llegado a leer.
+
+  Los dos fallos ya estaban comprendidos en este mismo archivo — para las
+  colecciones time-series, que son ellas mismas vistas sobre sus buckets — y la
+  consulta al catálogo que los evita ya existía. Solo preguntaba por
+  time-series. Ahora clasifica la relación una sola vez (`RelationKind`) y las
+  dos mitades usan la respuesta: una vista se salta `listIndexes` en lugar de
+  fallar en él, infiere sus campos leyendo una página acotada en vez de
+  `$sample`, e informa de que no tiene campos antes que de no poder describirse
+  cuando ni eso termina a tiempo. El muestreo de una colección normal sigue
+  siendo estricto — ahí un fallo es un fallo de verdad.
+
+  Detectado con `describe_table` sobre una vista de producción; encontrado
+  leyendo el error del driver en lugar de la promesa de la herramienta.
+
 ## [1.21.4] — 2026-09-07
 
 ### Añadido
