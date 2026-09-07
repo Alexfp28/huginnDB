@@ -80,6 +80,89 @@ days or 30 days, so you can answer "was this slow yesterday too?" instead of
 only "is it slow right now?" This view needs history to have actually been
 recorded — see [Keeping history](#keeping-history).
 
+## Enabling the required instrumentation
+
+The Time spent view (and, on MySQL, the "blocked by" column in Sessions) reads
+from server-side instrumentation that isn't always on by default. If a
+connection shows the `performanceSchemaOff` / `profilerOff` alert in Status,
+here's what to turn on.
+
+### MySQL: `performance_schema`
+
+Most modern installs ship with it on (default since 5.6.6), but some managed
+providers and minimal images disable it. Check with:
+
+```sql
+SHOW VARIABLES LIKE 'performance_schema';
+```
+
+It's **not** settable at runtime — `SET GLOBAL performance_schema = ON` fails
+outright — because MySQL allocates the instrumentation's memory at startup.
+Turning it on means editing the server's config file and restarting:
+
+```ini
+[mysqld]
+performance_schema = ON
+```
+
+Once it's on, the digest table Pulse reads
+(`performance_schema.events_statements_summary_by_digest`) is fed by the
+`statements_digest` consumer, which is enabled by default too. Confirm it —
+or flip it back on if something disabled it — with:
+
+```sql
+SELECT * FROM performance_schema.setup_consumers WHERE NAME = 'statements_digest';
+UPDATE performance_schema.setup_consumers SET ENABLED = 'YES', TIMED = 'YES'
+  WHERE NAME = 'statements_digest';
+```
+
+Nothing further is needed for the Indexes view (`sys.schema_index_statistics`)
+or the blocking-session lookup (`performance_schema.data_lock_waits`) — both
+sit on top of the same schema and come alive as soon as it's on. Unlike
+MongoDB's profiler below, `performance_schema` is designed to stay on
+permanently; the overhead is low and MySQL enables it by default for exactly
+that reason.
+
+### MongoDB: the database profiler
+
+Off by default, and **per database** — enabling it for one database never
+starts profiling another, and a sharded cluster needs it set on each shard's
+primary (`profile` doesn't run through `mongos`). Unlike `performance_schema`,
+this one is not meant to be left at its most verbose setting: level 2 records
+*every* operation, which is real overhead on a busy server. Level 1 (slow
+operations only) is what Pulse expects to see in production:
+
+```js
+use myapp
+db.setProfilingLevel(1, { slowms: 100 })
+```
+
+Tune `slowms` to whatever "slow" means on that server — lower it temporarily
+while chasing a specific problem, then raise it back.
+
+To survive a restart without re-typing that in a shell, set it in
+`mongod.conf` instead — this becomes the default profiling level for every
+database on that process:
+
+```yaml
+operationProfiling:
+  mode: slowOp
+  slowOpThresholdMs: 100
+```
+
+Check the current level any time with `db.getProfilingStatus()` (the same
+`{ profile: -1 }` command Pulse's own health read uses). `system.profile` is a
+capped collection, 1 MiB by default — enough headroom for what Pulse scans
+(the newest 5,000 entries), but if a busy database is cycling through it
+faster than you'd like, resize it before re-enabling profiling:
+
+```js
+db.setProfilingLevel(0)
+db.system.profile.drop()
+db.createCollection("system.profile", { capped: true, size: 4_000_000 })
+db.setProfilingLevel(1, { slowms: 100 })
+```
+
 ## Keeping history
 
 Everything above the History view is live-only — close the window and it's

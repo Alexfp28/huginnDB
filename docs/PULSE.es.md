@@ -88,6 +88,95 @@ primera.
 ayer?" en vez de solo "¿va lento ahora mismo?". Esta vista necesita que se
 haya registrado histórico de verdad — ver [Conservar histórico](#conservar-histórico).
 
+## Activar la instrumentación necesaria
+
+La vista Dónde va el tiempo (y, en MySQL, la columna "bloqueado por" de
+Sesiones) lee de instrumentación del lado del servidor que no siempre está
+activa por defecto. Si una conexión muestra el aviso `performanceSchemaOff` /
+`profilerOff` en Estado, esto es lo que hay que activar.
+
+### MySQL: `performance_schema`
+
+La mayoría de instalaciones modernas lo traen activo (por defecto desde
+5.6.6), pero algunos proveedores gestionados e imágenes mínimas lo
+desactivan. Compruébalo con:
+
+```sql
+SHOW VARIABLES LIKE 'performance_schema';
+```
+
+**No** se puede activar en caliente — `SET GLOBAL performance_schema = ON`
+falla directamente — porque MySQL reserva la memoria de la instrumentación al
+arrancar. Activarlo implica editar el fichero de configuración del servidor y
+reiniciar:
+
+```ini
+[mysqld]
+performance_schema = ON
+```
+
+Una vez activo, la tabla de digests que lee Pulse
+(`performance_schema.events_statements_summary_by_digest`) se alimenta del
+consumidor `statements_digest`, que también está activo por defecto.
+Confírmalo — o vuelve a activarlo si algo lo desactivó — con:
+
+```sql
+SELECT * FROM performance_schema.setup_consumers WHERE NAME = 'statements_digest';
+UPDATE performance_schema.setup_consumers SET ENABLED = 'YES', TIMED = 'YES'
+  WHERE NAME = 'statements_digest';
+```
+
+No hace falta nada más para la vista Índices (`sys.schema_index_statistics`)
+ni para la búsqueda de sesiones bloqueantes
+(`performance_schema.data_lock_waits`) — ambas se apoyan en el mismo esquema y
+funcionan en cuanto está activo. A diferencia del profiler de MongoDB de
+abajo, `performance_schema` está pensado para quedarse activo de forma
+permanente; el coste es bajo y MySQL lo activa por defecto precisamente por
+eso.
+
+### MongoDB: el profiler de la base de datos
+
+Desactivado por defecto, y **por base de datos** — activarlo en una base de
+datos nunca empieza a perfilar otra, y en un cluster con sharding hay que
+activarlo en el primario de cada shard (`profile` no pasa por `mongos`). A
+diferencia de `performance_schema`, este no está pensado para dejarlo en su
+ajuste más detallado de forma permanente: el nivel 2 registra *todas* las
+operaciones, lo que supone un coste real en un servidor con carga. El nivel 1
+(solo operaciones lentas) es lo que Pulse espera ver en producción:
+
+```js
+use myapp
+db.setProfilingLevel(1, { slowms: 100 })
+```
+
+Ajusta `slowms` a lo que signifique "lento" en ese servidor — bájalo
+temporalmente mientras persigues un problema concreto, y luego súbelo de
+nuevo.
+
+Para que sobreviva a un reinicio sin tener que volver a escribirlo en un
+shell, configúralo en `mongod.conf` en su lugar — esto se convierte en el
+nivel de perfilado por defecto para todas las bases de datos de ese proceso:
+
+```yaml
+operationProfiling:
+  mode: slowOp
+  slowOpThresholdMs: 100
+```
+
+Comprueba el nivel actual en cualquier momento con `db.getProfilingStatus()`
+(el mismo comando `{ profile: -1 }` que usa la propia lectura de salud de
+Pulse). `system.profile` es una colección capada, de 1 MiB por defecto —
+margen suficiente para lo que Pulse escanea (las 5000 entradas más
+recientes), pero si una base de datos con mucha carga la recicla más rápido
+de lo que te gustaría, redimensiónala antes de volver a activar el perfilado:
+
+```js
+db.setProfilingLevel(0)
+db.system.profile.drop()
+db.createCollection("system.profile", { capped: true, size: 4_000_000 })
+db.setProfilingLevel(1, { slowms: 100 })
+```
+
 ## Conservar histórico
 
 Todo lo anterior a la vista Histórico es solo en vivo — cierra la ventana y
