@@ -55,7 +55,14 @@
     "replicateLayout": "Reutilizar la distribución de paneles",
     "export": "Exportar…",
     "mirroredCosmeticsHint": "Este entorno viene de un origen compartido — el nombre, color, icono y tema de abajo se guardan solo en este equipo y no se sobrescribirán en la próxima sincronización.",
-    "clearLocalOverride": "Volver a seguir al origen"
+    "clearLocalOverride": "Volver a seguir al origen",
+    "loadFailed": "No se pudieron cargar los entornos",
+    "switchFailedTitle": "No se pudo cambiar de entorno",
+    "createFailed": "No se pudo crear el entorno",
+    "updateFailed": "No se pudo guardar el entorno",
+    "deleteFailed": "No se pudo eliminar el entorno",
+    "reorderFailed": "No se pudieron reordenar los entornos",
+    "reconnectFailed": "{{count}} conexiones no se han restablecido"
   },
   "panels": {
     "schema": "Esquema",
@@ -84,7 +91,8 @@
     "window": {
       "label": "Ventana",
       "newWindow": "Ventana nueva",
-      "resetLayout": "Restablecer disposición de ventanas"
+      "resetLayout": "Restablecer disposición de ventanas",
+      "newWindowFailed": "No se pudo abrir una ventana nueva"
     },
     "view": {
       "label": "Vista",
@@ -178,7 +186,11 @@
     "selectedCount": "{{count}} seleccionadas",
     "reconnectTooltip": "Conexión perdida — reconectar",
     "reconnect": "Reconectar",
-    "lost": "Conexión perdida: {{message}}"
+    "lost": "Conexión perdida: {{message}}",
+    "refreshFailed": "No se pudieron cargar las conexiones",
+    "connected": "Conectado",
+    "disconnectedAll": "{{count}} conexiones cerradas",
+    "lostTitle": "Se ha perdido la conexión con {{name}}"
   },
   "connectionDialog": {
     "titleNew": "Nueva conexión",
@@ -371,24 +383,30 @@
       "targetDatabase": "Base de datos de destino",
       "moveHint": "Mover la colección a otra base copia los documentos en el servidor: tarda en proporción a su tamaño y requiere permisos en ambas bases. Las pestañas abiertas de esta colección se cerrarán.",
       "renaming": "Renombrando…",
-      "failed": "Error al renombrar: {{message}}"
+      "failed": "Error al renombrar: {{message}}",
+      "renamed": "{{from}} renombrada a {{to}}",
+      "moved": "{{from}} movida a {{to}}"
     },
     "drop": {
       "title": "¿Eliminar tabla {{name}}?",
       "description": "Esto elimina la tabla y todos sus datos de forma permanente. No se puede deshacer.",
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
-      "failed": "Error al eliminar: {{message}}"
+      "failed": "Error al eliminar: {{message}}",
+      "done": "{{name}} eliminada"
     },
     "renameView": {
       "title": "Renombrar vista",
       "description": "Renombrar {{name}} a:",
-      "failed": "Error al renombrar: {{message}}"
+      "failed": "Error al renombrar: {{message}}",
+      "renamed": "Vista {{from}} renombrada a {{to}}",
+      "moved": "Vista {{from}} movida a {{to}}"
     },
     "dropView": {
       "title": "¿Eliminar vista {{name}}?",
       "description": "Esto elimina la definición de la vista de forma permanente. Las tablas subyacentes y sus datos no se ven afectados. No se puede deshacer.",
-      "failed": "Error al eliminar: {{message}}"
+      "failed": "Error al eliminar: {{message}}",
+      "done": "Vista {{name}} eliminada"
     },
     "empty": {
       "title": "¿Vaciar tabla {{name}}?",
@@ -434,7 +452,8 @@
       "useProfileDefault": "Usar el subconjunto de la conexión"
     },
     "dropDatabase": {
-      "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer."
+      "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer.",
+      "done": "Base de datos {{name}} eliminada"
     },
     "exportDatabase": {
       "title": "Exportar base de datos…",
@@ -494,7 +513,8 @@
       "target": "Objetivo"
     },
     "targetAll": "*.* (todo)",
-    "refresh": "Actualizar"
+    "refresh": "Actualizar",
+    "privilegesFailed": "No se pudieron leer los privilegios de {{user}}"
   },
   "cellEditor": {
     "title": "Editor de celda",
@@ -607,7 +627,9 @@
       "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
     },
-    "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado"
+    "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado",
+    "saveFailed": "No se pudo guardar el cambio",
+    "rowsCopied": "{{count}} filas copiadas"
   },
   "tableData": {
     "refresh": "Actualizar",
@@ -750,7 +772,9 @@
     "openIndexManager": "Abrir el gestor de índices",
     "readOnlySqlServer": "Solo lectura (SQL Server)",
     "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}",
-    "rowCount": "{{count}} filas"
+    "rowCount": "{{count}} filas",
+    "created": "Tabla {{name}} creada",
+    "applied": "Cambios aplicados en {{name}}"
   },
   "view": {
     "loading": "Cargando vista…",
@@ -763,7 +787,9 @@
     "ddlPreview": "Vista previa DDL",
     "dropRecreateNote": "elimina y recrea (sin pérdida de datos — las vistas no tienen)",
     "previewTitle": "Vista previa en vivo",
-    "previewEmptyQuery": "Escribe un SELECT para ver una vista previa en vivo de las columnas y filas."
+    "previewEmptyQuery": "Escribe un SELECT para ver una vista previa en vivo de las columnas y filas.",
+    "created": "Vista {{name}} creada",
+    "applied": "Vista {{name}} actualizada"
   },
   "aggregation": {
     "loading": "Cargando la definición de la vista…",
@@ -912,7 +938,13 @@
       "create": "Crear índice",
       "replace": "Reemplazar índice",
       "saving": "Trabajando…"
-    }
+    },
+    "dropped": "Índice {{name}} eliminado",
+    "hidden": "Índice {{name}} oculto",
+    "unhidden": "Índice {{name}} vuelve a ser visible",
+    "created": "Índice {{name}} creado",
+    "createdUnnamed": "Índice creado",
+    "replaced": "Índice {{name}} reconstruido"
   },
   "tabs": {
     "queryFileName": "query.sql",
@@ -1387,7 +1419,8 @@
         "already-registered": "Ya estaba registrado en Claude Code — no hay nada que cambiar. Quítalo con `claude mcp remove huginndb` si quieres volver a añadirlo.",
         "cli-not-found": "El CLI de claude no está en el PATH de esta máquina. Copia el comando de abajo y ejecútalo en una terminal que lo tenga.",
         "failed": "El CLI de claude lo rechazó:"
-      }
+      },
+      "writePolicySaved": "{{name}}: {{level}}"
     },
     "pulse": {
       "intro": "Con qué frecuencia Pulse muestrea las constantes vitales de una conexión hacia su histórico en disco, cuánto se conserva ese histórico, y qué conexiones vigila — opt-in por conexión, desactivado por defecto.",
@@ -1519,7 +1552,9 @@
         "label": "Posición de las píldoras",
         "desc": "Esquina desde la que crece la pila de una línea. Elige la misma esquina que las tarjetas para tenerlo todo en una sola pila."
       }
-    }
+    },
+    "persistFailed": "No se pudieron guardar tus preferencias",
+    "hydrateFailed": "Se ha arrancado con las preferencias por defecto"
   },
   "notifications": {
     "openFolder": "Abrir carpeta",
@@ -1703,7 +1738,9 @@
       "remove": "Quitar vínculo",
       "missingSchema": "Apunta a un esquema que ya no existe.",
       "unknownConnection": "conexión no encontrada",
-      "saveError": "No se pudo guardar este vínculo: {{message}}"
+      "saveError": "No se pudo guardar este vínculo: {{message}}",
+      "toggleFailed": "No se pudo cambiar el enlace",
+      "removeFailed": "No se pudo eliminar el enlace"
     },
     "scope": {
       "connection": "Conexión",
@@ -2496,7 +2533,15 @@
       "confirmBody": "A partir de ahora HuginnDB podrá escribir en:",
       "confirmReversible": "Puedes revertirlo cuando quieras, y no se escribe nada hasta que publiques una revisión.",
       "confirmAccept": "Permitir escritura"
-    }
+    },
+    "removeFailed": "No se pudo eliminar el origen",
+    "adoptFailed": "No se pudieron adoptar los perfiles desaparecidos",
+    "retireFailed": "No se pudieron retirar los perfiles desaparecidos",
+    "saveFailed": "No se pudo guardar el origen",
+    "createDocumentFailed": "No se pudo crear el documento de origen",
+    "addFailed": "No se pudo registrar el origen",
+    "synced": "{{count}} conexiones actualizadas desde un origen compartido",
+    "syncedWithEnvironments": "{{count}} conexiones y {{environments}} entornos actualizados desde un origen compartido"
   },
   "originEditor": {
     "filter": "Filtrar…",
@@ -2609,6 +2654,7 @@
       "publish": "Publicar",
       "silentWarning": "Algunas de estas bajas no llegarán a nadie. Lee el informe de abajo.",
       "progress": "Cifrando contraseñas… {{done}} de {{total}}"
-    }
+    },
+    "published": "Publicado en el origen"
   }
 }

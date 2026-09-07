@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The app says what it did when the result is somewhere you cannot see.**
+  Connecting (the one gesture that reliably takes seconds, and the one people
+  start before looking away), "disconnect all" and its count, applying a
+  structure or view change, dropping or renaming a table, view or database,
+  creating, rebuilding, dropping or hiding a MongoDB index, publishing to a
+  shared origin, an import's result — which used to vanish with the dialog
+  that reported it — an MCP write policy, and copying several rows to the
+  clipboard, where the count is the whole question. All pills: one line, gone
+  in six seconds, and kept in the bell.
+
+  Deliberately *not* everything. A single disconnect greys its own row and
+  closes its own tabs; a reset of the shortcuts or the panel layout is a list
+  or a screen visibly reverting; duplicating a theme adds it to the list in
+  front of you. Confirming those is the noise that stops people reading the
+  ones that matter (CONTRIBUTING → "Feedback and transition state": confirm a
+  write only when its effect is not self-evident).
+
 - **A one-line notification anatomy, and a rule that decides when it is not
   enough.** A confirmation used to be a 380px card with a rail, a 28px
   medallion, a body slot and a button row — to deliver the words "Cell saved".
@@ -52,6 +69,74 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   never moves.
 
 ### Fixed
+
+- **A connection dropping by itself now says so, with a Reconnect button.** The
+  three-minute heartbeat has flagged lost connections since 1.4.0, but only as
+  a badge on a row in a panel that may not be open — so the first thing anyone
+  actually learned was a cryptic driver error in the middle of the next query.
+  Carrying an action escalates it out of a pill and into a card, which is
+  right: a dead pool is not something to glance at. One card per connection
+  however many times the heartbeat re-reports it, and only on the transition
+  into "lost".
+
+- **A session restore that cannot reopen a connection stops doing it in
+  silence.** Entering an environment reopens everything it had; a failure was a
+  `console.warn`, and the tab was restored anyway — so the user got a table
+  view backed by nothing and found out when a query came back with a driver
+  error. One warning for the whole batch, not one per connection: a server that
+  is down takes all of its connections with it.
+
+- **A shared origin that changes your connections while you are working now
+  says how many.** `syncAll` runs on a poll and at startup and can add or
+  update profiles and whole environments; silence there is how a colleague's
+  edit shows up as "my connections moved on their own". Only when something
+  actually changed — a "nothing happened" card every few minutes is exactly the
+  noise that stops people reading.
+
+- **Three copies of "connect this profile" became one.** The connections tree
+  used the shared `connectAndWarm`; the status bar and the command palette each
+  carried their own inlined version, and they had already drifted — one gave the
+  wrong-driver hint on a failure and the other did not. The command palette's
+  *disconnect* was a bare store call, dropping the pool without dropping the
+  cached schema or the tabs pointing at it, which is the same gap "disconnect
+  all" was fixed for in 1.20.0.
+
+- **A refused write to the database used to leave no trace at all.** Committing
+  a cell edit from the inline editor, the foreign-key picker, Ctrl+V or "Set
+  NULL" ended in `.catch(() => {})` — five of them, across three files. The
+  server rejected the `UPDATE`, the confirmation flash simply did not happen,
+  and silence had to be read as failure by a user who had just been taught to
+  read silence as success. The report goes at the same seam in `DataGrid` that
+  already owns the flash, so every existing commit path and any added later is
+  covered without knowing the rule exists; the modal editor and the docked side
+  panel opt out, because both keep the editor open and print the driver message
+  beside the value that caused it.
+
+- **The whole environments CRUD failed in silence.** Creating, renaming,
+  deleting, reordering and re-skinning an environment each ended in
+  `set({ error })` against a field no component has ever rendered. They now go
+  through one `fail` helper that records *and* reports. Deleting also stopped
+  lying about what happened: the confirm dialog closed even when the delete was
+  refused — the environment was still there and the dialog said it was gone —
+  so `remove` returns whether it worked and the dialog stays open when it did
+  not.
+
+- **Six handlers in Settings → Origins had a `try`/`finally` with no `catch`.**
+  Registering an origin, editing one, creating an origin document, removing one,
+  and adopting or retiring vanished profiles all left an unhandled rejection and
+  a dialog that had simply stopped responding. Every one of them is a write
+  whose effect is somewhere else entirely, so there was nothing on screen to
+  read the outcome off either.
+
+- **Other places a failure went to the console and nowhere else**: the
+  connection list failing to load (which looked like a fresh install), a
+  preferences file that could not be written (settings that silently would not
+  survive the next launch) or read (defaults, presented as if nothing had
+  happened), "New window" from the Window menu — the only one of its three
+  entry points that stayed quiet — a JSON Schema binding toggled or deleted
+  against a store that refused the write, and a privileges query whose failure
+  was rendered as the reassuring, and wrong, answer that the user has none.
+
 
 - **The three window roots no longer each carry their own copy of the
   notification container.** `App`, the detached-tab window and the Pulse window

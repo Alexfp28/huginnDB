@@ -14,7 +14,6 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronUp, PlugZap, RotateCw } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
@@ -30,7 +29,7 @@ import {
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { driverMismatchHint } from "@/lib/db/driver";
+import { connectAndWarm } from "@/lib/connection/connectFlow";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
@@ -39,10 +38,8 @@ export function StatusConnections() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
   const versions = useConnections((s) => s.versions);
-  const connect = useConnections((s) => s.connect);
   const disconnect = useConnections((s) => s.disconnect);
   const lostConnections = useConnectionHealth((s) => s.lost);
-  const refreshSchema = useSchema((s) => s.refresh);
   const dropSchema = useSchema((s) => s.drop);
   const closeTabs = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
@@ -71,18 +68,11 @@ export function StatusConnections() {
       setSelected(p.id);
       return;
     }
-    try {
-      await connect(p.id);
-      await refreshSchema(p.id);
-      setSelected(p.id);
-    } catch (e) {
-      // Same behaviour as the FileMenu: a profile that needs an
-      // interactively-typed password surfaces the failure rather than
-      // silently doing nothing.
-      const msg = String(e);
-      const hint = driverMismatchHint(msg);
-      notify.error(hint ? `${msg} — ${hint}` : msg);
-    }
+    // Was an inlined copy of `connectAndWarm`, one of three; the copies had
+    // already drifted (this one added the wrong-driver hint, the command
+    // palette's did not) and a fourth decision — whether a successful connect
+    // says so — was not going to be spelled three times.
+    if (await connectAndWarm(p.id)) setSelected(p.id);
   }
 
   /** Mirrors `ConnectionList.handleReconnect`: tear down the dead pool and

@@ -14,6 +14,7 @@
  * and a couple of the call sites need it outside React's render cycle.
  */
 
+import i18n from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
@@ -32,6 +33,13 @@ export async function connectAndWarm(id: string): Promise<boolean> {
   try {
     await useConnections.getState().connect(id);
     await useSchema.getState().refresh(id);
+    // Connecting is the one gesture in the app that reliably takes seconds —
+    // a handshake, a keychain read, sometimes an SSH tunnel — which is long
+    // enough that people start it and look somewhere else. The tree filling in
+    // only says so to whoever is still watching the tree.
+    notify.success(i18n.t("connections.connected"), {
+      description: profileName(id),
+    });
     return true;
   } catch (e) {
     const msg = String(e);
@@ -46,6 +54,12 @@ export async function connectAndWarm(id: string): Promise<boolean> {
  * (so a later reconnect refetches instead of showing a stale tree) and the tabs
  * that pointed at it. Errors are swallowed — a pool that was already dead should
  * still leave the UI in a clean state.
+ *
+ * Deliberately silent on success, unlike {@link connectAndWarm}: the tree row
+ * greys out and the connection's tabs close, so the screen has already said it
+ * (CONTRIBUTING → "Feedback and transition state": confirm a write only when
+ * its effect is not self-evident). {@link disconnectAll} is the exception, and
+ * only for its count.
  */
 export async function disconnectAndClean(
   id: string,
@@ -92,4 +106,13 @@ export async function disconnectAll(): Promise<void> {
     ids.map((id) => disconnectAndClean(id, { persistLaunch: false })),
   );
   await persistLaunchState(Array.from(useConnections.getState().active));
+  // A count, which is the part the screen cannot tell you: the tree just
+  // collapses, and "did that get all of them" is exactly the question a
+  // command called "disconnect all" leaves behind.
+  notify.success(i18n.t("connections.disconnectedAll", { count: ids.length }));
+}
+
+/** Profile name for a notification, falling back to the id we were given. */
+function profileName(id: string): string {
+  return useConnections.getState().profiles.find((p) => p.id === id)?.name ?? id;
 }

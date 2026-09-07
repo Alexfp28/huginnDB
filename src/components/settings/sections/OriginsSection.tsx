@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 import {
   Check,
   Eye,
@@ -114,10 +115,35 @@ export function OriginsSection() {
     [environments, pendingRemove],
   );
 
+  /**
+   * Run one origin mutation, and say so when it fails.
+   *
+   * All six handlers below were `try { … } finally { setBusy(false) }` with no
+   * `catch`: a rejected IPC call left an unhandled rejection in the console and
+   * the user staring at a dialog that had simply stopped responding. Registering
+   * an origin, publishing to one, or retiring a vanished profile are all writes
+   * whose effect is somewhere else entirely, so there is nothing on screen to
+   * read the outcome off — exactly the case CONTRIBUTING's doctrine says must
+   * report.
+   */
+  async function run(
+    setPending: (busy: boolean) => void,
+    titleKey: string,
+    body: () => Promise<void>,
+  ) {
+    setPending(true);
+    try {
+      await body();
+    } catch (e) {
+      notify.error(t(titleKey), { description: String(e) });
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function performRemove() {
     if (!pendingRemove) return;
-    setRemoving(true);
-    try {
+    await run(setRemoving, "origins.removeFailed", async () => {
       // Raise the vanished-notice *before* the origin is gone: once removed
       // it drops out of `listOrigins()`, and `syncAll()` — the only other
       // place that populates `vanished` — has nothing left to iterate to
@@ -129,28 +155,18 @@ export function OriginsSection() {
       // than a frame later.
       await loadOrigins();
       setPendingRemove(null);
-    } finally {
-      setRemoving(false);
-    }
+    });
   }
 
   async function performBulkAdopt() {
-    setBulkAdopting(true);
-    try {
-      await adoptAllVanished();
-    } finally {
-      setBulkAdopting(false);
-    }
+    await run(setBulkAdopting, "origins.adoptFailed", adoptAllVanished);
   }
 
   async function performBulkRetire() {
-    setBulkRetiring(true);
-    try {
+    await run(setBulkRetiring, "origins.retireFailed", async () => {
       await retireAllVanished();
       setBulkRetireOpen(false);
-    } finally {
-      setBulkRetiring(false);
-    }
+    });
   }
 
   function beginEdit(o: Origin) {
@@ -168,8 +184,7 @@ export function OriginsSection() {
 
   async function saveEdit() {
     if (!editing || !edit.path.trim()) return;
-    setBusy(true);
-    try {
+    await run(setBusy, "origins.saveFailed", async () => {
       await api.updateOrigin({
         id: editing.id,
         name: edit.name.trim() || edit.path,
@@ -179,15 +194,12 @@ export function OriginsSection() {
       });
       setEditing(null);
       await loadOrigins();
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function createDocument() {
     if (!newDoc.path.trim()) return;
-    setBusy(true);
-    try {
+    await run(setBusy, "origins.createDocumentFailed", async () => {
       const created = await api.createOriginDocument({
         path: newDoc.path.trim(),
         name: newDoc.name.trim() || newDoc.path.trim(),
@@ -199,15 +211,12 @@ export function OriginsSection() {
       // Straight into the editor: an empty document nobody is invited to fill
       // in reads as a command that did nothing.
       openEditor(created.id);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function submit() {
     if (!draft.path.trim()) return;
-    setBusy(true);
-    try {
+    await run(setBusy, "origins.addFailed", async () => {
       await api.addOrigin({
         name: draft.name.trim() || draft.path,
         path: draft.path.trim(),
@@ -220,9 +229,7 @@ export function OriginsSection() {
       // Pull immediately: registering an origin and seeing nothing happen reads
       // as broken, and this is the one moment the user is definitely watching.
       await syncAll();
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   return (

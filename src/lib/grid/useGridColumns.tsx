@@ -297,6 +297,9 @@ export function useGridColumns(
                   // the dropdown and dismiss).
                   const current = v === null ? null : formatValue(v);
                   if (picked === current) return;
+                  // The rejection is already reported by `DataGrid`'s save seam (which
+                  // notifies and rethrows); swallowing it here only keeps the
+                  // unhandled-rejection warning out of the console.
                   onCellSave?.(rowValues, col.name, picked).catch(() => {});
                 }}
               />
@@ -314,6 +317,9 @@ export function useGridColumns(
               // No-op when unchanged — also makes the blur that fires while
               // escalating to the modal harmless (expand leaves value as-is).
               if (value === original) return;
+              // The rejection is already reported by `DataGrid`'s save seam (which
+              // notifies and rethrows); swallowing it here only keeps the
+              // unhandled-rejection warning out of the console.
               onCellSave?.(rv, column.name, value).catch(() => {});
             };
             const expand = () => {
@@ -338,6 +344,9 @@ export function useGridColumns(
                     const { original, rowValues: rv, column } = inlineEdit;
                     setInlineEdit(null);
                     if (nv === original) return;
+                    // The rejection is already reported by `DataGrid`'s save seam (which
+                    // notifies and rethrows); swallowing it here only keeps the
+                    // unhandled-rejection warning out of the console.
                     onCellSave?.(rv, column.name, nv).catch(() => {});
                   }}
                   onCancel={() => setInlineEdit(null)}

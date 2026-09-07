@@ -22,6 +22,8 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import i18n from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { debounce } from "@/lib/schedule";
 import { STORAGE_KEYS } from "@/lib/constants";
 import type {
@@ -163,9 +165,14 @@ const SAVE_DEBOUNCE_MS = 400;
 
 const save = debounce(SAVE_DEBOUNCE_MS, (prefs: Preferences) => {
   api.updatePreferences(prefs).catch((err) => {
-    // Disk writes shouldn't fail in normal operation; if they do the user
-    // can keep working with the in-memory copy and we surface to console.
+    // Disk writes shouldn't fail in normal operation, and the user can keep
+    // working with the in-memory copy either way — but *only* until the app
+    // closes. Reporting it is the difference between "my settings didn't
+    // stick" being a mystery next launch and being something they were told
+    // about while they could still act on it (a read-only config directory,
+    // a full disk). Console too, since the message is worth having in a log.
     console.error("[preferences] failed to persist:", err);
+    notify.error(i18n.t("settings.persistFailed"), { description: String(err) });
   });
 });
 
@@ -202,7 +209,13 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     try {
       loaded = await api.getPreferences();
     } catch (err) {
+      // Starting on defaults silently is how a user concludes the app "forgot
+      // everything": their editor, grid and notification settings are all
+      // suddenly stock, with nothing saying the file could not be read.
       console.error("[preferences] hydrate failed; using defaults:", err);
+      notify.warning(i18n.t("settings.hydrateFailed"), {
+        description: String(err),
+      });
       loaded = DEFAULT_PREFS;
     }
 

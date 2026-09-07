@@ -31,6 +31,14 @@ vi.mock("@/lib/tauri", () => ({
 
 vi.mock("@/lib/window", () => ({ isMainWindow: () => true }));
 
+// The store reports its own failures now (`fail`). Raising a real notification
+// would drag the whole preferences store in for a flag nothing here asserts —
+// `notify.test.tsx` owns that behaviour.
+vi.mock("@/lib/notify", () => ({
+  notify: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}));
+vi.mock("@/lib/i18n", () => ({ default: { t: (k: string) => k } }));
+
 // The tab/layout persistence machinery isn't under test here — `switchTo`
 // only needs these to resolve so it can reach the disconnect loop and, after
 // it, `restoreSession`.

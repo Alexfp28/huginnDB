@@ -8,7 +8,6 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { notify } from "@/lib/notify";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
 import { useEnvironments } from "@/stores/session/environments";
@@ -24,12 +23,11 @@ export function EnvironmentDeleteConfirmDialog() {
     if (!pending) return;
     setRemoving(true);
     try {
-      await remove(pending.id);
-      close();
-    } catch (e) {
-      // Leave the dialog open: the environment is still there, so the user
-      // can retry rather than being left thinking it was deleted.
-      notify.error(String(e));
+      // The store catches its own failures (and notifies), so this never threw
+      // and the dialog closed on a refused delete regardless — telling the user
+      // the environment was gone when it was still there. The result is the
+      // signal now: leave the dialog open so they can retry.
+      if (await remove(pending.id)) close();
     } finally {
       setRemoving(false);
     }

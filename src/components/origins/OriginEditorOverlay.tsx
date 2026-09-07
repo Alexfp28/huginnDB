@@ -29,6 +29,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 import { Cable, FileJson, Layers, Send } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -222,6 +223,12 @@ export function OriginEditorOverlay() {
         // origin gets swept, not just this one, but a 4-hourly-interval sync
         // is cheap enough that doing it here costs nothing extra.
         await syncAllOrigins();
+        // The whole effect of a publish is in a file on a share, for other
+        // people's machines to pick up. Nothing on this screen changes to say
+        // it landed — the editor reloads to the state it was already showing,
+        // which is exactly what a conflict or a silent no-op would also look
+        // like.
+        notify.success(t("originEditor.published"));
       })
       .catch((e: unknown) => setSaveError(String(e)))
       .finally(() => setSaving(false));

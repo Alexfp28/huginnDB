@@ -33,7 +33,18 @@ const { progressHandle, notifyProgress } = vi.hoisted(() => {
   };
   return { progressHandle, notifyProgress: vi.fn(() => progressHandle) };
 });
-vi.mock("@/lib/notify", () => ({ notify: { progress: notifyProgress } }));
+// `success` as well as `progress`: the normal path (dialog stays open) now
+// records the outcome too, so a mock carrying only the handoff half turns a
+// green test into a TypeError swallowed by the `catch` in `doImport`.
+vi.mock("@/lib/notify", () => ({
+  notify: {
+    progress: notifyProgress,
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn(),
+  },
+}));
 
 function analysis(over: Partial<ImportAnalysisLike> = {}): ImportAnalysisLike {
   return { encrypted: false, conflicts: [], ...over };

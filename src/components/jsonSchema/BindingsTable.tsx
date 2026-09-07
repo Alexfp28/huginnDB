@@ -29,10 +29,27 @@ import { useConnections } from "@/stores/session/connections";
 import { IconButton } from "@/components/ui/icon-button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import i18n from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import type { JsonSchemaBinding } from "@/types";
 
 interface Props {
   onEdit: (binding: JsonSchemaBinding) => void;
+}
+
+/**
+ * Both writes in this table are fire-and-forget from a control that reports
+ * nothing: a `Switch` that has already flipped and a delete that has already
+ * removed the row optimistically. They were `void saveBinding(…)` and
+ * `void deleteBinding(…)`, so a rejected write left the UI showing a change the
+ * store had refused. There is no local error surface to put it in — and a
+ * binding's effect (which schema Monaco attaches to which column) is nowhere on
+ * this screen — so it reports.
+ */
+function report(work: Promise<unknown>, titleKey: string) {
+  void work.catch((e: unknown) => {
+    notify.error(i18n.t(titleKey), { description: String(e) });
+  });
 }
 
 export function BindingsTable({ onEdit }: Props) {
@@ -143,7 +160,10 @@ export function BindingsTable({ onEdit }: Props) {
                   <Switch
                     checked={b.enabled}
                     onCheckedChange={(next) =>
-                      void saveBinding({ ...b, enabled: next })
+                      report(
+                        saveBinding({ ...b, enabled: next }),
+                        "jsonSchemas.bindings.toggleFailed",
+                      )
                     }
                   />
                 </td>
@@ -157,7 +177,12 @@ export function BindingsTable({ onEdit }: Props) {
                     revealOnHover="row"
                     label={t("jsonSchemas.bindings.remove")}
                     type="button"
-                    onClick={() => void deleteBinding(b.id)}
+                    onClick={() =>
+                      report(
+                        deleteBinding(b.id),
+                        "jsonSchemas.bindings.removeFailed",
+                      )
+                    }
                   />
                 </td>
               </tr>

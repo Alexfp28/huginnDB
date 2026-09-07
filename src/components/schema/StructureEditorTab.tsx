@@ -322,6 +322,16 @@ export function StructureEditorTab({
       }
       // Refresh the explorer so the new/edited table shows immediately.
       await refreshSchema(connectionId);
+      // The apply is a batch of DDL against a remote server, and "it came back
+      // without complaining" is not something the editor can show: it reloads
+      // to the applied state, which looks the same as never having been
+      // touched. `mode === "new"` closes the tab outright, so there is even
+      // less to read it off.
+      notify.success(
+        t(mode === "new" ? "structure.created" : "structure.applied", {
+          name: desired.name,
+        }),
+      );
       if (mode === "new") {
         closeTab(tabId);
       } else {

@@ -25,6 +25,8 @@
 import { useMemo } from "react";
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import i18n from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import { useTabs } from "@/stores/session/tabs";
 import { useTreeSearch } from "@/stores/session/treeSearch";
@@ -147,6 +149,15 @@ interface EnvironmentsState {
    * consumer on every store write.
    */
   switchingTo: string | null;
+  /**
+   * Last failure, kept for anything that wants to render it inline.
+   *
+   * Nothing does, and for a long time nothing raised it either: every mutation
+   * below ended in `set({ error })` and the whole environments CRUD failed in
+   * complete silence. It is written through {@link fail} now, which also
+   * notifies — the field stays because an inline surface may still want it, not
+   * because it is the way the user finds out.
+   */
   error: string | null;
 
   load: () => Promise<void>;
@@ -191,7 +202,9 @@ interface EnvironmentsState {
     localIcon?: string | null;
     localThemeId?: string | null;
   }) => Promise<void>;
-  remove: (id: string) => Promise<void>;
+  /** `false` when the delete was refused — the environment is still there,
+   *  so a dialog can stay open rather than closing on a failure. */
+  remove: (id: string) => Promise<boolean>;
   reorder: (ids: string[]) => Promise<void>;
   /**
    * Bring the active environment's session up: reconnect what was live, restore
@@ -221,6 +234,28 @@ function applyLocalView(env: Environment | undefined): void {
   useTreeSearch.getState().clear();
 }
 
+/**
+ * Record a failed mutation *and* tell the user.
+ *
+ * Every `catch` in this store used to be `set({ error: String(e) })` alone,
+ * against a field no component reads — so creating, renaming, deleting,
+ * reordering or re-skinning an environment failed with no feedback whatsoever.
+ * Routing them all through here is the seam CONTRIBUTING calls for: one
+ * decision, rather than nine `catch` blocks each remembering to notify.
+ *
+ * The i18n singleton rather than the hook, for the same reason `lib/notify`
+ * uses it: a store is not a component.
+ */
+function fail(
+  set: (partial: { error: string }) => void,
+  e: unknown,
+  titleKey: string,
+) {
+  const message = String(e);
+  set({ error: message });
+  notify.error(i18n.t(titleKey), { description: message });
+}
+
 export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   environments: [],
   activeId: null,
@@ -246,7 +281,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         applyLocalView(environments.find((e) => e.id === activeEnvironmentId));
       }
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.loadFailed");
     }
   },
 
@@ -317,6 +352,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // `connect()` awaits `hydrateTabState`, so once these settle every
       // reconnected connection's tabs are in `useTabs`. Failures are per
       // connection and never block the rest.
+      const failed: string[] = [];
       await Promise.allSettled(
         toConnect.map((id) =>
           useConnections
@@ -324,9 +360,26 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
             .connect(id)
             .catch((e) => {
               console.warn(`[environments] reconnect failed for ${id}`, e);
+              failed.push(id);
             }),
         ),
       );
+      // Restoring a session reopens every connection the environment had, and
+      // a failure here is silent by construction: the tab is restored either
+      // way, so the user gets a table view backed by nothing and finds out
+      // when a query returns a driver error. One warning for the whole batch
+      // rather than one per connection — a server that is down takes all of
+      // its connections with it, and N cards would say the same thing N times.
+      if (failed.length > 0) {
+        const profiles = useConnections.getState().profiles;
+        const names = failed
+          .map((id) => profiles.find((p) => p.id === id)?.name ?? id)
+          .join(", ");
+        notify.warning(
+          i18n.t("environments.reconnectFailed", { count: failed.length }),
+          { description: names },
+        );
+      }
     }
 
     // Applied unconditionally, not gated on "are there tabs yet" — a saved
@@ -465,7 +518,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       // 6. Bring the incoming environment up, same sequence as launch.
       await get().restoreSession();
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.switchFailedTitle");
       console.error("[environments] switch failed", e);
     } finally {
       // Re-arm debounced saving unconditionally — even on a failed switch,
@@ -555,7 +608,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         await get().restoreSession();
       }
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.createFailed");
       console.error("[environments] seeding the new environment failed", e);
     } finally {
       set({ switchingTo: null });
@@ -568,7 +621,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       await get().load();
       return env;
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.createFailed");
       return null;
     }
   },
@@ -584,7 +637,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         useThemeStore.getState().setEnvironmentOverride(env.themeId ?? null);
       }
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.updateFailed");
     }
   },
 
@@ -596,7 +649,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         useThemeStore.getState().setEnvironmentOverride(effectiveThemeId(env));
       }
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.updateFailed");
     }
   },
 
@@ -612,8 +665,10 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       }
       await api.deleteEnvironment(id);
       await get().load();
+      return true;
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.deleteFailed");
+      return false;
     }
   },
 
@@ -629,7 +684,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     try {
       await api.reorderEnvironments(ids);
     } catch (e) {
-      set({ error: String(e) });
+      fail(set, e, "environments.reorderFailed");
       await get().load();
     }
   },

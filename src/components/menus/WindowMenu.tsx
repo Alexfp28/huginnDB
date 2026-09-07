@@ -6,6 +6,7 @@
 
 import { AppWindow, ChevronDown, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { api } from "@/lib/tauri";
 import { ShortcutHint } from "@/components/menus/ShortcutHint";
@@ -32,9 +33,16 @@ export function WindowMenu() {
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuItem
           onSelect={() => {
-            void api.openNewWindow().catch((err) => {
-              console.error("[window] failed to open new window:", err);
-            });
+            // Same treatment as the other two entry points to this command
+            // (`App.tsx`'s action map and the command palette): a window that
+            // does not appear is not something a console line explains.
+            void api
+              .openNewWindow()
+              .catch((err) =>
+                notify.error(t("menu.window.newWindowFailed"), {
+                  description: String(err),
+                }),
+              );
           }}
         >
           <AppWindow className="mr-2 h-3.5 w-3.5" />

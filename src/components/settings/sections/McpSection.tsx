@@ -210,6 +210,17 @@ export function McpSection() {
     );
     try {
       await api.setMcpWritePolicy([id], level);
+      // The optimistic row update above is the *only* thing that moves, and it
+      // moved before the write was accepted — so on screen a saved change and
+      // an unsaved one look identical. This is also the app's write-permission
+      // boundary for an agent that runs headless: worth one line saying the
+      // server took it.
+      notify.success(
+        t("settings.mcp.writePolicySaved", {
+          name: profiles.find((p) => p.id === id)?.name ?? id,
+          level: t(`settings.mcp.level.${level}`),
+        }),
+      );
     } catch {
       notify.error(t("settings.mcp.writePolicySaveError"));
       void api

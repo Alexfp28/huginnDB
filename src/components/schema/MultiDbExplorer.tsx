@@ -523,6 +523,7 @@ function DatabaseRoot({
       useTabs.getState().closeForConnection(droppedId);
       useSchema.getState().drop(droppedId);
       await useSchema.getState().refresh(parentId);
+      notify.success(t("schema.dropDatabase.done", { name: dbName }));
     } catch (e) {
       setError(String(e));
     }

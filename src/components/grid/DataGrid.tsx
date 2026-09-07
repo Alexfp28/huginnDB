@@ -19,7 +19,14 @@
  *   keeps acting on the current page only.
  */
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
   flexRender,
@@ -64,6 +71,7 @@ import {
 } from "@/components/grid/GridToolbar";
 import { GridRow, type GridRowCallbacks } from "@/components/grid/GridRow";
 import { copyToClipboard } from "@/lib/clipboard";
+import { notify } from "@/lib/notify";
 import { toBulk } from "@/lib/grid/copyFormats";
 import {
   formatValue,
@@ -503,22 +511,46 @@ export function DataGrid({
     return i === -1 ? null : i;
   }, [flashed, getRowKey, visibleRows]);
 
-  const onCellSave = useMemo(
-    () =>
+  /**
+   * Reporting a rejected save belongs at this seam for the same reason the
+   * confirmation does: the grid commits an edit from a dozen places across six
+   * files, and every one of the fast paths — the inline editor, the FK picker,
+   * Ctrl+V, "Set NULL" — used to end in `.catch(() => {})`. A write to the
+   * database was being refused by the server and leaving no trace at all: the
+   * flash simply did not happen, and silence had to be read as success by a
+   * user who had just been told to read silence as success.
+   *
+   * `quiet` is for the two surfaces that own an error slot of their own — the
+   * modal editor and the docked side panel both keep the editor open and print
+   * the driver message beside the value that caused it, which is strictly
+   * better than a card behind the dialog. Two opt-outs decided here beat five
+   * call sites each remembering to opt in.
+   */
+  const decorateCellSave = useCallback(
+    (quiet: boolean) =>
       onCellSaveProp &&
       (async (
         rowValues: CellValue[],
         columnName: string,
         value: string | null,
       ) => {
-        await onCellSaveProp(rowValues, columnName, value);
+        try {
+          await onCellSaveProp(rowValues, columnName, value);
+        } catch (e) {
+          if (!quiet) {
+            notify.error(t("dataGrid.saveFailed"), { description: String(e) });
+          }
+          // Rethrown either way: the caller decides whether to keep an editor
+          // open, and `markSaved` below must never run for a refused write.
+          throw e;
+        }
         markSaved(getRowKey?.(rowValues) ?? null, [columnName]);
       }),
-    [onCellSaveProp, getRowKey, markSaved],
+    [onCellSaveProp, getRowKey, markSaved, t],
   );
 
-  const onFieldSave = useMemo(
-    () =>
+  const decorateFieldSave = useCallback(
+    (quiet: boolean) =>
       onFieldSaveProp &&
       (async (
         rowValues: CellValue[],
@@ -526,11 +558,24 @@ export function DataGrid({
         value: string | null,
         type?: string,
       ) => {
-        await onFieldSaveProp(rowValues, path, value, type);
+        try {
+          await onFieldSaveProp(rowValues, path, value, type);
+        } catch (e) {
+          if (!quiet) {
+            notify.error(t("dataGrid.saveFailed"), { description: String(e) });
+          }
+          throw e;
+        }
         markSaved(getRowKey?.(rowValues) ?? null, path);
       }),
-    [onFieldSaveProp, getRowKey, markSaved],
+    [onFieldSaveProp, getRowKey, markSaved, t],
   );
+
+  const onCellSave = useMemo(() => decorateCellSave(false), [decorateCellSave]);
+  const onFieldSave = useMemo(() => decorateFieldSave(false), [decorateFieldSave]);
+  /** The same commit, for a surface that prints the failure itself. */
+  const onCellSaveQuiet = useMemo(() => decorateCellSave(true), [decorateCellSave]);
+  const onFieldSaveQuiet = useMemo(() => decorateFieldSave(true), [decorateFieldSave]);
 
   /**
    * Re-resolve `selectedCell` after a refetch replaces every row's array
@@ -695,8 +740,10 @@ export function DataGrid({
     cellEditorMode,
     columnInfoByName,
     columnIndexByName,
-    onCellSave,
-    onFieldSave,
+    // The quiet pair: the only commit this hook performs is the docked side
+    // editor's, which keeps the panel open and prints the driver message there.
+    onCellSave: onCellSaveQuiet,
+    onFieldSave: onFieldSaveQuiet,
   });
 
   // Key-icon lookups for the header (PK = amber, FK = sky), HeidiSQL-style.
@@ -835,11 +882,29 @@ export function DataGrid({
   // would make every row look "changed" on every render and defeat the
   // memoization `GridRow` exists for. See its own doc comment for the full
   // rationale.
+  /**
+   * Copy a multi-row selection, and say how many rows went.
+   *
+   * The one clipboard gesture in the grid that reports: copying a single cell
+   * is confirmed by the paste a second later, but "copy 24 rows as INSERT"
+   * produces nothing on screen at all and the number is the whole question —
+   * a selection is easy to get wrong by one row, and you find out in whatever
+   * you pasted into.
+   */
+  function copyRows(
+    rows: CellValue[][],
+    fmt: "json" | "insert" | "update",
+  ) {
+    copyToClipboard(bulkCopy(rows, fmt));
+    notify.success(t("dataGrid.rowsCopied", { count: rows.length }));
+  }
+
   const rowCallbacksRef = useRef<GridRowCallbacks>({
     openCellEdit,
     openSidePanelEditor,
     copyToClipboard,
     bulkCopy,
+    copyRows,
     selectedColumnValues,
     applyRowSelectionClick,
     toggleRowKey,
@@ -849,6 +914,7 @@ export function DataGrid({
     openSidePanelEditor,
     copyToClipboard,
     bulkCopy,
+    copyRows,
     selectedColumnValues,
     applyRowSelectionClick,
     toggleRowKey,
@@ -1559,18 +1625,20 @@ export function DataGrid({
             !editable || !(editorTarget.field ? onFieldSave : onCellSave)
           }
           onSave={
-            editable && (editorTarget.field ? onFieldSave : onCellSave)
+            // Quiet: `CellEditor` stays open on failure and renders the message
+            // beside the value that caused it (`cellEditor.saveFailed`).
+            editable && (editorTarget.field ? onFieldSaveQuiet : onCellSaveQuiet)
               ? async (newValue) => {
                   const field = editorTarget.field;
                   if (field) {
-                    await onFieldSave!(
+                    await onFieldSaveQuiet!(
                       editorTarget.rowValues,
                       field.path,
                       newValue,
                       field.type,
                     );
                   } else {
-                    await onCellSave!(
+                    await onCellSaveQuiet!(
                       editorTarget.rowValues,
                       editorTarget.column.name,
                       newValue,

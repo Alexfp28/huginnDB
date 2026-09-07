@@ -78,6 +78,11 @@ export interface GridRowCallbacks {
   ) => void;
   copyToClipboard: (text: string) => void;
   bulkCopy: (rows: CellValue[][], fmt: "json" | "insert" | "update") => string;
+  /** Copy several rows *and* say how many — see `DataGrid`'s definition. */
+  copyRows: (
+    rows: CellValue[][],
+    fmt: "json" | "insert" | "update",
+  ) => void;
   selectedColumnValues: (colIndex: number) => {
     values: CellValue[];
     distinct: number;
@@ -548,33 +553,21 @@ export const GridRow = memo(function GridRow({
                     <ContextMenuSubContent>
                       <ContextMenuItem
                         onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(selectedRows, "json"),
-                          )
+                          callbacksRef.current.copyRows(selectedRows, "json")
                         }
                       >
                         JSON
                       </ContextMenuItem>
                       <ContextMenuItem
                         onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(
-                              selectedRows,
-                              "insert",
-                            ),
-                          )
+                          callbacksRef.current.copyRows(selectedRows, "insert")
                         }
                       >
                         SQL INSERT
                       </ContextMenuItem>
                       <ContextMenuItem
                         onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            callbacksRef.current.bulkCopy(
-                              selectedRows,
-                              "update",
-                            ),
-                          )
+                          callbacksRef.current.copyRows(selectedRows, "update")
                         }
                       >
                         SQL UPDATE
@@ -739,6 +732,9 @@ export const GridRow = memo(function GridRow({
                       disabled={value === null}
                       label={t("cellEditor.setNull")}
                       onSelect={() =>
+                        // The rejection is already reported by `DataGrid`'s save seam (which
+                        // notifies and rethrows); swallowing it here only keeps the
+                        // unhandled-rejection warning out of the console.
                         onCellSave(rowValues, meta.name, null).catch(() => {})
                       }
                     />

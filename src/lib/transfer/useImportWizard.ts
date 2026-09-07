@@ -145,10 +145,12 @@ export function useImportWizard<A extends ImportAnalysisLike, R>(
     setLoading(true);
     setError(null);
     doImportInFlightRef.current = true;
+    let imported: R | null = null;
     try {
       const r = await withImportProgress(setProgress, () =>
         cfg.run(path, pp, resolved),
       );
+      imported = r;
       setResult(r);
       setStep("done");
       await cfg.afterImport?.();
@@ -157,6 +159,21 @@ export function useImportWizard<A extends ImportAnalysisLike, R>(
     } finally {
       setLoading(false);
       doImportInFlightRef.current = false;
+    }
+
+    // Outside the `try` on purpose: raising a notification must never be able
+    // to turn a completed import into a reported failure by falling into the
+    // `catch` above.
+    //
+    // The "done" step reports this too, but only for as long as the dialog is
+    // open — and an import is precisely the thing someone wants to check on
+    // afterwards ("how many did it actually bring in?"). Raising it puts the
+    // same sentence in the bell, where it survives the dialog closing.
+    //
+    // Skipped when a handle exists: the user closed the dialog mid-flight and
+    // the handoff below owns the outcome, so this would be a second copy.
+    if (imported && !progressHandleRef.current) {
+      notify.success(cfg.notifySuccess(imported));
     }
   }
 

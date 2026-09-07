@@ -230,6 +230,11 @@ export function ViewEditorTab({
         setOriginal(v);
         setQuery(v.query);
       }
+      notify.success(
+        t(mode === "new" ? "view.created" : "view.applied", {
+          name: desired.name,
+        }),
+      );
     } catch (e) {
       // Same dual surfacing as StructureEditorTab's applyFailed handling —
       // the DDL pane alone is easy to miss on a rejected apply.

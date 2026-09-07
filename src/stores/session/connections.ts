@@ -13,6 +13,8 @@
 
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import i18n from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { useFilterHistory } from "@/stores/grid/filterHistory";
 import {
   flushTabState,
@@ -116,7 +118,14 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       const profiles = await api.listProfiles();
       set({ profiles, loading: false });
     } catch (e) {
-      set({ error: String(e), loading: false });
+      // `error` is read by nothing, so this used to be the whole story: the
+      // connection list came back empty and looked like a fresh install. Every
+      // other mutation on this store propagates and is reported by its caller;
+      // `refresh` is called from effects with nowhere to propagate *to*, which
+      // is why it is the one that reports here.
+      const message = String(e);
+      set({ error: message, loading: false });
+      notify.error(i18n.t("connections.refreshFailed"), { description: message });
     }
   },
   save: async (profile, password, sshSecret) => {

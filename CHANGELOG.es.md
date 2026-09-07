@@ -10,6 +10,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **La app dice lo que ha hecho cuando el resultado está donde no lo ves.**
+  Conectar (el único gesto que tarda segundos de forma fiable, y el que la gente
+  lanza antes de mirar a otro lado), "desconectar todo" y su recuento, aplicar
+  un cambio de estructura o de vista, eliminar o renombrar una tabla, una vista
+  o una base de datos, crear, reconstruir, eliminar u ocultar un índice de
+  MongoDB, publicar en un origen compartido, el resultado de una importación
+  — que hasta ahora se iba con el diálogo que lo mostraba —, una política de
+  escritura de MCP, y copiar varias filas al portapapeles, donde el recuento es
+  toda la pregunta. Todo en píldora: una línea, seis segundos y a la campana.
+
+  Deliberadamente *no* todo. Una desconexión suelta apaga su propia fila y
+  cierra sus propias pestañas; un reset de los atajos o del layout es una lista
+  o una pantalla que visiblemente vuelve atrás; duplicar un tema lo añade a la
+  lista que tienes delante. Confirmar eso es el ruido que hace que la gente deje
+  de leer las que sí importan (CONTRIBUTING → "Feedback and transition state":
+  confirma una escritura solo cuando su efecto no es autoevidente).
+
 - **Una anatomía de notificación de una línea, y una regla que decide cuándo no
   basta.** Una confirmación era hasta ahora una tarjeta de 380 px con su riel,
   su medallón de 28 px, su hueco de cuerpo y su fila de botones — para entregar
@@ -59,6 +76,75 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   puede cumplirse — `progress → success` no se mueve nunca.
 
 ### Corregido
+
+- **Una conexión que se cae sola ahora lo dice, con un botón de Reconectar.** El
+  latido de tres minutos marca las conexiones perdidas desde la 1.4.0, pero solo
+  como una insignia en una fila de un panel que puede no estar abierto — así que
+  lo primero que uno se enteraba de verdad era un error críptico del driver en
+  mitad de la siguiente consulta. Llevar una acción la escala de píldora a
+  tarjeta, que es lo correcto: un pool muerto no es algo para mirar de reojo.
+  Una tarjeta por conexión por muchas veces que el latido lo repita, y solo en
+  la transición a "perdida".
+
+- **Un restore de sesión que no puede reabrir una conexión deja de hacerlo en
+  silencio.** Entrar en un entorno reabre todo lo que tenía; un fallo era un
+  `console.warn`, y la pestaña se restauraba igualmente — así que el usuario se
+  quedaba con una vista de tabla sin nada detrás y se enteraba cuando una
+  consulta devolvía un error del driver. Un aviso para todo el lote, no uno por
+  conexión: un servidor caído se lleva por delante todas las suyas.
+
+- **Un origen compartido que te cambia las conexiones mientras trabajas ahora
+  dice cuántas.** `syncAll` corre en un sondeo y al arrancar, y puede añadir o
+  actualizar perfiles y entornos enteros; el silencio ahí es como la edición de
+  un compañero acaba pareciendo "se me han movido las conexiones solas". Solo
+  cuando algo ha cambiado de verdad — una tarjeta de "no ha pasado nada" cada
+  pocos minutos es justo el ruido que hace que la gente deje de leerlas.
+
+- **Tres copias de "conecta este perfil" pasaron a ser una.** El árbol de
+  conexiones usaba el `connectAndWarm` compartido; la barra de estado y la
+  paleta de comandos llevaban cada una su versión copiada, y ya habían
+  divergido: una daba la pista de driver equivocado al fallar y la otra no. El
+  *desconectar* de la paleta era una llamada pelada al store, que cerraba el
+  pool sin soltar el esquema cacheado ni las pestañas que apuntaban a él — la
+  misma laguna que se arregló para "desconectar todo" en la 1.20.0.
+
+- **Una escritura rechazada por la base de datos no dejaba rastro alguno.**
+  Guardar una celda desde el editor en línea, el selector de clave ajena, Ctrl+V
+  o "Poner a NULL" acababa en `.catch(() => {})` — cinco casos, repartidos en
+  tres ficheros. El servidor rechazaba el `UPDATE`, el destello de confirmación
+  simplemente no ocurría, y el silencio había que leerlo como fallo justo
+  después de haber enseñado al usuario a leer el silencio como éxito. El aviso
+  va en la misma costura de `DataGrid` que ya gobierna el destello, así que
+  cubre todos los caminos de guardado existentes y los que se añadan después sin
+  que ninguno tenga que conocer la regla; el editor modal y el panel lateral
+  quedan fuera, porque los dos mantienen el editor abierto e imprimen el mensaje
+  del driver junto al valor que lo provocó.
+
+- **Todo el CRUD de entornos fallaba en silencio.** Crear, renombrar, eliminar,
+  reordenar y recolorear un entorno acababan cada uno en `set({ error })` contra
+  un campo que ningún componente ha renderizado nunca. Ahora pasan todos por un
+  único helper `fail` que registra *y* avisa. Eliminar además dejó de mentir
+  sobre lo ocurrido: el diálogo de confirmación se cerraba incluso cuando el
+  borrado era rechazado — el entorno seguía ahí y el diálogo decía que ya no —
+  así que `remove` devuelve si funcionó y el diálogo se queda abierto cuando no.
+
+- **Seis handlers de Ajustes → Orígenes tenían `try`/`finally` sin `catch`.**
+  Registrar un origen, editarlo, crear un documento de origen, eliminarlo y
+  adoptar o retirar perfiles desaparecidos dejaban una promesa rechazada sin
+  capturar y un diálogo que sencillamente dejaba de responder. Todos ellos son
+  escrituras cuyo efecto está en otra parte, así que tampoco había nada en
+  pantalla de lo que deducir el resultado.
+
+- **Otros sitios donde un fallo iba a la consola y a ningún otro lado**: la
+  lista de conexiones al no poder cargarse (que parecía una instalación recién
+  hecha), un fichero de preferencias que no se podía escribir (ajustes que en
+  silencio no iban a sobrevivir al siguiente arranque) ni leer (los valores por
+  defecto, presentados como si no hubiera pasado nada), "Nueva ventana" desde el
+  menú Ventana — el único de sus tres puntos de entrada que se callaba —, un
+  enlace de JSON Schema activado o borrado contra un store que rechazaba la
+  escritura, y una consulta de privilegios cuyo fallo se pintaba como la
+  respuesta tranquilizadora, y falsa, de que el usuario no tiene ninguno.
+
 
 - **Las tres ventanas raíz ya no llevan cada una su propia copia del contenedor
   de notificaciones.** `App`, la ventana de pestaña desacoplada y la ventana de

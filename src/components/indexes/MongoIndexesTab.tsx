@@ -25,6 +25,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/icon-button";
 import { IndexEditorDialog } from "@/components/indexes/dialogs/IndexEditorDialog";
@@ -97,12 +98,20 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
     [indexes],
   );
 
-  async function run(name: string, action: () => Promise<void>) {
+  /**
+   * One index operation. `doneKey` is what to say when the server accepts it —
+   * building or dropping an index is work the server does at its own pace, and
+   * the list quietly re-rendering afterwards is a weak signal that it finished
+   * rather than gave up. Failures stay inline: this tab has an error slot of
+   * its own, right above the list the operation was aimed at.
+   */
+  async function run(name: string, doneKey: string, action: () => Promise<void>) {
     setBusy(name);
     setError(null);
     try {
       await action();
       refresh();
+      notify.success(t(doneKey, { name }));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -118,19 +127,22 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
     ) {
       return;
     }
-    void run(index.name, () =>
+    void run(index.name, "indexes.dropped", () =>
       api.dropMongoIndex(connectionId, collection!, index.name),
     );
   }
 
   function onToggleHidden(index: MongoIndexInfo) {
-    void run(index.name, () =>
-      api.setMongoIndexHidden(
-        connectionId,
-        collection!,
-        index.name,
-        !index.hidden,
-      ),
+    void run(
+      index.name,
+      index.hidden ? "indexes.unhidden" : "indexes.hidden",
+      () =>
+        api.setMongoIndexHidden(
+          connectionId,
+          collection!,
+          index.name,
+          !index.hidden,
+        ),
     );
   }
 
@@ -164,6 +176,16 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
       }
       setEditorOpen(false);
       refresh();
+      // Building an index is the slowest thing this tab does, and the dialog
+      // closing is indistinguishable from cancelling it.
+      // `spec.name` is optional — a blank one is derived server-side from the
+      // keys, so there is genuinely no name to quote back yet.
+      const label = editing?.name ?? spec.name?.trim();
+      notify.success(
+        label
+          ? t(editing ? "indexes.replaced" : "indexes.created", { name: label })
+          : t("indexes.createdUnnamed"),
+      );
     } catch (e) {
       setSaveError(String(e));
     } finally {

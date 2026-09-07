@@ -7,6 +7,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { api } from "@/lib/tauri";
@@ -48,6 +49,10 @@ export function DropObjectDialog({
           } else {
             await api.dropView(connectionId, target.schema, target.name);
           }
+          // The tree does lose the row, but a `DROP` is irreversible and runs
+          // on a server that may take its time — and the tree may be filtered,
+          // scrolled elsewhere, or not even the panel in front of the user.
+          notify.success(t(`${prefix}.done`, { name: target.name }));
           onDone();
         })
       }

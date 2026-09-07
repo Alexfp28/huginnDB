@@ -25,6 +25,8 @@ import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
 import { isMainWindow } from "@/lib/window";
+import i18n from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import type { Origin } from "@/types";
 
 /**
@@ -146,15 +148,22 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     const held: string[] = [];
     let touchedProfiles = false;
     let touchedEnvironments = false;
+    // Counted, not just flagged: the whole point of telling the user is the
+    // number. "Some of your connections changed" is not actionable.
+    let changedProfiles = 0;
+    let changedEnvironments = 0;
 
     for (const origin of origins) {
       try {
         const report = await api.syncOrigin(origin.id);
         if (report.added.length > 0 || report.updated.length > 0) {
           touchedProfiles = true;
+          changedProfiles += report.added.length + report.updated.length;
         }
         if (report.environmentsAdded.length > 0 || report.environmentsUpdated.length > 0) {
           touchedEnvironments = true;
+          changedEnvironments +=
+            report.environmentsAdded.length + report.environmentsUpdated.length;
         }
         held.push(...report.deferred);
         // `suspicious` already means the backend cleared `vanished`, so this
@@ -216,6 +225,23 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     });
     if (touchedProfiles) await useConnections.getState().refreshProfiles();
     if (touchedEnvironments) await useEnvironments.getState().load();
+
+    // This sweep runs on a poll and at startup, so a shared origin can rewrite
+    // the connection tree — or add an environment — with nobody having asked
+    // for anything. Silence there is how a colleague's edit shows up as "my
+    // connections moved on their own". Only when something actually changed:
+    // the poll is frequent and a "nothing happened" card every few minutes is
+    // exactly the noise that makes people stop reading notifications.
+    if (changedProfiles > 0 || changedEnvironments > 0) {
+      notify.info(
+        changedEnvironments > 0
+          ? i18n.t("origins.syncedWithEnvironments", {
+              count: changedProfiles,
+              environments: changedEnvironments,
+            })
+          : i18n.t("origins.synced", { count: changedProfiles }),
+      );
+    }
   },
 
   adopt: async (profileId) => {

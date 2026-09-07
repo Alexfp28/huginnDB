@@ -180,6 +180,9 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
         const normalized = normalizeBitValue(text);
         const value = normalized === "" ? null : normalized;
         if (value === original) return;
+        // The rejection is already reported by `DataGrid`'s save seam (which
+        // notifies and rethrows); swallowing it here only keeps the
+        // unhandled-rejection warning out of the console.
         onCellSave(cell.rowValues, cell.column.name, value).catch(() => {});
         return;
       }

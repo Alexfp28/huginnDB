@@ -15,6 +15,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 
 import { NamePromptDialog } from "@/components/schema/dialogs/NamePromptDialog";
 import { Label } from "@/components/ui/label";
@@ -86,6 +87,12 @@ export function RenameObjectDialog({
         } else {
           await api.renameView(connectionId, target.schema, target.name, trimmed);
         }
+        notify.success(
+          t(moving ? `${prefix}.moved` : `${prefix}.renamed`, {
+            from: target.name,
+            to: trimmed,
+          }),
+        );
         if (moving) {
           // The collection now lives behind a different connection id (the
           // destination database's own child pool), so a retitled tab would

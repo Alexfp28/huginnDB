@@ -14,6 +14,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { notify } from "@/lib/notify";
 import {
   flexRender,
   getCoreRowModel,
@@ -83,7 +84,15 @@ export function SecurityTab({
           api
             .listPrivileges(connectionId, user.name)
             .then((rows) => setPrivileges((p) => ({ ...p, [user.name]: rows })))
-            .catch(() => setPrivileges((p) => ({ ...p, [user.name]: [] })))
+            .catch((e: unknown) => {
+              // An empty list is what "this user has no privileges" looks like,
+              // so swallowing the failure here rendered a refused query as a
+              // reassuring, and wrong, answer about who can do what.
+              notify.error(t("security.privilegesFailed", { user: user.name }), {
+                description: String(e),
+              });
+              setPrivileges((p) => ({ ...p, [user.name]: [] }));
+            })
             .finally(() => setLoadingUser(null));
         }
       }

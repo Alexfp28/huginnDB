@@ -55,7 +55,14 @@
     "replicateLayout": "Reuse the pane layout",
     "export": "Export…",
     "mirroredCosmeticsHint": "This environment comes from a shared origin — the name, colour, icon and theme below are saved only on this computer and won't be overwritten by the next sync.",
-    "clearLocalOverride": "Follow the origin again"
+    "clearLocalOverride": "Follow the origin again",
+    "loadFailed": "Could not load the environments",
+    "switchFailedTitle": "Could not switch environment",
+    "createFailed": "Could not create the environment",
+    "updateFailed": "Could not save the environment",
+    "deleteFailed": "Could not delete the environment",
+    "reorderFailed": "Could not reorder the environments",
+    "reconnectFailed": "{{count}} connection(s) did not come back"
   },
   "panels": {
     "schema": "Schema",
@@ -84,7 +91,8 @@
     "window": {
       "label": "Window",
       "newWindow": "New window",
-      "resetLayout": "Reset window layout"
+      "resetLayout": "Reset window layout",
+      "newWindowFailed": "Could not open a new window"
     },
     "view": {
       "label": "View",
@@ -178,7 +186,11 @@
     "selectedCount": "{{count}} selected",
     "reconnectTooltip": "Connection lost — reconnect",
     "reconnect": "Reconnect",
-    "lost": "Connection lost: {{message}}"
+    "lost": "Connection lost: {{message}}",
+    "refreshFailed": "Could not load the connections",
+    "connected": "Connected",
+    "disconnectedAll": "Disconnected {{count}} connection(s)",
+    "lostTitle": "Lost the connection to {{name}}"
   },
   "connectionDialog": {
     "titleNew": "New connection",
@@ -371,24 +383,30 @@
       "targetDatabase": "Destination database",
       "moveHint": "Moving the collection to another database copies its documents server-side: it takes as long as the collection is big and needs privileges on both databases. Open tabs for this collection will be closed.",
       "renaming": "Renaming…",
-      "failed": "Rename failed: {{message}}"
+      "failed": "Rename failed: {{message}}",
+      "renamed": "Renamed {{from}} to {{to}}",
+      "moved": "Moved {{from}} to {{to}}"
     },
     "drop": {
       "title": "Drop table {{name}}?",
       "description": "This permanently removes the table and all of its data. This cannot be undone.",
       "submit": "Drop table",
       "dropping": "Dropping…",
-      "failed": "Drop failed: {{message}}"
+      "failed": "Drop failed: {{message}}",
+      "done": "Dropped {{name}}"
     },
     "renameView": {
       "title": "Rename view",
       "description": "Rename {{name}} to:",
-      "failed": "Rename failed: {{message}}"
+      "failed": "Rename failed: {{message}}",
+      "renamed": "Renamed the view {{from}} to {{to}}",
+      "moved": "Moved the view {{from}} to {{to}}"
     },
     "dropView": {
       "title": "Drop view {{name}}?",
       "description": "This permanently removes the view definition. The underlying tables and their data are unaffected. This cannot be undone.",
-      "failed": "Drop failed: {{message}}"
+      "failed": "Drop failed: {{message}}",
+      "done": "Dropped the view {{name}}"
     },
     "empty": {
       "title": "Empty table {{name}}?",
@@ -434,7 +452,8 @@
       "useProfileDefault": "Use the connection's subset instead"
     },
     "dropDatabase": {
-      "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone."
+      "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone.",
+      "done": "Dropped the database {{name}}"
     },
     "exportDatabase": {
       "title": "Export database…",
@@ -494,7 +513,8 @@
       "target": "Target"
     },
     "targetAll": "*.* (all)",
-    "refresh": "Refresh"
+    "refresh": "Refresh",
+    "privilegesFailed": "Could not read the privileges of {{user}}"
   },
   "cellEditor": {
     "title": "Cell editor",
@@ -607,7 +627,9 @@
       "insertHint": "Enter inserts · Esc discards",
       "changeType": "Change type"
     },
-    "expandEditorWithSchema": "Edit in Monaco — schema \"{{name}}\" attached"
+    "expandEditorWithSchema": "Edit in Monaco — schema \"{{name}}\" attached",
+    "saveFailed": "Could not save the change",
+    "rowsCopied": "{{count}} row(s) copied"
   },
   "tableData": {
     "refresh": "Refresh",
@@ -750,7 +772,9 @@
     "openIndexManager": "Open index manager",
     "readOnlySqlServer": "Read-only (SQL Server)",
     "jsonSchemaRenameFailed": "The table was altered, but a JSON Schema binding could not follow the rename: {{message}}",
-    "rowCount": "{{count}} rows"
+    "rowCount": "{{count}} rows",
+    "created": "Table {{name}} created",
+    "applied": "Changes applied to {{name}}"
   },
   "view": {
     "loading": "Loading view…",
@@ -763,7 +787,9 @@
     "ddlPreview": "DDL preview",
     "dropRecreateNote": "drops & recreates (no data loss — views hold none)",
     "previewTitle": "Live preview",
-    "previewEmptyQuery": "Write a SELECT to see a live preview of the view's columns and rows."
+    "previewEmptyQuery": "Write a SELECT to see a live preview of the view's columns and rows.",
+    "created": "View {{name}} created",
+    "applied": "View {{name}} updated"
   },
   "aggregation": {
     "loading": "Loading the view definition…",
@@ -912,7 +938,13 @@
       "create": "Create index",
       "replace": "Replace index",
       "saving": "Working…"
-    }
+    },
+    "dropped": "Dropped the index {{name}}",
+    "hidden": "Hid the index {{name}}",
+    "unhidden": "Index {{name}} is visible again",
+    "created": "Index {{name}} created",
+    "createdUnnamed": "Index created",
+    "replaced": "Index {{name}} rebuilt"
   },
   "tabs": {
     "queryFileName": "query.sql",
@@ -1387,7 +1419,8 @@
         "already-registered": "Already registered in Claude Code — nothing to change. Remove it with `claude mcp remove huginndb` if you want to re-add it.",
         "cli-not-found": "The claude CLI isn't on this machine's PATH. Copy the command below and run it in a terminal that has it.",
         "failed": "The claude CLI refused:"
-      }
+      },
+      "writePolicySaved": "{{name}}: {{level}}"
     },
     "pulse": {
       "intro": "How often Pulse samples a connection's vital signs into its on-disk history, how long that history is kept, and which connections it watches — opt-in per connection, off by default.",
@@ -1519,7 +1552,9 @@
         "label": "Pill position",
         "desc": "Corner the one-line stack grows from. Pick the same corner as the cards to keep everything in one stack."
       }
-    }
+    },
+    "persistFailed": "Could not save your preferences",
+    "hydrateFailed": "Started with default preferences"
   },
   "notifications": {
     "openFolder": "Open folder",
@@ -1703,7 +1738,9 @@
       "remove": "Remove binding",
       "missingSchema": "Points at a schema that no longer exists.",
       "unknownConnection": "connection not found",
-      "saveError": "Could not save this binding: {{message}}"
+      "saveError": "Could not save this binding: {{message}}",
+      "toggleFailed": "Could not change the binding",
+      "removeFailed": "Could not remove the binding"
     },
     "scope": {
       "connection": "Connection",
@@ -2496,7 +2533,15 @@
       "confirmBody": "From now on HuginnDB may write to:",
       "confirmReversible": "You can switch it back at any time, and nothing is written until you publish a revision.",
       "confirmAccept": "Allow writing"
-    }
+    },
+    "removeFailed": "Could not remove the origin",
+    "adoptFailed": "Could not adopt the vanished profiles",
+    "retireFailed": "Could not retire the vanished profiles",
+    "saveFailed": "Could not save the origin",
+    "createDocumentFailed": "Could not create the origin document",
+    "addFailed": "Could not register the origin",
+    "synced": "{{count}} connection(s) updated from a shared origin",
+    "syncedWithEnvironments": "{{count}} connection(s) and {{environments}} environment(s) updated from a shared origin"
   },
   "originEditor": {
     "filter": "Filter…",
@@ -2609,6 +2654,7 @@
       "publish": "Publish",
       "silentWarning": "Some of these disappearances will reach nobody. Read the report below.",
       "progress": "Encrypting passwords… {{done}} of {{total}}"
-    }
+    },
+    "published": "Published to the origin"
   }
 }

@@ -22,6 +22,10 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import {
+  connectAndWarm,
+  disconnectAndClean,
+} from "@/lib/connection/connectFlow";
+import {
   Activity,
   AppWindow,
   Bell,
@@ -555,20 +559,20 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
             return;
           }
           void (async () => {
-            try {
-              await connect(p.id);
-              await refreshSchema(p.id);
-              setSelected(p.id);
-            } catch (e) {
-              notify.error(String(e));
-            }
+            // Shared with the tree and the status bar (see `connectFlow`):
+            // this copy used to miss the wrong-driver hint the others gave.
+            if (await connectAndWarm(p.id)) setSelected(p.id);
           })();
         },
         alt: isLive
           ? {
               hintKey: "commandPalette.hintDisconnect",
               run: () => {
-                void disconnect(p.id).catch((e) => notify.error(String(e)));
+                // `disconnectAndClean`, not the bare store call: dropping the
+                // pool without dropping the cached schema and the tabs that
+                // pointed at it leaves a tree that still lists tables nothing
+                // can read — the same gap "disconnect all" had.
+                void disconnectAndClean(p.id);
               },
             }
           : undefined,
