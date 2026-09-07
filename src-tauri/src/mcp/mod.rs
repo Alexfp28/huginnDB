@@ -1484,7 +1484,12 @@ impl Huginn {
                       view actually is: `query` (the bare SELECT body) on \
                       SQL drivers, or `viewOn` plus `pipeline` on MongoDB, \
                       where a view is a stored aggregation pipeline. Absent \
-                      `view` key means the relation is a plain table."
+                      `view` key means the relation is a plain table. On a \
+                      MongoDB view, `columns` is inferred by reading a page of \
+                      what the view returns and comes back empty when that \
+                      does not finish quickly, and `indexes` is always empty \
+                      (a view has none of its own) — `view` is the reliable \
+                      half there."
     )]
     async fn describe_table(
         &self,

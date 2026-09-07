@@ -4,6 +4,35 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Fixed
+
+- **`describe_table` could not describe a MongoDB view — the one relation whose
+  description is the only way to read it.** A view's stored pipeline *is* its
+  definition, and `describe_relation_inner` reads it: structure first, then the
+  view body. Both halves were strict, so on a view the first half decided
+  whether the second ever ran — and on a view it always failed. `listIndexes`
+  answers `CommandNotSupportedOnView` (code 166) for every view, because a view
+  has no indexes of its own; and before even that, `$sample` cannot take its
+  fast path on a view — the server rewrites the aggregation to run the view's
+  pipeline first, so our stage is no longer the first one and never gets the
+  random cursor. On a view over millions of documents it degrades to reading
+  everything the view produces, so field inference timed out. Either way the
+  caller got an error and never the pipeline, which had not been read yet.
+
+  Both failures were already understood in this file — for time-series
+  collections, which are themselves views over their backing buckets — and the
+  catalog lookup that avoids them existed. It just only asked about
+  time-series. It now classifies the relation once (`RelationKind`) and both
+  halves use the answer: a view skips `listIndexes` rather than failing on it,
+  infers its fields from a bounded page instead of `$sample`, and reports no
+  fields rather than no description when even that does not finish in time.
+  Sampling an ordinary collection stays strict — a failure there is a real one.
+
+  Reported by `describe_table` on a production view; found by reading the
+  driver's error instead of the tool's promise.
+
 ## [1.21.4] — 2026-09-07
 
 ### Added

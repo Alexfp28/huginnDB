@@ -288,43 +288,85 @@ async fn collection_sizes(
     sizes
 }
 
-/// Infer a collection's field list by sampling documents.
+/// What the catalog says a name is, for the two introspection decisions that
+/// depend on it: whether `$sample` can take its fast path, and whether the
+/// relation can be asked for indexes at all.
 ///
-/// Returns one [`ColumnInfo`] per distinct top-level field seen across the
-/// sample, `_id` first. `data_type` is the BSON type name of the field's first
-/// observed value; `nullable` is true when the field was absent from at least
-/// one sampled document (so it is not guaranteed present). `is_primary_key` is
-/// set only for `_id`.
-/// Whether `$sample` can possibly take its fast path on this collection.
-///
-/// A time-series collection is a *view* over its `system.buckets.*` backing
-/// collection, so an aggregation against it is rewritten with an unpack stage
-/// and `$sample` never gets the random cursor that makes it cheap — it goes
-/// straight to reading everything and sorting by a random key. On a collection
-/// of any size that does not finish; it either exceeds the 100 MB in-memory
-/// sort limit or runs for minutes.
-///
-/// So this is not a heuristic about size, it is a fact about the collection:
-/// asking `$sample` is pointless there, and the only thing waiting for it buys
-/// is the wait. One filtered `listCollections` — a catalog command, no scan —
-/// answers it before any documents are read.
-///
-/// The cost is that every inference now pays that round trip, including the
-/// small collections where `$sample` would have answered in milliseconds.
-/// A catalog lookup is single-digit milliseconds against a nearby server and
-/// the alternative is a two-second stall on exactly the collections big enough
-/// for someone to need the field list, so the trade is worth making. An
-/// unreadable catalog answers "not time-series" and the sample path is tried,
-/// which is the behaviour this replaced.
+/// One enum rather than two booleans because both answers come out of the same
+/// `listCollections` spec, and a caller that needs both should pay for one
+/// round trip, not two. [`table_structure`] is that caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RelationKind {
+    /// An ordinary collection: sampleable, and has its own indexes.
+    Collection,
+    /// A user-defined view — a stored aggregation pipeline, per
+    /// [`super::aggregation`].
+    View,
+    /// A time-series collection, which is itself a view over its
+    /// `system.buckets.*` backing collection.
+    Timeseries,
+}
+
+impl RelationKind {
+    /// Whether asking `$sample` for a field sample can possibly be cheap.
+    ///
+    /// False for both view kinds, for one shared reason: an aggregation against
+    /// a view is rewritten to run the view's own pipeline first, so our
+    /// `$sample` is no longer the first stage and never gets the random cursor
+    /// that makes it fast. It degrades to reading everything the view produces
+    /// and sorting it by a random key — on a view over millions of documents
+    /// that does not finish, it either exceeds the 100 MB in-memory sort limit
+    /// or runs for minutes.
+    ///
+    /// This is not a heuristic about size, it is a fact about the relation:
+    /// asking `$sample` there is pointless, and the only thing waiting for it
+    /// buys is the wait.
+    fn sample_can_be_fast(self) -> bool {
+        matches!(self, Self::Collection)
+    }
+
+    /// Whether `listIndexes` may be sent for this relation.
+    ///
+    /// A view has no indexes of its own — the server rejects the command
+    /// outright with `CommandNotSupportedOnView` (code 166) rather than
+    /// answering empty — so asking is not a cheap "probably nothing", it is a
+    /// guaranteed error. A time-series collection does accept `listIndexes`,
+    /// which is why this is narrower than [`Self::sample_can_be_fast`].
+    fn has_own_indexes(self) -> bool {
+        !matches!(self, Self::View)
+    }
+}
+
+/// Classify one `listCollections` spec.
 ///
 /// Follows the same rule `spec_is_view` documents: a spec with no `type` is a
 /// collection (the field only appeared in MongoDB 3.4), and an unrecognised
-/// reply falls to the ordinary answer rather than the exotic one.
-async fn is_timeseries(conn: &MongoConn, collection: &str) -> bool {
-    matches!(
-        super::aggregation::collection_spec(conn, collection).await,
-        Ok(Some(spec)) if matches!(spec.get_str("type"), Ok("timeseries"))
-    )
+/// reply falls to the ordinary answer rather than the exotic one — here that
+/// means the sample is attempted and indexes are asked for, which is the
+/// behaviour of every server old enough not to report a type.
+pub(super) fn relation_kind_from_spec(spec: &Document) -> RelationKind {
+    match spec.get_str("type") {
+        Ok("view") => RelationKind::View,
+        Ok("timeseries") => RelationKind::Timeseries,
+        _ => RelationKind::Collection,
+    }
+}
+
+/// Ask the catalog what `name` is. One filtered `listCollections` — a catalog
+/// command, no scan — answered before any documents are read.
+///
+/// The cost is that every inference pays that round trip, including the small
+/// collections where `$sample` would have answered in milliseconds. A catalog
+/// lookup is single-digit milliseconds against a nearby server and the
+/// alternative is a two-second stall on exactly the relations big enough for
+/// someone to need the field list, so the trade is worth making. An unreadable
+/// catalog answers [`RelationKind::Collection`], which is the behaviour this
+/// replaced.
+pub(super) async fn relation_kind(conn: &MongoConn, name: &str) -> RelationKind {
+    match super::aggregation::collection_spec(conn, name).await {
+        Ok(Some(spec)) => relation_kind_from_spec(&spec),
+        _ => RelationKind::Collection,
+    }
 }
 
 /// Read up to `SAMPLE_SIZE` documents without `$sample`: the oldest half in
@@ -380,18 +422,29 @@ async fn scan_both_ends(coll: &mongodb::Collection<Document>) -> AppResult<Vec<D
 /// set only for `_id`.
 ///
 /// Two strategies, chosen from the catalog rather than by trying one and
-/// waiting (see [`is_timeseries`]). `$sample` is preferred wherever it can be
-/// cheap — a random sample describes a heterogeneous collection better than any
-/// fixed window — and [`scan_both_ends`] covers the rest, including the case
-/// where `$sample` was tried and failed for a reason the catalog could not
-/// predict.
+/// waiting (see [`RelationKind::sample_can_be_fast`]). `$sample` is preferred
+/// wherever it can be cheap — a random sample describes a heterogeneous
+/// collection better than any fixed window — and [`scan_both_ends`] covers the
+/// rest, including the case where `$sample` was tried and failed for a reason
+/// the catalog could not predict.
 pub async fn infer_columns(conn: &MongoConn, collection: &str) -> AppResult<Vec<ColumnInfo>> {
+    let kind = relation_kind(conn, collection).await;
+    infer_columns_of(conn, collection, kind).await
+}
+
+/// [`infer_columns`] for a caller that has already classified the relation, so
+/// the catalog is read once per describe rather than once per half of it.
+pub(super) async fn infer_columns_of(
+    conn: &MongoConn,
+    collection: &str,
+    kind: RelationKind,
+) -> AppResult<Vec<ColumnInfo>> {
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
 
     let mut documents: Option<Vec<Document>> = None;
 
-    if !is_timeseries(conn, collection).await {
+    if kind.sample_can_be_fast() {
         let sampled = coll
             .aggregate(vec![doc! {"$sample": {"size": SAMPLE_SIZE}}])
             .max_time(Duration::from_millis(INFER_TIMEOUT_MS))
@@ -468,7 +521,27 @@ pub async fn infer_columns(conn: &MongoConn, collection: &str) -> AppResult<Vec<
 }
 
 /// List the indexes defined on a collection.
+///
+/// A view is answered with an empty list rather than an error: it has no
+/// indexes of its own, and `listIndexes` against one fails with
+/// `CommandNotSupportedOnView` (code 166). "This relation has no indexes" is
+/// the true answer, and letting the driver's error out instead turns a
+/// perfectly describable view into a failed panel — which is exactly how this
+/// was found (see [`table_structure`]).
 pub async fn list_indexes(conn: &MongoConn, collection: &str) -> AppResult<Vec<IndexInfo>> {
+    if !relation_kind(conn, collection).await.has_own_indexes() {
+        return Ok(Vec::new());
+    }
+    list_indexes_of_collection(conn, collection).await
+}
+
+/// [`list_indexes`] once the relation is known to accept `listIndexes`, so
+/// [`table_structure`] does not pay a second catalog round trip to learn what
+/// it already knows.
+async fn list_indexes_of_collection(
+    conn: &MongoConn,
+    collection: &str,
+) -> AppResult<Vec<IndexInfo>> {
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
     let mut cursor = coll.list_indexes().await?;
@@ -498,10 +571,38 @@ pub async fn list_indexes(conn: &MongoConn, collection: &str) -> AppResult<Vec<I
 /// Build a read-only [`TableStructure`] for a collection (inferred fields +
 /// real indexes). MongoDB has no foreign keys; structure *editing* is deferred
 /// to the roadmap, so the visual editor renders this in read-only mode.
+///
+/// **Why a view is described leniently.** This is the first half of
+/// `commands::structure::describe_relation_inner`, whose second half reads the
+/// view's stored pipeline — the thing a caller asking about a view actually
+/// wants. Both halves used to be strict, so on a view the first one decided
+/// whether the second ever ran: `listIndexes` failed with code 166 on every
+/// view, and on a heavy one the field sample timed out before that, and either
+/// way `describe_table` returned an error instead of the pipeline it had not
+/// tried to read yet. A view whose fields cannot be sampled inside
+/// [`INFER_TIMEOUT_MS`] is therefore described with an empty column list rather
+/// than not described at all: fields are inferred here and inference is
+/// best-effort by construction (see the module doc), whereas the pipeline is
+/// the view's actual definition and is read from the catalog.
+///
+/// Sampling a *collection* stays strict. A failure there is a real one — an
+/// unreachable server, a lost privilege — and silently reporting a collection
+/// as having no fields would be the structure editor's problem, not a
+/// describe's.
 pub async fn table_structure(conn: &MongoConn, collection: &str) -> AppResult<TableStructure> {
     let db_name = resolve_db(conn)?.name().to_string();
-    let columns = infer_columns(conn, collection).await?;
-    let indexes = list_indexes(conn, collection).await?;
+    let kind = relation_kind(conn, collection).await;
+
+    let columns = match infer_columns_of(conn, collection, kind).await {
+        Ok(columns) => columns,
+        Err(_) if kind == RelationKind::View => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let indexes = if kind.has_own_indexes() {
+        list_indexes_of_collection(conn, collection).await?
+    } else {
+        Vec::new()
+    };
 
     let column_defs = columns
         .into_iter()
@@ -701,4 +802,65 @@ pub async fn ping(conn: &MongoConn) -> AppResult<()> {
         .run_command(doc! {"ping": 1})
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // Classifying a relation from its `listCollections` spec
+    //
+    // These are what decide whether a describe sends `$sample` and
+    // `listIndexes` at all, so each wrong answer has a known cost: a `$sample`
+    // that cannot finish, or a `listIndexes` that is a guaranteed error.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn a_view_spec_is_classified_as_a_view() {
+        let kind = relation_kind_from_spec(&doc! { "name": "open_orders", "type": "view" });
+        assert_eq!(kind, RelationKind::View);
+        assert!(!kind.sample_can_be_fast());
+        // The case this whole change exists for: asking a view for its indexes
+        // fails with code 166 and takes the describe down with it.
+        assert!(!kind.has_own_indexes());
+    }
+
+    #[test]
+    fn a_timeseries_spec_skips_the_sample_but_keeps_its_indexes() {
+        let kind = relation_kind_from_spec(&doc! { "name": "readings", "type": "timeseries" });
+        assert_eq!(kind, RelationKind::Timeseries);
+        // A view over its own buckets, so `$sample` has no fast path either…
+        assert!(!kind.sample_can_be_fast());
+        // …but unlike a user-defined view it does answer `listIndexes`, which
+        // is why the two predicates are not one.
+        assert!(kind.has_own_indexes());
+    }
+
+    #[test]
+    fn an_ordinary_collection_gets_both_fast_paths() {
+        let kind = relation_kind_from_spec(&doc! { "name": "orders", "type": "collection" });
+        assert_eq!(kind, RelationKind::Collection);
+        assert!(kind.sample_can_be_fast());
+        assert!(kind.has_own_indexes());
+    }
+
+    #[test]
+    fn a_spec_with_no_usable_type_is_treated_as_a_collection() {
+        // `type` only appeared in MongoDB 3.4, and an unrecognised reply must
+        // fall to the ordinary answer — which is also the behaviour of every
+        // server old enough not to report one.
+        assert_eq!(
+            relation_kind_from_spec(&doc! { "name": "orders" }),
+            RelationKind::Collection
+        );
+        assert_eq!(
+            relation_kind_from_spec(&doc! { "name": "orders", "type": 1 }),
+            RelationKind::Collection
+        );
+        assert_eq!(
+            relation_kind_from_spec(&doc! { "name": "orders", "type": "somethingNew" }),
+            RelationKind::Collection
+        );
+    }
 }
