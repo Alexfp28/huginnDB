@@ -709,3 +709,19 @@ input[type="password"]::-ms-clear {
     opacity: 0.45;
   }
 }
+
+/* The pill host. Sonner sizes every custom toast to `--width` above, and a
+   pill is intrinsically narrower — so the row it sits in is mostly a
+   transparent band. Left clickable, that band would swallow clicks across a
+   third of the window for as long as a confirmation is on screen, which is
+   exactly the kind of invisible dead zone a notification must never create.
+   Turning the row inert and the control back on is the narrowest fix; it also
+   costs the pill Sonner's swipe-to-dismiss, whose handler lives on the row,
+   which is why a pill dismisses on a plain click instead. Hover still pauses
+   every timer: the event starts on the button and bubbles to the container. */
+[data-sonner-toaster].notif-pill-stack [data-sonner-toast] {
+  pointer-events: none;
+}
+[data-sonner-toaster].notif-pill-stack [data-sonner-toast] button {
+  pointer-events: auto;
+}

@@ -8,6 +8,67 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Una anatomía de notificación de una línea, y una regla que decide cuándo no
+  basta.** Una confirmación era hasta ahora una tarjeta de 380 px con su riel,
+  su medallón de 28 px, su hueco de cuerpo y su fila de botones — para entregar
+  las palabras "Celda guardada". Toda notificación que no sea un error es ahora
+  una **píldora**: 32 px, una línea, icono más título más una cola opcional en
+  monoespaciada tenue, y se descarta pulsándola. Los errores y las
+  notificaciones de fichero se ven exactamente igual que antes, porque ambos
+  llevan siempre algo sobre lo que actuar: un mensaje del driver que merece
+  copiarse, un nombre de archivo que abre la carpeta.
+
+  La mitad interesante es la frontera. "Lo que no es error es píldora" solo es
+  seguro si algo se da cuenta de cuándo la píldora es la forma equivocada, así
+  que `surfaceFor`, en `lib/notify.tsx`, pregunta *¿esto cabe en una línea?* en
+  vez de *¿de qué tipo es esto?*: lo que lleve botones, una ruta de fichero o
+  una descripción que no quepa escala a tarjeta y conserva todo lo que tenía. Se
+  decide una sola vez, en la misma costura que ya gobierna duración, agrupación
+  e historial — nunca en el punto de llamada, porque un punto de llamada que
+  tuviera que acordarse sería un punto de llamada que descarta sus propios
+  botones en silencio.
+
+- **Las dos anatomías se apilan en dos esquinas, y Ajustes → Notificaciones
+  tiene ahora un selector de posición para cada una.** Las píldoras van por
+  defecto abajo al centro y las tarjetas se quedan abajo a la derecha, así que
+  una confirmación ya no hace cola detrás de un error que nadie ha leído.
+  Elegir la *misma* esquina para las dos no es una colisión que haya que
+  arbitrar: es la forma de que vuelvan a ser una sola pila, y es un único camino
+  de código, no un caso especial. Las dos filas son accesibles desde la paleta
+  de comandos.
+
+### Cambiado
+
+- **Una píldora vive la duración base, donde la tarjeta a la que sustituye vivía
+  un múltiplo.** El multiplicador compra tiempo de lectura y una píldora no
+  tiene nada que leer; un aviso que de verdad lleve algo sobre lo que actuar ya
+  se ha convertido en tarjeta para entonces, y recupera su ×2 con ella. La
+  píldora tampoco tiene hairline de drenaje: una barra recta de 2 px recortada
+  por un radio de 999 px se lee como una lente, y un aro alrededor de un icono
+  de 14 px significaría "tiempo restante" en una confirmación y "trabajo hecho"
+  en una barra de progreso — una forma, dos significados. El coste conocido es
+  que "expandir al pasar el ratón" ya no tiene acuse visible en una píldora.
+
+- **Una tarea larga que falla ahora se muda en lugar de resolverse en su sitio.**
+  Una notificación de `progress` se convierte normalmente en su propio desenlace
+  sin abandonar su hueco; una *píldora* de progreso que falla hacia una
+  *tarjeta* de error pertenece a otra pila, así que se retira y el error se
+  levanta de nuevo. La promesa del mismo hueco se mantiene allí donde todavía
+  puede cumplirse — `progress → success` no se mueve nunca.
+
+### Corregido
+
+- **Las tres ventanas raíz ya no llevan cada una su propia copia del contenedor
+  de notificaciones.** `App`, la ventana de pestaña desacoplada y la ventana de
+  Pulse tenían una invocación de `<Toaster>` idéntica, con el margen de borde
+  escrito por cuarta vez dentro de la píldora de desbordamiento — cuatro sitios
+  que mantener sincronizados para una sola decisión, y la razón de que la
+  afirmación con la que abre `lib/notify`, "nada fuera de este módulo importa
+  `sonner`", hubiera dejado de ser cierta sin que nadie lo notara. Ahora un solo
+  `<NotificationHosts>` es dueño de todos los hosts, y vuelve a ser cierta.
+
 ## [1.21.3] — 2026-09-07
 
 ### Añadido

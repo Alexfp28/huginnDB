@@ -14,7 +14,6 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import "dockview-react/dist/styles/dockview.css";
-import { Toaster } from "sonner";
 import {
   selectUpdateNotificationVisible,
   useUpdateStore,
@@ -31,10 +30,8 @@ import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
-import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import {
-  selectNotificationPrefs,
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useKeybindingDispatcher } from "@/lib/keybindings";
@@ -56,7 +53,7 @@ import { HelpMenu } from "@/components/menus/HelpMenu";
 import { AppShell } from "@/components/shell/AppShell";
 import { LayoutToggles } from "@/components/shell/LayoutToggles";
 import { NotificationCenter } from "@/components/shell/NotificationCenter";
-import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
+import { NotificationHosts } from "@/components/shell/NotificationHosts";
 import { StatusBar } from "@/components/shell/StatusBar";
 import { CommandPalette } from "@/components/shell/CommandPalette";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -100,13 +97,11 @@ export default function App() {
   const refreshConnections = useConnections((s) => s.refresh);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
-  const themeMode = useThemeStore(selectActiveMode);
   const canaryFlavor = useAppFlavor((s) => s.canary);
   const hydratePreferences = usePreferences((s) => s.hydrate);
   const language = usePreferences((s) => s.prefs.ui.language);
   // A stable slice reference (gotcha #1) — the whole group is handed to the
   // toaster container at once.
-  const notificationPrefs = usePreferences(selectNotificationPrefs);
   const openSettings = useSettingsDialog((s) => s.openAt);
   const updateNotificationVisible = useUpdateStore(
     selectUpdateNotificationVisible,
@@ -574,21 +569,9 @@ export default function App() {
       <WhatsNewDialog />
       <DocsDialog />
       <WindowTitleSync />
-      {/* Transport only: every visual decision lives in `NotificationCard`,
-          and the props below are the user's own (Settings → Notifications).
-          `icons` and `closeButton` are deliberately gone — the library draws
-          neither for a custom card, and the old `success` icon spent the brand
-          blue on a confirmation. `duration` is per-notification (`lib/notify`
-          scales it per kind), so it is not set here. */}
-      <Toaster
-        position={notificationPrefs.position}
-        visibleToasts={notificationPrefs.maxVisible}
-        expand={notificationPrefs.expandOnHover}
-        gap={10}
-        offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
-        theme={themeMode === "dark" ? "dark" : "light"}
-      />
-      <NotificationOverflowPill />
+      {/* Both notification hosts plus their overflow badges. See
+          `NotificationHosts` for why the container is not inlined here. */}
+      <NotificationHosts />
       {updateNotificationVisible && availableVersion && (
         <UpdateBanner version={availableVersion} />
       )}

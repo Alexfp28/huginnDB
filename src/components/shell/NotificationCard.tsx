@@ -26,23 +26,17 @@
  */
 
 import { useState } from "react";
-import {
-  CheckCircle2,
-  Copy,
-  FileDown,
-  FolderOpen,
-  Info,
-  Loader2,
-  TriangleAlert,
-  X,
-  XCircle,
-} from "lucide-react";
+import { Copy, FolderOpen, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
 import { copyToClipboard } from "@/lib/clipboard";
 import { dirName } from "@/lib/filePath";
 import { cn } from "@/lib/utils";
-import type { NotificationFile, NotificationKind } from "@/stores/notifications";
+import type { NotificationFile } from "@/stores/notifications";
+import {
+  NOTIFICATION_KIND_VISUALS,
+  type NotificationSurfaceKind,
+} from "@/components/shell/notificationVisuals";
 import type { NotificationDensity } from "@/types";
 
 /** A button on the card. At most one should be `primary`. */
@@ -54,11 +48,8 @@ export interface NotificationAction {
   dismiss?: boolean;
 }
 
-/** The one kind the history/preferences layer never sees — a live card only. */
-export type CardKind = NotificationKind | "progress";
-
 interface Props {
-  kind: CardKind;
+  kind: NotificationSurfaceKind;
   title: string;
   description?: string;
   /** Render the description monospaced — errors, identifiers, raw values. */
@@ -77,73 +68,6 @@ interface Props {
   /** The reveal failed: the file is no longer where it was written. */
   onFileMissing?: () => void;
 }
-
-/**
- * Rail, medallion, icon tint and drain colour per kind.
- *
- * Exported because the history panel renders the same kinds one row tall and
- * has to reach for the same icon and the same tint — a second map there is how
- * a `warning` ends up amber on screen and grey in the panel.
- */
-export const NOTIFICATION_KIND_VISUALS: Record<
-  CardKind,
-  {
-    rail: string;
-    medallion: string;
-    icon: string;
-    drain: string;
-    Icon: typeof CheckCircle2;
-  }
-> = {
-  success: {
-    rail: "bg-success",
-    medallion: "bg-success/15",
-    icon: "text-success",
-    drain: "bg-success/55",
-    Icon: CheckCircle2,
-  },
-  error: {
-    rail: "bg-destructive",
-    medallion: "bg-destructive/15",
-    icon: "text-destructive",
-    drain: "bg-destructive/55",
-    Icon: XCircle,
-  },
-  warning: {
-    rail: "bg-warning",
-    medallion: "bg-warning/15",
-    icon: "text-warning",
-    drain: "bg-warning/55",
-    Icon: TriangleAlert,
-  },
-  // The one kind that spends the brand blue: `info` is the app telling the user
-  // something, which is the same register as an affordance. A confirmation is
-  // `success` and gets the green — that mix-up is exactly what the old toast's
-  // `text-brand` check mark got wrong.
-  info: {
-    rail: "bg-brand",
-    medallion: "bg-brand/15",
-    icon: "text-brand",
-    drain: "bg-brand/60",
-    Icon: Info,
-  },
-  file: {
-    rail: "bg-success",
-    medallion: "bg-success/15",
-    icon: "text-success",
-    drain: "bg-success/55",
-    Icon: FileDown,
-  },
-  // Never persisted — a progress card resolves into one of the kinds above
-  // before it ever reaches history (see `notify.progress`).
-  progress: {
-    rail: "bg-brand",
-    medallion: "bg-brand/15",
-    icon: "text-brand",
-    drain: "bg-brand/55",
-    Icon: Loader2,
-  },
-};
 
 export function NotificationCard({
   kind,

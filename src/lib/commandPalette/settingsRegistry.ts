@@ -328,6 +328,20 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     }),
   },
   {
+    prefId: "notifications.pillPosition",
+    section: "notifications",
+    labelKey: "settings.notifications.pillPosition.label",
+    descKey: "settings.notifications.pillPosition.desc",
+    keywords:
+      "notification pill position corner píldora posición esquina aviso confirmación bottom center",
+    // The corner labels are shared with the card row on purpose: there is one
+    // set of six corners, and a second spelling of "Bottom centre" is a second
+    // thing to keep translated.
+    value: (p) => ({
+      i18nKey: `settings.notifications.position.${POSITION_LABEL_KEYS[p.notifications.pillPosition]}`,
+    }),
+  },
+  {
     prefId: "notifications.durationMs",
     section: "notifications",
     labelKey: "settings.notifications.duration.label",

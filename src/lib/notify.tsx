@@ -2,18 +2,27 @@
  * Raising a notification. The one entry point — nothing outside this module
  * imports `sonner` any more.
  *
- * The split is deliberate: **Sonner is the transport, the card is ours.** It
- * keeps the stack (positions, gaps, swipe, focus, timers) and, because a `jsx`
- * toast is flagged `data-styled="false"`, paints none of it — so
- * `NotificationCard` owns the surface and the ~60 lines of `!important` that
- * used to fight the library's hardcoded white card are gone. Sonner already
- * takes `position`, `duration`, `visibleToasts`, `expand`, `gap` and `offset`
- * as props, which is what makes the whole "disposición" half of the
- * preferences section configuration rather than a second toast host.
+ * The split is deliberate: **Sonner is the transport, the surface is ours.**
+ * It keeps the stack (positions, gaps, swipe, focus, timers) and, because a
+ * `jsx` toast is flagged `data-styled="false"`, paints none of it — so
+ * `NotificationCard` and `NotificationPill` own the surface and the ~60 lines
+ * of `!important` that used to fight the library's hardcoded white card are
+ * gone.
  *
- * Three behaviours live here rather than at the call sites, because they are
+ * There *are* two hosts now, which an earlier version of this comment said
+ * there would never be: the six positions being a `<Toaster>` prop made the
+ * whole layout half of the preferences configuration rather than a container,
+ * and that is still true — what changed is that a one-line pill and a 380px
+ * card want different corners, and Sonner routes that natively (`<Toaster id>`
+ * plus `toasterId` per toast) rather than needing a host of our own. Pointing
+ * both at the same corner mounts one again.
+ *
+ * Four behaviours live here rather than at the call sites, because they are
  * policy and not decoration:
  *
+ * * **Anatomy.** {@link surfaceFor} decides card or pill, once, from what the
+ *   notification carries rather than from what kind it is. A call site that
+ *   had to remember would be one that silently dropped its own buttons.
  * * **Duration.** The base is `notifications.durationMs` (6 s, up from the
  *   library's 4 s, which was not long enough to read a path or a driver error).
  *   Kinds that carry something to act on get a multiple of it, and an error
@@ -33,6 +42,9 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { NotificationCard } from "@/components/shell/NotificationCard";
 import type { NotificationAction } from "@/components/shell/NotificationCard";
+import { NotificationPill } from "@/components/shell/NotificationPill";
+import type { NotificationSurfaceKind } from "@/components/shell/notificationVisuals";
+import { PILL_TOASTER_ID } from "@/lib/notificationPosition";
 import { copyToClipboard } from "@/lib/clipboard";
 import { baseName } from "@/lib/filePath";
 import i18n from "@/lib/i18n";
@@ -86,6 +98,97 @@ const KIND_FACTOR: Record<NotificationKind, number> = {
 /** Ceiling for the multiplied lifetime. The user's own value is never capped. */
 const MAX_KIND_DURATION_MS = 30_000;
 
+/**
+ * Which of the two anatomies a notification gets.
+ *
+ * `card` is the 380px surface with a rail, a medallion, room for a body and
+ * for buttons. `pill` is one line, 32px tall, that appears, says one thing and
+ * leaves — the eighty-percent case, which used to spend a whole card on two
+ * words.
+ */
+export type NotificationSurface = "pill" | "card";
+
+/**
+ * Characters a pill can hold before it stops being one line.
+ *
+ * A heuristic, deliberately: the decision has to be made in `raise()`, before
+ * anything is mounted, so there is nothing to measure. The budgets are counted
+ * against a 356px pill at 12px/500 with a 9px mono suffix, and calibrated
+ * against Spanish rather than English — `es.json` runs about 9% longer, so a
+ * budget tuned on English truncates in the language half the users read.
+ */
+const PILL_TITLE_BUDGET = 58;
+const PILL_SUFFIX_BUDGET = 28;
+
+/**
+ * The one place the two anatomies are told apart.
+ *
+ * The rule is not "which kind is this" but "does this fit on one line": an
+ * error and a file notification always carry something to act on, and anything
+ * else that grew buttons, a path or a second line of prose has outgrown the
+ * pill and escalates. Keeping it here rather than at the call sites is the
+ * point — a call site that had to remember would be a call site that silently
+ * dropped its own buttons (CONTRIBUTING.md → "Feedback and transition state",
+ * *Prefer the seam*).
+ *
+ * Exported for the tests, which assert the boundary rather than re-deriving it.
+ */
+export function surfaceFor(
+  kind: NotificationSurfaceKind,
+  title: string,
+  opts: {
+    actions?: readonly unknown[];
+    path?: string;
+    description?: string;
+  } = {},
+): NotificationSurface {
+  // An error is persistent and carries a driver message worth copying; a file
+  // notification's whole reason to exist is the buttons under the file name.
+  if (kind === "error" || kind === "file") return "card";
+  if (opts.path) return "card";
+  if (opts.actions?.length) return "card";
+
+  const description = opts.description;
+  if (!description) return "pill";
+  if (description.includes("\n")) return "card";
+  if (description.length > PILL_SUFFIX_BUDGET) return "card";
+  if (title.length + description.length > PILL_TITLE_BUDGET) return "card";
+  return "pill";
+}
+
+/**
+ * Which host renders a given surface.
+ *
+ * `undefined` means the default host — Sonner renders a toast with no
+ * `toasterId` in the `<Toaster>` that has no `id`, and only there. That is
+ * also how the two stacks collapse back into one when the user points both
+ * anatomies at the same corner: the pill host is not mounted, so its toasts
+ * have to fall back to the card host rather than vanish.
+ */
+function toasterIdFor(
+  surface: NotificationSurface,
+  prefs: { position: string; pillPosition: string },
+): string | undefined {
+  if (surface === "card") return undefined;
+  return prefs.pillPosition === prefs.position ? undefined : PILL_TOASTER_ID;
+}
+
+/** The stack a `toasterId` actually renders in — the inverse of the above. */
+function hostForToasterId(toasterId: string | undefined): NotificationSurface {
+  return toasterId === PILL_TOASTER_ID ? "pill" : "card";
+}
+
+/**
+ * Which edge a pill hugs inside Sonner's fixed-width row — see
+ * `NotificationPill`'s `align` for why the row cannot simply shrink. Derived
+ * from the stack's own corner so a right-hand stack reads as one column.
+ */
+function alignForPosition(position: string): "start" | "center" | "end" {
+  if (position.endsWith("-center")) return "center";
+  if (position.endsWith("-left")) return "start";
+  return "end";
+}
+
 /** Bounds for the configured duration; `0` (sticky) bypasses them. */
 export const MIN_DURATION_MS = 1_500;
 export const MAX_DURATION_MS = 60_000;
@@ -99,6 +202,9 @@ interface LiveGroup {
   count: number;
   /** Unix ms of the most recent occurrence. */
   at: number;
+  /** Anatomy the live card is rendered as; a repeat that would render the
+   *  other way breaks the group rather than folding into it. */
+  surface: NotificationSurface;
 }
 
 const groups = new Map<string, LiveGroup>();
@@ -116,16 +222,23 @@ function clampDuration(ms: number): number {
  * Sonner's own internal array — used for two things Sonner has no concept
  * of: protecting a card from being pushed behind `maxVisible` (see
  * {@link protectStackBoundary}) and driving the "+N more" pill
- * (`NotificationOverflowPill`), since Sonner does not expose how many toasts
+ * (`NotificationOverflowBadge`), since Sonner does not expose how many
  * it stopped rendering.
  *
  * A "progress" entry is tracked here too even though it is not a
  * {@link NotificationKind} — see {@link raise}'s `forceToastId` branch, which
  * relabels it in place once it resolves.
  */
+export interface ToastStackEntry {
+  id: string;
+  kind: NotificationSurfaceKind;
+  /** Which of the two hosts is rendering it. */
+  host: NotificationSurface;
+}
+
 interface ToastStackState {
-  entries: { id: string; kind: NotificationKind | "progress" }[];
-  push: (id: string, kind: NotificationKind | "progress") => void;
+  entries: ToastStackEntry[];
+  push: (id: string, kind: NotificationSurfaceKind, host: NotificationSurface) => void;
   remove: (id: string) => void;
   setKind: (id: string, kind: NotificationKind) => void;
 }
@@ -134,8 +247,8 @@ interface ToastStackState {
  *  `groups`, otherwise outlives any single test in the same file. */
 export const useToastStack = create<ToastStackState>()((set) => ({
   entries: [],
-  push(id, kind) {
-    set((s) => ({ entries: [{ id, kind }, ...s.entries] }));
+  push(id, kind, host) {
+    set((s) => ({ entries: [{ id, kind, host }, ...s.entries] }));
   },
   remove(id) {
     set((s) =>
@@ -148,6 +261,11 @@ export const useToastStack = create<ToastStackState>()((set) => ({
     set((s) => ({ entries: s.entries.map((e) => (e.id === id ? { ...e, kind } : e)) }));
   },
 }));
+
+/** The host a live toast is currently in, or `undefined` once it is gone. */
+function hostOf(toastId: string): NotificationSurface | undefined {
+  return useToastStack.getState().entries.find((e) => e.id === toastId)?.host;
+}
 
 /**
  * Kinds a stack-boundary crossing must never bump behind `maxVisible`: an
@@ -166,9 +284,13 @@ const PROTECTED_STACK_KINDS = new Set<NotificationKind | "progress">(["error", "
  * own `onDismiss`) so the very next call sees the corrected count even
  * though Sonner's own removal animates.
  */
-function protectStackBoundary(maxVisible: number) {
+function protectStackBoundary(host: NotificationSurface, maxVisible: number) {
   if (maxVisible <= 0) return;
-  const entries = useToastStack.getState().entries;
+  // Each host stacks independently, so a pill crossing its own boundary must
+  // never evict a card (and vice versa) — filter before the arithmetic.
+  const entries = useToastStack
+    .getState()
+    .entries.filter((e) => e.host === host);
   if (entries.length < maxVisible) return;
   const boundary = entries[maxVisible - 1];
   if (!boundary || !PROTECTED_STACK_KINDS.has(boundary.kind)) return;
@@ -185,17 +307,21 @@ function protectStackBoundary(maxVisible: number) {
 
 /**
  * How many active notifications are currently pushed behind `maxVisible` —
- * the count the "+N more" pill (`NotificationOverflowPill`) renders.
+ * the count the "+N more" badge (`NotificationOverflowBadge`) renders.
  *
  * `entries` is the raw store array (stable unless the stack actually
  * changes), and the subtraction is cheap arithmetic done at render time, not
  * a selector return — so this stays clear of the infinite-re-render trap in
  * CLAUDE.md gotcha #1.
  */
-export function useHiddenToastCount(): number {
+export function useHiddenToastCount(host: NotificationSurface): number {
   const entries = useToastStack((s) => s.entries);
   const maxVisible = usePreferences((s) => s.prefs.notifications.maxVisible);
-  return Math.max(0, entries.length - maxVisible);
+  // Filtering happens here and not in the selector on purpose: a selector
+  // returning a fresh array re-renders every consumer on every store write
+  // (CLAUDE.md gotcha #1).
+  const mine = entries.reduce((n, e) => (e.host === host ? n + 1 : n), 0);
+  return Math.max(0, mine - maxVisible);
 }
 
 function raise(
@@ -203,15 +329,36 @@ function raise(
   title: string,
   opts: NotifyOptions & { path?: string; size?: string } = {},
   /**
-   * Resolve an existing card in place instead of raising a new one — how a
-   * `notify.progress()` handle turns its bar into success/error/file. The
-   * slot already exists (and was already protected from eviction when the
-   * progress bar first appeared), so this only relabels it.
+   * Resolve an existing notification in place instead of raising a new one —
+   * how a `notify.progress()` handle turns its bar into success/error/file.
+   * The slot already exists (and already went through the eviction guard), so
+   * this normally only relabels it. The exception is a resolution that changes
+   * anatomy — a progress pill failing into an error card — which cannot be
+   * relabelled because the two live in different hosts; see `rehomed` below.
    */
   forceToastId?: string,
 ) {
   const prefs = usePreferences.getState().prefs.notifications;
   const base = clampDuration(prefs.durationMs);
+
+  const surface = surfaceFor(kind, title, opts);
+  const toasterId = toasterIdFor(surface, prefs);
+  // The *rendering* host, which is not always the anatomy: with both stacks
+  // pointed at the same corner there is only one host, and the stack mirror
+  // has to describe what Sonner actually did or the eviction guard would be
+  // reasoning about two stacks that do not exist.
+  const host = hostForToasterId(toasterId);
+
+  // A progress bar resolving into the *other* anatomy cannot keep its slot:
+  // the toast belongs to a host that is not going to render the outcome. Drop
+  // it and raise a fresh one rather than teleporting it across the screen with
+  // the old host's height bookkeeping left behind.
+  const rehomed = forceToastId !== undefined && hostOf(forceToastId) !== host;
+  if (rehomed) {
+    toast.dismiss(forceToastId);
+    useToastStack.getState().remove(forceToastId!);
+  }
+  const settleInPlace = forceToastId !== undefined && !rehomed;
 
   // An error that waits to be dismissed is the default: it usually carries
   // something to copy, retry or report, and none of that happens in six
@@ -221,7 +368,12 @@ function raise(
   const durationMs = persistent
     ? 0
     : Math.min(
-        opts.durationMs ?? Math.round(base * KIND_FACTOR[kind]),
+        opts.durationMs ??
+          // The multiplier buys reading time, and a pill has nothing to read:
+          // one line, no buttons, and the history keeps it either way. A
+          // warning that *does* carry something to act on has already escalated
+          // to a card by this point, and gets its ×2 back with it.
+          Math.round(base * (surface === "pill" ? 1 : KIND_FACTOR[kind])),
         Math.max(base, MAX_KIND_DURATION_MS),
       );
 
@@ -233,7 +385,15 @@ function raise(
   const groupKey = opts.group === false ? null : (opts.group ?? `${kind}:${title}`);
   const now = Date.now();
   const live = groupKey ? groups.get(groupKey) : undefined;
-  const grouped = live && now - live.at <= GROUP_WINDOW_MS ? live : undefined;
+  // A repeat only folds into the live card if it would render the same way.
+  // The second occurrence of a group can carry actions the first did not (a
+  // retry offered only after the second failure), which escalates it to a
+  // card — folding that into a pill would drop the buttons silently, so the
+  // group breaks instead and the counter restarts.
+  const grouped =
+    live && now - live.at <= GROUP_WINDOW_MS && live.surface === surface
+      ? live
+      : undefined;
 
   const count = grouped ? grouped.count + 1 : 1;
   const history = useNotifications.getState();
@@ -253,16 +413,18 @@ function raise(
       : record()
     : record();
 
-  const toastId = forceToastId ?? (grouped ? grouped.toastId : `notif-${++seq}`);
-  if (groupKey) groups.set(groupKey, { toastId, historyId, count, at: now });
+  const toastId = settleInPlace
+    ? forceToastId!
+    : (grouped?.toastId ?? `notif-${++seq}`);
+  if (groupKey) groups.set(groupKey, { toastId, historyId, count, at: now, surface });
 
-  if (forceToastId) {
+  if (settleInPlace) {
     // Relabelling a progress bar's slot in place — it already occupies a
     // stack position (and already went through the eviction guard once).
-    useToastStack.getState().setKind(forceToastId, kind);
+    useToastStack.getState().setKind(toastId, kind);
   } else if (!grouped) {
-    protectStackBoundary(prefs.maxVisible);
-    useToastStack.getState().push(toastId, kind);
+    protectStackBoundary(host, prefs.maxVisible);
+    useToastStack.getState().push(toastId, kind, host);
   }
 
   // An error carries a message worth keeping even when nothing can be retried,
@@ -279,23 +441,37 @@ function raise(
   }
 
   toast.custom(
-    (id) => (
-      <NotificationCard
-        kind={kind}
-        title={title}
-        description={opts.description}
-        mono={mono}
-        count={count}
-        file={file}
-        actions={actions}
-        durationMs={durationMs || undefined}
-        density={prefs.density}
-        onDismiss={() => toast.dismiss(id)}
-        onFileMissing={() => useNotifications.getState().markMissing(historyId)}
-      />
-    ),
+    (id) =>
+      surface === "pill" ? (
+        <NotificationPill
+          kind={kind}
+          title={title}
+          // Safe by construction: `surfaceFor` already escalated anything whose
+          // description was too long to sit on the same line.
+          suffix={opts.description}
+          count={count}
+          density={prefs.density}
+          align={alignForPosition(prefs.pillPosition)}
+          onDismiss={() => toast.dismiss(id)}
+        />
+      ) : (
+        <NotificationCard
+          kind={kind}
+          title={title}
+          description={opts.description}
+          mono={mono}
+          count={count}
+          file={file}
+          actions={actions}
+          durationMs={durationMs || undefined}
+          density={prefs.density}
+          onDismiss={() => toast.dismiss(id)}
+          onFileMissing={() => useNotifications.getState().markMissing(historyId)}
+        />
+      ),
     {
       id: toastId,
+      toasterId,
       // Sonner special-cases `Infinity` and skips the timer entirely.
       duration: durationMs || Infinity,
       // Whether it timed out or was swiped away, the group is over: the next
@@ -344,23 +520,39 @@ function renderProgressCard(
   title: string,
   description: string | undefined,
   progress: ProgressUpdate | undefined,
+  toasterId: string | undefined,
+  surface: NotificationSurface,
 ) {
-  const density = usePreferences.getState().prefs.notifications.density;
+  const prefs = usePreferences.getState().prefs.notifications;
   toast.custom(
-    () => (
-      <NotificationCard
-        kind="progress"
-        title={title}
-        description={description}
-        progress={progress}
-        density={density}
-        // Not dismissible while running (see the toast option below); the
-        // card renders no close button for this kind, so this is never called.
-        onDismiss={() => {}}
-      />
-    ),
+    () =>
+      surface === "pill" ? (
+        <NotificationPill
+          kind="progress"
+          title={title}
+          suffix={description}
+          progress={progress}
+          density={prefs.density}
+          align={alignForPosition(prefs.pillPosition)}
+          // Not dismissible while running (see the toast option below), and a
+          // pill's dismissal is a click on itself — so this is never reached.
+          onDismiss={() => {}}
+        />
+      ) : (
+        <NotificationCard
+          kind="progress"
+          title={title}
+          description={description}
+          progress={progress}
+          density={prefs.density}
+          // Not dismissible while running (see the toast option below); the
+          // card renders no close button for this kind, so this is never called.
+          onDismiss={() => {}}
+        />
+      ),
     {
       id: toastId,
+      toasterId,
       duration: Infinity,
       dismissible: false,
     },
@@ -382,9 +574,15 @@ function progress(title: string, opts: NotifyProgressOptions = {}): ProgressHand
   const prefs = usePreferences.getState().prefs.notifications;
   let settled = false;
 
-  protectStackBoundary(prefs.maxVisible);
-  useToastStack.getState().push(toastId, "progress");
-  renderProgressCard(toastId, title, opts.description, undefined);
+  // A running bar carries no buttons of its own, so it follows the same rule
+  // every other kind does — and lands in whichever host that decides.
+  const surface = surfaceFor("progress", title, { description: opts.description });
+  const toasterId = toasterIdFor(surface, prefs);
+  const host = hostForToasterId(toasterId);
+
+  protectStackBoundary(host, prefs.maxVisible);
+  useToastStack.getState().push(toastId, "progress", host);
+  renderProgressCard(toastId, title, opts.description, undefined, toasterId, surface);
 
   return {
     update(p) {
@@ -394,6 +592,8 @@ function progress(title: string, opts: NotifyProgressOptions = {}): ProgressHand
         title,
         opts.formatProgress ? opts.formatProgress(p) : opts.description,
         p,
+        toasterId,
+        surface,
       );
     },
     success: (t, o) => {

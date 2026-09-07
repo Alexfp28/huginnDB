@@ -163,7 +163,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 4,
     "src/components/grid/DocumentListView.tsx": 4,
     "src/components/pulse/PulseWindow.tsx": 4,
-    "src/components/settings/sections/NotificationsSection.tsx": 4,
     "src/components/connection/ConnectionTreeRow.tsx": 3,
     "src/components/connection/dialogs/ConnectionDialog.tsx": 3,
     "src/components/connection/EnvironmentRail.tsx": 3,
@@ -224,6 +223,8 @@ describe("raw <button> outside ui/", () => {
     "src/components/schema/SingleDbExplorer.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
     "src/components/settings/dialogs/SettingsDialog.tsx": 1,
+    "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
+    "src/components/settings/sections/NotificationsSection.tsx": 1,
     "src/components/settings/sections/ShortcutsSection.tsx": 1,
     "src/components/shell/ActivityBar.tsx": 1,
     "src/components/shell/ConsoleDock.tsx": 1,
@@ -231,7 +232,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${136} in ${72} files`, () => {
+  it(`is down to ${134} in ${73} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -239,7 +240,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(136);
+    expect(total(BUDGET)).toBeLessThanOrEqual(134);
   });
 });
 
@@ -312,7 +313,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/schema/SchemaTableRow.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
     "src/components/settings/sections/McpConnectionTree.tsx": 1,
-    "src/components/settings/sections/NotificationsSection.tsx": 1,
+    "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
     "src/components/settings/sections/PulseConnectionTree.tsx": 1,
     "src/components/shell/WorkspaceTab.tsx": 1,
   };

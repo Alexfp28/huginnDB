@@ -5,9 +5,11 @@
  * Two rows are not plain controls, for reasons the plain controls couldn't
  * cover:
  *
- * * **Position** is a grid of six miniature windows rather than a `<Select>`.
- *   The choice is spatial, and "abajo a la derecha" in a dropdown asks the user
- *   to picture it; a rectangle with a bar in the corner just shows it.
+ * * **Position** — twice, once per stack — is a grid of six miniature windows
+ *   rather than a `<Select>`. The choice is spatial, and "bottom right" in a
+ *   dropdown asks the user to picture it; a rectangle with a bar in the corner
+ *   just shows it. Pointing both stacks at the same corner is not an error: it
+ *   is how the two anatomies collapse back into a single stack.
  * * **Duration** pairs presets with the raw millisecond input. The presets are
  *   what anybody actually wants (and one of them is "until dismissed", which is
  *   `0` — not a number a user should have to know), while the input keeps the
@@ -19,6 +21,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -33,26 +36,13 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { notify, MAX_DURATION_MS, MIN_DURATION_MS } from "@/lib/notify";
-import {
-  NOTIFICATION_POSITIONS,
-  POSITION_LABEL_KEYS,
-} from "@/lib/notificationPosition";
 import { cn } from "@/lib/utils";
-import type { NotificationDensity, NotificationPosition } from "@/types";
+import type { NotificationDensity } from "@/types";
+import { NotificationPositionPicker } from "./NotificationPositionPicker";
 import { PrefRow } from "./PrefRow";
 
 /** The presets offered next to the raw input. `0` is "until dismissed". */
 const DURATION_PRESETS = [4000, 6000, 10000, 0] as const;
-
-/** Where the bar sits inside a position tile, mirroring the real placement. */
-const TILE_BAR: Record<NotificationPosition, string> = {
-  "top-left": "top-1.5 left-1.5",
-  "top-center": "top-1.5 left-1/2 -translate-x-1/2",
-  "top-right": "top-1.5 right-1.5",
-  "bottom-left": "bottom-1.5 left-1.5",
-  "bottom-center": "bottom-1.5 left-1/2 -translate-x-1/2",
-  "bottom-right": "bottom-1.5 right-1.5",
-};
 
 export function NotificationsSection() {
   const prefs = usePreferences(selectNotificationPrefs);
@@ -91,6 +81,21 @@ export function NotificationsSection() {
             )}
             <div className="h-0.5 w-3/5 bg-success/55" />
           </div>
+
+          {/* The other stack, in its own corner — the whole reason there are
+              two position rows below. */}
+          <div
+            className={cn(
+              "absolute flex h-3.5 items-center gap-1 rounded-full border border-border bg-popover px-1.5 shadow-elevation-2",
+              prefs.pillPosition.startsWith("bottom") ? "bottom-4" : "top-5",
+              prefs.pillPosition.endsWith("left") && "left-2",
+              prefs.pillPosition.endsWith("right") && "right-2",
+              prefs.pillPosition.endsWith("center") && "left-1/2 -translate-x-1/2",
+            )}
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand/50" />
+            <span className="h-1 w-9 rounded-full bg-muted-foreground/40" />
+          </div>
         </div>
 
         <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -101,20 +106,22 @@ export function NotificationsSection() {
             {t("settings.notifications.preview.desc")}
           </div>
           <div className="mt-0.5 flex gap-2">
-            <button
-              type="button"
+            <Button
+              size="xs"
               onClick={() =>
+                // A description this long escalates it to a card, which is the
+                // point: this button demonstrates the card anatomy.
                 notify.success(t("settings.notifications.preview.sampleTitle"), {
                   description: t("settings.notifications.preview.sampleBody"),
                   group: false,
                 })
               }
-              className="inline-flex h-7 items-center rounded-md bg-brand px-2.5 text-2xs font-semibold text-brand-foreground transition-colors hover:bg-brand-hover"
             >
               {t("settings.notifications.preview.test")}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
               onClick={() =>
                 notify.error(
                   t("settings.notifications.preview.sampleErrorTitle"),
@@ -126,10 +133,23 @@ export function NotificationsSection() {
                   },
                 )
               }
-              className="inline-flex h-7 items-center rounded-md border border-border px-2.5 text-2xs font-medium text-foreground transition-colors hover:bg-accent"
             >
               {t("settings.notifications.preview.testError")}
-            </button>
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() =>
+                // No description and no actions, so `surfaceFor` keeps it a
+                // pill — the point is to see the anatomy, in its own corner.
+                notify.info(
+                  t("settings.notifications.preview.samplePillTitle"),
+                  { group: false },
+                )
+              }
+            >
+              {t("settings.notifications.preview.testPill")}
+            </Button>
           </div>
         </div>
       </div>
@@ -140,36 +160,23 @@ export function NotificationsSection() {
         description={t("settings.notifications.position.desc")}
         prefId="notifications.position"
       >
-        <div className="grid grid-cols-3 gap-1.5">
-          {NOTIFICATION_POSITIONS.map((pos) => {
-            const active = prefs.position === pos;
-            return (
-              <button
-                key={pos}
-                type="button"
-                aria-pressed={active}
-                title={t(
-                  `settings.notifications.position.${POSITION_LABEL_KEYS[pos]}`,
-                )}
-                onClick={() => update({ position: pos })}
-                className={cn(
-                  "relative h-[42px] w-[62px] rounded-md border bg-background transition-colors",
-                  active
-                    ? "border-brand ring-1 ring-brand/35"
-                    : "border-border hover:border-muted-foreground/40",
-                )}
-              >
-                <span
-                  className={cn(
-                    "absolute h-1.5 w-5 rounded-full transition-colors",
-                    TILE_BAR[pos],
-                    active ? "bg-brand" : "bg-muted-foreground/40",
-                  )}
-                />
-              </button>
-            );
-          })}
-        </div>
+        <NotificationPositionPicker
+          value={prefs.position}
+          onChange={(position) => update({ position })}
+        />
+      </PrefRow>
+
+      {/* Pill position ------------------------------------------------------ */}
+      <PrefRow
+        label={t("settings.notifications.pillPosition.label")}
+        description={t("settings.notifications.pillPosition.desc")}
+        prefId="notifications.pillPosition"
+      >
+        <NotificationPositionPicker
+          value={prefs.pillPosition}
+          shape="pill"
+          onChange={(pillPosition) => update({ pillPosition })}
+        />
       </PrefRow>
 
       {/* Duration ----------------------------------------------------------- */}

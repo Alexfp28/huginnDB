@@ -92,6 +92,10 @@ const DEFAULT_PREFS: Preferences = {
   // what made a file path or a driver error unreadable before it vanished.
   notifications: {
     position: "bottom-right",
+    // Deliberately not the card corner: bottom-centre is the canonical spot for
+    // ephemeral state, and it leaves the bottom-right corner (where the bell
+    // and the status bar already are) to the cards.
+    pillPosition: "bottom-center",
     durationMs: 6000,
     errorsPersist: true,
     maxVisible: 3,

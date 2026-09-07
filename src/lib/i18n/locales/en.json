@@ -1461,8 +1461,8 @@
     },
     "notifications": {
       "position": {
-        "label": "Position",
-        "desc": "Corner or edge the stack grows from.",
+        "label": "Card position",
+        "desc": "Corner the card stack grows from — errors, files and anything with buttons.",
         "topLeft": "Top left",
         "topCenter": "Top centre",
         "topRight": "Top right",
@@ -1472,7 +1472,7 @@
       },
       "duration": {
         "label": "Duration",
-        "desc": "How long a dismissible notification stays. Warnings and file notifications get a multiple of this.",
+        "desc": "How long a dismissible notification stays. Anything that carries something to act on gets a multiple of this.",
         "sticky": "Until dismissed",
         "seconds": "{{count}} s",
         "unit": "ms"
@@ -1511,7 +1511,13 @@
         "sampleTitle": "Cell saved",
         "sampleBody": "Artist.Name on row 4.",
         "sampleErrorTitle": "Could not save the cell",
-        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'",
+        "testPill": "Test a pill",
+        "samplePillTitle": "Connection restored"
+      },
+      "pillPosition": {
+        "label": "Pill position",
+        "desc": "Corner the one-line stack grows from. Pick the same corner as the cards to keep everything in one stack."
       }
     }
   },

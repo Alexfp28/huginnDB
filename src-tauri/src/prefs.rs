@@ -239,9 +239,16 @@ pub struct UiPrefs {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct NotificationPrefs {
-    /// Corner or edge the stack grows from. One of "top-left" | "top-center" |
-    /// "top-right" | "bottom-left" | "bottom-center" | "bottom-right".
+    /// Corner or edge the *card* stack grows from — errors, file notifications
+    /// and anything escalated out of a one-line pill. One of "top-left" |
+    /// "top-center" | "top-right" | "bottom-left" | "bottom-center" |
+    /// "bottom-right".
     pub position: String,
+    /// Corner or edge the *pill* stack grows from — the one-line anatomy every
+    /// non-error kind uses. Same six values as [`NotificationPrefs::position`];
+    /// setting it equal to that one collapses both anatomies back into a single
+    /// stack, which the frontend implements by mounting one host instead of two.
+    pub pill_position: String,
     /// How long a dismissible notification lives, in milliseconds. `0` means
     /// "until dismissed".
     ///
@@ -484,6 +491,10 @@ impl Default for NotificationPrefs {
             // Where they already were, and still the least intrusive corner:
             // away from the editing caret and next to the bell.
             position: "bottom-right".into(),
+            // Not the card corner: bottom-centre is the canonical spot for
+            // ephemeral state, and it leaves bottom-right — where the bell and
+            // the status bar already live — to the cards.
+            pill_position: "bottom-center".into(),
             duration_ms: 6000,
             errors_persist: true,
             max_visible: 3,
@@ -579,6 +590,7 @@ mod tests {
         let sent = r#"{
             "notifications": {
                 "position": "top-center",
+                "pillPosition": "bottom-left",
                 "durationMs": 10000,
                 "errorsPersist": false,
                 "maxVisible": 5,
@@ -591,6 +603,7 @@ mod tests {
         let parsed: Preferences = serde_json::from_str(sent).unwrap();
         let n = &parsed.notifications;
         assert_eq!(n.position, "top-center");
+        assert_eq!(n.pill_position, "bottom-left");
         assert_eq!(n.duration_ms, 10000);
         assert!(!n.errors_persist);
         assert_eq!(n.max_visible, 5);
@@ -603,6 +616,7 @@ mod tests {
         let json = serde_json::to_value(&parsed).unwrap();
         assert!(json["notifications"]["durationMs"].is_number());
         assert!(json["notifications"]["errorsPersist"].is_boolean());
+        assert_eq!(json["notifications"]["pillPosition"], "bottom-left");
     }
 
     /// The pre-1.19 shape stored one bare string per action. Those files are

@@ -1081,7 +1081,14 @@ export type NotificationDensity = "comfortable" | "compact";
  * `prefs.rs` pins the exact JSON.
  */
 export interface NotificationPrefs {
+  /** Corner the card stack grows from — errors, files and anything escalated. */
   position: NotificationPosition;
+  /**
+   * Corner the one-line pill stack grows from. Set it equal to
+   * {@link NotificationPrefs.position} to collapse both anatomies back into a
+   * single stack (`NotificationHosts` then mounts one host, not two).
+   */
+  pillPosition: NotificationPosition;
   /** Lifetime of a dismissible notification in ms. `0` = until dismissed.
    *  Defaults to 6000; clamped to {@link NOTIFICATION_DURATION_BOUNDS}. */
   durationMs: number;

@@ -6,6 +6,61 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **A one-line notification anatomy, and a rule that decides when it is not
+  enough.** A confirmation used to be a 380px card with a rail, a 28px
+  medallion, a body slot and a button row — to deliver the words "Cell saved".
+  Every notification that is not an error is now a **pill**: 32px, one line,
+  icon plus title plus an optional faint monospaced tail, dismissed by clicking
+  it. Errors and file notifications look exactly as they did, because both
+  always carry something to act on: a driver message worth copying, a file name
+  that opens the folder.
+
+  The interesting half is the boundary. "Non-errors are pills" is only safe if
+  something notices when a pill is the wrong shape, so `surfaceFor` in
+  `lib/notify.tsx` asks *does this fit on one line* rather than *what kind is
+  this*: anything carrying buttons, a file path, or a description too long for
+  the line escalates to the card and keeps everything it had. It is decided
+  once, at the same seam that already owns duration, grouping and history —
+  never at a call site, because a call site that had to remember would be one
+  that silently dropped its own buttons.
+
+- **The two anatomies stack in two corners, and Settings → Notifications now has
+  a position picker for each.** Pills default to bottom-centre and cards stay
+  bottom-right, so a confirmation no longer queues behind an error nobody has
+  read. Choosing the *same* corner for both is not a collision to arbitrate — it
+  is how they collapse back into a single stack, which is one code path, not a
+  special case. Both rows are addressable from the command palette.
+
+### Changed
+
+- **A pill lives for the base duration, where the card it replaced lived for a
+  multiple of it.** The multiplier buys reading time and a pill has nothing to
+  read; a warning that genuinely carries something to act on has already become
+  a card by then, and gets its ×2 back with it. A pill also has no draining
+  hairline: a straight 2px bar clipped by a 999px radius reads as a lens, and a
+  ring around a 14px icon would mean "time left" on a confirmation and "work
+  done" on a progress bar — one shape, two meanings. The known cost is that
+  "expand on hover" no longer has a visible acknowledgement on a pill.
+
+- **A long-running task that fails now moves instead of resolving in place.** A
+  `progress` notification normally turns into its own outcome without leaving
+  its slot; a progress *pill* that fails into an error *card* belongs to a
+  different stack, so it is withdrawn and the error raised fresh. The
+  same-slot promise is kept everywhere it still can be — `progress → success`
+  never moves.
+
+### Fixed
+
+- **The three window roots no longer each carry their own copy of the
+  notification container.** `App`, the detached-tab window and the Pulse window
+  had an identical `<Toaster>` invocation, with the edge offset written out a
+  fourth time inside the overflow badge — four places to keep in sync for one
+  decision, and the reason `lib/notify`'s opening claim that "nothing outside
+  this module imports `sonner`" had quietly stopped being true. One
+  `<NotificationHosts>` now owns every host, and the claim is true again.
+
 ## [1.21.3] — 2026-09-07
 
 ### Added

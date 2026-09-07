@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/dropdown";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { SimpleTooltip } from "@/components/ui/tooltip";
-import { NOTIFICATION_KIND_VISUALS } from "@/components/shell/NotificationCard";
+import { NOTIFICATION_KIND_VISUALS } from "@/components/shell/notificationVisuals";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";

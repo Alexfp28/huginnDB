@@ -25,7 +25,6 @@ import {
 } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useTranslation } from "react-i18next";
-import { Toaster } from "sonner";
 import {
   Activity,
   AlertTriangle,
@@ -46,7 +45,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
 import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
-import { NotificationOverflowPill } from "@/components/shell/NotificationOverflowPill";
+import { NotificationHosts } from "@/components/shell/NotificationHosts";
 import { useBridge } from "@/lib/bridges/useBridge";
 import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -68,10 +67,8 @@ import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import {
-  selectNotificationPrefs,
   usePreferences,
 } from "@/stores/preferences/preferences";
-import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useOnDemandRead } from "@/lib/pulse/useOnDemandRead";
 import { latestOf, seriesFromHistory } from "@/lib/pulse/rates";
 import type {
@@ -920,8 +917,6 @@ export function PulseWindow() {
   const [connectionId, setConnectionId] = useState<string | null | undefined>(
     undefined,
   );
-  const themeMode = useThemeStore(selectActiveMode);
-  const notificationPrefs = usePreferences(selectNotificationPrefs);
   const language = usePreferences((s) => s.prefs.ui.language);
 
   // Minimal bootstrap, mirroring `DetachedTabWindow`: enough state for the
@@ -968,15 +963,7 @@ export function PulseWindow() {
             </ConnectionErrorBoundary>
           )}
         </div>
-        <Toaster
-          position={notificationPrefs.position}
-          visibleToasts={notificationPrefs.maxVisible}
-          expand={notificationPrefs.expandOnHover}
-          gap={10}
-          offset={{ bottom: 32, top: 12, left: 16, right: 16 }}
-          theme={themeMode === "dark" ? "dark" : "light"}
-        />
-        <NotificationOverflowPill />
+        <NotificationHosts />
       </div>
     </TooltipProvider>
   );

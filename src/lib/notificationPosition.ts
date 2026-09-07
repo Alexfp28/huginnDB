@@ -30,3 +30,32 @@ export const POSITION_LABEL_KEYS: Record<NotificationPosition, string> = {
   "bottom-center": "bottomCenter",
   "bottom-right": "bottomRight",
 };
+
+/**
+ * Distance from the window edge every notification host is inset by. Passed to
+ * `<Toaster offset>` and mirrored by `NotificationOverflowBadge`, which is a
+ * separately positioned fixed element rather than a child of Sonner's own DOM.
+ *
+ * It lives here because those two have to agree and used to be four copies of
+ * the same literal.
+ */
+export const NOTIFICATION_OFFSET = { top: 12, bottom: 32, left: 16, right: 16 };
+
+/**
+ * Rough footprint of a collapsed (non-hovered) stack peeking out behind the
+ * front notification — how far past the edge inset the "+N more" badge has to
+ * sit. An approximation on purpose: Sonner keeps per-toast heights as private
+ * component state, not a public API, so there is nothing exact to ask for.
+ */
+export const CARD_STACK_PEEK_PX = 88;
+
+/**
+ * `<Toaster id>` of the pill host, and the `toasterId` every pill toast is
+ * raised with. Sonner routes by exact match (`toast.toasterId === id`), and a
+ * `<Toaster>` with no `id` renders only toasts with no `toasterId` — which is
+ * what lets the card host stay the default and the pill host be opt-in.
+ */
+export const PILL_TOASTER_ID = "huginn-pills";
+
+/** {@link CARD_STACK_PEEK_PX} for the pill stack: 32px tall plus its gap. */
+export const PILL_STACK_PEEK_PX = 44;

@@ -1461,8 +1461,8 @@
     },
     "notifications": {
       "position": {
-        "label": "Posición",
-        "desc": "Esquina o borde desde el que crece la pila.",
+        "label": "Posición de las tarjetas",
+        "desc": "Esquina desde la que crece la pila de tarjetas: errores, archivos y todo lo que lleve botones.",
         "topLeft": "Arriba izquierda",
         "topCenter": "Arriba centro",
         "topRight": "Arriba derecha",
@@ -1472,7 +1472,7 @@
       },
       "duration": {
         "label": "Duración",
-        "desc": "Cuánto vive una notificación que se cierra sola. Los avisos y las de archivo duran un múltiplo de esto.",
+        "desc": "Cuánto vive una notificación que se cierra sola. Lo que lleva algo sobre lo que actuar dura un múltiplo de esto.",
         "sticky": "Hasta cerrarla",
         "seconds": "{{count}} s",
         "unit": "ms"
@@ -1511,7 +1511,13 @@
         "sampleTitle": "Celda guardada",
         "sampleBody": "Artist.Name en la fila 4.",
         "sampleErrorTitle": "No se pudo guardar la celda",
-        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'"
+        "sampleErrorBody": "ERROR 1062 (23000): Duplicate entry 'AC/DC' for key 'Artist.ux_name'",
+        "testPill": "Probar una píldora",
+        "samplePillTitle": "Conexión restablecida"
+      },
+      "pillPosition": {
+        "label": "Posición de las píldoras",
+        "desc": "Esquina desde la que crece la pila de una línea. Elige la misma esquina que las tarjetas para tenerlo todo en una sola pila."
       }
     }
   },
