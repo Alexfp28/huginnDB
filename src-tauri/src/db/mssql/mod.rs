@@ -472,14 +472,18 @@ pub fn is_output_clause_conflict(e: &AppError) -> bool {
 
 /// Open one TDS session against `cfg`, bounded by [`crate::db::pool::ACQUIRE_TIMEOUT`].
 ///
-/// The `sqlx`-backed drivers get this for free: `tuned()` sets
-/// `.acquire_timeout(ACQUIRE_TIMEOUT)` on every `PgPoolOptions`/
-/// `MySqlPoolOptions`/`SqlitePoolOptions`, so even their eager `connect()`
-/// fails fast on an unreachable host. `tiberius` has no equivalent knob, and
-/// this function's own two network calls — a plain TCP connect, and the SQL
-/// Browser's UDP round trip in [`Reach::Browser`] — have no OS-level timeout
-/// of their own; a host that silently drops packets (a firewall, a stopped
-/// Browser with no reachable fallback port) hangs them indefinitely.
+/// The `sqlx`-backed drivers reach the same place by a different route:
+/// `db::pool::connect_probed` bounds their one un-pooled connect attempt by
+/// the same [`crate::db::pool::ACQUIRE_TIMEOUT`] and returns the same
+/// `OperationTimedOut`. It has to do that explicitly — `.acquire_timeout(...)`
+/// on the `PoolOptions` is *not* enough, because `sqlx`'s eager `connect()`
+/// spends that budget retrying and then reports `PoolTimedOut`, which used to
+/// be classified as a connection-limit refusal (gotcha #66). `tiberius` has no
+/// pool at all, and this function's own two network calls — a plain TCP
+/// connect, and the SQL Browser's UDP round trip in [`Reach::Browser`] — have
+/// no OS-level timeout of their own; a host that silently drops packets (a
+/// firewall, a stopped Browser with no reachable fallback port) hangs them
+/// indefinitely.
 ///
 /// That indefinite hang is invisible everywhere a `list_tables`/`list_columns`
 /// call is itself wrapped in [`crate::error::with_timeout`] — the schema

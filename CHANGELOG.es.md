@@ -10,6 +10,49 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Un servidor inalcanzable se reportaba como "too many connections", treinta
+  segundos tarde y con el remedio equivocado.** Un perfil MySQL apuntando a un
+  puerto cerrado, un host detrás de un firewall que descarta los SYN, o un túnel
+  SSH que se había caído producían `too many connections: HuginnDB's own
+  connection pool timed out waiting for a free slot — HuginnDB is currently
+  holding 0 connection pool(s) and 0 per-database pool(s)`. Ninguna parte de esa
+  frase describía el fallo real, y la app actuaba en consecuencia: el frontend
+  reconoce el marcador de límite de conexiones por subcadena, así que ofrecía
+  "liberar pools inactivos y reintentar" para un servidor que no estaba lleno, y
+  abría el cortacircuitos de la búsqueda entre bases de datos del explorador por
+  un diagnóstico que no tenía nada que ver con la capacidad.
+
+  La causa está en `sqlx`, no en la clasificación. `PoolOptions::connect` es
+  eager, y su bucle de reintento trata una conexión rechazada y un error de base
+  de datos *transitorio* como motivo para esperar y volver a intentarlo hasta
+  agotar `acquire_timeout` — treinta segundos — y entonces devuelve
+  `PoolTimedOut` descartando el error real. El pool nunca podía decir por qué
+  había fallado, y `PoolTimedOut` cargaba con dos significados sin relación: "tu
+  propio pool está saturado", que es correcto para un pool que ya existe, y "no
+  llegué nunca al host", que no lo es. Postgres lo empeoraba en el otro sentido:
+  `53300` (`too_many_connections`) cuenta como transitorio, así que un Postgres
+  genuinamente lleno también se reintentaba treinta segundos y luego se le
+  echaba la culpa a nuestro pool en vez de reportar las palabras del servidor.
+
+  Abrir un pool ahora comprueba primero el endpoint, con una única conexión
+  fuera del pool que no tiene bucle de reintento, y construye el pool de forma
+  perezosa detrás. Una conexión rechazada falla al instante y lo dice; una
+  contraseña incorrecta sigue siendo una contraseña incorrecta; un rechazo real
+  por límite — MySQL `1040`, Postgres `53300` — sigue reportándose como tal, con
+  el mensaje del propio servidor; y solo un host que descarta paquetes en
+  silencio llega al timeout, donde se reporta como lo que es, con las mismas
+  palabras que SQL Server ha usado siempre para ese caso. Al ser el pool
+  perezoso, el camino de apertura ya no puede producir `PoolTimedOut`, y eso es
+  lo que mantiene los dos significados separados en lugar de adivinados.
+
+  Además: el error ya no añade "HuginnDB is currently holding 0 connection
+  pool(s) and 0 per-database pool(s)". Esa frase existe para revelar nuestra
+  propia parte del límite del servidor, y salía a cero precisamente cuando menos
+  servía — el pool que acaba de fallar nunca se cuenta, así que la primera
+  conexión de una sesión siempre decía cero, y eso es lo que hacía convincente
+  el diagnóstico equivocado. La nota sobre los demás clientes de la máquina se
+  mantiene, porque esa sí explica un servidor que no hemos llenado nosotros.
+
 - **`describe_table` no podía describir una vista de MongoDB — justamente la
   única relación cuya descripción es la forma de leerla.** El pipeline
   almacenado de una vista *es* su definición, y `describe_relation_inner` lo

@@ -255,6 +255,7 @@ for connection-storm behaviour during replica-set failover.
 | F6 | MongoDB pool is unbounded (driver default 100/host) | **Medium** | `mongo/mod.rs:43` |
 | F7 | Keepalive (180 s) defeats idle reaping (600 s) | **Medium** | `keepalive.rs:38` |
 | F8 | `too many connections` is unclassified; retry paths re-fire | **Medium** | `connectFlow.ts:37` |
+| | *(classified in P0; the signal itself was masked by `sqlx` until 1.21.x — see §4.6's amendment and gotcha #66)* | | |
 | F9 | Teardown relies on `Drop` instead of `close().await` | **Medium** | `connection.rs:436` |
 | F10 | No preference, no per-profile override, no live visibility | **Medium** | `prefs.rs` |
 | F11 | Export/import dialogs leave a permanent pool per database | **Low** | `ExportDatabaseDialog.tsx:128` |
@@ -382,6 +383,25 @@ On detection: a dedicated message that names HuginnDB's own footprint
 ("HuginnDB currently holds 14 pools against 3 servers"), a "close idle pools
 and retry" action, and — importantly — a circuit breaker that makes the search
 fan-out (F2) **stop** instead of re-firing on the next keystroke.
+
+**Amendment (1.21.x): the table above is only sound if the signal reaching it is
+the driver's own.** It was not, on the connect path. `sqlx`'s eager
+`PoolOptions::connect` retries anything it deems transient — a refused connect,
+and a database error whose `is_transient_in_connect_phase()` holds, which on
+Postgres includes the very `53300` this table asks for — until
+`acquire_timeout` and then returns `PoolTimedOut` with the cause discarded. Two
+consequences, in opposite directions: an unreachable host was classified as a
+connection limit (and therefore got the retry-stopping circuit breaker and the
+"close idle pools" action, neither of which applies to it), and a genuinely full
+Postgres was reported as *our* pool timing out rather than in the server's own
+words. `db::pool::connect_probed` now proves the endpoint with one un-pooled
+`Connection::connect` and builds the pool with `connect_lazy`, so the signal
+this table classifies is the raw driver error and `PoolTimedOut` is an
+acquire-time-only condition. See gotcha #66.
+
+The footprint clause is also omitted when the footprint is zero, which is the
+state the first failing connect of a session is always in — quoting "0 connection
+pool(s)" is how the misdiagnosis became persuasive.
 
 ---
 

@@ -8,6 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **An unreachable server was reported as "too many connections", thirty seconds
+  late, with the wrong remedy attached.** A MySQL profile pointed at a closed
+  port, a host behind a firewall that drops SYNs, or an SSH forward that had
+  died produced `too many connections: HuginnDB's own connection pool timed out
+  waiting for a free slot — HuginnDB is currently holding 0 connection pool(s)
+  and 0 per-database pool(s)`. Every clause of that was wrong for the actual
+  failure, and the app acted on it: the frontend matches the connection-limit
+  marker by substring, so it offered "release idle pools and retry" for a server
+  that was not full, and tripped the schema explorer's cross-database circuit
+  breaker on a diagnosis that had nothing to do with capacity.
+
+  The cause is in `sqlx`, not in the classification. `PoolOptions::connect` is
+  eager, and its retry loop treats a refused connect and a *transient* database
+  error as reasons to back off and try again until `acquire_timeout` — thirty
+  seconds — and then reports `PoolTimedOut` with the real error discarded. So
+  the pool could never say why it failed, and `PoolTimedOut` carried two
+  unrelated meanings: "your own pool is starved", which is right for a pool that
+  already exists, and "I never reached the host", which is not. Postgres made it
+  worse in the other direction: `53300` (`too_many_connections`) counts as
+  transient, so a genuinely full Postgres was also retried for thirty seconds
+  and then blamed on our pool rather than reported in the server's own words.
+
+  Opening a pool now proves the endpoint first, with a single un-pooled
+  connection that has no retry loop, and builds the pool lazily behind it. A
+  refused connect fails immediately and says so; a wrong password stays a wrong
+  password; a real limit refusal — MySQL `1040`, Postgres `53300` — still
+  reports as a limit refusal, carrying the server's own message; and only a host
+  that silently drops packets reaches the timeout, where it is reported as one,
+  in the same words SQL Server has always used for it. Because the pool is now
+  lazy, the open path cannot produce `PoolTimedOut` at all, which is what makes
+  the two meanings stay separated rather than being guessed at.
+
+  Also: the error no longer appends "HuginnDB is currently holding 0 connection
+  pool(s) and 0 per-database pool(s)". That sentence exists to disclose our own
+  share of a server's limit, and it was reported as zero exactly when it was
+  least useful — the pool that just failed is never counted, so the first
+  connect of a session always said zero, which is what made the misdiagnosis
+  convincing. The note about the machine's other clients stays, because it still
+  explains a server we did not fill.
+
 - **`describe_table` could not describe a MongoDB view — the one relation whose
   description is the only way to read it.** A view's stored pipeline *is* its
   definition, and `describe_relation_inner` reads it: structure first, then the

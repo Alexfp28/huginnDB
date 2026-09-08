@@ -155,6 +155,15 @@ fn limits_for(grant: &Option<EndpointGrant>) -> PoolLimits {
 /// occupants heads off the wrong conclusion, since HuginnDB is frequently the
 /// marginal straw rather than the main consumer.
 ///
+/// Holding nothing is not a footprint worth quoting: the sentence exists to
+/// disclose HuginnDB's own share, and "0 connection pool(s) and 0 per-database
+/// pool(s)" discloses that there is none to release while reading as though
+/// the count were the point. That happens on the very first connect of a
+/// session — the pool that just failed is never in the map, since insertion
+/// only happens on the success arm — which is exactly when the reader is least
+/// able to tell a real limit from a server that never answered. The hint about
+/// the other occupants still applies and stays.
+///
 /// Any other error passes through untouched.
 fn annotate_connection_limit(state: &AppState, error: AppError) -> AppError {
     if !error.is_too_many_connections() {
@@ -164,9 +173,16 @@ fn annotate_connection_limit(state: &AppState, error: AppError) -> AppError {
         return error;
     };
     let (connections, views) = state.connections.read().counts();
+    let ours = if connections + views == 0 {
+        String::new()
+    } else {
+        format!(
+            " HuginnDB is currently holding {connections} connection pool(s) and {views} \
+             per-database pool(s)."
+        )
+    };
     AppError::TooManyConnections(format!(
-        "{detail} — HuginnDB is currently holding {connections} connection pool(s) and {views} \
-         per-database pool(s). Other clients on this machine (IDE data sources, application \
+        "{detail} —{ours} Other clients on this machine (IDE data sources, application \
          connection pools, huginndb-mcp sidecars) count against the same server limit."
     ))
 }
@@ -1949,9 +1965,64 @@ pub fn take_pulse_window_intent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::MongoConn;
+    use crate::state::{DbPool, MongoConn};
     use crate::tab_state::{Environment, PersistedTabState};
     use crate::testkit;
+
+    /// The first connect of a session against a server that turns out to be
+    /// full: nothing else is open, so there is no footprint of ours to
+    /// disclose. Quoting "0 connection pool(s) and 0 per-database pool(s)"
+    /// there read as though the zero were the finding — see gotcha #66, where
+    /// this sentence was what made a misdiagnosis convincing.
+    #[test]
+    fn a_limit_error_with_no_pools_open_does_not_quote_an_empty_footprint() {
+        let state = AppState::new();
+        let annotated = annotate_connection_limit(
+            &state,
+            AppError::TooManyConnections("server is full".into()),
+        )
+        .to_string();
+        assert!(annotated.contains("server is full"));
+        assert!(
+            !annotated.contains("0 connection pool(s)"),
+            "an empty footprint is not worth a sentence: {annotated}"
+        );
+        // The other occupants still explain a server we did not fill.
+        assert!(annotated.contains("Other clients on this machine"));
+    }
+
+    /// `#[tokio::test]` because `connect_lazy` spawns the pool's own
+    /// maintenance task up front and needs a reactor to do it — the same
+    /// reason every test in `pool_reaper` is async.
+    #[tokio::test]
+    async fn the_footprint_is_quoted_once_there_is_one() {
+        let state = AppState::new();
+        state.connections.write().insert(
+            "p".into(),
+            ActivePool::bare(DbPool::Sqlite(
+                sqlx::sqlite::SqlitePoolOptions::new()
+                    .connect_lazy("sqlite::memory:")
+                    .expect("a lazy pool touches nothing"),
+            )),
+        );
+        let annotated = annotate_connection_limit(
+            &state,
+            AppError::TooManyConnections("server is full".into()),
+        )
+        .to_string();
+        assert!(annotated.contains("1 connection pool(s) and 0 per-database pool(s)"));
+    }
+
+    /// Anything that is not a limit refusal passes through untouched — the
+    /// annotation must not start explaining pools on, say, a bad password.
+    #[test]
+    fn an_unrelated_error_is_never_annotated() {
+        let state = AppState::new();
+        let annotated =
+            annotate_connection_limit(&state, AppError::NotFound("profile deadbeef".into()))
+                .to_string();
+        assert_eq!(annotated, "not found: profile deadbeef");
+    }
 
     /// A profile a shared origin publishes.
     fn shared(id: &str, origin: &str) -> ConnectionProfile {

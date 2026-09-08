@@ -12,12 +12,10 @@
 //! alongside the pool itself.
 
 use crate::db::ssh::{self, SshTunnelHandle};
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::ssh_known_hosts::SharedKnownHosts;
 use crate::state::{ConnectionProfile, DbPool, Driver};
-use sqlx::mysql::MySqlPoolOptions;
-use sqlx::postgres::PgPoolOptions;
-use sqlx::sqlite::SqlitePoolOptions;
+use sqlx::Connection;
 use std::time::Duration;
 
 /// Default **total** budget for one server endpoint.
@@ -89,9 +87,16 @@ pub const MAX_LIFETIME: Duration = Duration::from_secs(1800);
 
 /// How long a caller waits for a free slot before failing.
 ///
-/// The failure is classified into [`crate::error::AppError::TooManyConnections`]
-/// (see `sqlx_connection_limit_detail`), so exhausting our *own* pool reports
-/// the same actionable error as the server refusing us.
+/// Two different failures share this bound, and they are *not* the same error:
+///
+/// * `acquire()` on an established pool giving up waiting for a slot is
+///   classified into [`crate::error::AppError::TooManyConnections`] (see
+///   `sqlx_connection_limit_detail`), so exhausting our *own* pool reports the
+///   same actionable error as the server refusing us.
+/// * Opening a pool is bounded by the same value in [`connect_probed`], and
+///   there a timeout means the endpoint never answered — reported as
+///   [`crate::error::AppError::OperationTimedOut`], because a server we never
+///   reached is not a server that is full. See gotcha #66.
 pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Ceiling for a single read-only introspection call (metadata listing, the
@@ -285,29 +290,24 @@ pub async fn open_pool(
         };
 
     let url = build_url(profile, password, &host, port);
+    let what = endpoint_label(profile, &host, port);
     let pool = match profile.driver {
-        Driver::Postgres => DbPool::Postgres(
-            tuned(PgPoolOptions::new(), limits.max_connections)
-                .connect(&url)
-                .await?,
-        ),
-        Driver::Mysql => DbPool::Mysql(
-            tuned(MySqlPoolOptions::new(), limits.max_connections)
-                .connect(&url)
-                .await?,
-        ),
+        Driver::Postgres => {
+            DbPool::Postgres(connect_probed(&url, &what, limits.max_connections).await?)
+        }
+        Driver::Mysql => DbPool::Mysql(connect_probed(&url, &what, limits.max_connections).await?),
         // MongoDB and SQL Server are handled by the early returns at the top of
         // this function.
         Driver::Mongo => unreachable!("mongo handled by db::mongo::open_pool"),
         Driver::MsSql => unreachable!("sql server handled by db::mssql::open_pool"),
         // SQLite is a local file: no server to run out of connections, and a
         // second writer only buys lock contention. Fixed at one, tuned the
-        // same way so an abandoned tab doesn't hold the file handle open.
-        Driver::Sqlite => DbPool::Sqlite(
-            tuned(SqlitePoolOptions::new(), MAX_CONNECTIONS_SQLITE)
-                .connect(&url)
-                .await?,
-        ),
+        // same way so an abandoned tab doesn't hold the file handle open. Goes
+        // through the same probe as the network drivers so a missing or
+        // unreadable file is reported as itself rather than as a pool timeout.
+        Driver::Sqlite => {
+            DbPool::Sqlite(connect_probed(&url, &what, MAX_CONNECTIONS_SQLITE).await?)
+        }
     };
     Ok((pool, handle))
 }
@@ -335,6 +335,103 @@ where
         .idle_timeout(Some(IDLE_TIMEOUT))
         .max_lifetime(Some(MAX_LIFETIME))
         .acquire_timeout(ACQUIRE_TIMEOUT)
+}
+
+/// What the user needs to see named when a pool cannot be opened: the driver
+/// and the address actually dialled.
+///
+/// Takes the resolved `host`/`port` rather than reading them off `profile`,
+/// because behind an SSH tunnel the pool dials `127.0.0.1:<local-port>` and
+/// saying so is the difference between "the tunnel is up but the database
+/// isn't listening on the far side" and "the tunnel never came up".
+fn endpoint_label(profile: &ConnectionProfile, host: &str, port: u16) -> String {
+    format!("{} at {host}:{port}", profile.driver.wire_name())
+}
+
+/// The one wording every open-time reachability failure ends with.
+///
+/// Deliberately word-for-word the message `crate::db::mssql`'s
+/// `bound_by_acquire_timeout` already produces: SQL Server is the driver that
+/// had to solve this first (it has no pool, so no `acquire_timeout` knob), and
+/// it arrived at the honest phrasing. The other drivers now say the same thing
+/// for the same condition instead of each inventing its own.
+fn unreachable_message(what: &str, bound: Duration) -> String {
+    format!(
+        "connecting to {what} took longer than {}s — the host may be unreachable, or something \
+         between here and it is silently dropping the connection",
+        bound.as_secs()
+    )
+}
+
+/// One connect attempt, bounded, whose error is whatever actually happened.
+///
+/// `bound` is a parameter rather than [`ACQUIRE_TIMEOUT`] directly so the
+/// timeout branch is testable in milliseconds instead of needing a real
+/// thirty-second wait — the same shape, for the same reason, as
+/// `mssql::bound_by_acquire_timeout`.
+async fn bounded_connect<T>(
+    bound: Duration,
+    what: &str,
+    fut: impl std::future::Future<Output = Result<T, sqlx::Error>>,
+) -> AppResult<T> {
+    match tokio::time::timeout(bound, fut).await {
+        Ok(Ok(v)) => Ok(v),
+        // Straight through `From<sqlx::Error>`: a genuine limit refusal is
+        // still a limit refusal here, carrying the server's own message.
+        Ok(Err(e)) => Err(e.into()),
+        Err(_) => Err(AppError::OperationTimedOut(unreachable_message(
+            what, bound,
+        ))),
+    }
+}
+
+/// Prove the endpoint is reachable with one un-pooled connection, then hand
+/// back a **lazy** pool.
+///
+/// This shape exists because `sqlx`'s eager `PoolOptions::connect` cannot say
+/// why it failed. Its `PoolInner::connect` retries everything it deems
+/// transient — an `Io` error whose kind is `ConnectionRefused` ("an IO error
+/// while connecting is assumed to be the system starting up"), and a `Database`
+/// error whose `is_transient_in_connect_phase()` holds, which on Postgres is
+/// `53300` (`too_many_connections`) and `57P03` — with backoff until the
+/// acquire deadline, and then returns `sqlx::Error::PoolTimedOut`, **discarding
+/// the cause**. Since [`crate::error::AppError`]'s conversion reads that
+/// variant as a connection-limit refusal, a typo'd port used to reach the user
+/// as "too many connections", thirty seconds late, offering "release idle
+/// pools" — for a server that was not full and had never answered. See gotcha
+/// #66.
+///
+/// A single direct connection has no retry loop, so its error is the real one:
+/// a refused connect fails immediately, a wrong password stays a wrong
+/// password, a genuine `53300` arrives as a `Database` error and is still
+/// classified as a limit refusal *with the server's own message*, and only a
+/// host that silently drops packets reaches the timeout.
+///
+/// `connect_lazy` rather than `connect` for the pool itself is what makes the
+/// fix structural instead of a second classification: after this, the open path
+/// cannot produce `PoolTimedOut` at all, so that variant means exactly one
+/// thing everywhere it is still handled — `acquire()` starving on a pool that
+/// already exists. It also keeps the total at one handshake, where probing and
+/// then connecting eagerly would cost two.
+async fn connect_probed<DB>(
+    url: &str,
+    what: &str,
+    max_connections: u32,
+) -> AppResult<sqlx::Pool<DB>>
+where
+    DB: sqlx::Database,
+{
+    let probe = bounded_connect(
+        ACQUIRE_TIMEOUT,
+        what,
+        <DB::Connection as sqlx::Connection>::connect(url),
+    )
+    .await?;
+    // Best effort: the probe has already answered the question, and a close
+    // that fails leaves one session the server reaps on its own. Failing the
+    // whole connect over it would be the wrong verdict.
+    let _ = probe.close().await;
+    Ok(tuned(sqlx::pool::PoolOptions::<DB>::new(), max_connections).connect_lazy(url)?)
 }
 
 /// Whether a pool owns the driver resources behind it, or borrows them from
@@ -479,6 +576,87 @@ mod tests {
         assert_eq!(
             PoolOwnership::for_id("p::db::weird::db::name"),
             PoolOwnership::BorrowedView
+        );
+    }
+
+    /// The half of gotcha #66 that is unit-testable without a server: a host
+    /// that never answers must not be reported as a server that is full, and
+    /// must not carry the marker the frontend keys "release idle pools" off.
+    ///
+    /// Bounded in milliseconds via `bounded_connect`'s parameter rather than
+    /// the real [`ACQUIRE_TIMEOUT`] — the same trick, for the same reason, as
+    /// `mssql::bound_by_acquire_timeout`'s own test.
+    #[tokio::test]
+    async fn a_host_that_never_answers_times_out_instead_of_reporting_a_limit() {
+        let e = bounded_connect(
+            Duration::from_millis(20),
+            "mysql at db.internal:3306",
+            std::future::pending::<Result<(), sqlx::Error>>(),
+        )
+        .await
+        .expect_err("a pending connect must not resolve");
+        assert!(
+            !e.is_too_many_connections(),
+            "a server we never reached is not a server that is full"
+        );
+        assert!(matches!(e, AppError::OperationTimedOut(_)));
+        let rendered = e.to_string();
+        assert!(rendered.contains("mysql at db.internal:3306"));
+        assert!(rendered.contains("may be unreachable"));
+    }
+
+    /// The other side of the same coin: the probe reports driver errors as
+    /// themselves, so a genuine limit refusal — which MySQL sends pre-auth,
+    /// before there is a structured `DatabaseError` to downcast — still reaches
+    /// the user as a limit refusal, in the server's own words.
+    #[tokio::test]
+    async fn a_real_limit_refusal_survives_the_probe_with_the_servers_wording() {
+        let e = bounded_connect(
+            Duration::from_secs(30),
+            "mysql at db.internal:3306",
+            std::future::ready(Err::<(), _>(sqlx::Error::Protocol(
+                "ERROR 1040 (08004): Too many connections".into(),
+            ))),
+        )
+        .await
+        .expect_err("the driver said no");
+        assert!(e.is_too_many_connections());
+        assert!(e.to_string().contains("Too many connections"));
+    }
+
+    /// A refused connect is not a timeout and must not be dressed as one — it
+    /// is the case that used to cost the user thirty seconds of sqlx retries.
+    #[tokio::test]
+    async fn a_refused_connect_stays_an_io_error() {
+        let io = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let e = bounded_connect(
+            Duration::from_secs(30),
+            "postgres at 127.0.0.1:5432",
+            std::future::ready(Err::<(), _>(sqlx::Error::Io(io))),
+        )
+        .await
+        .expect_err("nothing was listening");
+        assert!(!e.is_too_many_connections());
+        assert!(matches!(e, AppError::Database(_)));
+    }
+
+    /// SQL Server solved this first and its wording is the one the user has
+    /// already seen; the other drivers must not invent a second one.
+    #[test]
+    fn the_unreachable_wording_names_the_endpoint_and_the_bound() {
+        let m = unreachable_message("mysql at 10.0.0.9:3306", ACQUIRE_TIMEOUT);
+        assert!(m.contains("mysql at 10.0.0.9:3306"));
+        assert!(m.contains(&ACQUIRE_TIMEOUT.as_secs().to_string()));
+    }
+
+    #[test]
+    fn the_endpoint_label_names_the_address_actually_dialled() {
+        // Behind a tunnel the pool dials loopback, and saying so is the whole
+        // point — the profile's own host never appears here.
+        let p = crate::testkit::profile("p");
+        assert_eq!(
+            endpoint_label(&p, "127.0.0.1", 54321),
+            format!("{} at 127.0.0.1:54321", p.driver.wire_name())
         );
     }
 

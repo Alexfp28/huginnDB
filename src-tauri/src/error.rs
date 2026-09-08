@@ -135,11 +135,12 @@ pub const EXPORT_CANCELLED: &str = "export cancelled";
 /// check then covers the pre-auth path, where the failure can arrive before
 /// there is a structured `DatabaseError` at all.
 const TOO_MANY_CONNECTIONS_NEEDLES: &[&str] = &[
-    // Postgres
+    // Postgres, and MySQL/MariaDB, which phrase it identically ("Too many
+    // connections") — one entry covers both, and this list used to carry it
+    // twice under two comments as if they were different strings.
     "too many connections",
     "remaining connection slots are reserved",
     // MySQL / MariaDB
-    "too many connections",
     "max_user_connections",
     // Generic pooler phrasing (pgbouncer: "no more connections allowed")
     "no more connections allowed",
@@ -163,6 +164,12 @@ fn message_signals_connection_limit(message: &str) -> bool {
 /// to the message scan, which also covers `PoolTimedOut` — our *own* pool
 /// giving up waiting, which is the same class of problem from the user's point
 /// of view even though no server said so.
+///
+/// That last arm is only sound for `acquire()` on an **established** pool.
+/// While a pool is being *created* `sqlx` also reports `PoolTimedOut` for a
+/// server it never reached, having retried and discarded the real error — so
+/// `crate::db::pool::open_pool` classifies its own failures through
+/// `pool::open_time_error` instead of reaching here. See gotcha #66.
 fn sqlx_connection_limit_detail(error: &sqlx::Error) -> Option<String> {
     if let sqlx::Error::Database(db) = error {
         if matches!(db.code().as_deref(), Some("53300") | Some("53400")) {
@@ -184,7 +191,8 @@ fn sqlx_connection_limit_detail(error: &sqlx::Error) -> Option<String> {
     }
     // Our own pool ran out of slots waiting for one to free up. Not the
     // server's limit, but the user-facing remedy is identical: fewer pools, or
-    // a bigger ceiling.
+    // a bigger ceiling. Reaching this means an `acquire()` on a pool that
+    // already exists — the open path never gets here (see the note above).
     if matches!(error, sqlx::Error::PoolTimedOut) {
         return Some(
             "HuginnDB's own connection pool timed out waiting for a free slot".to_string(),
@@ -252,5 +260,70 @@ pub async fn with_timeout<T>(
             "{what} took longer than {}s — the connection may be unresponsive",
             crate::db::pool::OPERATION_TIMEOUT.as_secs()
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The tag is the only thing the frontend can match on (errors cross IPC
+    /// as strings), so `isTooManyConnections` in `src/lib/db/driver.ts` breaks
+    /// silently if the `Display` shape ever changes. Pin it here.
+    #[test]
+    fn the_connection_limit_tag_prefixes_the_rendered_message() {
+        let rendered = AppError::TooManyConnections("server said so".into()).to_string();
+        assert!(rendered.starts_with(TOO_MANY_CONNECTIONS_TAG));
+        assert!(rendered.to_ascii_lowercase().contains("server said so"));
+    }
+
+    #[test]
+    fn the_needle_scan_recognises_what_each_server_actually_says() {
+        // Postgres' own wording, and MySQL's, which differ only in case.
+        assert!(message_signals_connection_limit(
+            "FATAL: sorry, too many connections already"
+        ));
+        assert!(message_signals_connection_limit("Too many connections"));
+        assert!(message_signals_connection_limit(
+            "FATAL: remaining connection slots are reserved for non-replication superuser \
+             connections"
+        ));
+        assert!(message_signals_connection_limit(
+            "User huginn already has more than 'max_user_connections' active connections"
+        ));
+        // pgbouncer, which is neither server but sits in front of one.
+        assert!(message_signals_connection_limit(
+            "ERROR: no more connections allowed (max_client_conn)"
+        ));
+    }
+
+    #[test]
+    fn an_ordinary_failure_is_not_read_as_a_connection_limit() {
+        assert!(!message_signals_connection_limit(
+            "password authentication failed for user \"huginn\""
+        ));
+        assert!(!message_signals_connection_limit(
+            "Connection refused (os error 111)"
+        ));
+    }
+
+    /// The `acquire()` contract: waiting past `ACQUIRE_TIMEOUT` for a slot in a
+    /// pool that already exists *is* a connection-limit problem, and the
+    /// blanket conversion must keep saying so. `db::pool::open_time_error`
+    /// covers the other producer of this variant — see gotcha #66 and the test
+    /// beside it.
+    #[test]
+    fn a_pool_acquire_timeout_stays_classified_as_a_connection_limit() {
+        let error: AppError = sqlx::Error::PoolTimedOut.into();
+        assert!(error.is_too_many_connections());
+        assert!(error.to_string().contains("free slot"));
+    }
+
+    #[test]
+    fn an_io_failure_is_left_as_a_database_error() {
+        let io = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "connection refused");
+        let error: AppError = sqlx::Error::Io(io).into();
+        assert!(!error.is_too_many_connections());
+        assert!(matches!(error, AppError::Database(_)));
     }
 }
