@@ -321,9 +321,12 @@ Two defaults keep that bounded:
   dispatched one at a time, so a bigger pool buys nothing here. It is also a
   *per-server* budget within this process: two exposed connections pointing at
   the same host share it rather than getting one each.
-- **Idle pools are closed after 5 minutes** with no tool call. The connector is
-  long-lived but its work is bursty; a pool opened for one question is not held
-  for the rest of the week. It reopens transparently on the next call.
+- **Idle connections are closed after 5 minutes** with no tool call. The
+  connector is long-lived but its work is bursty; a connection opened for one
+  question is not held for the rest of the week. It reopens transparently on
+  the next call. This holds in both modes — when the connector owns the pool
+  and when the app does on its behalf (see below); before 1.21 the second case
+  never released anything.
 
 ### Sharing the app's pools
 
@@ -338,6 +341,18 @@ MCP connector**. Then:
   after the fact. Writes are still audited to that file too.
 - The write policy is re-checked by the app, independently of the connector's
   own check.
+- A connection the connector asks for is **not** treated as one you opened. It
+  takes the smaller, database-view-sized share of the server's budget rather
+  than a full desktop connection's, gets no keepalive heartbeat, and is closed
+  once it has been idle for **Settings → Connections → Close idle connector
+  connections after** (5 minutes by default, matching what the connector does
+  to its own). If you later connect to that same connection yourself, the app
+  adopts it: it becomes an ordinary connection of yours, heartbeat included, and
+  stops being closed automatically.
+- **Settings → Connections shows how many of the app's connections the
+  connector opened**, next to the bridge toggle. Worth knowing about, because no
+  window lists them in the connection tree — a window only shows connections it
+  opened itself.
 
 It is **off by default**, because it opens a listener (loopback only,
 token-protected) that fronts every database you have saved. When the app isn't
@@ -348,8 +363,9 @@ If a server is still tight, set a per-connection ceiling in HuginnDB
 (Settings → Connections, or the connection's own **Max connections** field).
 It is stored in `profiles.json`, which this connector reads, so it applies to
 the sidecar with no extra configuration. Settings → Connections also shows how
-many pools the desktop app is holding right now, and can release the
-per-database ones on demand.
+many pools the desktop app is holding right now, and **Release idle pools**
+closes both the per-database ones and every connection opened for the
+connector — leaving only the connections you opened yourself.
 
 ## Tools
 

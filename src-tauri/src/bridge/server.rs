@@ -516,12 +516,26 @@ async fn dispatch(
 
     // Opening a pool is the one call that has to go through the *app's* own
     // path rather than the shared executor: `connect_inner` reserves the
-    // endpoint budget, starts the keepalive, and emits the cross-window
-    // `connection-opened` event so the sidecar's connection appears in the UI
-    // like any other.
+    // endpoint budget, caches the session secrets for any per-database view
+    // that follows, and logs the connect to the Console where the user can see
+    // what the connector did.
+    //
+    // `PoolOrigin::Bridge` is what keeps that pool releasable. No window shows
+    // it — the frontend deliberately does not listen for `connection-opened`,
+    // since a new window must not adopt another's live connections — so nobody
+    // will ever disconnect it, and until the marker existed the app's reaper
+    // skipped it as "a connection the user opened". See gotcha #67.
     if let BridgeRequest::EnsureConnected { connection_id } = request {
-        crate::commands::connection::connect_inner(app, state, None, connection_id, None, None)
-            .await?;
+        crate::commands::connection::connect_inner(
+            app,
+            state,
+            None,
+            connection_id,
+            None,
+            None,
+            crate::state::PoolOrigin::Bridge,
+        )
+        .await?;
         return Ok(Value::Null);
     }
     crate::commands::connection::ensure_database_view(app, state, None, &target).await;

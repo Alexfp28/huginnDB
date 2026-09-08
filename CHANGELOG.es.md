@@ -10,6 +10,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Con los pools compartidos activados, una conexión abierta por el conector
+  MCP no la cerraba nada.** Activar Ajustes → Conexiones → "Compartir pools con
+  el conector MCP" hace que la app de escritorio abra la conexión que necesita
+  una llamada de herramienta, y eso es justo lo que se busca: un único
+  presupuesto por servidor para toda la máquina. Lo que hacía además era darle a
+  esa conexión el ciclo de vida de una que hubieras abierto tú: cinco de los
+  diez slots del presupuesto por defecto reservados, un latido de keepalive
+  manteniendo un socket físico abierto indefinidamente por encima del tiempo de
+  inactividad, y residencia permanente en el mapa de pools de la app.
+
+  Nada en el producto podía liberarla. El segador nunca cierra un pool de primer
+  nivel, con el argumento de que es una conexión que el usuario abrió
+  explícitamente y que la interfaz muestra como conectada — y aquí ninguna de
+  las dos mitades es cierta: ninguna ventana lista una conexión abierta por el
+  conector, porque una ventana solo muestra las que ha abierto ella. "Liberar
+  pools inactivos" la ignoraba por el mismo motivo. Reiniciar la app era la
+  única salida. Y con los pools compartidos *desactivados*, el conector abre su
+  propio pool y lo cierra tras cinco minutos de inactividad. La misma conexión,
+  de la misma llamada, era desechable en un modo e inmortal en el otro, y de ahí
+  la sensación de que las conexiones inactivas a veces se liberaban y a veces
+  no.
+
+  Una conexión que pide el conector queda ahora marcada como tal y se trata como
+  lo que es: reserva la porción pequeña del servidor, del tamaño de una vista de
+  base de datos, en lugar de la de una conexión completa; no recibe latido; y se
+  cierra en cuanto lleva inactiva el tiempo de **Cerrar conexiones del conector
+  inactivas tras** — cinco minutos por defecto, los mismos que aplica el
+  conector a las suyas, así que el comportamiento ya no depende de qué proceso
+  tenga el pool. El conector la reabre de forma transparente en su siguiente
+  llamada. "Liberar pools inactivos" también las cierra ahora, dejando solo las
+  conexiones que has abierto tú.
+
+  Si más tarde te conectas tú a una de esas conexiones, la app la **adopta**:
+  pasa a ser una conexión tuya normal, con latido incluido, y deja de cerrarse
+  automáticamente. Y como por construcción eran invisibles en el producto,
+  Ajustes → Conexiones muestra ahora cuántas de las conexiones de la app las
+  abrió el conector, junto al interruptor del puente.
+
 - **Un servidor inalcanzable se reportaba como "too many connections", treinta
   segundos tarde y con el remedio equivocado.** Un perfil MySQL apuntando a un
   puerto cerrado, un host detrás de un firewall que descarta los SYN, o un túnel

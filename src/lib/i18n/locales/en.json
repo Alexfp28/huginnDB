@@ -1482,6 +1482,10 @@
         "label": "Close idle database views after",
         "desc": "Seconds a database view may go untouched before its pool is closed. It reopens by itself the next time you use it. 0 disables this."
       },
+      "bridgeIdleTtl": {
+        "label": "Close idle connector connections after",
+        "desc": "Seconds a connection the MCP connector opened may go untouched before it is closed. Nothing in the app shows these, and the connector reopens one by itself on its next call. 0 keeps them until the app exits."
+      },
       "keepalive": {
         "label": "Keepalive interval",
         "desc": "Seconds between liveness pings. The ping holds one connection open per connection so the next click is instant and dropped connections are detected early. 0 turns it off."
@@ -1489,7 +1493,8 @@
       "footnote": "Limits apply when a pool is opened; pools already open keep what they were granted. Reconnect to apply them immediately. When a server's allowance is spent, opening a database view closes the one you used least recently rather than failing.",
       "mcpBridge": {
         "label": "Share pools with the MCP connector",
-        "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default."
+        "desc": "Let a running huginndb-mcp sidecar use this app's connections instead of opening its own, so the whole machine shares one budget per server — and its activity appears in the Console as it happens. Opens a token-protected listener on localhost. Off by default.",
+        "open": "{{n}} open for the connector"
       }
     },
     "notifications": {

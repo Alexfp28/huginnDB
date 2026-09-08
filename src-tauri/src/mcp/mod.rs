@@ -90,7 +90,11 @@ const DEFAULT_MAX_CONNECTIONS: u32 = 2;
 /// no user watching a connection indicator here and nothing to invalidate;
 /// `ensure_connected` transparently reopens on the next call, at the cost of
 /// one connect.
-const POOL_IDLE_TTL: Duration = Duration::from_secs(300);
+///
+/// Derived from [`crate::db::pool::MCP_IDLE_TTL`] rather than stated, so that a
+/// connector-driven connection is released on the same schedule whichever
+/// process is holding it — see gotcha #67 for what their divergence cost.
+const POOL_IDLE_TTL: Duration = crate::db::pool::MCP_IDLE_TTL;
 
 /// How often the idle-pool sweep runs.
 const POOL_SWEEP_INTERVAL: Duration = Duration::from_secs(60);

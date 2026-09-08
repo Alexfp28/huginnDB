@@ -1482,6 +1482,10 @@
         "label": "Cerrar vistas inactivas tras",
         "desc": "Segundos que una vista de base de datos puede pasar sin usarse antes de cerrar su pool. Se reabre sola la próxima vez que la uses. 0 lo desactiva."
       },
+      "bridgeIdleTtl": {
+        "label": "Cerrar conexiones del conector inactivas tras",
+        "desc": "Segundos que una conexi\u00f3n abierta por el conector MCP puede estar sin usarse antes de cerrarse. La app no las muestra en ninguna parte, y el conector vuelve a abrirla por su cuenta en la siguiente llamada. 0 las mantiene hasta que cierres la app."
+      },
       "keepalive": {
         "label": "Intervalo de keepalive",
         "desc": "Segundos entre pings de comprobación. El ping mantiene una conexión abierta por conexión para que el siguiente clic sea instantáneo y las caídas se detecten pronto. 0 lo desactiva."
@@ -1489,7 +1493,8 @@
       "footnote": "Los límites se aplican al abrir un pool; los ya abiertos conservan lo que se les concedió. Reconecta para aplicarlos al momento. Cuando se agota el presupuesto de un servidor, abrir una vista cierra la que hace más tiempo que no usas en lugar de fallar.",
       "mcpBridge": {
         "label": "Compartir pools con el conector MCP",
-        "desc": "Permite que un sidecar huginndb-mcp en ejecución use las conexiones de esta app en lugar de abrir las suyas, de modo que toda la máquina comparta un presupuesto por servidor — y su actividad aparezca en la Consola en tiempo real. Abre un listener en localhost protegido por token. Desactivado por defecto."
+        "desc": "Permite que un sidecar huginndb-mcp en ejecución use las conexiones de esta app en lugar de abrir las suyas, de modo que toda la máquina comparta un presupuesto por servidor — y su actividad aparezca en la Consola en tiempo real. Abre un listener en localhost protegido por token. Desactivado por defecto.",
+        "open": "{{n}} abiertas para el conector"
       }
     },
     "notifications": {

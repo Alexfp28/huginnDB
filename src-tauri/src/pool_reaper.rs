@@ -22,17 +22,28 @@
 //!   TTL alone doesn't bound the *burst* (twelve databases opened in one
 //!   second are all equally fresh), and the burst is what trips the server.
 //!
-//! Top-level pools are deliberately never reaped here: they represent a
-//! connection the user explicitly opened and the UI shows as connected, so
+//! Top-level pools a **person** opened are deliberately never reaped: they
+//! represent a connection the user asked for and the UI shows as connected, so
 //! closing one behind their back would be a lie. The MCP sidecar, which has no
 //! such UI and no user watching, *does* reap its top-level pools — see
 //! `crate::mcp::spawn_idle_pool_reaper`.
+//!
+//! That exemption used to be unconditional, and the MCP bridge falsified its
+//! premise. A pool `crate::bridge::server` opens on a sidecar's behalf goes
+//! through the app's own `connect_inner`, so it landed here as an ordinary
+//! top-level pool — but no user opened it, no window shows it (the frontend
+//! does not listen for `connection-opened`), and `release_idle_pools` skips
+//! top-level pools by contract, so nothing in the product could release it.
+//! The same connection was reaped in five minutes when the sidecar owned the
+//! pool and lived until the app exited when the app did. [`PoolOrigin`] is the
+//! discriminator, and `connections.bridgeIdleTtlSecs` — defaulting to the
+//! sidecar's own TTL — is the schedule. See gotcha #67.
 
 use crate::db::pool::{close_pool, PoolOwnership, CLOSE_TIMEOUT};
 use crate::log_bus::{self, LogEntry, LogKind};
 use crate::state::AppState;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// How often the reaper wakes up. Coarse on purpose: the TTL is measured in
 /// minutes, so a sweep granularity of a minute costs nothing and keeps the
@@ -58,11 +69,12 @@ pub fn spawn(app: AppHandle) {
 /// so a future "Close idle pools" button can call it on demand.
 async fn sweep(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let (ttl_secs, max_children) = {
+    let (ttl_secs, max_children, bridge_ttl_secs) = {
         let prefs = state.prefs.read();
         (
             prefs.connections.child_idle_ttl_secs,
             prefs.connections.max_child_pools,
+            prefs.connections.bridge_idle_ttl_secs,
         )
     };
 
@@ -71,9 +83,21 @@ async fn sweep(app: &AppHandle) {
         crate::state::now_millis(),
         ttl_secs,
         max_children,
+        bridge_ttl_secs,
     );
     if victims.is_empty() {
         return;
+    }
+
+    // A bridge-opened parent is not a child: it may have `::db::` views under
+    // it, and it owns the SSH tunnel they were dialled through, so its children
+    // have to be closed first and while that tunnel is still up — the same
+    // ordering `disconnect` observes. Split them out before the child loop.
+    let (parents, children): (Vec<String>, Vec<String>) = victims
+        .into_iter()
+        .partition(|id| !crate::state::is_database_view(id));
+    for id in parents {
+        reap_bridge_parent(app, state.inner(), &id).await;
     }
 
     // Take the pools out under the write lock, then close them *after* it is
@@ -82,7 +106,7 @@ async fn sweep(app: &AppHandle) {
     // the ones whose queries we're waiting on.
     let removed: Vec<_> = {
         let mut conns = state.connections.write();
-        victims
+        children
             .iter()
             .filter_map(|id| conns.remove(id).map(|active| (id.clone(), active)))
             .collect()
@@ -99,6 +123,43 @@ async fn sweep(app: &AppHandle) {
     }
 }
 
+/// Close one idle connection the MCP connector opened, and everything hanging
+/// off it.
+///
+/// Deliberately the same teardown `disconnect` performs, minus the parts that
+/// only make sense for a window: children first (while the parent's tunnel is
+/// still up), then the parent itself as [`PoolOwnership::Owned`], then the
+/// session secrets that were cached only so a child pool could be opened
+/// without going back to the keychain.
+///
+/// The `connection-closed` event is emitted even though no window currently
+/// shows a bridge-opened connection: `markDisconnected` is a documented no-op
+/// for a window that never had it active, and the day one of them does list it
+/// this stays correct instead of leaving a stale row behind.
+pub(crate) async fn reap_bridge_parent(app: &AppHandle, state: &AppState, id: &str) {
+    let closed_children = close_children(state, id).await;
+    let Some(active) = state.connections.write().remove(id) else {
+        return;
+    };
+    close_pool(&active.pool, PoolOwnership::Owned, CLOSE_TIMEOUT).await;
+    state.session_secrets.write().remove(id);
+    let _ = app.emit(
+        crate::commands::connection::CONNECTION_CLOSED_EVENT,
+        crate::commands::connection::ConnectionSyncPayload {
+            connection_id: id.to_string(),
+        },
+    );
+    log_bus::broadcast(
+        app,
+        LogEntry::new(LogKind::Connection)
+            .connection_id(id.to_string())
+            .message(format!(
+                "closed idle connection opened by the MCP connector ({} database view(s) with it)",
+                closed_children.len()
+            )),
+    );
+}
+
 /// Decide which child pools to close, without touching them.
 ///
 /// Kept pure (no locks held on return, no I/O) so the policy — the part worth
@@ -107,13 +168,27 @@ async fn sweep(app: &AppHandle) {
 /// Note the read lock is taken through the accessors that do **not** stamp
 /// `last_used`; going through `ActiveConnections::get` here would refresh the
 /// very timestamps the decision is based on and the reaper would never fire.
-fn select_victims(state: &AppState, now: u64, ttl_secs: u32, max_children: u32) -> Vec<String> {
+fn select_victims(
+    state: &AppState,
+    now: u64,
+    ttl_secs: u32,
+    max_children: u32,
+    bridge_ttl_secs: u32,
+) -> Vec<String> {
     let conns = state.connections.read();
     let mut victims: Vec<String> = if ttl_secs == 0 {
         Vec::new()
     } else {
         conns.idle_children(now, u64::from(ttl_secs) * 1_000)
     };
+
+    // Top-level, and only the ones no window shows — see the module doc. A
+    // separate TTL because it releases a different thing for a different
+    // reason: a child pool is a browsing cache, this is a whole connection
+    // nobody asked for.
+    if bridge_ttl_secs > 0 {
+        victims.extend(conns.idle_bridge_pools(now, u64::from(bridge_ttl_secs) * 1_000));
+    }
 
     if max_children > 0 {
         // Apply the cap per parent. A global cap would let a connection the
@@ -169,7 +244,7 @@ pub async fn close_children(state: &AppState, parent_id: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{ActivePool, DbPool};
+    use crate::state::{ActivePool, DbPool, PoolOrigin};
     use std::sync::atomic::Ordering;
 
     /// A pool object that is never actually used for I/O — `select_victims`
@@ -194,12 +269,23 @@ mod tests {
     /// real clock.
     const NOW: u64 = 10_000_000;
 
-    fn insert(state: &AppState, id: &str, idle_millis: u64) {
-        let active = ActivePool::bare(dummy_pool());
+    fn insert_with(state: &AppState, id: &str, idle_millis: u64, origin: PoolOrigin) {
+        let active = ActivePool {
+            origin,
+            ..ActivePool::bare(dummy_pool())
+        };
         active
             .last_used
             .store(NOW.saturating_sub(idle_millis), Ordering::Relaxed);
         state.connections.write().insert(id.to_string(), active);
+    }
+
+    fn insert(state: &AppState, id: &str, idle_millis: u64) {
+        insert_with(state, id, idle_millis, PoolOrigin::User);
+    }
+
+    fn insert_bridge(state: &AppState, id: &str, idle_millis: u64) {
+        insert_with(state, id, idle_millis, PoolOrigin::Bridge);
     }
 
     #[tokio::test]
@@ -209,7 +295,7 @@ mod tests {
         insert(&state, "parent::db::cold", 10_000);
         insert(&state, "parent::db::warm", 500);
 
-        let victims = select_victims(&state, NOW, 5, 0);
+        let victims = select_victims(&state, NOW, 5, 0, 0);
         // The parent is stale by any measure and must still survive: only an
         // explicit disconnect closes a connection the user can see.
         assert_eq!(victims, vec!["parent::db::cold".to_string()]);
@@ -219,7 +305,7 @@ mod tests {
     async fn ttl_zero_disables_reaping() {
         let state = AppState::new();
         insert(&state, "parent::db::ancient", 60 * 60 * 1000);
-        assert!(select_victims(&state, NOW, 0, 0).is_empty());
+        assert!(select_victims(&state, NOW, 0, 0, 0).is_empty());
     }
 
     #[tokio::test]
@@ -233,7 +319,7 @@ mod tests {
         insert(&state, "parent::db::c", 200);
         insert(&state, "parent::db::d", 100);
 
-        let victims = select_victims(&state, NOW, 600, 2);
+        let victims = select_victims(&state, NOW, 600, 2, 0);
         assert_eq!(
             victims,
             vec!["parent::db::a".to_string(), "parent::db::b".to_string()]
@@ -300,6 +386,91 @@ mod tests {
 
         // Two children each, cap of two: a global cap would have evicted half
         // of them.
-        assert!(select_victims(&state, NOW, 600, 2).is_empty());
+        assert!(select_victims(&state, NOW, 600, 2, 0).is_empty());
+    }
+
+    // --- bridge-opened connections ------------------------------------------
+    //
+    // The exemption for top-level pools is what the MCP bridge falsified: it
+    // opens one through the app's own `connect_inner`, so it looked exactly
+    // like a connection the user had opened, and nothing in the product could
+    // release it. These pin both halves of the discrimination.
+
+    #[tokio::test]
+    async fn a_connector_opened_connection_is_reaped_once_idle() {
+        let state = AppState::new();
+        insert_bridge(&state, "from-mcp", 10_000);
+        insert_bridge(&state, "also-from-mcp", 500);
+
+        let victims = select_victims(&state, NOW, 0, 0, 5);
+        assert_eq!(
+            victims,
+            vec!["from-mcp".to_string()],
+            "only the one past its TTL, and top-level though it is"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_connection_the_user_opened_is_never_reaped_however_stale() {
+        // The regression guard: with bridge reaping on, a pool a window is
+        // showing as connected must still be untouchable.
+        let state = AppState::new();
+        insert(&state, "mine", 60 * 60 * 1000);
+        assert!(select_victims(&state, NOW, 300, 8, 5).is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_adopted_connection_stops_being_reapable() {
+        let state = AppState::new();
+        insert_bridge(&state, "from-mcp", 10_000);
+        assert!(state
+            .connections
+            .write()
+            .adopt_from_bridge("from-mcp")
+            .is_some());
+        assert!(
+            select_victims(&state, NOW, 0, 0, 5).is_empty(),
+            "a person connected to it, so a window shows it now"
+        );
+        assert!(
+            state
+                .connections
+                .write()
+                .adopt_from_bridge("from-mcp")
+                .is_none(),
+            "adoption is idempotent, so a second connect falls through to reuse"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_bridge_ttl_of_zero_disables_bridge_reaping() {
+        let state = AppState::new();
+        insert_bridge(&state, "from-mcp", 60 * 60 * 1000);
+        assert!(select_victims(&state, NOW, 300, 8, 0).is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_two_ttls_are_independent_axes() {
+        // A connector-opened parent with a fresh child: the child TTL must not
+        // decide the parent's fate, nor the other way round.
+        let state = AppState::new();
+        insert_bridge(&state, "from-mcp", 10_000);
+        insert(&state, "from-mcp::db::warm", 100);
+
+        assert_eq!(
+            select_victims(&state, NOW, 300, 8, 5),
+            vec!["from-mcp".to_string()],
+            "the parent goes; its still-warm view is carried out by the teardown, not selected"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_bridge_default_matches_the_sidecars_own_ttl() {
+        // The whole point of the default: a connector-driven connection is
+        // released on the same schedule whichever process holds the pool.
+        assert_eq!(
+            crate::prefs::ConnectionPrefs::default().bridge_idle_ttl_secs,
+            crate::db::pool::MCP_IDLE_TTL.as_secs() as u32
+        );
     }
 }

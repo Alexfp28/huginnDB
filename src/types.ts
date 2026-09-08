@@ -875,6 +875,14 @@ export interface ConnectionPrefs {
    * listening socket fronting every saved database, so it is opt-in.
    */
   mcpBridge: boolean;
+  /**
+   * Seconds a connection the MCP connector opened through the bridge may go
+   * untouched before it is closed. `0` disables it, restoring the pre-1.21
+   * behaviour where such a connection lived until the app exited. Defaults to
+   * the sidecar's own idle TTL so a connector-driven connection is released on
+   * the same schedule whichever process holds the pool.
+   */
+  bridgeIdleTtlSecs: number;
   /** Keepalive ping interval in seconds. `0` disables the heartbeat. */
   keepaliveSecs: number;
 }
@@ -907,10 +915,16 @@ export interface PulsePrefs {
 
 /** Live pool footprint, from the `connection_pool_stats` command. */
 export interface PoolStats {
-  /** Pools for connections the user explicitly opened. */
+  /** Top-level pools, whoever opened them. */
   connections: number;
   /** Synthetic per-database pools opened by browsing databases. */
   databaseViews: number;
+  /**
+   * How many of `connections` the MCP connector asked for through the bridge
+   * rather than a person opening them. Counted separately because no window
+   * lists them, so this is the only place they are visible.
+   */
+  mcpConnections: number;
   /**
    * Per-server reservations — the row that actually answers "how many
    * connections am I holding against *that* box", since one server can back

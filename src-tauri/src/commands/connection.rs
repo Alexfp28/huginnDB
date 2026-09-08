@@ -9,7 +9,7 @@ use crate::error::{AppError, AppResult};
 use crate::keychain;
 use crate::log_bus::{self, LogEntry, LogKind};
 use crate::ssh_known_hosts;
-use crate::state::{ActivePool, AppState, ConnectionProfile, Driver, StartupArgs};
+use crate::state::{ActivePool, AppState, ConnectionProfile, Driver, PoolOrigin, StartupArgs};
 use crate::store;
 use crate::transfer::{
     self, ConflictAction, ConflictResolution, ExportFile, ImportAnalysis, ImportResult,
@@ -82,6 +82,7 @@ fn log_connection(
 /// the global preference and the per-profile
 /// [`ConnectionProfile::max_connections`] override take effect on the next
 /// connection rather than the next release.
+#[derive(Clone, Copy)]
 struct PoolPolicy {
     /// Total connections allowed against this profile's server.
     budget: u32,
@@ -113,6 +114,27 @@ fn exhausted_to_error(e: EndpointExhausted) -> AppError {
     ))
 }
 
+/// How large a share of the server's budget a top-level pool asks for, given
+/// who it is for.
+///
+/// A connection a person opened backs a query editor, a grid and a schema tree
+/// at once, so it takes [`top_level_request`]'s five. A connection the MCP
+/// connector asked for backs one tool call at a time — the sidecar's own
+/// default when it opens the pool itself is *two* — so spending five of a
+/// ten-slot endpoint budget on one is the wrong split, and two of them used to
+/// exhaust a server's whole allowance between them. It still cannot go below
+/// [`MIN_MAX_CONNECTIONS`], because two sidecars can share one pool and a
+/// single slot deadlocks a batch against a concurrent read.
+fn top_level_request_for(origin: PoolOrigin, policy: &PoolPolicy) -> u32 {
+    match origin {
+        PoolOrigin::User => top_level_request(policy.budget, policy.child_request),
+        PoolOrigin::Bridge => policy
+            .child_request
+            .max(MIN_MAX_CONNECTIONS)
+            .min(policy.budget),
+    }
+}
+
 /// Reserve capacity for a top-level pool against `profile`'s server.
 ///
 /// `Ok(None)` means the profile has no server to ration (SQLite) — not that the
@@ -121,6 +143,7 @@ fn reserve_top_level(
     state: &AppState,
     profile: &ConnectionProfile,
     policy: &PoolPolicy,
+    origin: PoolOrigin,
 ) -> AppResult<Option<EndpointGrant>> {
     let Some(key) = EndpointKey::for_profile(profile) else {
         return Ok(None);
@@ -129,7 +152,7 @@ fn reserve_top_level(
         .endpoints
         .reserve(
             &key,
-            top_level_request(policy.budget, policy.child_request),
+            top_level_request_for(origin, policy),
             policy.budget,
             MIN_MAX_CONNECTIONS,
         )
@@ -734,6 +757,7 @@ pub async fn connect(
         &id,
         password,
         ssh_secret,
+        PoolOrigin::User,
     )
     .await
 }
@@ -743,9 +767,16 @@ pub async fn connect(
 /// Extracted for the MCP bridge (`crate::bridge::server`), which opens pools on
 /// a sidecar's behalf: it has an `AppHandle` but no originating window, and it
 /// must go through *exactly* this path rather than a parallel one — the
-/// endpoint reservation, the keepalive, the session-secret cache and the
-/// cross-window `connection-opened` event are all things a second
-/// implementation would drift on.
+/// endpoint reservation, the session-secret cache and the Console entry are all
+/// things a second implementation would drift on.
+///
+/// `origin` is what the two callers do *not* share, and it decides three
+/// things: how big a share of the server this pool reserves
+/// ([`top_level_request_for`]), whether it gets a keepalive, and whether
+/// [`crate::pool_reaper`] may ever close it. A bridge-opened pool that arrived
+/// here as [`PoolOrigin::User`] would be immortal, which is exactly the bug in
+/// gotcha #67.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn connect_inner(
     app: &AppHandle,
     state: &AppState,
@@ -753,6 +784,7 @@ pub(crate) async fn connect_inner(
     id: &str,
     password: Option<String>,
     ssh_secret: Option<String>,
+    origin: PoolOrigin,
 ) -> AppResult<()> {
     let id = id.to_string();
     let profile = state
@@ -769,6 +801,38 @@ pub(crate) async fn connect_inner(
     // whose replace semantics would tear down the live pool (and any SSH
     // tunnel) out from under the window that's using it. Reuse it instead.
     if state.connections.read().contains(&id) {
+        // A person connecting to a profile the MCP connector already opened
+        // *adopts* it: from now on a window shows it, so the reaper must stop
+        // treating it as disposable and the heartbeat the bridge path skipped
+        // has to start. The pool keeps its smaller bridge-sized grant —
+        // re-reserving would need a second endpoint transaction, and throughput
+        // is a nuance where being reaped mid-session is not.
+        if origin == PoolOrigin::User {
+            let policy = pool_policy(state, &profile);
+            let adopted = state.connections.write().adopt_from_bridge(&id);
+            if let Some((pool, last_used)) = adopted {
+                // `keepalive::spawn` is synchronous — it only starts a task —
+                // so taking the write lock again here crosses no await point.
+                let keepalive = crate::keepalive::spawn(
+                    app.clone(),
+                    id.clone(),
+                    pool,
+                    policy.keepalive,
+                    last_used,
+                );
+                state.connections.write().attach_keepalive(&id, keepalive);
+                log_connection(
+                    app,
+                    window_label,
+                    &id,
+                    profile.driver,
+                    "connect: adopting the pool the MCP connector opened",
+                    None,
+                    None,
+                );
+                return Ok(());
+            }
+        }
         log_connection(
             app,
             window_label,
@@ -795,7 +859,7 @@ pub(crate) async fn connect_inner(
     // Reserve the server's capacity *before* dialling. Failing here costs
     // nothing and reports a limit the user controls; failing at the server
     // costs a round trip and reports one they may not.
-    let grant = reserve_top_level(state, &profile, &policy)?;
+    let grant = reserve_top_level(state, &profile, &policy, origin)?;
     let limits = limits_for(&grant);
     let start = Instant::now();
     log_connection(
@@ -852,19 +916,30 @@ pub(crate) async fn connect_inner(
                 }
             }
             let active = ActivePool::bare(pool.clone());
-            let keepalive = crate::keepalive::spawn(
-                app.clone(),
-                id.clone(),
-                pool,
-                policy.keepalive,
-                active.last_used.clone(),
-            );
+            // No heartbeat for a pool the connector asked for. The heartbeat
+            // exists to make the next *user* click instant and to raise
+            // lost-connection UX in a window — neither of which exists here —
+            // and it is the thing that pins one physical socket open past
+            // `IDLE_TIMEOUT` forever, which is half of why such a pool used to
+            // be a permanent cost (gotcha #67). It starts if a person later
+            // adopts the connection, at the top of this function.
+            let keepalive = match origin {
+                PoolOrigin::User => crate::keepalive::spawn(
+                    app.clone(),
+                    id.clone(),
+                    pool,
+                    policy.keepalive,
+                    active.last_used.clone(),
+                ),
+                PoolOrigin::Bridge => None,
+            };
             state.connections.write().insert(
                 id.clone(),
                 ActivePool {
                     _ssh: ssh_handle,
                     _keepalive: keepalive,
                     _endpoint: grant,
+                    origin,
                     ..active
                 },
             );
@@ -1287,10 +1362,16 @@ pub fn active_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PoolStats {
-    /// Pools for connections the user explicitly opened.
+    /// Top-level pools, whoever opened them.
     pub connections: usize,
     /// Synthetic `<parent>::db::<name>` pools opened by browsing databases.
     pub database_views: usize,
+    /// How many of `connections` the MCP connector asked for through the
+    /// bridge rather than a person opening them. Shown separately because no
+    /// window lists them (the frontend does not adopt another window's
+    /// connections, so it never listens for `connection-opened`), which made
+    /// them invisible in the product until this count existed.
+    pub mcp_connections: usize,
     /// Per-server reservations. This is the row that actually answers "how
     /// many connections am I holding against *that* box" — the two counts
     /// above are per-pool and a server may back several of them.
@@ -1316,9 +1397,11 @@ pub struct EndpointUsage {
 #[tauri::command]
 pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats> {
     let (connections, database_views) = state.connections.read().counts();
+    let mcp_connections = state.connections.read().bridge_connections();
     Ok(PoolStats {
         connections,
         database_views,
+        mcp_connections,
         endpoints: state
             .endpoints
             .usage()
@@ -1329,14 +1412,23 @@ pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats>
     })
 }
 
-/// Close every synthetic per-database pool that isn't in use right now,
-/// keeping the top-level connections the user opened.
+/// Close every synthetic per-database pool that isn't in use right now, **plus
+/// every connection the MCP connector opened**, keeping the top-level
+/// connections the user opened.
 ///
 /// The manual counterpart to [`crate::pool_reaper`]'s TTL sweep: the recovery
 /// action offered when a server refuses a connection because it is full. Each
 /// closed view reopens transparently the next time the user touches that
 /// database, so this is safe to invoke at any time — the cost is one round
 /// trip, not lost state.
+///
+/// Connector-opened connections are included because this is the *remedy*
+/// offered on a limit error, and it was refusing to touch a whole class of
+/// connections the user cannot see or close by any other means (gotcha #67).
+/// The same reopen-transparently argument covers them: the sidecar re-asks the
+/// app on its next tool call. The exposure is one tool call in flight failing
+/// once — the same exposure as the user pressing Disconnect, and the bridge's
+/// fallback rule deliberately does not retry a failure the app reported.
 ///
 /// Returns how many pools were closed.
 #[tauri::command]
@@ -1346,10 +1438,11 @@ pub async fn release_idle_pools(app: AppHandle, state: State<'_, AppState>) -> A
     // non-negative age. A query already in flight holds a cloned `DbPool`, so
     // closing the pool here cannot cut it off mid-statement: `close` waits for
     // checked-out connections to be returned.
-    let victims = state
-        .connections
-        .read()
-        .idle_children(crate::state::now_millis(), 0);
+    let now = crate::state::now_millis();
+    let (victims, bridge_victims) = {
+        let conns = state.connections.read();
+        (conns.idle_children(now, 0), conns.idle_bridge_pools(now, 0))
+    };
     let removed: Vec<_> = {
         let mut conns = state.connections.write();
         victims
@@ -1357,7 +1450,7 @@ pub async fn release_idle_pools(app: AppHandle, state: State<'_, AppState>) -> A
             .filter_map(|id| conns.remove(id).map(|active| (id.clone(), active)))
             .collect()
     };
-    let count = removed.len();
+    let mut count = removed.len();
     for (id, active) in removed {
         close_pool(&active.pool, PoolOwnership::BorrowedView, CLOSE_TIMEOUT).await;
         log_bus::broadcast(
@@ -1366,6 +1459,13 @@ pub async fn release_idle_pools(app: AppHandle, state: State<'_, AppState>) -> A
                 .connection_id(id)
                 .message("released per-database pool on request"),
         );
+    }
+    // Reuses the reaper's own teardown so the two paths cannot disagree about
+    // what closing one of these means (children, tunnel ordering, cached
+    // secrets, the `connection-closed` event).
+    for id in bridge_victims {
+        crate::pool_reaper::reap_bridge_parent(&app, state.inner(), &id).await;
+        count += 1;
     }
     Ok(count)
 }
@@ -1968,6 +2068,45 @@ mod tests {
     use crate::state::{DbPool, MongoConn};
     use crate::tab_state::{Environment, PersistedTabState};
     use crate::testkit;
+
+    /// The split that stops one connector-driven connection from reserving
+    /// half a server's allowance. Two of them used to spend a whole default
+    /// budget of ten between themselves.
+    #[test]
+    fn a_connector_opened_connection_asks_for_a_view_sized_share() {
+        let policy = PoolPolicy {
+            budget: crate::db::pool::DEFAULT_ENDPOINT_BUDGET,
+            child_request: crate::db::pool::DEFAULT_CHILD_MAX_CONNECTIONS,
+            keepalive: Duration::from_secs(180),
+        };
+        assert_eq!(
+            top_level_request_for(PoolOrigin::User, &policy),
+            crate::db::pool::TOP_LEVEL_REQUEST
+        );
+        assert_eq!(top_level_request_for(PoolOrigin::Bridge, &policy), 2);
+    }
+
+    #[test]
+    fn a_connector_opened_connection_still_respects_the_deadlock_floor() {
+        // A hand-edited child ceiling of one would hand out a pool that
+        // deadlocks a batch against a concurrent read — the floor holds
+        // whoever the pool is for.
+        let policy = PoolPolicy {
+            budget: crate::db::pool::DEFAULT_ENDPOINT_BUDGET,
+            child_request: 1,
+            keepalive: Duration::from_secs(0),
+        };
+        assert_eq!(
+            top_level_request_for(PoolOrigin::Bridge, &policy),
+            MIN_MAX_CONNECTIONS
+        );
+        // ...but never more than the server's whole allowance.
+        let tight = PoolPolicy {
+            budget: 1,
+            ..policy
+        };
+        assert_eq!(top_level_request_for(PoolOrigin::Bridge, &tight), 1);
+    }
 
     /// The first connect of a session against a server that turns out to be
     /// full: nothing else is open, so there is no footprint of ours to

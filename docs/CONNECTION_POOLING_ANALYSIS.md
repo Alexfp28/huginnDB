@@ -309,6 +309,20 @@ consolidated `pool_for` (F12 pays for itself here). A background reaper then:
 - enforces a hard cap of live child pools per parent (default 8), LRU-evicted;
 - never touches top-level pools, which stay until the user disconnects.
 
+**Amendment (1.21.x): that last bullet needed a qualifier the moment P3
+shipped.** "Stay until the user disconnects" assumes a user who opened the
+connection and can therefore close it. A pool the MCP bridge opens on a
+sidecar's behalf goes through the app's own `connect_inner`, so it landed here
+as an ordinary top-level pool — but nobody opened it, no window lists it (the
+frontend deliberately does not listen for `connection-opened`, so a window only
+shows what it opened itself), and `release_idle_pools` skips top-level pools by
+contract. Nothing in the product could release one: the same connection was
+reaped in five minutes when the sidecar owned the pool and lived until the app
+exited when the app did. `ActivePool::origin` is now the discriminator and
+`connections.bridgeIdleTtlSecs` (defaulting to the sidecar's own TTL) the
+schedule; the exemption still holds, unconditionally, for the pools a person
+opened. See gotcha #67.
+
 Reopening a reaped child is one `open_pool` call and the schema cache in
 `useSchema` is untouched, so the user cannot tell the difference.
 
@@ -508,6 +522,14 @@ reaped.
 - Both sides run the same executor (`bridge/exec.rs`) rather than two
   transcriptions of the same fifteen calls — drift there would only surface
   when the app happened not to be running.
+  - **A third design point, learned the hard way in 1.21.x.** Routing
+    `EnsureConnected` through the app's own `connect_inner` was right, and
+    reusing it wholesale was not: the app's lifecycle rules for a top-level pool
+    are written for a connection a person opened and can see, and none of that
+    was true here. §4.2's amendment has the detail. The general shape is that
+    "the app owns every connection on the machine" (§4.3.3's stated goal) needs
+    to say *on whose behalf*, because that is what decides when the connection
+    is released — and the answer must not be "when the app exits".
 
 ---
 
@@ -550,3 +572,13 @@ reaped.
 4. **Should `visible_databases` gate pool creation, not just display?** Today
    it scopes the search fan-out but nothing stops another path from opening a
    view on a hidden database.
+5. **Should a bridge session's connections be torn down when that sidecar
+   detaches, rather than only on the idle TTL?** The honest hook exists:
+   `bridge::server::serve_connection`'s request loop ends exactly when a
+   sidecar's socket closes, kill or not. What it needs is a per-id refcount in
+   `AppState`, because several sidecars can be attached at once and the first to
+   go must not close a connection the others are using. Deferred in 1.21.x
+   because `connections.bridgeIdleTtlSecs` already bounds the leak to a few
+   minutes after last use, and because a cooperative `Disconnect` *request* is
+   explicitly not the answer — MCP clients routinely `SIGKILL` their sidecars,
+   so the message would not be sent on the path that matters.

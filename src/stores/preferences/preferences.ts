@@ -115,6 +115,7 @@ const DEFAULT_PREFS: Preferences = {
     childIdleTtlSecs: 300,
     maxChildPools: 8,
     mcpBridge: false,
+    bridgeIdleTtlSecs: 300,
     keepaliveSecs: 180,
   },
   // Mirrors `PulsePrefs::default()` in `src-tauri/src/prefs.rs`.

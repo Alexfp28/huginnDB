@@ -256,11 +256,44 @@ export function ConnectionsSection() {
               127.0.0.1:{stats.mcpBridgePort}
             </span>
           )}
+          {/* No window lists a connection the connector opened, so this
+              count is the only place it is visible at all. */}
+          {stats != null && stats.mcpConnections > 0 && (
+            <span className="text-2xs tabular-nums text-muted-foreground">
+              {t("settings.connections.mcpBridge.open", {
+                n: stats.mcpConnections,
+              })}
+            </span>
+          )}
           <Switch
             checked={connections.mcpBridge}
             onCheckedChange={(v) => updateConnections({ mcpBridge: v })}
           />
         </div>
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.connections.bridgeIdleTtl.label")}
+        prefId="connections.bridgeIdleTtlSecs"
+        description={t("settings.connections.bridgeIdleTtl.desc")}
+        htmlFor="prefs-conn-bridge-ttl"
+      >
+        <Input
+          id="prefs-conn-bridge-ttl"
+          type="number"
+          min={0}
+          max={86400}
+          step={30}
+          value={connections.bridgeIdleTtlSecs}
+          onChange={(e) =>
+            numeric(
+              (n) => updateConnections({ bridgeIdleTtlSecs: n }),
+              0,
+              86400,
+            )(e.target.value)
+          }
+          className="h-8 w-24 text-right font-mono text-xs"
+        />
       </PrefRow>
 
       <p className="pt-3 text-2xs leading-relaxed text-muted-foreground">

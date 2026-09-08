@@ -99,6 +99,18 @@ pub const MAX_LIFETIME: Duration = Duration::from_secs(1800);
 ///   reached is not a server that is full. See gotcha #66.
 pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long a connection held **for the MCP connector** may sit idle before it
+/// is closed.
+///
+/// One value on purpose, shared by the two paths that can be holding such a
+/// connection: the sidecar's own reaper (`mcp::POOL_IDLE_TTL`) when it opened
+/// the pool itself, and the desktop app's [`crate::pool_reaper`] (through
+/// `connections.bridgeIdleTtlSecs`, which defaults to this) when the bridge
+/// opened it on the sidecar's behalf. Those two diverging — five minutes in one
+/// mode, forever in the other — *was* gotcha #67, so the default is derived
+/// here rather than written down twice.
+pub const MCP_IDLE_TTL: Duration = Duration::from_secs(300);
+
 /// Ceiling for a single read-only introspection call (metadata listing, the
 /// keepalive ping) — never for a data query, whose runtime is the user's own
 /// SQL, not ours to bound. See [`crate::error::with_timeout`].

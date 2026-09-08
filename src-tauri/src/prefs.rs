@@ -327,6 +327,23 @@ pub struct ConnectionPrefs {
     /// behind someone's back — however narrow the exposure (loopback only,
     /// token-gated, write policy re-checked server-side).
     pub mcp_bridge: bool,
+    /// How long a connection the **MCP bridge** opened may go untouched before
+    /// the reaper closes it, in seconds. `0` disables it, restoring the
+    /// pre-1.21 behaviour where such a connection lived until the app exited.
+    ///
+    /// Separate from [`Self::child_idle_ttl_secs`] because it releases a
+    /// different thing for a different reason: a child pool is a browsing
+    /// cache, while this is a whole top-level connection that a person never
+    /// asked for and no window shows. It defaults to the sidecar's own
+    /// `mcp::POOL_IDLE_TTL` so that a connector-driven connection behaves
+    /// identically whether the sidecar borrowed the app's pool or opened one of
+    /// its own — the divergence between those two modes was the bug (gotcha
+    /// #67).
+    ///
+    /// Interacts with [`Self::keepalive_secs`]: a bridge-opened pool never gets
+    /// a heartbeat, so `IDLE_TIMEOUT` can actually decay its sockets while it
+    /// waits out this TTL.
+    pub bridge_idle_ttl_secs: u32,
     /// Keepalive ping interval in seconds. `0` disables the heartbeat.
     ///
     /// The heartbeat holds one connection per top-level pool alive
@@ -346,6 +363,7 @@ impl Default for ConnectionPrefs {
             mcp_bridge: false,
             child_idle_ttl_secs: 300,
             max_child_pools: 8,
+            bridge_idle_ttl_secs: crate::db::pool::MCP_IDLE_TTL.as_secs() as u32,
             keepalive_secs: crate::keepalive::DEFAULT_KEEPALIVE_INTERVAL.as_secs() as u32,
         }
     }

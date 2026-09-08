@@ -8,6 +8,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **With pool sharing on, a connection the MCP connector opened was never closed
+  by anything.** Turning on Settings → Connections → "Share pools with the MCP
+  connector" makes the desktop app open the connection a tool call needs, which
+  is the point — one budget per server for the whole machine. What it also did
+  was hand that connection the lifecycle of one you had opened yourself: five of
+  a server's ten-slot default budget reserved, a keepalive heartbeat pinning one
+  physical socket open past the idle timeout indefinitely, and permanent
+  residence in the app's pool map.
+
+  Nothing in the product could release it. The reaper never closes a top-level
+  pool, on the stated grounds that it is a connection the user opened
+  explicitly and the UI shows as connected — and neither half is true here: no
+  window lists a connector-opened connection, because a window only shows what
+  it opened itself. "Release idle pools" skipped it for the same reason.
+  Restarting the app was the only way. Meanwhile, with pool sharing *off*, the
+  connector opens its own pool and closes it after five minutes idle. The same
+  connection, from the same tool call, was disposable in one mode and immortal
+  in the other, which is why idle connections seemed to sometimes come back and
+  sometimes not.
+
+  A connection the connector asks for is now marked as such, and treated as
+  what it is: it reserves the smaller, database-view-sized share of the server
+  rather than a full connection's, gets no heartbeat, and is closed once it has
+  been idle for **Close idle connector connections after** — five minutes by
+  default, the same as the connector applies to its own, so the behaviour no
+  longer depends on which process happens to hold the pool. The connector
+  reopens it transparently on its next call. "Release idle pools" now closes
+  them too, leaving only the connections you opened.
+
+  If you later connect to one of those connections yourself, the app **adopts**
+  it: it becomes an ordinary connection of yours, heartbeat and all, and stops
+  being closed automatically. And because these were invisible in the product
+  by construction, Settings → Connections now shows how many of the app's
+  connections the connector opened, next to the bridge toggle.
+
 - **An unreachable server was reported as "too many connections", thirty seconds
   late, with the wrong remedy attached.** A MySQL profile pointed at a closed
   port, a host behind a firewall that drops SYNs, or an SSH forward that had

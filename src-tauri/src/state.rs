@@ -501,6 +501,35 @@ pub fn now_millis() -> u64 {
         .as_millis() as u64
 }
 
+/// Who asked for a pool, and therefore what is allowed to close it.
+///
+/// The distinction did not exist before the MCP bridge shipped, and
+/// [`crate::pool_reaper`] leans on its absence: it never reaps a *top-level*
+/// pool, on the stated grounds that such a pool represents a connection the
+/// user opened explicitly and the UI shows as connected, so closing one behind
+/// their back would be a lie.
+///
+/// A pool [`crate::bridge::server`] opened on a sidecar's behalf falsifies
+/// every clause of that. The user did not open it, no window shows it (the
+/// frontend deliberately does not listen for `connection-opened` — see
+/// `src/lib/bridges/connection-sync-bridge.ts`), nobody will ever disconnect
+/// it, and `release_idle_pools` skips top-level pools by contract. Until this
+/// marker existed, restarting the app was the only thing that released one.
+/// See gotcha #67.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PoolOrigin {
+    /// A connection a human opened. Lives until an explicit `disconnect`.
+    ///
+    /// The deliberately conservative default: a call site that forgets to
+    /// classify itself leaks a pool, which is recoverable, rather than having
+    /// the reaper close a connection a window is showing as live.
+    User,
+    /// Opened by the bridge because an MCP client asked for it. Reaped once
+    /// idle — which is what the sidecar already does to the equivalent pool
+    /// when it owns one itself (`mcp::spawn_idle_pool_reaper`).
+    Bridge,
+}
+
 /// A live database pool plus, optionally, the SSH tunnel that fronts it.
 ///
 /// Kept together so the tunnel is dropped (and its local listener freed)
@@ -536,12 +565,23 @@ pub struct ActivePool {
     /// per-module `pool_for` helpers funnels through — so this stays accurate
     /// without touching any of them.
     pub last_used: Arc<std::sync::atomic::AtomicU64>,
+    /// Who asked for this pool. Decides whether the reaper may close it —
+    /// see [`PoolOrigin`].
+    pub origin: PoolOrigin,
 }
 
 impl ActivePool {
     /// A pool with no tunnel and no heartbeat, stamped as used right now — the
     /// shape every synthetic per-database child and every headless (MCP) pool
     /// takes.
+    ///
+    /// [`PoolOrigin::User`] because that is the conservative default (see the
+    /// enum), and because it is *irrelevant* to both shapes this constructor
+    /// actually serves: a `::db::` child is reaped by the child sweep, which
+    /// keys on the id rather than the origin, and the sidecar's own pools are
+    /// reaped origin-blind by [`ActiveConnections::idle_pools`]. Only the
+    /// app-side bridge path has to say `Bridge` explicitly, and it builds the
+    /// struct with `..ActivePool::bare(pool)` around an override.
     pub fn bare(pool: DbPool) -> Self {
         Self {
             pool,
@@ -549,6 +589,7 @@ impl ActivePool {
             _keepalive: None,
             _endpoint: None,
             last_used: Arc::new(std::sync::atomic::AtomicU64::new(now_millis())),
+            origin: PoolOrigin::User,
         }
     }
 
@@ -664,12 +705,83 @@ impl ActiveConnections {
         views.into_iter().map(|(id, _)| id.clone()).collect()
     }
 
+    /// Every top-level pool the **bridge** opened that has been idle for at
+    /// least `ttl_millis`.
+    ///
+    /// The app-side counterpart to [`Self::idle_pools`], and deliberately
+    /// narrower: the sidecar has no UI contract at all, so origin buys it
+    /// nothing and it reaps every idle pool it owns. The app does have one, so
+    /// it may only reap the pools no window is showing — the ones opened for a
+    /// connector rather than for a person. See [`PoolOrigin`] and gotcha #67.
+    ///
+    /// Reads `inner` directly rather than going through [`Self::get`], which
+    /// would stamp the very `last_used` the decision is based on.
+    pub fn idle_bridge_pools(&self, now: u64, ttl_millis: u64) -> Vec<String> {
+        self.inner
+            .iter()
+            .filter(|(id, active)| {
+                !is_database_view(id)
+                    && active.origin == PoolOrigin::Bridge
+                    && active.idle_millis_at(now) >= ttl_millis
+            })
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// Reclassify a bridge-opened pool as one the user opened, handing back
+    /// what a keepalive needs to be started for it.
+    ///
+    /// Called when a human connects to a profile the connector already had
+    /// open. From that moment a window *is* showing it, so the reaper must stop
+    /// treating it as disposable — and the heartbeat the bridge path
+    /// deliberately skipped has to start, or the adopted connection would be
+    /// the one connection in the app without lost-connection detection.
+    ///
+    /// `None` means there was nothing to adopt: no such pool, or one that is
+    /// already [`PoolOrigin::User`]. Idempotent, so a second `connect` for the
+    /// same profile falls through to the ordinary reuse path.
+    pub fn adopt_from_bridge(
+        &mut self,
+        id: &str,
+    ) -> Option<(DbPool, Arc<std::sync::atomic::AtomicU64>)> {
+        let active = self.inner.get_mut(id)?;
+        if active.origin != PoolOrigin::Bridge {
+            return None;
+        }
+        active.origin = PoolOrigin::User;
+        Some((active.pool.clone(), active.last_used.clone()))
+    }
+
+    /// Give a pool the heartbeat it did not have. Only [`Self::adopt_from_bridge`]
+    /// needs this: every other pool decides its keepalive when it is inserted.
+    pub fn attach_keepalive(
+        &mut self,
+        id: &str,
+        keepalive: Option<crate::keepalive::KeepaliveHandle>,
+    ) {
+        if let Some(active) = self.inner.get_mut(id) {
+            active._keepalive = keepalive;
+        }
+    }
+
+    /// How many live top-level pools the bridge opened. Feeds the pool
+    /// footprint in Settings → Connections, which otherwise cannot answer
+    /// "how many of these did the MCP connector open?".
+    pub fn bridge_connections(&self) -> usize {
+        self.inner
+            .iter()
+            .filter(|(id, active)| !is_database_view(id) && active.origin == PoolOrigin::Bridge)
+            .count()
+    }
+
     /// Every pool — top-level included — idle for at least `ttl_millis`.
     ///
     /// Only the headless MCP sidecar uses this: it has no user watching a
-    /// connection indicator, so an untouched pool there is pure cost. The
-    /// desktop app deliberately keeps top-level pools until disconnect — hence
-    /// the dead-code allowance in a normal `pnpm tauri:build`, matching the
+    /// connection indicator, so an untouched pool there is pure cost, whoever
+    /// asked for it — which is why this one stays origin-blind while the app's
+    /// [`Self::idle_bridge_pools`] does not. The desktop app deliberately keeps
+    /// the top-level pools a *person* opened until disconnect — hence the
+    /// dead-code allowance in a normal `pnpm tauri:build`, matching the
     /// `McpWritePolicy` helpers above.
     #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
     pub fn idle_pools(&self, now: u64, ttl_millis: u64) -> Vec<String> {
@@ -912,6 +1024,84 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A pool object that never does I/O — these tests only exercise the
+    /// bookkeeping. `connect_lazy` still wants a reactor for the pool's own
+    /// maintenance task, hence the async tests.
+    fn dummy_pool() -> DbPool {
+        DbPool::Sqlite(
+            sqlx::sqlite::SqlitePoolOptions::new()
+                .connect_lazy("sqlite::memory:")
+                .expect("lazy pool construction does not touch the filesystem"),
+        )
+    }
+
+    fn insert(conns: &mut ActiveConnections, id: &str, origin: PoolOrigin, idle_millis: u64) {
+        let active = ActivePool {
+            origin,
+            ..ActivePool::bare(dummy_pool())
+        };
+        active.last_used.store(
+            1_000_000u64.saturating_sub(idle_millis),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        conns.insert(id.to_string(), active);
+    }
+
+    #[tokio::test]
+    async fn idle_bridge_pools_sees_only_top_level_connector_pools() {
+        let mut conns = ActiveConnections::default();
+        insert(&mut conns, "mine", PoolOrigin::User, 999_999);
+        insert(&mut conns, "from-mcp", PoolOrigin::Bridge, 999_999);
+        insert(&mut conns, "from-mcp-fresh", PoolOrigin::Bridge, 10);
+        // A view under a connector-opened parent is still a view: the child
+        // sweep owns it, and this accessor must not double-claim it.
+        insert(
+            &mut conns,
+            "from-mcp::db::sales",
+            PoolOrigin::Bridge,
+            999_999,
+        );
+
+        assert_eq!(
+            conns.idle_bridge_pools(1_000_000, 1_000),
+            vec!["from-mcp".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn bridge_connections_counts_only_what_the_connector_opened() {
+        let mut conns = ActiveConnections::default();
+        assert_eq!(conns.bridge_connections(), 0);
+        insert(&mut conns, "mine", PoolOrigin::User, 0);
+        insert(&mut conns, "from-mcp", PoolOrigin::Bridge, 0);
+        insert(&mut conns, "from-mcp::db::sales", PoolOrigin::Bridge, 0);
+        assert_eq!(
+            conns.bridge_connections(),
+            1,
+            "one top-level connection, not its views and not the user's own"
+        );
+        // `counts()` still reports the whole footprint, which is what the
+        // connection-limit message needs.
+        assert_eq!(conns.counts(), (2, 1));
+    }
+
+    #[tokio::test]
+    async fn adoption_flips_the_origin_once_and_hands_back_the_stamp() {
+        let mut conns = ActiveConnections::default();
+        insert(&mut conns, "from-mcp", PoolOrigin::Bridge, 0);
+        let (_, stamp) = conns
+            .adopt_from_bridge("from-mcp")
+            .expect("a connector-opened pool is adoptable");
+        // The same Arc the pool carries, so the keepalive the caller starts
+        // skips a tick the user's own traffic already proved.
+        assert!(Arc::ptr_eq(
+            &stamp,
+            &conns.inner.get("from-mcp").unwrap().last_used
+        ));
+        assert!(conns.adopt_from_bridge("from-mcp").is_none());
+        assert!(conns.adopt_from_bridge("never-existed").is_none());
+    }
 
     /// Pins the exact JSON the frontend's `profileIntent` sends to
     /// `open_new_window`.

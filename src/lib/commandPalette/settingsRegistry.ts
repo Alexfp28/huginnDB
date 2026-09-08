@@ -442,6 +442,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: num((p) => p.connections.childIdleTtlSecs),
   },
   {
+    prefId: "connections.bridgeIdleTtlSecs",
+    section: "connections",
+    labelKey: "settings.connections.bridgeIdleTtl.label",
+    descKey: "settings.connections.bridgeIdleTtl.desc",
+    keywords: "mcp bridge idle ttl close reap conector inactividad cerrar",
+    value: num((p) => p.connections.bridgeIdleTtlSecs),
+  },
+  {
     prefId: "connections.keepaliveSecs",
     section: "connections",
     labelKey: "settings.connections.keepalive.label",
