@@ -71,7 +71,8 @@
     "pulse": "Pulse",
     "rightDock": "Panel derecho",
     "console": "Consola",
-    "cell": "Celda"
+    "cell": "Celda",
+    "ai": "Asistente"
   },
   "menu": {
     "file": {
@@ -1362,6 +1363,7 @@
       "togglePanelSchema": "Mostrar u ocultar el panel Esquema",
       "togglePanelSaved": "Mostrar u ocultar el panel Guardadas",
       "togglePanelPulse": "Mostrar el panel Pulse",
+      "togglePanelAi": "Panel de asistente",
       "togglePanelConsole": "Mostrar u ocultar el panel Consola",
       "searchPlaceholder": "Buscar una acción…",
       "searchByKey": "Por tecla",
@@ -2788,5 +2790,37 @@
     "released": "De vuelta a la contraseña del origen",
     "releasedHint": "La publicada se restaura en la próxima sincronización.",
     "releaseFailed": "No se ha podido volver a la contraseña del origen"
+  },
+  "ai": {
+    "disabledTitle": "El panel de IA está apagado",
+    "disabledHint": "Apúntalo a un modelo y elige qué conexiones puede leer en Ajustes.",
+    "openSettings": "Abrir ajustes de IA",
+    "noConnectionTitle": "Ninguna conexión seleccionada",
+    "noConnectionHint": "Elige una conexión en el árbol — cada una mantiene su propia conversación.",
+    "emptyTitle": "Pregunta sobre esta base de datos",
+    "emptyHint": "Todavía no puede leer tu esquema, así que pégale el DDL o los nombres de columna que necesite. Las sentencias que proponga se abren en tu editor de consultas.",
+    "placeholder": "Pregunta algo… (Enter envía, Shift+Enter salta de línea)",
+    "send": "Enviar",
+    "stop": "Parar",
+    "clear": "Limpiar esta conversación",
+    "you": "Tú",
+    "assistant": "Asistente",
+    "thinking": "Pensando…",
+    "noModel": "Sin modelo seleccionado",
+    "showToolDetails": "Desplegar los detalles de herramienta por defecto",
+    "hideToolDetails": "Plegar los detalles de herramienta por defecto",
+    "openInEditor": "Abrir en el editor",
+    "openInEditorHint": "Abre esta sentencia en una pestaña de consulta. No se ejecuta nada hasta que la ejecutes allí.",
+    "tool": {
+      "arguments": "Argumentos",
+      "error": "Rechazado",
+      "refused": "rechazado",
+      "running": "ejecutando…",
+      "truncated": "(recortado)",
+      "objectResult": "respondió",
+      "noResult": "sin resultado",
+      "rowCount_one": "{{count}} fila",
+      "rowCount_other": "{{count}} filas"
+    }
   }
 }

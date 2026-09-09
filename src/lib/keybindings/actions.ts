@@ -66,6 +66,7 @@ export type ActionId =
   | "togglePanelSchema"
   | "togglePanelSaved"
   | "togglePanelPulse"
+  | "togglePanelAi"
   | "togglePanelConsole"
   | "newWindow"
   | "resetLayout";
@@ -311,6 +312,16 @@ export const ACTIONS: ActionSpec[] = [
     // selection most people make with the rail.
     defaults: [],
     labelKey: "settings.shortcuts.togglePanelPulse",
+  },
+  {
+    id: "togglePanelAi",
+    category: "panels",
+    scope: "global",
+    // Unbound like the other two right-dock occupants: they share one slot, so
+    // shipping a default for each would spend three chords on a selection most
+    // people make with the rail.
+    defaults: [],
+    labelKey: "settings.shortcuts.togglePanelAi",
   },
   {
     id: "togglePanelConsole",

@@ -88,6 +88,16 @@ export function ViewMenu() {
           <ShortcutHint action="togglePanelPulse" />
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
+          checked={rightPanel === "ai"}
+          onSelect={(e) => {
+            e.preventDefault();
+            selectRightPanel("ai");
+          }}
+        >
+          {t("panels.ai")}
+          <ShortcutHint action="togglePanelAi" />
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
           checked={consoleOpen}
           onSelect={(e) => {
             e.preventDefault();

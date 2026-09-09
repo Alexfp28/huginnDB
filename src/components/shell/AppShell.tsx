@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Activity, Moon, Save, Settings, Sun } from "lucide-react";
+import { Activity, Bot, Moon, Save, Settings, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
 import {
@@ -39,6 +39,7 @@ import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
 import { SavedQueriesPanel } from "@/components/query/SavedQueriesPanel";
 import { PulsePanel } from "@/components/pulse/PulsePanel";
+import { AiPanel } from "@/components/ai/AiPanel";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { EnvironmentRail } from "@/components/connection/EnvironmentRail";
 import { EnvironmentSwitchGuard } from "@/components/shell/EnvironmentSwitchGuard";
@@ -149,7 +150,9 @@ function RightSidePanel() {
   const lastRightPanel = useSessionPanelLayout((s) => s.lastRightPanel);
   const savedWidth = useSessionPanelLayout((s) => s.savedWidth);
   const pulseWidth = useSessionPanelLayout((s) => s.pulseWidth);
+  const aiWidth = useSessionPanelLayout((s) => s.aiWidth);
   const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
+  const selectedConnectionId = useUi((s) => s.selectedConnectionId);
   const [dragging, setDragging] = useState(false);
 
   // Pulse is mounted the first time it is selected and stays mounted after
@@ -163,9 +166,19 @@ function RightSidePanel() {
     if (rightPanel === "pulse") setPulseMounted(true);
   }, [rightPanel]);
 
+  // Same deferred mount for the AI panel, and it matters more here: each SQL
+  // block in a transcript is a Monaco instance, so a user who never opens the
+  // panel pays for none of them — and one who closes it keeps the conversation
+  // they were mid-way through, which unmounting would discard.
+  const [aiMounted, setAiMounted] = useState(rightPanel === "ai");
+  useEffect(() => {
+    if (rightPanel === "ai") setAiMounted(true);
+  }, [rightPanel]);
+
   const docked = rightPanel ?? lastRightPanel;
   const open = rightPanel !== null;
-  const width = docked === "pulse" ? pulseWidth : savedWidth;
+  const width =
+    docked === "pulse" ? pulseWidth : docked === "ai" ? aiWidth : savedWidth;
 
   return (
     <>
@@ -202,6 +215,11 @@ function RightSidePanel() {
             {pulseMounted && (
               <div className="h-full" hidden={docked !== "pulse"}>
                 <PulsePanel active={open && rightPanel === "pulse"} />
+              </div>
+            )}
+            {aiMounted && (
+              <div className="h-full" hidden={docked !== "ai"}>
+                <AiPanel connectionId={selectedConnectionId} />
               </div>
             )}
           </div>
@@ -300,6 +318,13 @@ export function AppShell() {
       label: t("panels.pulse"),
       active: rightPanel === "pulse",
       onClick: () => selectRightPanel("pulse"),
+    },
+    {
+      id: "ai",
+      icon: Bot,
+      label: t("panels.ai"),
+      active: rightPanel === "ai",
+      onClick: () => selectRightPanel("ai"),
     },
   ];
 

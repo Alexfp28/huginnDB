@@ -10,6 +10,39 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **El panel del asistente, en el dock derecho.** Un tercer inquilino junto a
+  Consultas guardadas y Pulse, con su propio ancho, su entrada en la barra de
+  actividad y una entrada en el menú Ver a la que puedes asignar un atajo.
+  Apagado hasta que lo enciendas en Ajustes → IA.
+
+  Lo que hace hoy es conversar y proponer sentencias. La conversación se guarda
+  **por conexión** — el asistente habla de una base de datos, y un hilo que te
+  siguiera a otro servidor respondería sobre los datos equivocados con total
+  seguridad — y llega token a token, con un botón de parar que aborta la
+  petición de verdad en vez de limitarse a dejar de pintar.
+
+  **Nada de lo que propone se ejecuta desde el chat.** Una sentencia aparece en
+  un editor pequeño de solo lectura con un "abrir en el editor" por sentencia,
+  que la entrega a una pestaña de consulta: allí ya están todas las
+  salvaguardas, el resultado tiene una cuadrícula donde caer, y una escritura es
+  algo que ves antes de que se ejecute. Esa es la postura, no una función a
+  medias.
+
+  **No se escribe nada en disco.** La transcripción vive y muere con la sesión,
+  y es deliberado: contiene nombres de esquema, SQL propuesto y — cuando llegue
+  el bucle de herramientas — fragmentos de filas, que es exactamente el
+  artefacto sensible que esta función promete no acumular. Lo único que se
+  guarda es si las tarjetas de herramienta empiezan desplegadas.
+
+  Dos límites honestos mientras se construye el resto. El modelo **todavía no
+  tiene acceso a tu base de datos** — el bucle de herramientas es el siguiente
+  trabajo — así que el panel se lo dice con todas las letras, porque un modelo
+  sin herramientas al que preguntas "¿qué tablas hay?" se inventará una
+  respuesta y la presentará como leída. Y las tarjetas de llamada a herramienta
+  están cableadas pero nada las produce aún; cuando lo hagan, cada una nombrará
+  la herramienta, sus argumentos y cuántas filas volvieron, porque ese número es
+  el que te dice si salieron datos de la máquina.
+
 - **Ajustes → IA: la configuración del asistente integrado, desactivada por
   defecto.** El panel en sí todavía se está construyendo (fase 4 de
   `docs/AI_ROADMAP.md`); lo que entra aquí es todo lo que decide qué se le

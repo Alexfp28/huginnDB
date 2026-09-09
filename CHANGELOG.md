@@ -8,6 +8,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The assistant panel, in the right dock.** A third occupant beside Saved
+  Queries and Pulse, with its own width, its own activity-bar entry and a View
+  menu entry you can bind a shortcut to. Off until you switch it on in
+  Settings → AI.
+
+  What it does today is talk, and propose statements. A conversation is kept
+  **per connection** — the assistant is about a database, and a thread that
+  followed you onto a different server would answer about the wrong data with
+  total confidence — and it streams token by token, with a stop button that
+  actually aborts the request rather than just stopping the rendering.
+
+  **Nothing it proposes runs from the chat.** A statement arrives in a small
+  read-only editor with an "open in editor" affordance per statement, which
+  hands it to a query tab: every guard already lives there, the result has a
+  grid to land in, and a write is something you see before it executes. That is
+  the posture, not an unfinished feature.
+
+  **Nothing is written to disk.** The transcript lives and dies with the
+  session, which is deliberate: it holds schema names, proposed SQL and — once
+  the tool loop lands — row snippets, which is exactly the sensitive artefact
+  this feature promises not to accumulate. The only thing persisted is whether
+  tool cards start expanded.
+
+  Two honest limits while the rest is built. The model has **no access to your
+  database yet** — the tool loop is the next piece of work — so the panel tells
+  it so, in as many words, because a model with no tools asked "which tables
+  are there?" will otherwise invent an answer and present it as read. And the
+  tool-call cards are wired but nothing produces them yet; when they do, each
+  will name the tool, its arguments and how many rows came back, because that
+  count is what tells you whether data left the machine.
+
 - **Settings → AI: the configuration for the in-app assistant, off by default.**
   The panel itself is still being built (`docs/AI_ROADMAP.md` phase 4); what
   lands here is everything that decides what it would be allowed to do, so the

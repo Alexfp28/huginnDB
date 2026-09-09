@@ -37,16 +37,24 @@ import { STORAGE_KEYS } from "@/lib/constants";
 const SCHEMA_WIDTH_DEFAULT = 280;
 const SAVED_WIDTH_DEFAULT = 260;
 const PULSE_WIDTH_DEFAULT = 320;
+/** Wider than Pulse's 320: a chat needs a measure. Prose wrapping every six
+ *  words reads as broken, and the SQL blocks are Monaco editors whose lines
+ *  should not wrap at all if it can be helped. */
+const AI_WIDTH_DEFAULT = 360;
 const CONSOLE_HEIGHT_DEFAULT = 190;
 const SIDE_EDITOR_WIDTH_DEFAULT = 420;
 
 /** The panels that can occupy the right dock. One at a time. */
-export type RightPanelId = "saved" | "pulse";
+export type RightPanelId = "saved" | "pulse" | "ai";
 
 export const PANEL_CLAMPS = {
   schemaWidth: { min: 200, max: 600 },
   savedWidth: { min: 200, max: 600 },
   pulseWidth: { min: 260, max: 640 },
+  // A higher floor than the others: below ~300px the composer, the model name
+  // and the send button stop fitting on one line, and a Monaco block becomes
+  // a horizontal scrollbar with three characters above it.
+  aiWidth: { min: 300, max: 720 },
   consoleHeight: { min: 120, max: 600 },
   sideEditorWidth: { min: 280, max: 720 },
 } as const;
@@ -54,8 +62,18 @@ export const PANEL_CLAMPS = {
 /** Which `PANEL_CLAMPS` key holds a given right-dock panel's width. Exported
  *  so the shell can hand the right `nudgePanel` key to its sash without
  *  spelling the mapping a second time. */
-export function rightPanelSizeKey(id: RightPanelId): "savedWidth" | "pulseWidth" {
-  return id === "saved" ? "savedWidth" : "pulseWidth";
+export function rightPanelSizeKey(
+  id: RightPanelId,
+): "savedWidth" | "pulseWidth" | "aiWidth" {
+  // A total map rather than a chain of ternaries: adding an occupant to
+  // `RightPanelId` without giving it a width is then a compile error here,
+  // which is the one place the mapping is spelled.
+  const KEYS: Record<RightPanelId, "savedWidth" | "pulseWidth" | "aiWidth"> = {
+    saved: "savedWidth",
+    pulse: "pulseWidth",
+    ai: "aiWidth",
+  };
+  return KEYS[id];
 }
 
 function clamp(value: number, { min, max }: { min: number; max: number }): number {
@@ -119,7 +137,7 @@ const { storage: throttledStorage, flush: flushPanelLayoutStorage } =
  *  `createThrottledStorage`'s doc comment. */
 export { flushPanelLayoutStorage };
 
-/** The five keys `nudgePanel` may adjust — exactly `PANEL_CLAMPS`'s keys. */
+/** The keys `nudgePanel` may adjust — exactly `PANEL_CLAMPS`'s keys. */
 export type PanelSizeKey = keyof typeof PANEL_CLAMPS;
 
 interface PanelLayoutState {
@@ -131,6 +149,7 @@ interface PanelLayoutState {
   lastRightPanel: RightPanelId;
   savedWidth: number;
   pulseWidth: number;
+  aiWidth: number;
   consoleOpen: boolean;
   consoleHeight: number;
   sideEditorOpen: boolean;
@@ -179,6 +198,7 @@ const DEFAULTS: PanelLayoutData = {
   lastRightPanel: "saved",
   savedWidth: SAVED_WIDTH_DEFAULT,
   pulseWidth: PULSE_WIDTH_DEFAULT,
+  aiWidth: AI_WIDTH_DEFAULT,
   consoleOpen: false,
   consoleHeight: CONSOLE_HEIGHT_DEFAULT,
   sideEditorOpen: false,

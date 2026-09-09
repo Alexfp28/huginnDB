@@ -63,6 +63,7 @@ import { OriginEditorOverlay } from "@/components/origins/OriginEditorOverlay";
 import { OriginRepublishDialog } from "@/components/origins/dialogs/OriginRepublishDialog";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
+import { startAiStreamBridge } from "@/lib/bridges/ai-stream-bridge";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
 import {
   intentDisplayName,
@@ -254,6 +255,12 @@ export default function App() {
   // doc for why the cancellation flag matters under StrictMode and HMR.)
   useBridge(startLogBridge);
 
+  // Subscribe to the Rust `huginndb://ai-delta` Tauri event so the AI panel
+  // streams. Mounted here rather than in the panel because it has to exist
+  // before the first delta arrives — a listener attached when the panel mounts
+  // would drop the opening tokens of the first turn (see the bridge's docs).
+  useBridge(startAiStreamBridge);
+
   // Subscribe to the Rust `huginndb://connection-lost` Tauri event so the
   // connection list can surface a reconnect action the moment the
   // background keepalive (`src-tauri/src/keepalive.rs`) detects a dead
@@ -421,6 +428,8 @@ export default function App() {
         useSessionPanelLayout.getState().selectRightPanel("saved"),
       togglePanelPulse: () =>
         useSessionPanelLayout.getState().selectRightPanel("pulse"),
+      togglePanelAi: () =>
+        useSessionPanelLayout.getState().selectRightPanel("ai"),
       togglePanelConsole: () => useSessionPanelLayout.getState().toggleConsole(),
       newWindow: () => {
         void api.openNewWindow().catch((e) => notify.error(String(e)));

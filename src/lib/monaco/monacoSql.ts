@@ -34,6 +34,22 @@ interface EditorEntry {
   getCompletions: () => SqlCompletion[];
   getLenses: () => SqlLens[];
   runStatement: (text: string) => void;
+  /**
+   * Override the lens's label and tooltip. Defaults to "▶ Run" / "run this
+   * statement", which is what a query tab means by it.
+   *
+   * A function rather than two strings so the label is resolved at render
+   * time: `i18n.t` is called when the lens is provided, and an entry that
+   * captured the string at registration would keep the language the editor
+   * mounted in after the user switches.
+   *
+   * The AI panel's SQL blocks are the reason this exists. Their lens does not
+   * *run* anything — it opens the statement in a query tab, where the tab's
+   * own ▶ Run and every guard behind it apply (decision D4: the assistant
+   * proposes, the user runs). A lens there labelled "Run" would promise
+   * execution the panel deliberately does not perform.
+   */
+  lensLabel?: () => { title: string; tooltip: string };
 }
 
 /** Per-model live data, keyed by `model.uri.toString()`. */
@@ -105,6 +121,10 @@ export function ensureSqlProviders(monaco: Monaco) {
       const entry = registry.get(model.uri.toString());
       if (!entry) return { lenses: [], dispose: () => {} };
       const uri = model.uri.toString();
+      const label = entry.lensLabel?.() ?? {
+        title: `▶ ${i18n.t("query.run")}`,
+        tooltip: i18n.t("query.runStatement"),
+      };
       return {
         lenses: entry.getLenses().map((stmt, idx) => ({
           range: {
@@ -116,8 +136,8 @@ export function ensureSqlProviders(monaco: Monaco) {
           id: `run-stmt-${idx}-${stmt.startLine}`,
           command: {
             id: "huginndb.runStatement",
-            title: `▶ ${i18n.t("query.run")}`,
-            tooltip: i18n.t("query.runStatement"),
+            title: label.title,
+            tooltip: label.tooltip,
             arguments: [uri, stmt.text],
           },
         })),

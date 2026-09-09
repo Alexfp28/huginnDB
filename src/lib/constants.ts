@@ -46,6 +46,9 @@ export const STORAGE_KEYS = {
   whatsNew: "huginndb.whatsNew.v1",
   panelLayout: "huginndb.panelLayout",
   pulse: "huginndb.pulse.v1",
+  /** The AI panel's **UI folds only** — never a transcript. See decision D7 in
+   *  `docs/AI_ROADMAP.md` and `stores/session/ai.ts`'s `partialize`. */
+  ai: "huginndb.ai.v1",
 } as const;
 
 /** Superseded by `STORAGE_KEYS.panelLayout` — the old outer dockview's

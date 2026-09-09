@@ -71,7 +71,8 @@
     "pulse": "Pulse",
     "rightDock": "Right dock",
     "console": "Console",
-    "cell": "Cell"
+    "cell": "Cell",
+    "ai": "Assistant"
   },
   "menu": {
     "file": {
@@ -1362,6 +1363,7 @@
       "togglePanelSchema": "Toggle the Schema panel",
       "togglePanelSaved": "Toggle the Saved queries panel",
       "togglePanelPulse": "Show the Pulse panel",
+      "togglePanelAi": "Assistant panel",
       "togglePanelConsole": "Toggle the Console panel",
       "searchPlaceholder": "Search an action…",
       "searchByKey": "By key",
@@ -2788,5 +2790,37 @@
     "released": "Back to the origin's password",
     "releasedHint": "The published one is restored on the next sync.",
     "releaseFailed": "Could not go back to the origin's password"
+  },
+  "ai": {
+    "disabledTitle": "The AI panel is off",
+    "disabledHint": "Point it at a model and choose which connections it may read in Settings.",
+    "openSettings": "Open AI settings",
+    "noConnectionTitle": "No connection selected",
+    "noConnectionHint": "Pick a connection in the tree — each one keeps its own conversation.",
+    "emptyTitle": "Ask about this database",
+    "emptyHint": "It cannot read your schema yet, so paste the DDL or column names it needs. Statements it proposes open in your query editor.",
+    "placeholder": "Ask something… (Enter to send, Shift+Enter for a new line)",
+    "send": "Send",
+    "stop": "Stop",
+    "clear": "Clear this conversation",
+    "you": "You",
+    "assistant": "Assistant",
+    "thinking": "Thinking…",
+    "noModel": "No model selected",
+    "showToolDetails": "Expand tool details by default",
+    "hideToolDetails": "Collapse tool details by default",
+    "openInEditor": "Open in editor",
+    "openInEditorHint": "Open this statement in a query tab. Nothing runs until you run it there.",
+    "tool": {
+      "arguments": "Arguments",
+      "error": "Refused",
+      "refused": "refused",
+      "running": "running…",
+      "truncated": "(capped)",
+      "objectResult": "returned",
+      "noResult": "no result",
+      "rowCount_one": "{{count}} row",
+      "rowCount_other": "{{count}} rows"
+    }
   }
 }
