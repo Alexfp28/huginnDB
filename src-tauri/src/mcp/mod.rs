@@ -2639,30 +2639,24 @@ mod tests {
     /// — letting us exercise `require_class` without touching real state.
     fn huginn_with_policy(id: &str, policy: McpWritePolicy, read_only: bool) -> Huginn {
         let state = AppState::new();
+        // Through `testkit::profile` rather than a full struct literal, which
+        // is what this was: the literal spelled every field, so each new one on
+        // `ConnectionProfile` broke it — and because this module is behind the
+        // `mcp` feature, the break only ever surfaced on a build somebody
+        // remembered to pass `--features mcp` to. `secret_override` had already
+        // landed with it missing. Struct-update syntax keeps the three fields
+        // this fixture is actually *about* visible and lets the rest default.
         state
             .profiles
             .write()
             .push(crate::state::ConnectionProfile {
-                id: id.to_string(),
-                name: id.to_string(),
                 driver: crate::state::Driver::Sqlite,
                 host: String::new(),
                 port: 0,
-                database: String::new(),
                 username: String::new(),
-                ssl: false,
-                ssh_tunnel: None,
-                connection_string: None,
-                auth_source: None,
-                mssql: None,
-                ephemeral: false,
-                group: None,
-                visible_databases: None,
                 mcp_write: policy,
-                max_connections: None,
-                origin_id: None,
-                pulse_enabled: false,
                 mcp_exposed: true,
+                ..crate::testkit::profile(id)
             });
         let mut allowed = HashSet::new();
         allowed.insert(id.to_string());
