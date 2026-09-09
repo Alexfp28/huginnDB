@@ -1629,6 +1629,18 @@
         "label": "Row budget",
         "desc": "How many rows one tool reply may put into the model's context. Much smaller than a page of the grid on purpose: a context window is a tighter budget than a screen, and a model reasons worse as it fills. Capped at 1000."
       },
+      "reasoningEffort": {
+        "label": "Thinking",
+        "desc": "How much a thinking model should reason before answering, sent as reasoning_effort. Nearly every current local model is a thinking model, and left alone it spends a paragraph of reasoning before the first useful token — pick None for a local model in assisted mode. Automatic sends nothing at all, which is the only setting guaranteed not to be rejected: OpenAI refuses the field outright on a model that does not reason."
+      },
+      "reasoning": {
+        "auto": "Automatic (send nothing)",
+        "none": "None",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "max": "Max"
+      },
       "requestTimeoutSecs": {
         "label": "Idle timeout",
         "desc": "Seconds a request may go without receiving a byte before it is abandoned. Not a total budget — a slow model answering correctly is not a broken one."

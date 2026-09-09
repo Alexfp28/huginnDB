@@ -41,7 +41,12 @@ import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { resolveConnectionLabel } from "@/lib/connectionLabel";
-import { resultFor, toWireMessages, type AiMessage } from "@/lib/ai/parts";
+import {
+  hasVisibleContent,
+  resultFor,
+  toWireMessages,
+  type AiMessage,
+} from "@/lib/ai/parts";
 import { SYSTEM_PROMPT } from "@/lib/ai/prompt";
 import {
   selectDraft,
@@ -176,13 +181,21 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
           />
         ) : (
           <div className="space-y-2">
-            {messages.map((message) => (
+            {messages.map((message, i) => (
               <Message
                 key={message.id}
                 message={message}
                 connectionId={connectionId}
                 showToolDetails={showToolDetails}
-                streaming={!!turnId && message.parts.length === 0}
+                // Only the last assistant message can be the one in flight,
+                // and `hasVisibleContent` (not `parts.length`) decides whether
+                // it has anything to show — a message whose only part is an
+                // unterminated reasoning block has a part and renders nothing.
+                streaming={
+                  !!turnId &&
+                  i === messages.length - 1 &&
+                  message.role === "assistant"
+                }
               />
             ))}
           </div>
@@ -285,7 +298,7 @@ function Message({
           // interpret.
           return null;
         })}
-        {streaming && (
+        {streaming && !hasVisibleContent(message.parts) && (
           <p className="text-2xs text-muted-foreground">{t("ai.thinking")}</p>
         )}
       </div>

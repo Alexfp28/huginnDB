@@ -12,6 +12,7 @@ import {
   fenceLanguage,
   isRunnable,
   splitBlocks,
+  stripReasoning,
   type TextBlock,
 } from "@/lib/ai/parts";
 import { SqlBlock } from "./SqlBlock";
@@ -23,7 +24,10 @@ export function TextPart({
   text: string;
   connectionId: string | null;
 }) {
-  const blocks = splitBlocks(text);
+  // Stripped before splitting, not after: an unterminated `<think>` would
+  // otherwise be read as prose and, worse, a ````` inside the reasoning
+  // would open a code block that swallowed the real answer.
+  const blocks = splitBlocks(stripReasoning(text));
   return (
     <>
       {blocks.map((block, i) => (

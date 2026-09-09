@@ -37,6 +37,7 @@
 use crate::ai::stream::{AssistantMessage, MessageAssembler, SseDecoder, DONE};
 use crate::ai::tools::ToolSpec;
 use crate::error::{AppError, AppResult};
+use crate::prefs::AiReasoningEffort;
 use reqwest::{redirect, Client, Method, RequestBuilder, Url};
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -60,6 +61,9 @@ pub struct Endpoint {
     pub api_key: Option<String>,
     /// Read-timeout budget. See [`client`].
     pub timeout: Duration,
+    /// What to send as `reasoning_effort`, or [`AiReasoningEffort::Auto`] to
+    /// omit the field. See that type for why omitting is the default.
+    pub reasoning_effort: AiReasoningEffort,
 }
 
 impl Endpoint {
@@ -117,6 +121,10 @@ impl Endpoint {
             // Floored so a `0` cannot make every request fail instantly, and
             // capped so a typo cannot hang a turn for a day.
             timeout: Duration::from_secs(timeout_secs.clamp(5, 3600)),
+            // Omitted unless a caller sets it: `from_prefs` is what carries
+            // the user's choice, and a bare `new` must stay safe against a
+            // server that validates the field.
+            reasoning_effort: AiReasoningEffort::Auto,
         })
     }
 
@@ -145,6 +153,7 @@ impl Endpoint {
         let api_key = crate::ai::secrets::key(&endpoint.base_url)?;
         Ok(Self {
             api_key,
+            reasoning_effort: prefs.reasoning_effort,
             ..endpoint
         })
     }
@@ -276,10 +285,17 @@ pub fn chat_body(
         "messages": messages,
         "stream": stream,
     });
+    let object = body.as_object_mut().expect("built as an object above");
     if !tools.is_empty() {
-        let object = body.as_object_mut().expect("built as an object above");
         object.insert("tools".into(), Value::Array(tool_declarations(tools)));
         object.insert("tool_choice".into(), Value::String("auto".into()));
+    }
+    // Only when the user asked for one. Omitting is not laziness: OpenAI
+    // validates this field and rejects the request on a non-reasoning model,
+    // so a build that always sent a value would break BYOK against half their
+    // catalogue — see `AiReasoningEffort::Auto`.
+    if let Some(effort) = endpoint.reasoning_effort.wire() {
+        object.insert("reasoning_effort".into(), Value::String(effort.into()));
     }
     body
 }
@@ -469,6 +485,7 @@ mod tests {
             model: "qwen2.5-coder:7b".into(),
             api_key: None,
             timeout: DEFAULT_TIMEOUT,
+            reasoning_effort: AiReasoningEffort::Auto,
         }
     }
 
@@ -589,6 +606,33 @@ mod tests {
                 "{} must describe itself to the model",
                 spec.name
             );
+        }
+    }
+
+    /// Omission is the safe default, and it is a compatibility requirement
+    /// rather than a preference: OpenAI validates this field and rejects the
+    /// whole request on a non-reasoning model.
+    #[test]
+    fn no_reasoning_effort_is_sent_unless_the_user_asked_for_one() {
+        let endpoint = endpoint("http://localhost:11434/v1");
+        assert_eq!(endpoint.reasoning_effort, AiReasoningEffort::Auto);
+        let body = chat_body(&endpoint, vec![], &[], true);
+        assert!(body.get("reasoning_effort").is_none(), "{body}");
+    }
+
+    #[test]
+    fn a_chosen_reasoning_effort_reaches_the_wire() {
+        for (choice, wire) in [
+            (AiReasoningEffort::None, "none"),
+            (AiReasoningEffort::Low, "low"),
+            (AiReasoningEffort::Medium, "medium"),
+            (AiReasoningEffort::High, "high"),
+            (AiReasoningEffort::Max, "max"),
+        ] {
+            let mut endpoint = endpoint("http://localhost:11434/v1");
+            endpoint.reasoning_effort = choice;
+            let body = chat_body(&endpoint, vec![], &[], true);
+            assert_eq!(body["reasoning_effort"], json!(wire), "{choice:?}");
         }
     }
 
@@ -816,6 +860,7 @@ mod tests {
             model: "qwen2.5-coder:7b".into(),
             api_key: Some("sk-test".into()),
             timeout: Duration::from_secs(10),
+            reasoning_effort: AiReasoningEffort::Auto,
         };
         let http = client(endpoint.timeout).unwrap();
         let request = chat_body(
@@ -870,6 +915,7 @@ mod tests {
             model: "gpt-4o-mini".into(),
             api_key: Some("sk-wrong".into()),
             timeout: Duration::from_secs(10),
+            reasoning_effort: AiReasoningEffort::Auto,
         };
         let http = client(endpoint.timeout).unwrap();
         let body = chat_body(&endpoint, vec![], &[], true);
@@ -903,6 +949,7 @@ mod tests {
             model: "llama3.1:8b".into(),
             api_key: None,
             timeout: Duration::from_secs(10),
+            reasoning_effort: AiReasoningEffort::Auto,
         };
         let http = client(endpoint.timeout).unwrap();
         let models = list_models(&http, &endpoint).await.expect("models");

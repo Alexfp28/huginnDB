@@ -648,6 +648,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: num((p) => p.ai.maxContextRows),
   },
   {
+    prefId: "ai.reasoningEffort",
+    section: "ai",
+    labelKey: "settings.ai.reasoningEffort.label",
+    descKey: "settings.ai.reasoningEffort.desc",
+    keywords:
+      "ai reasoning effort thinking think ia razonamiento pensar esfuerzo",
+    value: (p) => ({ i18nKey: `settings.ai.reasoning.${p.ai.reasoningEffort}` }),
+  },
+  {
     prefId: "ai.requestTimeoutSecs",
     section: "ai",
     labelKey: "settings.ai.requestTimeoutSecs.label",

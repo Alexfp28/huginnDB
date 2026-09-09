@@ -79,6 +79,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   chat, o inalcanzable con el motivo que dé el servidor — se muestra literal, y
   el modo agente avisa cuando el modelo medido no puede sostenerlo.
 
+  Un control de **razonamiento**, porque casi todos los modelos de la
+  biblioteca local actual razonan y a su aire se gastan un párrafo de
+  razonamiento antes del primer token útil — que en un panel de chat se lee como
+  un cuelgue. Se traduce a `reasoning_effort`; *Automático* no envía nada y es
+  el valor por defecto, porque OpenAI rechaza el campo de plano en un modelo que
+  no razona, así que un build que enviara siempre un valor rompería el BYOK
+  contra buena parte de su catálogo. Para un modelo local en modo asistido,
+  *Ninguno* es lo que quieres. Y haga lo que haga el servidor con el campo, el
+  razonamiento que llegue incrustado en etiquetas `<think>` se recorta del
+  mensaje en vez de pintarse como prosa.
+
   El propio panel remite a Ajustes → MCP para quien ya paga Claude o ChatGPT:
   esas suscripciones no se pueden gastar a través de HuginnDB, y el conector es
   la vía autorizada.

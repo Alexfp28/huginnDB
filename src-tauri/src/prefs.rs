@@ -395,6 +395,51 @@ pub enum AiMode {
     Agent,
 }
 
+/// How much a *thinking* model should be told to think.
+///
+/// Maps onto `reasoning_effort` on `/v1/chat/completions`. Nearly every model
+/// on Ollama's current library is a thinking model, and on one of those the
+/// default behaviour is to spend a paragraph of reasoning before the first
+/// useful token — which in a chat panel reads as a hang, and which some servers
+/// deliver *inside* `content` rather than in a field of its own (see
+/// `crate::ai::parts`'s counterpart on the frontend).
+///
+/// [`Self::Auto`] omits the field entirely, and is the default for a
+/// compatibility reason rather than a taste one: OpenAI *validates* it and
+/// rejects the request outright on a non-reasoning model, so a build that
+/// always sent something would break BYOK against half of their catalogue.
+/// Every other value is worth setting deliberately once the user knows what
+/// their endpoint serves — `None` for a local thinking model in assisted mode
+/// is the combination this feature is built around.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AiReasoningEffort {
+    /// Send no `reasoning_effort` at all. Safe against every server.
+    #[default]
+    Auto,
+    /// Ask a thinking model not to think. What assisted mode wants.
+    None,
+    Low,
+    Medium,
+    High,
+    /// Ollama accepts this; OpenAI does not. See [`Self::Auto`].
+    Max,
+}
+
+impl AiReasoningEffort {
+    /// The wire value, or `None` when the field must be omitted.
+    pub fn wire(self) -> Option<&'static str> {
+        match self {
+            Self::Auto => Option::None,
+            Self::None => Some("none"),
+            Self::Low => Some("low"),
+            Self::Medium => Some("medium"),
+            Self::High => Some("high"),
+            Self::Max => Some("max"),
+        }
+    }
+}
+
 /// The AI panel's configuration.
 ///
 /// Off by default, and the two fields that decide what leaves the machine are
@@ -439,6 +484,8 @@ pub struct AiPrefs {
     /// is declared dead. Not a total budget — a slow model is not a broken
     /// one; see [`crate::ai::provider::client`].
     pub request_timeout_secs: u64,
+    /// What to send as `reasoning_effort`. See [`AiReasoningEffort`].
+    pub reasoning_effort: AiReasoningEffort,
 }
 
 impl Default for AiPrefs {
@@ -453,6 +500,7 @@ impl Default for AiPrefs {
             mode: AiMode::default(),
             max_context_rows: crate::ai::exec::DEFAULT_MAX_CONTEXT_ROWS,
             request_timeout_secs: 120,
+            reasoning_effort: AiReasoningEffort::default(),
         }
     }
 }
@@ -692,6 +740,22 @@ mod tests {
         assert_eq!(parsed.ai.model, "llama3.1:8b");
         assert_eq!(parsed.ai.endpoint_trust, EndpointTrust::Untrusted);
         assert_eq!(parsed.ai.request_timeout_secs, 120);
+        // Omitting the field is the only value guaranteed not to be rejected
+        // by a strict server, so absence must resolve to it.
+        assert_eq!(parsed.ai.reasoning_effort, AiReasoningEffort::Auto);
+    }
+
+    /// The wire values `reasoning_effort` accepts, and the one that means
+    /// "send nothing".
+    #[test]
+    fn reasoning_effort_maps_onto_the_openai_field() {
+        assert_eq!(AiReasoningEffort::Auto.wire(), None);
+        assert_eq!(AiReasoningEffort::None.wire(), Some("none"));
+        assert_eq!(AiReasoningEffort::Low.wire(), Some("low"));
+        assert_eq!(AiReasoningEffort::Medium.wire(), Some("medium"));
+        assert_eq!(AiReasoningEffort::High.wire(), Some("high"));
+        assert_eq!(AiReasoningEffort::Max.wire(), Some("max"));
+        assert_eq!(AiReasoningEffort::default(), AiReasoningEffort::Auto);
     }
 
     /// The wire names the frontend mirrors in `types.ts`.
@@ -706,11 +770,13 @@ mod tests {
             "mode",
             "maxContextRows",
             "requestTimeoutSecs",
+            "reasoningEffort",
         ] {
             assert!(json.get(key).is_some(), "missing {key} in {json}");
         }
         assert_eq!(json["endpointTrust"], serde_json::json!("untrusted"));
         assert_eq!(json["mode"], serde_json::json!("assisted"));
+        assert_eq!(json["reasoningEffort"], serde_json::json!("auto"));
     }
 
     /// A `prefs.json` written before the notifications group existed — i.e.

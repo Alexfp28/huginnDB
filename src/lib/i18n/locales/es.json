@@ -1629,6 +1629,18 @@
         "label": "Presupuesto de filas",
         "desc": "Cuántas filas puede meter en el contexto del modelo la respuesta de una herramienta. Mucho menos que una página de la cuadrícula a propósito: una ventana de contexto es un presupuesto más estrecho que una pantalla, y el modelo razona peor a medida que se llena. Tope de 1000."
       },
+      "reasoningEffort": {
+        "label": "Razonamiento",
+        "desc": "Cuánto debe razonar un modelo de razonamiento antes de responder; se envía como reasoning_effort. Casi todos los modelos locales actuales razonan, y a su aire se gastan un párrafo de razonamiento antes del primer token útil — elige Ninguno para un modelo local en modo asistido. Automático no envía nada, que es el único ajuste que no puede ser rechazado: OpenAI rechaza el campo de plano en un modelo que no razona."
+      },
+      "reasoning": {
+        "auto": "Automático (no enviar nada)",
+        "none": "Ninguno",
+        "low": "Bajo",
+        "medium": "Medio",
+        "high": "Alto",
+        "max": "Máximo"
+      },
       "requestTimeoutSecs": {
         "label": "Tiempo de inactividad",
         "desc": "Segundos que una petición puede estar sin recibir un byte antes de abandonarla. No es un presupuesto total — un modelo lento que responde bien no es un modelo roto."

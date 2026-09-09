@@ -50,7 +50,7 @@ import {
   selectAiPrefs,
 } from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
-import type { AiProbeReport, ConnectionProfile } from "@/types";
+import type { AiPrefs, AiProbeReport, ConnectionProfile } from "@/types";
 import { PrefRow } from "./PrefRow";
 import { AiConnectionTree } from "./AiConnectionTree";
 
@@ -307,6 +307,33 @@ export function AiSection() {
             }
             className="h-8 w-24 text-right font-mono text-xs"
           />
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.ai.reasoningEffort.label")}
+          prefId="ai.reasoningEffort"
+          description={t("settings.ai.reasoningEffort.desc")}
+          htmlFor="prefs-ai-reasoning"
+        >
+          <NativeSelect
+            id="prefs-ai-reasoning"
+            size="sm"
+            value={ai.reasoningEffort}
+            onChange={(e) =>
+              updateAi({
+                reasoningEffort: e.target.value as AiPrefs["reasoningEffort"],
+              })
+            }
+            className="w-40"
+          >
+            {(
+              ["auto", "none", "low", "medium", "high", "max"] as const
+            ).map((value) => (
+              <option key={value} value={value}>
+                {t(`settings.ai.reasoning.${value}`)}
+              </option>
+            ))}
+          </NativeSelect>
         </PrefRow>
 
         <PrefRow

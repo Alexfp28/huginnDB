@@ -143,6 +143,10 @@ const DEFAULT_PREFS: Preferences = {
     mode: "assisted",
     maxContextRows: 50,
     requestTimeoutSecs: 120,
+    // Omitted from the request unless the user picks a value: OpenAI rejects
+    // `reasoning_effort` on a non-reasoning model, so "auto" is the only
+    // setting guaranteed to work against every endpoint.
+    reasoningEffort: "auto",
   },
   keybindings: {},
 };

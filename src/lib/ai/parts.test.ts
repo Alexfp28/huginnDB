@@ -5,9 +5,11 @@ import {
   appendToolCall,
   appendToolResult,
   fenceLanguage,
+  hasVisibleContent,
   isRunnable,
   resultFor,
   splitBlocks,
+  stripReasoning,
   toWireMessages,
   type MessagePart,
 } from "./parts";
@@ -245,5 +247,73 @@ describe("toWireMessages", () => {
     );
     const wire = toWireMessages(many, 4);
     expect(wire.map((m) => m.content)).toEqual(["m26", "m27", "m28", "m29"]);
+  });
+});
+
+describe("stripReasoning", () => {
+  it("drops a leading think block and the blank line after it", () => {
+    expect(
+      stripReasoning("<think>The user wants a count.</think>\n\nUse COUNT(*)."),
+    ).toBe("Use COUNT(*).");
+    expect(stripReasoning("<thinking>hmm</thinking>Answer")).toBe("Answer");
+    // Case-insensitive, and leading whitespace before the tag is fine.
+    expect(stripReasoning("  <THINK>x</THINK> y")).toBe("y");
+  });
+
+  /** While the model is still reasoning there is nothing to show, and printing
+   *  the reasoning as it streams is the mess this exists to avoid. */
+  it("returns nothing while the block is still open", () => {
+    expect(stripReasoning("<think>I should look at the")).toBe("");
+    expect(stripReasoning("<think>")).toBe("");
+  });
+
+  it("leaves a message with no reasoning untouched", () => {
+    expect(stripReasoning("Use COUNT(*).")).toBe("Use COUNT(*).");
+    expect(stripReasoning("")).toBe("");
+  });
+
+  /**
+   * The narrow rule, and the reason for it: reasoning comes *before* the
+   * answer, so a `<think>` further in is far likelier to be content — a
+   * question about an HTML column, a quoted template — and corrupting an
+   * answer to tidy a rare case would be the worse trade.
+   */
+  it("does not touch a think tag that is not at the very start", () => {
+    const text = "Your column holds <think> tags, like this:\n```html\n<think>x</think>\n```";
+    expect(stripReasoning(text)).toBe(text);
+  });
+
+  /** The reason it is stripped *before* `splitBlocks`: a fence inside the
+   *  reasoning would otherwise open a code block that ate the real answer. */
+  it("keeps a fence inside the reasoning from swallowing the answer", () => {
+    const blocks = splitBlocks(
+      stripReasoning("<think>maybe ```sql SELECT 1```?</think>\nUse this:\n```sql\nSELECT 2;\n```"),
+    );
+    expect(blocks).toEqual([
+      { kind: "prose", text: "Use this:" },
+      { kind: "code", lang: "sql", code: "SELECT 2;", closed: true },
+    ]);
+  });
+});
+
+describe("hasVisibleContent", () => {
+  it("is false for a message whose only part is unterminated reasoning", () => {
+    // The panel keeps its "thinking" line rather than showing an empty bubble.
+    expect(
+      hasVisibleContent([{ type: "text", text: "<think>working on it" }]),
+    ).toBe(false);
+    expect(hasVisibleContent([])).toBe(false);
+    expect(hasVisibleContent([{ type: "text", text: "   " }])).toBe(false);
+  });
+
+  it("is true once there is text, or any tool part at all", () => {
+    expect(hasVisibleContent([{ type: "text", text: "<think>x</think>hi" }])).toBe(
+      true,
+    );
+    expect(
+      hasVisibleContent([
+        { type: "toolCall", id: "c1", name: "list_tables", args: {} },
+      ]),
+    ).toBe(true);
   });
 });

@@ -982,6 +982,28 @@ export type AiEndpointTrust = "untrusted" | "trusted";
 export type AiMode = "assisted" | "agent";
 
 /**
+ * How much a *thinking* model should be told to think — the OpenAI
+ * `reasoning_effort` field.
+ *
+ * `"auto"` omits the field entirely and is the default, for a compatibility
+ * reason rather than a taste one: OpenAI validates it and rejects the request
+ * outright on a non-reasoning model, so always sending a value would break
+ * BYOK against much of their catalogue. `"none"` is what a local thinking
+ * model in assisted mode wants — nearly every model on Ollama's current
+ * library is one, and left to itself it spends a paragraph of reasoning before
+ * the first useful token.
+ *
+ * Mirrors `AiReasoningEffort` in `src-tauri/src/prefs.rs`.
+ */
+export type AiReasoningEffort =
+  | "auto"
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "max";
+
+/**
  * The AI panel's configuration. Mirrors `AiPrefs` in `src-tauri/src/prefs.rs`.
  *
  * The endpoint's API key is deliberately absent: it lives in the OS keychain,
@@ -1008,6 +1030,8 @@ export interface AiPrefs {
   /** Seconds a socket may go without delivering a byte. Not a total budget — a
    *  slow model is not a broken one. */
   requestTimeoutSecs: number;
+  /** See {@link AiReasoningEffort}. */
+  reasoningEffort: AiReasoningEffort;
 }
 
 /**

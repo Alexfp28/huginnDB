@@ -71,6 +71,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   tool-capable, chat only, or unreachable with the server's own reason — is shown
   verbatim, and agent mode says so when the measured model cannot drive it.
 
+  A **thinking** control, because nearly every model on the current local
+  library is a thinking model and left alone it spends a paragraph of reasoning
+  before the first useful token — which in a chat panel reads as a hang. It maps
+  onto `reasoning_effort`; *Automatic* sends nothing at all and is the default,
+  since OpenAI rejects the field outright on a model that does not reason, so a
+  build that always sent a value would break BYOK against much of their
+  catalogue. For a local model in assisted mode, *None* is the setting you
+  want. And whatever the server does with the field, reasoning that arrives
+  inlined in `<think>` tags is stripped from the message rather than rendered as
+  prose.
+
   The panel's own copy points at Settings → MCP for anyone who already pays for
   Claude or ChatGPT: those subscriptions cannot be spent through HuginnDB, and
   the connector is the sanctioned route.

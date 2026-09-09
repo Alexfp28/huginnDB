@@ -86,7 +86,7 @@ pub struct ProbeReport {
 /// support, which is not the question — and it is how a tool-capable model gets
 /// misreported as chat-only.
 pub fn probe_body(endpoint: &Endpoint) -> Value {
-    json!({
+    let mut body = json!({
         "model": endpoint.model,
         "stream": false,
         "messages": [
@@ -117,7 +117,18 @@ pub fn probe_body(endpoint: &Endpoint) -> Value {
             }
         }],
         "tool_choice": "auto"
-    })
+    });
+    // The probe is where thinking hurts most: it is one trivial call whose
+    // whole point is to answer quickly, and a thinking model asked to reason
+    // about it first turns "test endpoint" into a twenty-second wait for a
+    // verdict the user is standing there for. Honours the same preference the
+    // real turns do, so it also measures the configuration in force.
+    if let Some(effort) = endpoint.reasoning_effort.wire() {
+        body.as_object_mut()
+            .expect("built as an object above")
+            .insert("reasoning_effort".into(), Value::String(effort.into()));
+    }
+    body
 }
 
 /// Classify a completion that came back.
@@ -377,6 +388,7 @@ mod tests {
             model: "llama3.1:8b".into(),
             api_key: None,
             timeout: provider::DEFAULT_TIMEOUT,
+            reasoning_effort: crate::prefs::AiReasoningEffort::Auto,
         };
         let body = probe_body(&endpoint);
         assert_eq!(body["model"], json!("llama3.1:8b"));
@@ -390,6 +402,24 @@ mod tests {
         // own, which is the false positive that makes agent mode look
         // available and then fail on the first real turn.
         assert_ne!(body["tool_choice"], json!("required"));
+    }
+
+    /// "Test endpoint" is a button someone is standing in front of, and a
+    /// thinking model asked to reason about a trivial call first turns it into
+    /// a twenty-second wait for a verdict.
+    #[test]
+    fn the_probe_honours_the_reasoning_effort_preference() {
+        let mut endpoint = Endpoint {
+            base_url: reqwest::Url::parse("http://localhost:11434/v1").unwrap(),
+            model: "gemma4:12b".into(),
+            api_key: None,
+            timeout: provider::DEFAULT_TIMEOUT,
+            reasoning_effort: crate::prefs::AiReasoningEffort::Auto,
+        };
+        assert!(probe_body(&endpoint).get("reasoning_effort").is_none());
+
+        endpoint.reasoning_effort = crate::prefs::AiReasoningEffort::None;
+        assert_eq!(probe_body(&endpoint)["reasoning_effort"], json!("none"));
     }
 
     /// The capability crosses IPC to the settings panel, so its JSON shape is

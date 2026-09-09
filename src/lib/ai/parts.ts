@@ -101,6 +101,55 @@ export function resultFor(
   );
 }
 
+/**
+ * A model's own reasoning, when the server inlines it into `content`.
+ *
+ * Nearly every model on Ollama's current library is a thinking model, and the
+ * OpenAI-compatible endpoint does not guarantee that reasoning arrives in a
+ * field of its own — some servers wrap it in `<think>` tags inside `content`,
+ * where the panel would render it as prose. `reasoning_effort` (see
+ * `AiReasoningEffort` in `src-tauri/src/prefs.rs`) is the lever that stops it
+ * being produced; this is the belt to that braces, for a server that ignores
+ * the field or a model that emits the tags anyway.
+ *
+ * **Only a block at the very start of the message is stripped.** That is the
+ * whole rule, and it is deliberately narrower than "remove every `<think>`":
+ * reasoning is emitted before the answer, whereas a `<think>` appearing later
+ * is far more likely to be *content* — a user asking about an HTML column, or a
+ * model quoting a template. Corrupting an answer to tidy a rare case would be
+ * the worse trade.
+ */
+const LEADING_REASONING = /^\s*<think(?:ing)?>/i;
+const CLOSING_REASONING = /<\/think(?:ing)?>/i;
+
+/**
+ * Drop a leading reasoning block. Display-only — the store keeps the raw text,
+ * so nothing here changes what a later turn sends back as history.
+ *
+ * An *unclosed* tag returns the empty string: while the model is still
+ * reasoning there is nothing to show yet, and printing the reasoning as it
+ * streams is exactly the mess this avoids.
+ */
+export function stripReasoning(text: string): string {
+  if (!LEADING_REASONING.test(text)) return text;
+  const close = CLOSING_REASONING.exec(text);
+  if (!close) return "";
+  return text.slice(close.index + close[0].length).replace(/^\s+/, "");
+}
+
+/**
+ * Whether a message has anything to show yet.
+ *
+ * Not the same as "has parts": a message whose only part is an unterminated
+ * reasoning block has one and displays nothing, and the panel needs to keep
+ * showing its "thinking" line rather than an empty bubble.
+ */
+export function hasVisibleContent(parts: MessagePart[]): boolean {
+  return parts.some((part) =>
+    part.type === "text" ? stripReasoning(part.text).trim().length > 0 : true,
+  );
+}
+
 /** One run of a text part: prose, or a fenced code block. */
 export type TextBlock =
   | { kind: "prose"; text: string }
