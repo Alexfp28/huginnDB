@@ -43,6 +43,8 @@ pub fn profile(id: &str) -> ConnectionProfile {
         origin_id: None,
         pulse_enabled: false,
         mcp_exposed: false,
+        ai_enabled: false,
+        ai_rows_allowed: false,
         secret_override: None,
     }
 }

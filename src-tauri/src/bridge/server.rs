@@ -417,7 +417,15 @@ fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
 /// read-only however the request got here. Read fresh from `profiles.json` for
 /// the same reason the sidecar does — so a policy changed in Settings → MCP
 /// takes effect without restarting anything.
-fn check_policy(state: &AppState, request: &BridgeRequest) -> AppResult<()> {
+///
+/// **Two consumers.** This module serves the sidecar; [`crate::ai::exec`] calls
+/// it for the in-app assistant's tool calls, which arrive over an entirely
+/// different transport and are built from a different catalogue but land on the
+/// same [`BridgeRequest`] enum. That is the whole reason the check lives on the
+/// request rather than at either entry point — and it is why the AI catalogue
+/// keeps its own exhaustive mapping instead of extending `class_of`'s
+/// `_ => None` (gotcha #49).
+pub(crate) fn check_policy(state: &AppState, request: &BridgeRequest) -> AppResult<()> {
     let Some(policy_id) = policy_id_of(request) else {
         return Ok(());
     };

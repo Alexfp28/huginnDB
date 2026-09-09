@@ -683,6 +683,15 @@ pub(crate) fn merge_into(
                 // would take an AI client's access away mid-session with no
                 // visible cause.
                 profile.mcp_exposed = existing.mcp_exposed;
+                // And the same pair one surface across: whether the in-app AI
+                // panel may reach this connection, and whether its rows may go
+                // to an untrusted endpoint. Both are decisions about what
+                // leaves *this* machine, which is the one thing a publisher
+                // cannot know — and the off direction bites hardest here, since
+                // a refresh that silently cleared `ai_rows_allowed` would leave
+                // an assistant answering from metadata with no visible reason.
+                profile.ai_enabled = existing.ai_enabled;
+                profile.ai_rows_allowed = existing.ai_rows_allowed;
                 // And the one local field that is not a permanent decision:
                 // the consumer's own password standing in for the published
                 // one. `merge_profiles_bundle` is what expires it, by comparing
@@ -1228,6 +1237,54 @@ mod tests {
         });
         let after = merge(vec![local], &[incoming]);
         assert!(!after[0].mcp_exposed, "a publisher cannot expose for us");
+    }
+
+    /// The same two directions for the in-app AI panel's pair of flags. Not
+    /// compiler-enforced — `merge_into` assigns the fields it knows about and a
+    /// new one is simply absent — so this is the test that stands in for a
+    /// missing `#[deny]`.
+    #[test]
+    fn a_sync_preserves_the_local_ai_flags() {
+        // This machine's decisions survive a refresh that says otherwise.
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            ai_enabled: true,
+            ai_rows_allowed: true,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "newhost".into(),
+            ai_enabled: false,
+            ai_rows_allowed: false,
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert!(after[0].ai_enabled, "AI reach is this machine's call");
+        assert!(after[0].ai_rows_allowed, "so is row access");
+        assert_eq!(after[0].host, "newhost", "everything else is the file's");
+
+        // And the publisher cannot switch either of them on for us — the
+        // direction that would quietly send a client's rows to whatever
+        // endpoint this machine happens to have configured.
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            ai_enabled: false,
+            ai_rows_allowed: false,
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            ai_enabled: true,
+            ai_rows_allowed: true,
+            ..testkit::profile("shared")
+        });
+        let after = merge(vec![local], &[incoming]);
+        assert!(!after[0].ai_enabled, "a publisher cannot enable AI for us");
+        assert!(
+            !after[0].ai_rows_allowed,
+            "a publisher cannot allow rows for us"
+        );
     }
 
     /// A profile arriving for the first time has no local decision to keep, so

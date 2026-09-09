@@ -1857,6 +1857,12 @@ pub(crate) fn apply_profile_imports(
         // whole fix, and clearing both would silently discard a level the user
         // is about to want anyway.
         new_profile.mcp_exposed = false;
+        // Same argument, same direction, for the in-app assistant: a bundle
+        // written on a machine where the AI panel could read this connection —
+        // rows and all — must not hand that reach to whoever imports it. Both
+        // flags are one checkbox each in Settings → AI.
+        new_profile.ai_enabled = false;
+        new_profile.ai_rows_allowed = false;
         // Same reasoning, and a sharper failure if it were skipped: a
         // `secret_override` flag riding in from the exporting machine would
         // tell every future sync that *this* machine has its own password for
@@ -2380,6 +2386,30 @@ mod tests {
         // connection is unreachable, and clearing it too would discard a level
         // the user is about to want.
         assert_eq!(profiles[0].mcp_write, crate::state::McpWritePolicy::Full);
+    }
+
+    /// Same reasoning as the MCP exposure above, one surface across: an
+    /// imported bundle must not decide what this machine's AI panel may read,
+    /// and least of all whether its rows may leave.
+    #[test]
+    fn an_imported_profile_is_never_reachable_by_the_ai_panel() {
+        let mut profiles = Vec::new();
+        let mut ep = exported("orig-a", "A");
+        ep.profile.ai_enabled = true;
+        ep.profile.ai_rows_allowed = true;
+
+        let (result, _map, _overwritten) = apply_profile_imports(
+            &mut profiles,
+            vec![ep],
+            None,
+            &std::collections::HashMap::new(),
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(result.imported.len(), 1);
+        assert!(!profiles[0].ai_enabled, "AI reach is re-opted-in locally");
+        assert!(!profiles[0].ai_rows_allowed, "so is row access");
     }
 
     #[test]

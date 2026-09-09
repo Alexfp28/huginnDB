@@ -163,6 +163,18 @@ export interface ConnectionProfile {
    *  sync and cleared on import, since what your AI clients may reach is a
    *  decision about this machine. */
   mcp_exposed?: boolean;
+  /** Whether the in-app AI panel may reach this connection at all. Opt-in,
+   *  `false`/absent by default, and strictly local for the same reasons as
+   *  `mcp_exposed`: preserved across a shared-origin sync, cleared on import.
+   *  The backend resolves a model's connection reference only among enabled
+   *  profiles, so a connection that is off is unreachable by name as well as
+   *  by id. */
+  ai_enabled?: boolean;
+  /** Whether this connection's **rows** may be sent to an inference endpoint
+   *  the user has not declared as their own infrastructure. Metadata (names,
+   *  types, indexes, `EXPLAIN`) is never gated by this; a trusted endpoint
+   *  reads rows without it. `false`/absent by default. */
+  ai_rows_allowed?: boolean;
   /**
    * Set when this machine keeps its **own** password for a connection a shared
    * origin publishes — the supported answer to "the server reset the password

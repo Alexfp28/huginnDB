@@ -305,6 +305,34 @@ pub struct ConnectionProfile {
     /// make it — nor a bundle you imported to look at.
     #[serde(default)]
     pub mcp_exposed: bool,
+    /// Whether the in-app AI panel may reach this connection at all.
+    ///
+    /// Opt-in, off by default, and strictly local — the same three properties
+    /// `mcp_exposed` has, for the same reasons: an upgrade must never silently
+    /// widen what a language model can see, and a publisher two machines away
+    /// does not get to decide what *this* machine's assistant may read.
+    /// [`crate::commands::origins::merge_into`] preserves it across a
+    /// shared-origin sync and the bundle import clears it.
+    ///
+    /// The gate is [`crate::ai::exec::resolve_connection`], which resolves a
+    /// model's connection reference *only* among enabled profiles — so a
+    /// connection that is off is unreachable by name as well as by id, rather
+    /// than reachable-and-then-refused.
+    #[serde(default)]
+    pub ai_enabled: bool,
+    /// Whether row data from this connection may be sent to an **untrusted**
+    /// inference endpoint.
+    ///
+    /// The per-connection half of [`crate::ai`]'s coupling rule, and the reason
+    /// that rule needs two axes: "read-only" does not mean "nothing leaves",
+    /// because a `SELECT` puts rows in the prompt. A *trusted* endpoint
+    /// (loopback, or infrastructure the user has declared as their own) may
+    /// read rows without this; anything else gets metadata only until it is
+    /// set. See [`crate::ai::scope::DataScope::resolve`].
+    ///
+    /// Local and off by default, exactly like `ai_enabled` above.
+    #[serde(default)]
+    pub ai_rows_allowed: bool,
     /// This machine's own password for an origin-owned connection takes
     /// precedence over the one the origin publishes.
     ///
@@ -1092,6 +1120,29 @@ mod tests {
                 .connect_lazy("sqlite::memory:")
                 .expect("lazy pool construction does not touch the filesystem"),
         )
+    }
+
+    /// Every `profiles.json` on every existing install predates the two AI
+    /// flags, and the whole promise is that an upgrade grants a language model
+    /// nothing. `#[serde(default)]` is the mechanism; this is the test that
+    /// says so, because a field added without it deserialises as an error
+    /// rather than as `false` and the failure would be "all my connections
+    /// disappeared" (`profiles.json` is the one state file whose parse failure
+    /// is deliberately hard).
+    #[test]
+    fn a_profile_written_before_the_ai_flags_loads_with_them_off() {
+        let stored = serde_json::json!({
+            "id": "p1",
+            "name": "Producción",
+            "driver": "postgres",
+            "host": "db.internal",
+            "port": 5432,
+            "database": "shop",
+            "username": "reader"
+        });
+        let profile: ConnectionProfile = serde_json::from_value(stored).expect("must still parse");
+        assert!(!profile.ai_enabled);
+        assert!(!profile.ai_rows_allowed);
     }
 
     fn insert(conns: &mut ActiveConnections, id: &str, origin: PoolOrigin, idle_millis: u64) {

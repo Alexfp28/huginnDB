@@ -15,6 +15,12 @@
 //! * [`store`] — on-disk persistence for non-sensitive profile metadata.
 //! * [`error`] — common error type, serialised to the frontend.
 
+/// The in-app AI assistant's backend: the read surface a model is described,
+/// and the gates a tool call passes through. A second presentation layer over
+/// [`bridge::protocol::BridgeRequest`], sharing the whole data path with the
+/// headless MCP connector — see the module docs for the egress invariant and
+/// the metadata/rows coupling rule.
+mod ai;
 mod app_identity;
 mod bridge;
 mod commands;
