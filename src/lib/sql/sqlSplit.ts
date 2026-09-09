@@ -241,3 +241,22 @@ export function splitSql(source: string): SqlStatement[] {
 
   return out;
 }
+
+/**
+ * The statement containing `line` (1-based), or `null`.
+ *
+ * What "the current statement" means to every editor affordance that acts on
+ * one: the ▶ Run lens already has the statement handed to it, but a *menu*
+ * action only knows where the caret is. Falls back to the last statement when
+ * the caret sits past the final one — a caret on the trailing blank line after
+ * a query is still, to a user, "in" that query.
+ */
+export function statementAt(source: string, line: number): SqlStatement | null {
+  const statements = splitSql(source);
+  if (statements.length === 0) return null;
+  const hit = statements.find((s) => s.startLine <= line && line <= s.endLine);
+  if (hit) return hit;
+  return line > statements[statements.length - 1].endLine
+    ? statements[statements.length - 1]
+    : null;
+}

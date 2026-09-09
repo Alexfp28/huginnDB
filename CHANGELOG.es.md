@@ -10,6 +10,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **El asistente ya puede leer tu base de datos, cuando se lo pides.** Cuatro
+  trabajos cuyo contexto monta HuginnDB, cada uno una sola llamada al modelo sin
+  bucle de herramientas — que es justo lo que hace que funcionen en un modelo
+  demasiado pequeño para confiarle uno.
+
+  Clic derecho sobre una sentencia en el editor para **Explica esta sentencia** o
+  **¿Por qué es lenta esta sentencia?** (la segunda le entrega al modelo el plan
+  del propio servidor). Clic derecho sobre una tabla en el árbol de esquema para
+  **Documentar con IA**: columnas, índices y — solo cuando el endpoint puede leer
+  filas — un puñado de valores de muestra. Las filas de sentencias lentas de
+  Pulse llevan la misma pregunta, allí donde la sentencia, sus tiempos y su plan
+  ya están en pantalla. Y en el compositor del panel, la varita escribe SQL para
+  lo que hayas escrito, contra la estructura de las tablas de las que parece
+  hablar tu petición.
+
+  El chat normal sigue sin leer nada: no tiene herramientas hasta que llegue el
+  bucle de agente, y su prompt lo dice en vez de dejar que el modelo se invente
+  un esquema y lo presente como leído. Estos cuatro son los que miran, y cada
+  lectura que hacen aparece en la Consola junto a tus propias sentencias — un
+  asistente cuyas lecturas se ven es uno al que puedes creer sobre lo que *no*
+  ha mirado.
+
+  La regla de filas se mantiene en todo. Documentar es el único trabajo que lee
+  filas, y con un endpoint de solo metadatos no se desactiva: quita la muestra y
+  el prompt le dice al modelo que no hable de valores que no ha visto.
+
 - **El panel del asistente, en el dock derecho.** Un tercer inquilino junto a
   Consultas guardadas y Pulse, con su propio ancho, su entrada en la barra de
   actividad y una entrada en el menú Ver a la que puedes asignar un atajo.

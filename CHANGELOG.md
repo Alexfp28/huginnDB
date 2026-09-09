@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The assistant can read your database now, when you ask it to.** Four jobs
+  whose context HuginnDB assembles itself, each one model call with no tool
+  loop — which is what makes them work on a model far too small to be trusted
+  with one.
+
+  Right-click a statement in the query editor for **Explain this statement** or
+  **Why is this statement slow?** (the second hands the model the server's own
+  plan). Right-click a table in the schema tree for **Document with AI**:
+  columns, indexes, and — only when the endpoint may read rows — a handful of
+  sample values. Pulse's slow-statement rows carry the same question, where the
+  statement, its timings and its plan are all already on screen. And in the
+  panel's composer, the wand writes SQL for whatever you typed, against the
+  structures of the tables your request appears to be about.
+
+  Plain chat still reads nothing: it has no tools until the agent loop lands,
+  and its prompt says so rather than letting a model invent a schema and
+  present it as read. These four are the ones that look, and every read they
+  make lands in the Console beside your own statements — an assistant whose
+  reads are visible is one you can believe about what it did *not* look at.
+
+  The row rule holds throughout. Documentation is the only job that reads rows,
+  and under a metadata-only endpoint it does not become unavailable: it drops
+  the sample and the prompt tells the model to say nothing about values it was
+  not shown.
+
 - **The assistant panel, in the right dock.** A third occupant beside Saved
   Queries and Pulse, with its own width, its own activity-bar entry and a View
   menu entry you can bind a shortcut to. Off until you switch it on in

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitSql } from "./sqlSplit";
+import { splitSql, statementAt } from "./sqlSplit";
 
 /**
  * Characterization tests for the statement splitter behind the editor's
@@ -147,5 +147,30 @@ describe("splitSql positions", () => {
   it("ends an unterminated trailing statement at the last character", () => {
     const [stmt] = splitSql("SELECT 1");
     expect(stmt).toMatchObject({ endLine: 1, endColumn: 9 });
+  });
+});
+
+describe("statementAt", () => {
+  const source = "SELECT 1;\nSELECT 2;\n\nSELECT 3;";
+
+  it("finds the statement the caret is inside", () => {
+    expect(statementAt(source, 1)?.text).toBe("SELECT 1;");
+    expect(statementAt(source, 2)?.text).toBe("SELECT 2;");
+    expect(statementAt(source, 4)?.text).toBe("SELECT 3;");
+  });
+
+  /** A caret on the blank line after a query is still, to a user, in it. */
+  it("falls back to the last statement past the end", () => {
+    expect(statementAt(source, 99)?.text).toBe("SELECT 3;");
+  });
+
+  it("returns null for a buffer with nothing in it", () => {
+    expect(statementAt("", 1)).toBeNull();
+    expect(statementAt("-- just a comment\n", 1)).toBeNull();
+  });
+
+  /** A caret in the gap between two statements belongs to neither. */
+  it("returns null in a gap it cannot attribute", () => {
+    expect(statementAt(source, 3)).toBeNull();
   });
 });

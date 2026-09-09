@@ -23,12 +23,15 @@ import {
   Maximize2,
   RefreshCw,
   ServerCog,
+  Wand2,
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertList } from "@/components/pulse/sections/AlertList";
 import { StatusTiles } from "@/components/pulse/sections/StatusTiles";
 import { StorageLegend } from "@/components/pulse/sections/StorageLegend";
+import { IconButton } from "@/components/ui/icon-button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { runAiTask } from "@/lib/ai/runTask";
 import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
 import { isUnsupported, usePulseView } from "@/lib/pulse/usePulseView";
@@ -105,10 +108,16 @@ function Section({
   );
 }
 
-function QueryRow({ query }: { query: PulseTopQuery }) {
+function QueryRow({
+  query,
+  connectionId,
+}: {
+  query: PulseTopQuery;
+  connectionId: string;
+}) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="group/row flex flex-col gap-0.5">
       <div className="flex items-baseline gap-2">
         <span
           className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-foreground"
@@ -126,6 +135,23 @@ function QueryRow({ query }: { query: PulseTopQuery }) {
         >
           {query.avgMs < 1 ? "<1" : Math.round(query.avgMs)} ms
         </span>
+        {/* The statement, its timings and the server's own plan are all right
+            here — this is the one place in the app where "why is this slow"
+            already has every input it needs, which is why the roadmap names it
+            as an entry point rather than leaving the question to the editor. */}
+        <IconButton
+          size="xs"
+          icon={Wand2}
+          label={t("ai.task.explainSlowHint")}
+          revealOnHover="row"
+          onClick={() =>
+            void runAiTask({
+              task: "explainSlow",
+              connection: connectionId,
+              statement: query.digest,
+            })
+          }
+        />
       </div>
       <div className="truncate text-2xs text-muted-foreground">
         {t("pulse.slowest.meta", {
@@ -319,7 +345,9 @@ export function PulsePanel({ active }: { active: boolean }) {
           }
         >
           {topQueries.length > 0 ? (
-            topQueries.map((q) => <QueryRow key={q.digest} query={q} />)
+            topQueries.map((q) => (
+              <QueryRow key={q.digest} query={q} connectionId={connectionId} />
+            ))
           ) : (
             <p className="text-xs text-muted-foreground">
               {view.topQueries?.error

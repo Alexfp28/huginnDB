@@ -26,8 +26,10 @@ import {
   Table as TableIcon,
   Trash2,
   Workflow,
+  Wand2,
 } from "lucide-react";
 
+import { runAiTask } from "@/lib/ai/runTask";
 import {
   ContextMenu,
   ContextMenuAction,
@@ -384,6 +386,18 @@ export const TableRow = memo(function TableRow({
           icon={Code2}
           label={ct("schema.context.copySelect")}
           onSelect={copySelect}
+        />
+        <ContextMenuAction
+          icon={Wand2}
+          label={ct("ai.task.documentRelationAction")}
+          onSelect={() =>
+            void runAiTask({
+              task: "documentRelation",
+              connection: connectionId,
+              schema: t.schema,
+              table: t.name,
+            })
+          }
         />
         <ContextMenuAction
           icon={RefreshCw}

@@ -2858,7 +2858,10 @@
       "writeSql": "Escribir SQL",
       "explainQuery": "Explica esta sentencia.",
       "explainSlow": "¿Por qué es lenta esta sentencia?",
-      "documentRelation": "Documenta {{relation}}."
+      "documentRelation": "Documenta {{relation}}.",
+      "writeSqlHint": "Escribir SQL para esto — lee el esquema y redacta la sentencia",
+      "explainSlowHint": "Preguntar por qué es lenta esta sentencia",
+      "documentRelationAction": "Documentar con IA"
     }
   }
 }

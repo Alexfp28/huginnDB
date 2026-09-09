@@ -59,6 +59,9 @@ import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
+import { runAiTask } from "@/lib/ai/runTask";
+import { statementAt } from "@/lib/sql/sqlSplit";
+import i18n from "@/lib/i18n";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { Button } from "@/components/ui/button";
@@ -193,6 +196,18 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     onKeyDown: (fn: (e: { browserEvent: KeyboardEvent }) => void) => {
       dispose: () => void;
     };
+    /** Editor-scoped, unlike the language providers — see `handleMount`. */
+    addAction: (action: {
+      id: string;
+      label: string;
+      contextMenuGroupId?: string;
+      contextMenuOrder?: number;
+      run: (editor: {
+        getModel: () => { getValue: () => string; getValueInRange: (range: unknown) => string } | null;
+        getSelection: () => { isEmpty: () => boolean } | null;
+        getPosition: () => { lineNumber: number } | null;
+      }) => void;
+    }) => { dispose: () => void };
   } | null>(null);
 
   /** Disposer returned by `registerSqlEditor`; removes this editor's entry
@@ -470,6 +485,48 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // live data (read through the existing refs) and keep the disposer for
     // unmount — registering the providers per editor is what produced the
     // duplicate "▶ Run" lenses when several query tabs were open.
+    // Two assisted-mode entries in the editor's own right-click menu. Added
+    // per *editor instance*, which looks like gotcha #9's shape and is not:
+    // `addAction` is scoped to this editor, unlike the language providers
+    // below, so N tabs give N menus rather than one menu with N duplicates.
+    //
+    // The label is resolved once at mount. A language switch mid-session
+    // leaves it stale until the tab is reopened — the same limitation every
+    // Monaco action has, and not worth a re-mount to fix.
+    for (const entry of [
+      { task: "explainQuery" as const, key: "ai.task.explainQuery", order: 1.5 },
+      { task: "explainSlow" as const, key: "ai.task.explainSlow", order: 1.6 },
+    ]) {
+      editor?.addAction({
+        id: `huginndb.ai.${entry.task}`,
+        label: i18n.t(entry.key),
+        contextMenuGroupId: "huginndb",
+        contextMenuOrder: entry.order,
+        run: (ed) => {
+          const current = ed.getModel();
+          if (!current) return;
+          // The selection when there is one, else the statement the caret is
+          // in: highlighting three lines of a long query and asking about them
+          // is a real gesture, and honouring it costs one branch.
+          const selection = ed.getSelection();
+          const selected =
+            selection && !selection.isEmpty()
+              ? current.getValueInRange(selection)
+              : null;
+          const statement =
+            selected ??
+            statementAt(current.getValue(), ed.getPosition()?.lineNumber ?? 1)
+              ?.text;
+          if (!statement?.trim()) return;
+          void runAiTask({
+            task: entry.task,
+            connection: connectionId,
+            statement,
+          });
+        },
+      });
+    }
+
     ensureSqlProviders(monaco);
     const uri = model?.uri.toString();
     if (uri) {

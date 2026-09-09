@@ -341,10 +341,15 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
                 this way — and `nlToSql` is the task that supplies it. Hidden
                 without reach, because it would only fail. */}
             {!turnId && reachable && (
-              <Button
-                variant="quiet"
+              // An icon rather than a labelled button: the status row already
+              // carries the model, the effort and Send, and a fourth piece of
+              // text there is where a footer stops being scannable. `IconButton`
+              // requires a label and renders it as the tooltip, so the
+              // affordance keeps its explanation without spending the width.
+              <IconButton
                 size="xs"
-                className="h-auto gap-1 px-1 py-0.5 text-2xs font-normal"
+                icon={Wand2}
+                label={t("ai.task.writeSqlHint")}
                 disabled={draft.trim().length === 0}
                 onClick={() => {
                   const question = draft.trim();
@@ -356,10 +361,7 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
                     question,
                   });
                 }}
-              >
-                <Wand2 className="h-3 w-3" />
-                {t("ai.task.writeSql")}
-              </Button>
+              />
             )}
             {turnId ? (
               <Button variant="outline" size="xs" onClick={stop}>
