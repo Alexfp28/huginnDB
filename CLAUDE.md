@@ -152,7 +152,7 @@ roadmaps for two subsystems are tracked separately and still current:
 ## Explicitly out of scope (don't propose unless asked)
 
 - Adding a linter beyond the existing `tsc --noEmit` + `cargo fmt` / `cargo clippy` advice in CONTRIBUTING.
-- AI features (autocomplete suggestions via LLM, "explain this query", etc.).
+- AI features **that are cloud-by-default**, and LLM-driven autocomplete in the Monaco editor (different latency/cost profile from a chat panel). The **AI panel** itself is now planned and in scope — local-first, read-only, `docs/AI_ROADMAP.md` is its spec and `ROADMAP.md` open item #1. Consuming a user's Claude/ChatGPT *subscription* stays impossible rather than out of scope: it is not available to third-party apps, and the sanctioned path for "use my own licence" is the existing MCP connector.
 - Cloud sync of profiles or saved queries.
 - Mobile builds — the Tauri icon CLI generated iOS/Android directories during scaffolding, but desktop is the focus.
 
