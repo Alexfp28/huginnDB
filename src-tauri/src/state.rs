@@ -305,6 +305,64 @@ pub struct ConnectionProfile {
     /// make it — nor a bundle you imported to look at.
     #[serde(default)]
     pub mcp_exposed: bool,
+    /// This machine's own password for an origin-owned connection takes
+    /// precedence over the one the origin publishes.
+    ///
+    /// The gap it closes: a shared origin's whole value is that one person
+    /// curates the credentials, and its whole failure mode is that the server
+    /// resets a password at 9am and everybody is locked out until that person
+    /// gets round to republishing. Before this the only thing a consumer could
+    /// do was retype the password into the connection dialog on **every single
+    /// connect**, for the rest of the day — `connect` takes a password
+    /// ad-hoc and persists nothing, and `save_profile` is refused for an
+    /// origin-owned profile because the next sync would undo it.
+    ///
+    /// So the override is deliberately *narrow*: it covers the secret and
+    /// nothing else. Host, port, database, user and the rest stay the file's to
+    /// dictate, because those are what "somebody curates this" means; a
+    /// password that no longer works is not a curation decision, it is a fact
+    /// about the server that the consumer learned first.
+    ///
+    /// **Strictly local**, like `mcp_write` / `mcp_exposed` / `pulse_enabled`
+    /// and preserved by `merge_into` for the same reason — with one difference
+    /// that matters: those three are permanent local decisions, and this one
+    /// **expires**. See [`SecretOverride::supersedes`].
+    #[serde(default)]
+    pub secret_override: Option<SecretOverride>,
+}
+
+/// A consumer's own password standing in for the one a shared origin publishes.
+///
+/// See [`ConnectionProfile::secret_override`] for why it exists. This type is
+/// only about *when it stops*: an override that never expired would mean a
+/// publisher could fix the credential for the whole team and one machine would
+/// quietly keep failing with a stale password nobody remembers typing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretOverride {
+    /// The published ciphertext fingerprint
+    /// ([`crate::transfer::secrets_fingerprint`]) that was in force when the
+    /// user took over, or `None` when the origin published no usable secret
+    /// for this connection at the time.
+    ///
+    /// The override holds for exactly as long as the origin keeps publishing
+    /// *this* ciphertext, and the next sync that brings a different one drops
+    /// it and lands the published secret instead: the publisher has since
+    /// answered the question the override was a stopgap for.
+    ///
+    /// The known cost of comparing ciphertext rather than plaintext is a
+    /// passphrase **rotation**, which re-encrypts every envelope in the
+    /// document without changing a single password. Every override on that
+    /// origin expires with it, and the consumer is back to the shared
+    /// credential — the state they were in before overriding. That is the
+    /// wrong answer in a case that is rare, publisher-initiated and visible
+    /// (the sync reports it), and the alternative is keeping password-derived
+    /// material in `profiles.json`, which is a file that is guaranteed to hold
+    /// no secrets.
+    pub supersedes: Option<String>,
+    /// RFC 3339, for the banner that says how long this machine has been
+    /// running on its own credential. Display only — nothing branches on it.
+    pub set_at: String,
 }
 
 /// How the client decides whether to trust the SSH server's host key.

@@ -297,7 +297,7 @@
     "noMatches": "No connections match your search.",
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
     "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
-    "fromOriginEditable": "This connection comes from the shared origin “{{origin}}”, which you publish — changes here are saved on this computer and reach everyone else the next time you publish.",
+    "fromOriginEditable": "This connection comes from the shared origin “{{origin}}”, which you publish — saving writes the change on this computer and then offers to publish it, so everyone else picks it up on their next sync.",
     "editAtOrigin": "Edit at the origin…",
     "mongoFold": {
       "title": "Go back to the form?",
@@ -2574,7 +2574,8 @@
     "createDocumentFailed": "Could not create the origin document",
     "addFailed": "Could not register the origin",
     "synced": "{{count}} connection(s) updated from a shared origin",
-    "syncedWithEnvironments": "{{count}} connection(s) and {{environments}} environment(s) updated from a shared origin"
+    "syncedWithEnvironments": "{{count}} connection(s) and {{environments}} environment(s) updated from a shared origin",
+    "secretOverridesSuperseded": "Your own password for {{count}} shared connection(s) was replaced by the published one"
   },
   "originEditor": {
     "filter": "Filter…",
@@ -2689,5 +2690,29 @@
       "progress": "Encrypting passwords… {{done}} of {{total}}"
     },
     "published": "Published to the origin"
+  },
+  "originRepublish": {
+    "title": "Publish this change to everyone?",
+    "description": "“{{connection}}” was saved on this computer. Publishing sends it to the shared origin “{{origin}}”, so everyone pulling from it picks the change up on their next sync.",
+    "descriptionWithSecret": "“{{connection}}” was saved on this computer, new password included. Publishing sends it to the shared origin “{{origin}}” — until you do, everyone pulling from it keeps getting the old password.",
+    "confirm": "Publish",
+    "publishing": "Publishing…",
+    "keepLocal": "Keep it local",
+    "passphrase": "Origin passphrase",
+    "passphrasePlaceholder": "Leave blank to use the saved one",
+    "published": "Published to the shared origin",
+    "conflict": "Somebody else published first",
+    "conflictHint": "Nothing was written. The origin editor is open on their version — apply your change there."
+  },
+  "secretOverride": {
+    "offer": "Password stopped working? Type it above and keep it on this computer until the origin catches up.",
+    "keep": "Keep password here",
+    "kept": "Password kept on this computer",
+    "keepFailed": "Could not keep the password",
+    "active": "Using your own password on this computer since {{since}}. Everything else still comes from the origin.",
+    "release": "Use the shared one",
+    "released": "Back to the origin's password",
+    "releasedHint": "The published one is restored on the next sync.",
+    "releaseFailed": "Could not go back to the origin's password"
   }
 }

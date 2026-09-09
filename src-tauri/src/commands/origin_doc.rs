@@ -398,6 +398,94 @@ pub async fn save_origin_document(
     outcome
 }
 
+/// Republish one connection, from the local edit that just corrected it.
+///
+/// The gap this closes: a publisher who fixed a rotated password in the
+/// connection dialog had corrected it for *themselves*. `save_profile` writes
+/// `profiles.json` and this machine's keychain and stops there, so the share
+/// still carried the old envelope and every consumer still failed to connect
+/// until the publisher remembered to open the editor, find the row, flip its
+/// secret to `fromKeychain` and publish. Nothing about that sequence is a
+/// decision — it is the same intent, expressed twice — so this command is the
+/// second half of the first one.
+///
+/// **Not a shortcut around the editor's rules; the same code path with one row
+/// pre-filled.** It re-reads the document, replaces exactly the entry whose
+/// `profile.id` matches, and hands the result to [`save_inner`] — so the
+/// publisher check, the write probe, the SHA-256 conflict check, the `.bak`
+/// and the impact report are all the ones the editor gets. In particular a
+/// concurrent publish still comes back as [`SaveOutcome::Conflict`] rather
+/// than overwriting; the caller sends the user to the editor to merge, because
+/// resolving one is a document-shaped job and this command only knows a row.
+///
+/// `with_secret` is the whole reason this is not simply "publish the profile".
+/// A slot that did not change must travel **verbatim** (gotcha #56): a fresh
+/// `encrypt_secret` draws a new salt and nonce, which invalidates every
+/// consumer's `landed_secrets` fingerprint and costs each of them ~600 000
+/// PBKDF2 rounds for a password that is still the same one. So correcting a
+/// port republishes with the envelope untouched, and only a password the user
+/// actually retyped turns the slot into [`SecretSlot::FromKeychain`].
+#[tauri::command]
+pub async fn republish_profile_to_origin(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    origin_id: String,
+    profile_id: String,
+    with_secret: bool,
+    passphrase: Option<String>,
+) -> AppResult<SaveOutcome> {
+    let tab_state_lock = state.tab_state.clone();
+    let profiles_lock = state.profiles.clone();
+    let app_for_task = app.clone();
+    let window_label = window.label().to_string();
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        let origin = find_origin(&tab_state_lock.read(), &origin_id)?;
+        let document = load_document(&origin)?;
+        let profile = profiles_lock
+            .read()
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned()
+            .ok_or_else(|| AppError::NotFound(format!("profile {profile_id}")))?;
+
+        let mut draft = document.draft;
+        if !origin_doc::replace_connection(&mut draft, profile, with_secret) {
+            // Reachable: the profile still carries the tag of an origin whose
+            // document has since dropped it. Publishing it back would silently
+            // re-add a connection somebody deliberately removed, so say so
+            // instead and let the editor stay the place a connection is *added*
+            // to a document.
+            return Err(AppError::InvalidInput(format!(
+                "{:?} does not publish this connection any more — add it back from the origin editor if that is what you meant",
+                origin.name
+            )));
+        }
+
+        save_inner(
+            &tab_state_lock,
+            &origin_id,
+            draft,
+            document.base,
+            passphrase.as_deref(),
+            None,
+            |done, total| {
+                let _ = app_for_task.emit_to(
+                    &window_label,
+                    ORIGIN_PUBLISH_PROGRESS_EVENT,
+                    PublishProgress { done, total },
+                );
+            },
+        )
+    })
+    .await
+    .map_err(|e| AppError::Transfer(format!("origin republish task failed: {e}")))?;
+    if matches!(outcome, Ok(SaveOutcome::Saved(_))) {
+        let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
+    }
+    outcome
+}
+
 fn save_inner(
     tab_state_lock: &Arc<RwLock<PersistedTabState>>,
     origin_id: &str,

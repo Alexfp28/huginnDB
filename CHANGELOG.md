@@ -4,6 +4,67 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
+## [Unreleased]
+
+### Added
+
+- **A publisher can send a corrected connection back to the shared origin
+  without reopening the editor.** Saving an origin-owned connection on the
+  machine that publishes it now offers to publish that one row. Until now the
+  local fix and the shared fix were two expressions of one intent, separated by
+  Settings → the origin editor → find the row → flip its secret to "from the
+  keychain" → publish; for a rotated password, everybody pulling from the origin
+  stayed locked out for the length of that detour, and the detour was easy to
+  forget entirely.
+
+  It is the same write path as the editor's, with one row pre-filled — the
+  publisher-role check, the write probe, the content-hash conflict check, the
+  `.bak` and the impact report are all the ones a full publish gets, and a
+  concurrent publish still refuses and hands the newer document over (the prompt
+  opens the editor on it, because merging is a document-shaped job). Crucially,
+  a secret that did not change travels byte for byte: correcting a port
+  re-encrypts nothing, so it costs nobody the ~600 000 PBKDF2 rounds a fresh
+  envelope would, and only a password the user actually retyped is resolved from
+  the keychain again. The prompt survives the connection dialog closing, since
+  "fix the password, connect, done" is the flow a rotated credential really
+  produces.
+
+- **A consumer can keep their own password for a connection a shared origin
+  publishes, until the publisher catches up.** The failure mode a shared origin
+  has always had is that a server resets a password at 9am and everyone is
+  locked out until one person republishes. The only thing to do about it was
+  retype the password on *every single connect* — `connect` takes one ad-hoc and
+  persists nothing, and saving an origin-owned profile is refused because the
+  next sync would undo it.
+
+  "Keep password here" in the read-only banner stores it in this machine's
+  keychain and marks the connection as running on it. Deliberately narrow: it
+  covers the secret and nothing else, so host, port, database and the rest stay
+  the file's to dictate — that is what "somebody curates this" means, whereas a
+  password that no longer works is a fact about the server rather than a
+  curation decision. And it expires by itself: the override holds while the
+  origin keeps publishing the same encrypted secret it was raised against, and
+  the first sync that brings a different one lands the published password and
+  says so. "Use the shared one" ends it early. A passphrase rotation re-encrypts
+  every envelope without changing any password, so it expires every override on
+  that origin — reported, not silent.
+
+- **MongoDB URI options the form does not model are now carried through it
+  instead of banishing the connection to raw-edit mode.** `retryWrites`, `w`,
+  `tls`, `replicaSet` and anything else ride along untouched while host, port,
+  database, user and auth source stay editable as fields — so the URI the Atlas
+  console gives you opens as a form, which it never did before.
+
+### Changed
+
+- **Turning "edit connection string" back off no longer silently refuses.** A
+  URI the form genuinely cannot hold — an SRV cluster, a multi-host seed list, a
+  password written into the string, or something that will not parse — used to
+  flip the switch back with nothing on screen explaining it, which made raw-edit
+  a one-way door: a profile saved from a pasted string could never be edited as
+  a form again. It now asks, naming each thing that folding would discard, and
+  keeps whatever was legible.
+
 ## [1.21.5] — 2026-09-07
 
 ### Fixed

@@ -69,8 +69,10 @@ import { api } from "@/lib/tauri";
 import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteConnectionsDialog";
 import { MongoUriFoldDialog } from "@/components/connection/dialogs/MongoUriFoldDialog";
 import { isFromOrigin } from "@/lib/connection/origin";
+import { SecretOverrideNotice } from "@/components/connection/SecretOverrideNotice";
 import { notify } from "@/lib/notify";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
+import { useOriginRepublish } from "@/stores/dialogs/originRepublish";
 import { useOriginName, useOrigins } from "@/stores/sync/origins";
 import type {
   ConnectionProfile,
@@ -291,6 +293,32 @@ export function ConnectionDialog({
    */
   const canEditInPlace = fromOrigin && originIsPublished;
   const openOriginEditor = useOriginEditor((state) => state.open);
+  const askToRepublish = useOriginRepublish((state) => state.open);
+
+  /**
+   * Offer to send a publisher's local correction on to the share.
+   *
+   * Called after the save, never instead of it: `save_profile` fixing this
+   * machine is the thing the user asked for, and publishing is a second,
+   * outward-facing action that gets its own yes. Before this the two were
+   * separated by a trip through Settings → the origin editor → find the row →
+   * flip its secret → publish, which is a long way to go to say the same thing
+   * twice, and every consumer stayed broken for the length of it.
+   *
+   * `withSecret` is read from the password field *as it was when the save ran*
+   * — the reload the save triggers clears it — and it is what decides whether
+   * the republish re-encrypts at all (gotcha #56).
+   */
+  function offerRepublish(profileId: string, secretChanged: boolean) {
+    if (!canEditInPlace || !stored?.origin_id) return;
+    askToRepublish({
+      originId: stored.origin_id,
+      originName: originName ?? "",
+      profileId,
+      profileName: name || stored.name,
+      withSecret: secretChanged,
+    });
+  }
 
   function buildProfile(): ConnectionProfile {
     // Start from the stored profile so fields this form doesn't edit survive a
@@ -358,6 +386,9 @@ export function ConnectionDialog({
     // correction here is exactly what the next publish is meant to pick up.
     if (fromOrigin && !canEditInPlace) return;
     setSaving(true);
+    // Read before the save: `setEditingId` below reloads the form, which
+    // clears both secret fields.
+    const secretChanged = !!password || !!sshSecret;
     try {
       const saved = await save(
         buildProfile(),
@@ -369,6 +400,7 @@ export function ConnectionDialog({
       // other connections.
       setEditingId(saved.id);
       setTestStatus({ kind: "saved" });
+      offerRepublish(saved.id, secretChanged);
     } catch (e) {
       setTestStatus({ kind: "saveError", message: String(e) });
     } finally {
@@ -379,6 +411,10 @@ export function ConnectionDialog({
   async function onConnect() {
     setConnecting(true);
     setTestStatus({ kind: "idle" });
+    // Same reason as `onSave`, one step further along: connecting saves *and*
+    // closes the dialog, so this is read before either happens.
+    const secretChanged = !!password || !!sshSecret;
+    const wasSaving = !(fromOrigin && !canEditInPlace);
     try {
       // Persist any edits + credentials first so the pool opens against the
       // saved profile and the keychain has the secret it needs. A read-only
@@ -401,6 +437,10 @@ export function ConnectionDialog({
       setEditingId(id);
       onConnected?.(id);
       onOpenChange(false);
+      // "Fix the password, connect, done" is the flow a rotated credential
+      // actually produces — the publisher never goes back to press Save. The
+      // prompt lives in its own store precisely so it survives the line above.
+      if (wasSaving) offerRepublish(id, secretChanged);
     } catch (e) {
       const err = String(e);
       const hint = driverMismatchHint(err);
@@ -663,6 +703,16 @@ export function ConnectionDialog({
                         >
                           {t("connectionDialog.editAtOrigin")}
                         </button>
+                      )}
+                      {/* The consumer's way out of a password the publisher
+                        has not fixed yet. Not offered to a publisher: they can
+                        correct the connection properly, and republish it. */}
+                      {!canEditInPlace && stored && (
+                        <SecretOverrideNotice
+                          profile={stored}
+                          password={password}
+                          sshSecret={sshSecret}
+                        />
                       )}
                     </div>
                   )}

@@ -42,7 +42,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::keychain;
-use crate::state::{ActiveConnections, AppState, ConnectionProfile};
+use crate::state::{ActiveConnections, AppState, ConnectionProfile, Driver, SecretOverride};
 use crate::tab_state::{self, Environment, LaunchState, Origin};
 use crate::transfer::{
     EnvironmentExportFile, ExportMetadata, ExportedEnvironmentBundle, ExportedProfile,
@@ -209,6 +209,139 @@ pub fn remove_origin(app: AppHandle, state: State<'_, AppState>, id: String) -> 
     let _ = keychain::delete_password(&passphrase_account(&id));
     let _ = app.emit(ORIGINS_CHANGED_EVENT, ());
     Ok(())
+}
+
+/// Keep this machine's own password for a connection a shared origin publishes.
+///
+/// The narrow, supported answer to "the server reset the password and the
+/// person who curates the file is on holiday". Everything else about the
+/// profile stays the file's — see [`crate::state::SecretOverride`] for why the
+/// secret is the one field a consumer gets to win, and for when the override
+/// expires.
+///
+/// Writes only the keychain and the one flag. Deliberately **not**
+/// `save_profile` with the read-only rule relaxed: that command replaces the
+/// whole record, so it would let the host, the port or the visible-database
+/// set of a curated connection be changed too, and the next sync would silently
+/// revert those while keeping the password — the worst of both, and impossible
+/// to explain from the UI.
+#[tauri::command]
+pub fn set_secret_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    password: Option<String>,
+    ssh_secret: Option<String>,
+) -> AppResult<ConnectionProfile> {
+    let (profile, origin_id) = {
+        let profiles = state.profiles.read();
+        let profile = profiles
+            .iter()
+            .find(|p| p.id == profile_id)
+            .cloned()
+            .ok_or_else(|| AppError::NotFound(format!("profile {profile_id}")))?;
+        let origin_id = profile.origin_id.clone().ok_or_else(|| {
+            // A local profile has no published secret to override. Its password
+            // is edited by saving it, and offering two ways to write one
+            // keychain entry is how they drift.
+            AppError::InvalidInput(
+                "this connection does not come from a shared origin — save it normally instead"
+                    .into(),
+            )
+        })?;
+        (profile, origin_id)
+    };
+
+    let mut stored = false;
+    if let Some(pw) = password.as_deref().filter(|p| !p.is_empty()) {
+        if !matches!(profile.driver, Driver::Sqlite) {
+            keychain::set_password(&profile.keyring_account(), pw)?;
+            stored = true;
+        }
+    }
+    if let (Some(account), Some(secret)) = (
+        profile.ssh_keyring_account(),
+        ssh_secret.as_deref().filter(|s| !s.is_empty()),
+    ) {
+        keychain::set_password(&account, secret)?;
+        stored = true;
+    }
+    if !stored {
+        // Nothing was written, so flagging the profile would claim an override
+        // that does not exist and — worse — suppress the published secret for
+        // a connection now running on whatever was already in the keychain.
+        return Err(AppError::InvalidInput(
+            "no password was supplied to keep".into(),
+        ));
+    }
+
+    // What the origin currently has landed for this profile *is* the ciphertext
+    // being overridden: `landed_secrets` records the last envelope this machine
+    // actually decrypted and stored. `None` (never landed, or an origin that
+    // publishes no secrets) makes the override outlive anything but the first
+    // real publication, which is the right way round — there is nothing yet for
+    // it to be stale against.
+    let supersedes = state
+        .tab_state
+        .read()
+        .origins
+        .iter()
+        .find(|o| o.id == origin_id)
+        .and_then(|o| o.landed_secrets.get(&profile_id).cloned());
+
+    let updated = {
+        let mut profiles = state.profiles.write();
+        let entry = profiles
+            .iter_mut()
+            .find(|p| p.id == profile_id)
+            .ok_or_else(|| AppError::NotFound(format!("profile {profile_id}")))?;
+        entry.secret_override = Some(SecretOverride {
+            supersedes,
+            set_at: chrono::Utc::now().to_rfc3339(),
+        });
+        let updated = entry.clone();
+        crate::store::save_profiles(&profiles)?;
+        updated
+    };
+    let _ = app.emit(crate::commands::connection::PROFILES_CHANGED_EVENT, ());
+    Ok(updated)
+}
+
+/// Go back to the password the origin publishes.
+///
+/// Clearing the flag is not enough on its own: `already_landed` skips a
+/// ciphertext whose fingerprint it has already recorded, so the origin's secret
+/// would never be re-landed and the connection would keep running on the local
+/// password with nothing saying so. Forgetting the fingerprint too is what
+/// makes the next sync actually re-derive and overwrite the keychain entry.
+#[tauri::command]
+pub fn clear_secret_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> AppResult<ConnectionProfile> {
+    let (updated, origin_id) = {
+        let mut profiles = state.profiles.write();
+        let entry = profiles
+            .iter_mut()
+            .find(|p| p.id == profile_id)
+            .ok_or_else(|| AppError::NotFound(format!("profile {profile_id}")))?;
+        entry.secret_override = None;
+        let updated = entry.clone();
+        crate::store::save_profiles(&profiles)?;
+        let origin_id = updated.origin_id.clone();
+        (updated, origin_id)
+    };
+    if let Some(origin_id) = origin_id {
+        tab_state::mutate(&state.tab_state, |ts| {
+            if let Some(o) = ts.origins.iter_mut().find(|o| o.id == origin_id) {
+                o.landed_secrets.remove(&profile_id);
+            }
+            Ok(())
+        })?;
+    }
+    let _ = app.emit(crate::commands::connection::PROFILES_CHANGED_EVENT, ());
+    Ok(updated)
 }
 
 /// Pull an origin: refresh what it publishes, report what disappeared.
@@ -440,6 +573,21 @@ fn already_landed(
         && accounts.iter().all(|a| present(a))
 }
 
+/// Does this machine's own password still win against the ciphertext just read?
+///
+/// The whole expiry rule for [`crate::state::SecretOverride`], in one place so
+/// that "when does a local password stop applying" has exactly one answer. It
+/// holds while the origin keeps publishing the *same* envelope the user took
+/// over from, and stops the moment a different one arrives — the publisher has
+/// by then answered the question the override was standing in for.
+///
+/// `supersedes: None` (an override raised when the origin had landed nothing
+/// for this connection) therefore never wins against a real ciphertext, which
+/// is the right way round: there was nothing for it to be newer than.
+fn override_still_stands(supersedes: Option<&String>, fingerprint: &str) -> bool {
+    supersedes.map(String::as_str) == Some(fingerprint)
+}
+
 /// Apply one origin's published list to `profiles` in memory, returning what
 /// changed. No I/O whatsoever: no disk, no keychain.
 ///
@@ -491,6 +639,14 @@ pub(crate) fn merge_into(
         profile.origin_id = Some(origin_id.to_string());
         // An origin never publishes session-only profiles.
         profile.ephemeral = false;
+        // Nor anyone's local password override. `ExportedProfile` flattens the
+        // whole `ConnectionProfile`, so a publisher who had taken a password
+        // over on their own machine would otherwise ship the flag to everybody
+        // — and on a *newly added* profile (the `None` arm below, which has no
+        // local value to restore) it would suppress the very secret the file
+        // publishes. The update arm restores this machine's own flag from
+        // `existing` a few lines down.
+        profile.secret_override = None;
 
         match profiles.iter_mut().find(|p| p.id == profile.id) {
             Some(existing) => {
@@ -527,6 +683,12 @@ pub(crate) fn merge_into(
                 // would take an AI client's access away mid-session with no
                 // visible cause.
                 profile.mcp_exposed = existing.mcp_exposed;
+                // And the one local field that is not a permanent decision:
+                // the consumer's own password standing in for the published
+                // one. `merge_profiles_bundle` is what expires it, by comparing
+                // the ciphertext it supersedes against the one arriving now —
+                // so it has to survive the merge that hands it that ciphertext.
+                profile.secret_override = existing.secret_override.clone();
                 *existing = profile.clone();
                 report.updated.push(profile.id);
             }
@@ -554,7 +716,7 @@ fn merge_profiles_bundle(
     incoming: &[ExportedProfile],
     landed: &mut HashMap<String, String>,
 ) -> AppResult<OriginSyncReport> {
-    let report;
+    let mut report;
     let live: Vec<String> = connections.read().ids();
 
     {
@@ -562,6 +724,26 @@ fn merge_profiles_bundle(
         report = merge_into(&mut profiles, origin_id, incoming, &live);
         crate::store::save_profiles(&profiles)?;
     }
+
+    // Which connections this machine has taken its own password over for, and
+    // the published ciphertext each override was raised against. Read *after*
+    // the merge, which preserves the field, so it describes the pool the
+    // secrets below are about to land into.
+    let overrides: HashMap<String, Option<String>> = profiles_lock
+        .read()
+        .iter()
+        .filter(|p| p.origin_id.as_deref() == Some(origin_id))
+        .filter_map(|p| {
+            p.secret_override
+                .as_ref()
+                .map(|o| (p.id.clone(), o.supersedes.clone()))
+        })
+        .collect();
+    // Overrides this pass expired, because the publisher has since answered
+    // the question they were a stopgap for. Reported, never silent: a
+    // credential that changes under the user is exactly the thing they need
+    // told about.
+    let mut superseded: Vec<String> = Vec::new();
 
     // Secrets land in this user's own keychain, decrypted with the passphrase
     // stored for this origin. `BestEffort` because this runs unattended (launch,
@@ -572,9 +754,21 @@ fn merge_profiles_bundle(
     // why "no passphrase" can never mean "store the blob as-is".
     for entry in incoming {
         let Some(secrets) = &entry.secrets else {
+            // Nothing published for this connection, so there is nothing an
+            // override could be losing a race against. Note this is also what
+            // keeps an override alive indefinitely against an origin that
+            // publishes no passwords at all.
             continue;
         };
         let fingerprint = crate::transfer::secrets_fingerprint(secrets);
+        let overridden = overrides.get(&entry.profile.id);
+        if overridden.is_some_and(|s| override_still_stands(s.as_ref(), &fingerprint)) {
+            // The origin still publishes the very ciphertext this machine took
+            // over from. Landing it would overwrite the working password with
+            // the broken one the override exists to route around — every sync,
+            // four times a day.
+            continue;
+        }
         let accounts: Vec<String> = crate::transfer::secret_slots(&entry.profile, secrets)
             .into_iter()
             .map(|(account, _)| account)
@@ -596,8 +790,23 @@ fn merge_profiles_bundle(
         .unwrap_or(false)
         {
             landed.insert(entry.profile.id.clone(), fingerprint);
+            // Expired only now that the newer secret is actually in the
+            // keychain. A failed decrypt leaves the override standing, so the
+            // user keeps a connection that works rather than one that does not.
+            if overridden.is_some() {
+                superseded.push(entry.profile.id.clone());
+            }
         }
     }
+
+    if !superseded.is_empty() {
+        let mut profiles = profiles_lock.write();
+        for p in profiles.iter_mut().filter(|p| superseded.contains(&p.id)) {
+            p.secret_override = None;
+        }
+        crate::store::save_profiles(&profiles)?;
+    }
+    report.superseded = superseded;
 
     Ok(report)
 }
@@ -775,6 +984,16 @@ pub struct OriginSyncReport {
     /// that the read is more likely broken than authoritative. The frontend must
     /// not offer removals in this state.
     pub suspicious: bool,
+    /// Ids whose local password override this pass expired, because the origin
+    /// now publishes a *different* ciphertext than the one it was raised
+    /// against. Their keychain entry has been replaced with the published
+    /// secret; see [`crate::state::SecretOverride`].
+    ///
+    /// Reported so the frontend can say so. A credential silently changing back
+    /// under the user is the same class of surprise `vanished` exists to
+    /// prevent, one level down.
+    #[serde(default)]
+    pub superseded: Vec<String>,
     /// RFC 3339 stamp written back onto the origin on success.
     pub synced_at: String,
     /// Environment ids created by this sync, when the origin publishes whole
@@ -875,6 +1094,81 @@ mod tests {
 
         assert_eq!(after[0].mcp_write, McpWritePolicy::Data, "policy is local");
         assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// A local password override is local state too, and unlike the three
+    /// above it has to survive the merge *in order to be expired by it* — the
+    /// landing loop reads it back off the merged pool to compare against the
+    /// ciphertext that just arrived.
+    #[test]
+    fn a_sync_preserves_a_local_secret_override() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            secret_override: Some(SecretOverride {
+                supersedes: Some("fp-old".into()),
+                set_at: "2026-09-09T09:00:00Z".into(),
+            }),
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            host: "newhost".into(),
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert_eq!(
+            after[0]
+                .secret_override
+                .as_ref()
+                .and_then(|o| o.supersedes.as_deref()),
+            Some("fp-old"),
+        );
+        assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// A publisher who had taken a password over on their own machine must not
+    /// ship the flag with the connection. On a profile the consumer does not
+    /// have yet there is no local value to restore over it, and the flag would
+    /// then suppress the very secret the file publishes.
+    #[test]
+    fn a_published_override_flag_is_never_adopted() {
+        let incoming = published(ConnectionProfile {
+            secret_override: Some(SecretOverride {
+                supersedes: Some("fp-theirs".into()),
+                set_at: "2026-09-09T09:00:00Z".into(),
+            }),
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![], &[incoming]);
+
+        assert!(after[0].secret_override.is_none());
+    }
+
+    /// The expiry rule itself. `merge_profiles_bundle` writes the real
+    /// `profiles.json` and reads the keychain, so the decision is tested where
+    /// it is made rather than through the pass that applies it — the same split
+    /// `already_landed` uses.
+    #[test]
+    fn an_override_stands_until_the_published_ciphertext_changes() {
+        let taken_over = Some("fp-old".to_string());
+
+        assert!(
+            override_still_stands(taken_over.as_ref(), "fp-old"),
+            "the origin is still publishing the password the user routed around"
+        );
+        assert!(
+            !override_still_stands(taken_over.as_ref(), "fp-new"),
+            "the publisher has answered: their secret wins again"
+        );
+    }
+
+    /// An override raised against an origin that had landed nothing has no
+    /// ciphertext to be newer than, so the first real publication takes it.
+    #[test]
+    fn an_override_over_nothing_yields_to_the_first_published_secret() {
+        assert!(!override_still_stands(None, "fp-first"));
     }
 
     /// Same guarantee, one field down: a local `pulse_enabled` opt-in must not

@@ -297,7 +297,7 @@
     "noMatches": "Ninguna conexión coincide con la búsqueda.",
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
     "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
-    "fromOriginEditable": "Esta conexión viene del origen compartido «{{origin}}», que tú publicas — los cambios aquí se guardan en este equipo y llegan a los demás la próxima vez que publiques.",
+    "fromOriginEditable": "Esta conexión viene del origen compartido «{{origin}}», que tú publicas — al guardar se escribe el cambio en este equipo y después se te ofrece publicarlo, para que los demás lo reciban en su próxima sincronización.",
     "editAtOrigin": "Editar en el origen…",
     "mongoFold": {
       "title": "¿Volver al formulario?",
@@ -2574,7 +2574,8 @@
     "createDocumentFailed": "No se pudo crear el documento de origen",
     "addFailed": "No se pudo registrar el origen",
     "synced": "{{count}} conexiones actualizadas desde un origen compartido",
-    "syncedWithEnvironments": "{{count}} conexiones y {{environments}} entornos actualizados desde un origen compartido"
+    "syncedWithEnvironments": "{{count}} conexiones y {{environments}} entornos actualizados desde un origen compartido",
+    "secretOverridesSuperseded": "Tu contraseña propia de {{count}} conexión(es) compartida(s) se ha sustituido por la publicada"
   },
   "originEditor": {
     "filter": "Filtrar…",
@@ -2689,5 +2690,29 @@
       "progress": "Cifrando contraseñas… {{done}} de {{total}}"
     },
     "published": "Publicado en el origen"
+  },
+  "originRepublish": {
+    "title": "¿Publicar el cambio para todos?",
+    "description": "«{{connection}}» se ha guardado en este equipo. Al publicar se envía al origen compartido «{{origin}}», así que todos los que lo consumen recibirán el cambio en su próxima sincronización.",
+    "descriptionWithSecret": "«{{connection}}» se ha guardado en este equipo, con la contraseña nueva incluida. Al publicar se envía al origen compartido «{{origin}}»: hasta entonces, todos los que lo consumen seguirán recibiendo la contraseña antigua.",
+    "confirm": "Publicar",
+    "publishing": "Publicando…",
+    "keepLocal": "Dejarlo en local",
+    "passphrase": "Frase de paso del origen",
+    "passphrasePlaceholder": "Déjalo vacío para usar la guardada",
+    "published": "Publicado en el origen compartido",
+    "conflict": "Otra persona ha publicado antes",
+    "conflictHint": "No se ha escrito nada. El editor del origen está abierto sobre su versión — aplica ahí tu cambio."
+  },
+  "secretOverride": {
+    "offer": "¿La contraseña ha dejado de funcionar? Escríbela arriba y guárdala en este equipo hasta que el origen se ponga al día.",
+    "keep": "Guardar aquí la contraseña",
+    "kept": "Contraseña guardada en este equipo",
+    "keepFailed": "No se ha podido guardar la contraseña",
+    "active": "Usando tu propia contraseña en este equipo desde el {{since}}. Todo lo demás sigue viniendo del origen.",
+    "release": "Usar la compartida",
+    "released": "De vuelta a la contraseña del origen",
+    "releasedHint": "La publicada se restaura en la próxima sincronización.",
+    "releaseFailed": "No se ha podido volver a la contraseña del origen"
   }
 }

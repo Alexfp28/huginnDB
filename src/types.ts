@@ -163,6 +163,35 @@ export interface ConnectionProfile {
    *  sync and cleared on import, since what your AI clients may reach is a
    *  decision about this machine. */
   mcp_exposed?: boolean;
+  /**
+   * Set when this machine keeps its **own** password for a connection a shared
+   * origin publishes — the supported answer to "the server reset the password
+   * and the person who curates the file hasn't republished yet".
+   *
+   * Narrow on purpose: it covers the secret and nothing else, so the profile
+   * stays read-only for every other field. It also expires — see
+   * `SecretOverride.supersedes`.
+   */
+  secret_override?: SecretOverride | null;
+}
+
+/** This machine's own password standing in for the one a shared origin
+ *  publishes. Mirrors `SecretOverride` in `src-tauri/src/state.rs`. */
+export interface SecretOverride {
+  /**
+   * The published ciphertext fingerprint the override was raised against, or
+   * `null` when the origin had landed no secret for this connection at the
+   * time.
+   *
+   * The override holds while the origin keeps publishing *that* envelope, and
+   * the first sync bringing a different one drops it and lands the published
+   * secret instead (reported as `superseded` in `OriginSyncReport`). Nothing in
+   * the frontend compares it — read it as "this is why the override is still
+   * standing", not as a value to act on.
+   */
+  supersedes?: string | null;
+  /** RFC 3339. Display only. */
+  setAt: string;
 }
 
 /** Outcome of registering the sidecar with the Claude Code CLI. Mirrors
@@ -1508,6 +1537,10 @@ export interface OriginSyncReport {
   /** Ids whose metadata changed but which have a live pool, so the change is
    *  held back rather than repointing a server under a running query. */
   deferred: string[];
+  /** Ids whose local password override this sync expired, because the origin
+   *  now publishes a different ciphertext than the one it was raised against.
+   *  Their keychain entry now holds the published secret again. */
+  superseded?: string[];
   /** Ids present locally under this origin but absent from the file. */
   vanished: string[];
   /**

@@ -6,6 +6,72 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Sin publicar]
+
+### Añadido
+
+- **Quien publica un origen puede devolverle una conexión corregida sin volver a
+  abrir el editor.** Al guardar una conexión propiedad de un origen desde la
+  máquina que lo publica, ahora se ofrece publicar esa única fila. Hasta ahora la
+  corrección local y la compartida eran dos formas de expresar la misma
+  intención, separadas por Ajustes → editor del origen → buscar la fila →
+  cambiar su secreto a «desde el llavero» → publicar; con una contraseña rotada,
+  todo el que consume el origen se quedaba fuera durante ese rodeo, y el rodeo
+  era fácil de olvidar del todo.
+
+  Es la misma ruta de escritura que la del editor, con una fila ya rellenada: la
+  comprobación de rol, la prueba de escritura, el control de conflicto por hash
+  de contenido, el `.bak` y el informe de impacto son los mismos que en una
+  publicación completa, y una publicación simultánea sigue rechazándose
+  devolviendo el documento más nuevo (el aviso abre el editor sobre él, porque
+  resolver un conflicto es un trabajo a nivel de documento). Y lo importante: un
+  secreto que no ha cambiado viaja byte a byte — corregir un puerto no
+  reencripta nada, así que no le cuesta a nadie las ~600 000 rondas PBKDF2 de un
+  sobre nuevo, y solo se vuelve a resolver desde el llavero la contraseña que el
+  usuario ha reescrito de verdad. El aviso sobrevive al cierre del diálogo de
+  conexión, porque «arreglar la contraseña, conectar, listo» es el flujo que una
+  credencial rotada produce en realidad.
+
+- **Quien consume un origen puede quedarse con su propia contraseña para una
+  conexión compartida hasta que el publicador se ponga al día.** El punto débil
+  de un origen compartido siempre ha sido este: el servidor resetea una
+  contraseña a las 9 de la mañana y todo el mundo se queda fuera hasta que una
+  persona republica. Lo único que se podía hacer era reescribir la contraseña en
+  *cada conexión* — `connect` la acepta puntualmente y no la persiste, y guardar
+  un perfil propiedad de un origen se rechaza porque la siguiente sincronización
+  lo desharía.
+
+  «Guardar aquí la contraseña», en el aviso de solo lectura, la guarda en el
+  llavero de este equipo y marca la conexión como que corre con ella.
+  Deliberadamente estrecho: cubre el secreto y nada más, así que host, puerto,
+  base de datos y el resto siguen siendo cosa del fichero — eso es lo que
+  significa «alguien cura esto», mientras que una contraseña que ya no funciona
+  es un hecho sobre el servidor y no una decisión de curación. Y caduca sola: el
+  override se mantiene mientras el origen siga publicando el mismo secreto
+  cifrado frente al que se levantó, y la primera sincronización que traiga otro
+  distinto instala la contraseña publicada y lo avisa. «Usar la compartida» lo
+  termina antes. Rotar la frase de paso reencripta todos los sobres sin cambiar
+  ninguna contraseña, así que caduca todos los overrides de ese origen — con
+  aviso, no en silencio.
+
+- **Las opciones de una URI de MongoDB que el formulario no modela ahora viajan a
+  través de él en vez de desterrar la conexión al modo texto.** `retryWrites`,
+  `w`, `tls`, `replicaSet` y cualquier otra se conservan intactas mientras host,
+  puerto, base de datos, usuario y auth source siguen siendo campos editables —
+  así que la URI que te da la consola de Atlas se abre como formulario, cosa que
+  antes no pasaba nunca.
+
+### Cambiado
+
+- **Desactivar «editar cadena de conexión» ya no se niega en silencio.** Una URI
+  que el formulario no puede representar de verdad — un clúster SRV, una lista
+  de varios hosts, una contraseña escrita dentro de la cadena o algo que no
+  parsea — volvía a activar el interruptor sin que nada en pantalla lo
+  explicara, lo que convertía el modo texto en un camino sin retorno: un perfil
+  guardado desde una cadena pegada no se podía volver a editar como formulario
+  nunca más. Ahora pregunta, nombrando cada cosa que se perdería al plegarlo, y
+  conserva todo lo que sí era legible.
+
 ## [1.21.5] — 2026-09-07
 
 ### Corregido

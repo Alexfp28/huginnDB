@@ -340,6 +340,42 @@ fn published_envelope(slot: &SecretSlot) -> Option<&ExportedSecret> {
     }
 }
 
+/// Replace one connection in a draft with the local profile that just changed,
+/// reporting whether the draft carried it at all.
+///
+/// The model half of `commands::origin_doc::republish_profile_to_origin`, kept
+/// here because the interesting part is a rule and not the I/O: **the secret
+/// slot is left exactly as it was unless the password itself changed.**
+/// Invariant 2 of this module is what makes that mandatory rather than thrifty
+/// — a re-encrypted envelope is a *different* ciphertext for the same password,
+/// which invalidates every consumer's `landed_secrets` fingerprint and charges
+/// each of them ~600 000 PBKDF2 rounds to learn nothing. Correcting a port must
+/// cost the team zero derivations, for the same reason renaming an environment
+/// does.
+///
+/// Matched on `ConnectionProfile::id`, the identity a consumer's `merge_into`
+/// owns a profile by. Returns `false` when the document does not publish this
+/// connection (any more), which is a thing to *report* — publishing it back
+/// would silently re-add a row somebody deliberately removed.
+pub fn replace_connection(
+    draft: &mut OriginDraft,
+    profile: ConnectionProfile,
+    with_secret: bool,
+) -> bool {
+    let Some(entry) = draft
+        .connections
+        .iter_mut()
+        .find(|c| c.profile.id == profile.id)
+    else {
+        return false;
+    };
+    entry.profile = profile;
+    if with_secret {
+        entry.secret = SecretSlot::FromKeychain;
+    }
+    true
+}
+
 // ---------------------------------------------------------------------------
 // Membership
 // ---------------------------------------------------------------------------

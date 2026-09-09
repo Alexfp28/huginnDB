@@ -1857,6 +1857,12 @@ pub(crate) fn apply_profile_imports(
         // whole fix, and clearing both would silently discard a level the user
         // is about to want anyway.
         new_profile.mcp_exposed = false;
+        // Same reasoning, and a sharper failure if it were skipped: a
+        // `secret_override` flag riding in from the exporting machine would
+        // tell every future sync that *this* machine has its own password for
+        // the connection, and the published secret would then be skipped for a
+        // keychain entry the user never wrote.
+        new_profile.secret_override = None;
 
         // Decrypt and store secrets if present. `Strict` because the user is
         // sitting in the import dialog: a wrong passphrase has to surface here

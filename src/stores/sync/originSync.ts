@@ -152,6 +152,11 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     // number. "Some of your connections changed" is not actionable.
     let changedProfiles = 0;
     let changedEnvironments = 0;
+    // Local password overrides this sweep expired. Counted separately from
+    // `changedProfiles` because it is not the same news: a connection whose
+    // metadata was refreshed still works, and one whose credential was just
+    // swapped back to the published one may not.
+    let supersededSecrets = 0;
 
     for (const origin of origins) {
       try {
@@ -166,6 +171,13 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
             report.environmentsAdded.length + report.environmentsUpdated.length;
         }
         held.push(...report.deferred);
+        if (report.superseded && report.superseded.length > 0) {
+          // The backend wrote `profiles.json` to clear the flags, so the
+          // profile list this window holds is behind by a field the banner
+          // renders from.
+          touchedProfiles = true;
+          supersededSecrets += report.superseded.length;
+        }
         // `suspicious` already means the backend cleared `vanished`, so this
         // loop simply finds nothing — no special case needed here, but the
         // invariant is worth knowing when reading the report shape.
@@ -240,6 +252,17 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
               environments: changedEnvironments,
             })
           : i18n.t("origins.synced", { count: changedProfiles }),
+      );
+    }
+    // Its own notification, and a warning rather than an info: the password
+    // this machine was deliberately using has just been replaced by the
+    // published one. That is the correct outcome — the publisher republished,
+    // so the override had done its job — but a credential changing underneath
+    // somebody without a word is exactly the surprise the vanished notices
+    // exist to prevent, one level down.
+    if (supersededSecrets > 0) {
+      notify.warning(
+        i18n.t("origins.secretOverridesSuperseded", { count: supersededSecrets }),
       );
     }
   },

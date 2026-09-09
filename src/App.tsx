@@ -60,6 +60,7 @@ import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
 import { OriginEditorOverlay } from "@/components/origins/OriginEditorOverlay";
+import { OriginRepublishDialog } from "@/components/origins/dialogs/OriginRepublishDialog";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
@@ -523,6 +524,10 @@ export default function App() {
             full-screen surface, and `useOriginEditor.open` closes Settings on
             the way in so focus is never trapped in two dialogs at once. */}
         <OriginEditorOverlay />
+        {/* Raised by `ConnectionDialog` after a publisher corrects one of its
+            own origin's connections, and mounted out here because connecting
+            closes that dialog — see `stores/dialogs/originRepublish`. */}
+        <OriginRepublishDialog />
         <EnvironmentEditorDialog />
         <EnvironmentDeleteConfirmDialog />
         <div className="flex-1 overflow-hidden">

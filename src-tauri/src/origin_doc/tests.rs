@@ -585,3 +585,85 @@ fn a_fresh_machine_pays_for_every_slot() {
         fresh.pbkdf2_rounds
     );
 }
+
+// ---------------------------------------------------------------------------
+// Republishing one corrected connection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_correction_replaces_only_its_own_row() {
+    let mut draft = draft_with(vec![
+        kept("a", Some("cipher-a"), None),
+        kept("b", Some("cipher-b"), None),
+    ]);
+    let corrected = ConnectionProfile {
+        host: "moved.example.net".into(),
+        ..testkit::profile("b")
+    };
+
+    assert!(replace_connection(&mut draft, corrected, false));
+
+    assert_eq!(
+        draft.connections[0].profile.host,
+        testkit::profile("a").host
+    );
+    assert_eq!(draft.connections[1].profile.host, "moved.example.net");
+    // Order is identity here as much as anywhere: a consumer's `merge_into`
+    // matches by id, but a document whose rows shuffle on every correction
+    // diffs as if everything changed.
+    assert_eq!(draft.connections[1].profile.id, "b");
+}
+
+#[test]
+fn correcting_metadata_re_encrypts_nothing() {
+    // The same property `renaming_an_environment_re_encrypts_nothing` pins one
+    // level up, and for the same reason: a fresh envelope for an unchanged
+    // password costs every consumer ~600 000 PBKDF2 rounds and buys nothing.
+    let mut draft = draft_with(vec![kept("a", Some("cipher-a"), Some("ssh-a"))]);
+    let corrected = ConnectionProfile {
+        port: 15432,
+        ..testkit::profile("a")
+    };
+
+    assert!(replace_connection(&mut draft, corrected, false));
+
+    match &draft.connections[0].secret {
+        SecretSlot::Keep { envelope } => {
+            assert_eq!(envelope.db_password.as_deref(), Some("cipher-a"));
+            assert_eq!(envelope.ssh_secret.as_deref(), Some("ssh-a"));
+        }
+        other => panic!("an untouched password must travel byte for byte, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_changed_password_asks_the_keychain_for_the_new_one() {
+    let mut draft = draft_with(vec![kept("a", Some("cipher-a"), None)]);
+
+    assert!(replace_connection(&mut draft, testkit::profile("a"), true));
+
+    // The command layer resolves this into a `Keep` before the file is built;
+    // what matters here is that the correction *asked* for it, since nothing
+    // else in the draft records that the password moved.
+    assert!(matches!(
+        draft.connections[0].secret,
+        SecretSlot::FromKeychain
+    ));
+}
+
+#[test]
+fn a_connection_the_document_dropped_is_reported_not_re_added() {
+    let mut draft = draft_with(vec![kept("a", Some("cipher-a"), None)]);
+
+    assert!(!replace_connection(
+        &mut draft,
+        testkit::profile("gone"),
+        true
+    ));
+
+    assert_eq!(
+        draft.connections.len(),
+        1,
+        "a correction is not a way to add a row somebody removed"
+    );
+}

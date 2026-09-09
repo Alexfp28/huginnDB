@@ -914,6 +914,31 @@ export const api = {
    *  parsed; never deletes — disappearances come back in `vanished`. */
   syncOrigin: (id: string) => invoke<OriginSyncReport>("sync_origin", { id }),
 
+  /**
+   * Keep this machine's own password for a connection a shared origin
+   * publishes, instead of the one the file carries.
+   *
+   * Writes the keychain and one flag on the profile — deliberately not
+   * `saveProfile` with the read-only rule relaxed, which would let the host or
+   * the port of a curated connection be changed too and then silently revert
+   * them on the next sync. Rejects a profile with no `origin_id`, and rejects a
+   * call that supplies no password to keep.
+   *
+   * The override expires by itself once the origin publishes a *different*
+   * secret; `clearSecretOverride` is the way to end it sooner.
+   */
+  setSecretOverride: (args: {
+    profileId: string;
+    password?: string | null;
+    sshSecret?: string | null;
+  }) => invoke<ConnectionProfile>("set_secret_override", args),
+
+  /** Go back to the password the origin publishes. Also forgets the landed
+   *  fingerprint, without which the next sync would skip re-landing it and the
+   *  connection would keep quietly running on the local password. */
+  clearSecretOverride: (profileId: string) =>
+    invoke<ConnectionProfile>("clear_secret_override", { profileId }),
+
   // The origin's document (#155) -------------------------------------------
 
   /** Can this machine actually write `path`? Tries a real write — permission
@@ -967,6 +992,28 @@ export const api = {
     passphrase?: string | null;
     rotateFrom?: string | null;
   }) => invoke<OriginSaveOutcome>("save_origin_document", args),
+
+  /**
+   * Republish one connection from the local edit that just corrected it — the
+   * publisher's shortcut past reopening the editor to redo the same change.
+   *
+   * The same write path as `saveOriginDocument` with one row pre-filled, so a
+   * concurrent publish still comes back as `status: "conflict"` (send the user
+   * to the editor: merging is a document-shaped job).
+   *
+   * `withSecret` is not a convenience flag. Pass it only when the password
+   * itself changed: it turns the row's slot into `fromKeychain`, and an
+   * envelope that is re-encrypted for nothing invalidates every consumer's
+   * `landedSecrets` cache.
+   */
+  republishProfileToOrigin: (args: {
+    originId: string;
+    profileId: string;
+    withSecret: boolean;
+    /** Only consulted when a slot has to be encrypted. Omit to use the one
+     *  stored in this machine's keychain for the origin. */
+    passphrase?: string | null;
+  }) => invoke<OriginSaveOutcome>("republish_profile_to_origin", args),
 
   // Multi-window -----------------------------------------------------------
 
