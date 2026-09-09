@@ -25,6 +25,8 @@
 
 use crate::ai::probe::{self, ProbeReport};
 use crate::ai::provider::{self, Endpoint};
+use crate::ai::scope::DataScope;
+use crate::ai::tasks::{self, TaskInput};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
@@ -160,6 +162,23 @@ pub async fn ai_send(
         )
     };
     let (request, endpoint) = body;
+    stream_turn(&app, &window, state, &endpoint, turn_id, &request).await
+}
+
+/// Stream one completion and report it, with cancellation registered.
+///
+/// Shared by [`ai_send`] and [`ai_task`] because the two differ only in who
+/// wrote the messages — the panel, or `ai::tasks`. Duplicating this would mean
+/// two places that have to remember to register the turn before the first byte,
+/// and the one that forgot would have an unstoppable turn.
+async fn stream_turn(
+    app: &AppHandle,
+    window: &tauri::Window,
+    state: State<'_, AppState>,
+    endpoint: &Endpoint,
+    turn_id: String,
+    request: &serde_json::Value,
+) -> AppResult<AiTurnResult> {
     let http = provider::client(endpoint.timeout)?;
 
     // Registered before the first byte, so a stop pressed during the model's
@@ -184,7 +203,7 @@ pub async fn ai_send(
     };
 
     let outcome = tokio::select! {
-        result = provider::stream_chat(&http, &endpoint, &request, &mut on_text) => result,
+        result = provider::stream_chat(&http, endpoint, request, &mut on_text) => result,
         // Dropping the streaming future is what closes the socket. The text
         // already emitted stays on screen — the panel keeps what it rendered,
         // which is the honest outcome of stopping halfway.
@@ -197,6 +216,60 @@ pub async fn ai_send(
         content: message.content,
         finish_reason: message.finish_reason,
     })
+}
+
+/// Run one assisted task: gather its context in Rust, then stream one answer.
+///
+/// The difference from [`ai_send`] is where the prompt comes from. A chat turn
+/// carries whatever the user typed; a task carries a context `crate::ai::tasks`
+/// assembled by reading the database itself — which is what makes assisted mode
+/// work on a model far too small to be trusted with a tool loop, and what makes
+/// the panel able to answer about a schema at all before phase 6 lands.
+///
+/// Still one model call and no iteration. The `DataScope` is resolved here from
+/// the endpoint's declared trust and the connection's own opt-in, so the one
+/// task that reads rows is gated exactly as a tool call would be.
+#[tauri::command]
+pub async fn ai_task(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    turn_id: String,
+    input: TaskInput,
+) -> AppResult<AiTurnResult> {
+    let (endpoint, trust, max_rows) = {
+        let prefs = state.prefs.read();
+        (
+            Endpoint::from_prefs(&prefs.ai)?,
+            prefs.ai.endpoint_trust,
+            prefs.ai.max_context_rows,
+        )
+    };
+    let rows_allowed = {
+        let profiles = state.profiles.read();
+        let id = crate::ai::exec::resolve_connection(&input.connection, &profiles)?;
+        profiles
+            .iter()
+            .find(|p| p.id == id)
+            .is_some_and(|p| p.ai_rows_allowed)
+    };
+    let scope = DataScope::resolve(trust, rows_allowed);
+
+    // A `TauriSink` so every read a task makes lands in the Console beside the
+    // user's own statements. That is the same trust argument the roadmap makes
+    // for agent mode: an assistant whose reads are visible is one a user can
+    // believe about what it did and did not look at.
+    let sink = crate::log_bus::TauriSink::new(&app, window.label());
+    let context = tasks::gather(
+        state.inner(),
+        &sink,
+        &input,
+        scope,
+        crate::ai::exec::effective_row_cap(max_rows),
+    )
+    .await?;
+    let request = provider::chat_body(&endpoint, tasks::build_prompt(&input, &context), &[], true);
+    stream_turn(&app, &window, state, &endpoint, turn_id, &request).await
 }
 
 /// Abort an in-flight turn.

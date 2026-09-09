@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/lib/i18n";
 import { AiPanel } from "./AiPanel";
 import { useAi } from "@/stores/session/ai";
+import { useConnections } from "@/stores/session/connections";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type { AiChatMessage, AiTurnResult } from "@/types";
@@ -30,6 +31,9 @@ const aiSend = vi.fn<
 >();
 const aiCancel = vi.fn<(turnId: string) => Promise<boolean>>();
 const aiModels = vi.fn<() => Promise<string[]>>();
+const aiTask = vi.fn<
+  (turnId: string, input: unknown) => Promise<AiTurnResult>
+>();
 
 vi.mock("@/lib/tauri", () => ({
   api: {
@@ -37,6 +41,7 @@ vi.mock("@/lib/tauri", () => ({
       aiSend(turnId, messages),
     aiCancel: (turnId: string) => aiCancel(turnId),
     aiModels: () => aiModels(),
+    aiTask: (turnId: string, input: unknown) => aiTask(turnId, input),
     // The preferences store schedules a debounced save on every setter.
     updatePreferences: () => Promise.resolve(),
   },
@@ -60,6 +65,8 @@ beforeEach(() => {
   aiSend.mockReset();
   aiCancel.mockReset().mockResolvedValue(true);
   aiModels.mockReset().mockResolvedValue(["llama3.1:8b", "gemma4:12b"]);
+  aiTask.mockReset().mockResolvedValue({ content: "ok", finishReason: "stop" });
+  useConnections.setState({ profiles: [] });
   useAi.setState({ conversations: {}, turnOwners: {}, drafts: {} });
   enablePanel(true);
 });
@@ -218,6 +225,52 @@ describe("AiPanel", () => {
 
     render(<AiPanel connectionId="c2" />);
     expect(screen.getByText("about c2")).toBeTruthy();
+  });
+
+  /**
+   * The affordance that actually reads the database, and the answer to "it
+   * cannot see my schema": plain chat has no tools until the agent loop lands,
+   * so a schema question is answered from the schema only when the user asks
+   * for it this way — `nlToSql`, whose context Rust assembles.
+   */
+  it("sends the draft as an nlToSql task rather than as a chat turn", async () => {
+    useConnections.setState({
+      profiles: [
+        {
+          id: "c1",
+          name: "Bonfire",
+          driver: "postgres",
+          host: "localhost",
+          port: 5432,
+          database: "shop",
+          username: "u",
+          ssl: false,
+          ai_enabled: true,
+        },
+      ],
+    });
+    render(<AiPanel connectionId="c1" />);
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "ventas del último mes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /write sql/i }));
+
+    await vi.waitFor(() => expect(aiTask).toHaveBeenCalled());
+    expect(aiTask.mock.calls[0][1]).toEqual({
+      task: "nlToSql",
+      connection: "c1",
+      question: "ventas del último mes",
+    });
+    // Not the chat path — that one has no schema to answer from.
+    expect(aiSend).not.toHaveBeenCalled();
+  });
+
+  /** Without reach the task would only fail, so the affordance is absent
+   *  rather than present-and-broken. */
+  it("hides the SQL action for a connection the assistant cannot read", () => {
+    render(<AiPanel connectionId="c1" />);
+    expect(screen.queryByRole("button", { name: /write sql/i })).toBeNull();
   });
 
   /** A fenced statement becomes a block rather than prose. */

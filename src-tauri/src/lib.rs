@@ -308,6 +308,7 @@ pub fn run() {
             commands::ai::ai_probe,
             commands::ai::ai_models,
             commands::ai::ai_send,
+            commands::ai::ai_task,
             commands::ai::ai_cancel,
             commands::ai::ai_set_key,
             commands::ai::ai_has_key,

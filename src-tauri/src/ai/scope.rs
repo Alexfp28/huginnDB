@@ -30,10 +30,17 @@ pub enum EndpointTrust {
 }
 
 /// What a tool call is allowed to put into the model's context.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// [`Self::MetadataOnly`] is the [`Default`] for the same reason
+/// [`EndpointTrust::Untrusted`] is: a value that was never resolved must not be
+/// the permissive one. `crate::ai::tasks::TaskContext` derives `Default`, so
+/// this is reachable — and a `TaskContext` built without a scope having "rows"
+/// in it would be a hole in the rule opened by a derive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DataScope {
     /// Table and column names, types, indexes, view bodies, `EXPLAIN` output.
     /// No row ever reaches the prompt.
+    #[default]
     MetadataOnly,
     /// Metadata plus row data.
     Rows,
@@ -99,6 +106,15 @@ mod tests {
         );
         let from_absent: EndpointTrust = serde_json::from_str("\"untrusted\"").unwrap();
         assert_eq!(from_absent, EndpointTrust::Untrusted);
+    }
+
+    /// A `DataScope` that was never resolved must be the withholding one — the
+    /// same argument that makes `EndpointTrust::Untrusted` the default, applied
+    /// to the type a `#[derive(Default)]` elsewhere can conjure.
+    #[test]
+    fn an_unresolved_scope_withholds_rows() {
+        assert_eq!(DataScope::default(), DataScope::MetadataOnly);
+        assert!(!DataScope::default().allows_rows());
     }
 
     #[test]

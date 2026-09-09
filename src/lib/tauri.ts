@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AiChatMessage,
   AiProbeReport,
+  AiTaskInput,
   AiTurnResult,
   AppTab,
   BulkUpdatePreview,
@@ -224,6 +225,19 @@ export const api = {
    * halfway.
    */
   aiCancel: (turnId: string) => invoke<boolean>("ai_cancel", { turnId }),
+
+  /**
+   * Run one assisted task: Rust gathers the context — schema, plan, a bounded
+   * sample — and streams one answer over it.
+   *
+   * The difference from `aiSend` is who wrote the prompt. A chat turn carries
+   * whatever the user typed; a task carries a context assembled by reading the
+   * database, which is what lets a small local model answer about a real schema
+   * without a tool loop. Streams through the same `huginndb://ai-delta` events
+   * and is cancelled by the same `aiCancel`.
+   */
+  aiTask: (turnId: string, input: AiTaskInput) =>
+    invoke<AiTurnResult>("ai_task", { turnId, input }),
 
   /**
    * Store a BYOK key for the configured endpoint, in the OS keychain.

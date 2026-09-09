@@ -1075,6 +1075,33 @@ export interface AiTurnResult {
   finishReason: string | null;
 }
 
+/**
+ * One of assisted mode's four jobs. Mirrors `AssistedTask` in
+ * `src-tauri/src/ai/tasks.rs`.
+ *
+ * The context for each is assembled in Rust — the schema, the plan, the sample
+ * — so a model far too small for a tool loop can still answer about a real
+ * database. One model call each, no iteration.
+ */
+export type AiTask =
+  | "explainQuery"
+  | "nlToSql"
+  | "explainSlow"
+  | "documentRelation";
+
+/** What a task needs. Mirrors `TaskInput`; unused fields are simply omitted. */
+export interface AiTaskInput {
+  task: AiTask;
+  /** A connection id or name. Only `ai_enabled` connections resolve. */
+  connection: string;
+  schema?: string | null;
+  table?: string | null;
+  /** The statement, for the two tasks that are about one. */
+  statement?: string | null;
+  /** The user's own words, for `nlToSql`. */
+  question?: string | null;
+}
+
 /** One chunk of a streaming reply, from the `huginndb://ai-delta` event. */
 export interface AiDelta {
   turnId: string;

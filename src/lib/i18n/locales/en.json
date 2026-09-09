@@ -2803,6 +2803,7 @@
     "noConnectionHint": "Pick a connection in the tree — each one keeps its own conversation.",
     "emptyTitle": "Ask about this database",
     "emptyHint": "It cannot read your schema yet, so paste the DDL or column names it needs. Statements it proposes open in your query editor.",
+    "emptyHintReach": "Ask anything, or type what you want and press Write SQL — that one reads the schema and writes the statement against it. Statements it proposes open in your query editor.",
     "placeholder": "Ask something… (Enter to send, Shift+Enter for a new line)",
     "send": "Send",
     "stop": "Stop",
@@ -2852,6 +2853,12 @@
       "noResult": "no result",
       "rowCount_one": "{{count}} row",
       "rowCount_other": "{{count}} rows"
+    },
+    "task": {
+      "writeSql": "Write SQL",
+      "explainQuery": "Explain this statement.",
+      "explainSlow": "Why is this statement slow?",
+      "documentRelation": "Document {{relation}}."
     }
   }
 }

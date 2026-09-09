@@ -65,4 +65,5 @@ pub mod provider;
 pub mod scope;
 pub mod secrets;
 pub mod stream;
+pub mod tasks;
 pub mod tools;

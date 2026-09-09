@@ -38,6 +38,7 @@ import {
   Send,
   Settings2,
   Square,
+  Wand2,
 } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
@@ -63,6 +64,7 @@ import {
   resolveConnectionLabel,
 } from "@/lib/connectionLabel";
 import { resolveDataScope } from "@/lib/ai/scope";
+import { runAiTask } from "@/lib/ai/runTask";
 import {
   hasVisibleContent,
   messageText,
@@ -265,7 +267,7 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
             size="sm"
             icon={Bot}
             title={t("ai.emptyTitle")}
-            hint={t("ai.emptyHint")}
+            hint={reachable ? t("ai.emptyHintReach") : t("ai.emptyHint")}
           />
         ) : (
           <div className="space-y-2">
@@ -332,7 +334,33 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
             value={ai.reasoningEffort}
             onChange={(reasoningEffort) => updateAi({ reasoningEffort })}
           />
-          <span className="ml-auto shrink-0">
+          <span className="ml-auto flex shrink-0 items-center gap-1">
+            {/* The one affordance that reads the database. Plain chat has no
+                tools until the agent loop lands, so a question about a schema
+                is answered from the schema *only* when the user asks for it
+                this way — and `nlToSql` is the task that supplies it. Hidden
+                without reach, because it would only fail. */}
+            {!turnId && reachable && (
+              <Button
+                variant="quiet"
+                size="xs"
+                className="h-auto gap-1 px-1 py-0.5 text-2xs font-normal"
+                disabled={draft.trim().length === 0}
+                onClick={() => {
+                  const question = draft.trim();
+                  if (!question) return;
+                  setDraft(connectionId, "");
+                  void runAiTask({
+                    task: "nlToSql",
+                    connection: connectionId,
+                    question,
+                  });
+                }}
+              >
+                <Wand2 className="h-3 w-3" />
+                {t("ai.task.writeSql")}
+              </Button>
+            )}
             {turnId ? (
               <Button variant="outline" size="xs" onClick={stop}>
                 <Square className="h-3 w-3" />

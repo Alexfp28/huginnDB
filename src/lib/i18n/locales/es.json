@@ -2803,6 +2803,7 @@
     "noConnectionHint": "Elige una conexión en el árbol — cada una mantiene su propia conversación.",
     "emptyTitle": "Pregunta sobre esta base de datos",
     "emptyHint": "Todavía no puede leer tu esquema, así que pégale el DDL o los nombres de columna que necesite. Las sentencias que proponga se abren en tu editor de consultas.",
+    "emptyHintReach": "Pregunta lo que quieras, o escribe lo que necesitas y pulsa Escribir SQL — esa opción sí lee el esquema y redacta la sentencia contra él. Las sentencias que proponga se abren en tu editor de consultas.",
     "placeholder": "Pregunta algo… (Enter envía, Shift+Enter salta de línea)",
     "send": "Enviar",
     "stop": "Parar",
@@ -2852,6 +2853,12 @@
       "noResult": "sin resultado",
       "rowCount_one": "{{count}} fila",
       "rowCount_other": "{{count}} filas"
+    },
+    "task": {
+      "writeSql": "Escribir SQL",
+      "explainQuery": "Explica esta sentencia.",
+      "explainSlow": "¿Por qué es lenta esta sentencia?",
+      "documentRelation": "Documenta {{relation}}."
     }
   }
 }
