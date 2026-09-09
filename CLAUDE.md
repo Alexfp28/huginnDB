@@ -12,6 +12,16 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 ## Maintainer / collaboration notes
 
 - Sole maintainer: **Alexfp28** (`alexlopezdelafuente@gmail.com`). Security contact: `contact@shion.es`.
+- **ALWAYS sign the maintainer's name — this is not optional and applies to every turn.** Anything that carries
+  authorship is signed as **Alex López (Alexfp28)** `<alexlopezdelafuente@gmail.com>`: commits, pull request bodies,
+  GitHub comments, and any generated document or deliverable. The agent's own attribution trailer/footer is
+  *additive* — it never replaces the signature.
+  - **Commits:** author is the maintainer, never the agent —
+    `git commit --author="Alex López <alexlopezdelafuente@gmail.com>" -F <msg-file>`.
+    Leave the **committer** identity alone (`Claude <noreply@anthropic.com>`): the remote session's SSH signing key is
+    registered to that address, so overriding `user.email` makes GitHub report every commit as *Unverified*. Author
+    and committer are separate fields — `--author` is the whole mechanism, and `--amend --reset-author` undoes it.
+  - **Pull requests / GitHub comments:** state the maintainer's authorship in the body, above the agent footer.
 - User communicates in **Spanish**; reply in Spanish. Code, comments, commit messages, and docs are **English**.
 - Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, …) with **long-form bodies** explaining the *why*. The user explicitly values verbose commits — never punt with a one-liner on non-trivial changes.
 - Keep `CHANGELOG.md` in sync (Keep a Changelog format). Add to `Unreleased` as you go; the user will cut releases manually.
