@@ -43,6 +43,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   discarded. Both the connections tree and the command palette now say how many
   would not answer, and why.
 
+- **The tree's filter could hide the failure it had just been told about.** A
+  connection whose schema could not be read looks exactly like an empty one, so
+  filtering the tree dimmed its row, gave it a `0`, and folded it to a single
+  line — which removed the error message from the screen. The row now shows a
+  `!`, carries the message on hover, and is never dimmed or folded: a
+  connection the server would not answer is the row you most need to see. A
+  multi-database server whose individual databases would not answer says so
+  too, instead of counting them as zero.
+
 - **Every context-menu action on a collapsed database node failed silently.**
   "New query here", "New table", "Security", export, import, "New collection"
   and "Refresh" all have to open the database first, and when that failed the

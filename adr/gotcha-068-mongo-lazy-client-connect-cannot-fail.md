@@ -17,4 +17,18 @@
 - **A stale failure must not be reported.** All three catches already had `if (!current) return state` for the case where `drop(connectionId)` landed while the call was in flight — resurrecting a slice there is permanent damage, because it comes back `initialized: true` and no automatic path retries it. The report is skipped in exactly that case: the error describes a pool that no longer exists, and a card about it arrives after a disconnect the user asked for.
 - **`AppError::Mongo` rendered a hex dump.** `mongodb::error::Error`'s `Display` is `"Kind: {kind}, labels: {labels:?}, source: {source:?}, server response: {server_response:?}"`, and `bson`'s `Debug for RawDocumentBuf` is `hex::encode` of its bytes — so any Mongo *command* error dragged an encoding of the whole server reply into a string the user reads, in a ~200 px tree row. The variant now renders `.0.kind` alone. **The classification still scans the full `to_string()`** for the connection-limit needles, where more text can only help; do not "unify" the two.
 - **Two silent failures fell out of the same reading.** `MultiDbExplorer`'s per-database `error` renders inside its `effectiveExpanded` branch, so every context-menu action on a **collapsed** database node ("New query here", "New table", "Security", export, import, "New collection", "Refresh") wrote into a branch that was not mounted: the menu item did nothing and said nothing. A refused `DROP DATABASE` did the same, while its *success* path had notified since 1.21.3. And `warmDatabases` counted a database whose table list had failed as `loaded`, because `refresh` could not tell it otherwise — nineteen loaded, nineteen broken, reported as success — while discarding every non-limit error, so `skipped` was a number with no cause attached.
+- **The tree's filter was the last place the failure could still vanish.**
+  `SchemaSliceLike` — the four fields `treeMatches.ts` reads — had no `error`,
+  so a failed slice (`initialized: true, tables: []`) was byte-for-byte an
+  empty one and `rowMatchState` returned `none`: the row dimmed, showed a
+  confident `0`, and `filterFoldsIgnoringOverride` folded it to a single line,
+  taking the inline message off the screen. One level down, a child whose warm
+  failed stopped being "cold", so it dropped out of what the warm button offers
+  and was reported as an honest zero. The fix is a `failed` state ranked above
+  `unloaded` (that one asks the user to look; this one says looking did not
+  work) and below `matches` (a stale count is still a count — `refresh` does
+  not wipe the tables it had, so the badge annotates with `+` rather than
+  replacing a number), and the two places it is deliberately **absent** are the
+  point: `filterFoldsIgnoringOverride` and the row's `dimmedByFilter`. A
+  connection the server would not answer is the row the user most needs to see.
 - **What deliberately did not change.** `initialized: true` on failure stays: the `!initialized && !loading` guard would otherwise re-fire forever, and the explicit refresh is the retry. The per-table inline retry row (`SchemaTableRow`) stays and is still the better affordance — the card is what makes the failure reachable when the node is collapsed, folded by a filter, or in a window nobody is looking at. And the connection-level red line stays as the explanation for an empty tree.

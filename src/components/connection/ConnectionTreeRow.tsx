@@ -33,7 +33,7 @@
  * sees it as a changed prop.
  */
 
-import { memo, type MutableRefObject } from "react";
+import { memo, type MutableRefObject, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -44,6 +44,7 @@ import {
   RotateCw,
 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
@@ -99,6 +100,11 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
   // Dimmed, never hidden: a connection row is what the user needs in order to
   // connect it or to narrow the search to it, so the filter may quieten it
   // but must not take it away.
+  //
+  // `failed` is deliberately absent from this list, as it is from
+  // `filterFoldsIgnoringOverride`: a connection the server would not answer is
+  // the row the user most needs to see, and quietening it is how the failure
+  // used to leave the screen entirely (gotcha #68).
   const dimmedByFilter =
     filtering &&
     isActive &&
@@ -206,6 +212,8 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
               isActive={isActive}
               count={summary?.count ?? 0}
               cold={summary?.coldDatabases.length ?? 0}
+              failed={summary?.failedDatabases.length ?? 0}
+              failure={summary?.failed ?? null}
               state={matchState}
             />
           )}
@@ -296,87 +304,105 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
 /**
  * The per-connection match count, shown while something is typed.
  *
- * The four states it can render are the point of it. A connection that is not
+ * The states it can render are the point of it. A connection that is not
  * connected has not been searched at all; one still fetching its own list is
- * counting; a multi-DB server whose databases have never been read has looked
+ * counting; one whose read *failed* says so rather than reporting what it did
+ * not find; a multi-DB server whose databases have never been read has looked
  * at *some* of itself and says so with a `+` (or a bare `—` when it has found
  * nothing yet). Only the last case — everything visible loaded, nothing matched
- * — earns a plain `0`. Saying `0` about something nobody has read is what makes
- * a user abandon a search that would have worked.
+ * — earns a plain `0`. Saying `0` about something nobody has read, or about
+ * something that would not answer, is what makes a user abandon a search that
+ * would have worked.
  */
 function MatchBadge({
   isActive,
   count,
   cold,
+  failed,
+  failure,
   state,
 }: {
   isActive: boolean;
   count: number;
   cold: number;
+  /** Databases of this connection whose own read failed. */
+  failed: number;
+  /** The connection's own failure message, when it has one. */
+  failure: string | null;
   state: RowMatchState | null;
 }) {
   const { t } = useTranslation();
   const base = "shrink-0 rounded-sm px-1 text-3xs leading-4 tabular-nums";
+  const muted = cn(base, "bg-muted text-muted-foreground/60");
 
-  if (!isActive) {
-    return (
-      <span
-        title={t("connectionsTree.filter.connectToSearch")}
-        className={cn(base, "bg-muted text-muted-foreground/60")}
-      >
-        —
-      </span>
-    );
-  }
-  if (state === "out-of-scope") {
-    // Not "0": this connection was never searched, and saying it found nothing
-    // would send the user off to fix a needle that is not the problem.
-    return (
-      <span
-        title={t("connectionsTree.filter.clearScope")}
-        className={cn(base, "bg-muted text-muted-foreground/60")}
-      >
-        —
-      </span>
-    );
-  }
-  if (state === "pending") {
-    return (
-      <span
-        title={t("connectionsTree.filter.counting")}
-        className={cn(base, "bg-muted text-muted-foreground/60")}
-      >
-        …
-      </span>
-    );
-  }
-  if (state === "unloaded") {
-    return (
-      <span
-        title={t("connectionsTree.filter.partialCount", { count: 0, cold })}
-        className={cn(base, "bg-muted text-muted-foreground/60")}
-      >
-        —
-      </span>
-    );
-  }
-  const partial = cold > 0;
+  // One `SimpleTooltip` around one span, rather than a native `title=` per
+  // arm. Every arm here is an *explanation of a state the glyph cannot carry*
+  // — "—" means four different things across these branches — so the label is
+  // the whole point of the badge and an OS tooltip is the wrong vehicle for it:
+  // no styling, no theme, and a delay the app does not control. This is the
+  // pass ROADMAP's adoption-debt entry asks for on this file, and it is what
+  // kept the new `failed` arm from adding a ninth OS tooltip to it.
+  const label = (): ReactNode => {
+    if (!isActive) return t("connectionsTree.filter.connectToSearch");
+    switch (state) {
+      case "out-of-scope":
+        return t("connectionsTree.filter.clearScope");
+      case "pending":
+        return t("connectionsTree.filter.counting");
+      case "failed":
+        return (
+          failure ??
+          t("connectionsTree.filter.failedDatabases", { count: failed })
+        );
+      case "unloaded":
+        return t("connectionsTree.filter.partialCount", { count: 0, cold });
+      default:
+        if (failed > 0)
+          return t("connectionsTree.filter.partialFailed", { count, failed });
+        if (cold > 0)
+          return t("connectionsTree.filter.partialCount", { count, cold });
+        return null;
+    }
+  };
+
+  const body = (): { className: string; content: ReactNode } => {
+    // Not connected, or out of scope: this connection was never searched, and
+    // saying it found nothing would send the user off to fix a needle that is
+    // not the problem.
+    if (!isActive || state === "out-of-scope")
+      return { className: muted, content: "—" };
+    if (state === "pending") return { className: muted, content: "…" };
+    // Asked and refused, which is a different fact from finding nothing — so
+    // never a `0`, and never the muted treatment. The row also stays unfolded
+    // and undimmed in this state; see `rowMatchState`.
+    if (state === "failed")
+      return {
+        className: cn(base, "bg-destructive/15 text-destructive"),
+        content: "!",
+      };
+    // Looked at some of itself and found nothing yet: a bare "—", because the
+    // databases nobody has read have no evidence for a zero.
+    if (state === "unloaded") return { className: muted, content: "—" };
+    // A count that is real but possibly incomplete, for either reason:
+    // databases nobody has read, or databases that would not answer.
+    const partial = cold > 0 || failed > 0;
+    return {
+      className: cn(base, count > 0 ? "bg-brand/15 text-brand" : muted),
+      content: (
+        <>
+          {count}
+          {partial && "+"}
+        </>
+      ),
+    };
+  };
+
+  const { className, content } = body();
+  // `SimpleTooltip` renders its children untouched when the label is empty, so
+  // the one state with nothing to explain — a complete count — costs nothing.
   return (
-    <span
-      title={
-        partial
-          ? t("connectionsTree.filter.partialCount", { count, cold })
-          : undefined
-      }
-      className={cn(
-        base,
-        count > 0
-          ? "bg-brand/15 text-brand"
-          : "bg-muted text-muted-foreground/60",
-      )}
-    >
-      {count}
-      {partial && "+"}
-    </span>
+    <SimpleTooltip label={label()}>
+      <span className={className}>{content}</span>
+    </SimpleTooltip>
   );
 }

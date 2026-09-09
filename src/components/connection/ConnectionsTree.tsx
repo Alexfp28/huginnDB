@@ -401,7 +401,14 @@ export function ConnectionsTree() {
     setCollapsed(p.id, isExpanded(p));
   }
 
-  /** `filterFolds`, blind to the override — "would the filter fold this?" */
+  /**
+   * `filterFolds`, blind to the override — "would the filter fold this?"
+   *
+   * `failed` is not in this list, and that is the point: folding a connection
+   * whose schema read failed took the inline error message off the screen,
+   * leaving a dimmed row with a confident `0` and no way to find out why. See
+   * gotcha #68.
+   */
   function filterFoldsIgnoringOverride(id: string): boolean {
     const summary = matchCounts.get(id);
     if (!summary) return false;
@@ -699,6 +706,18 @@ export function ConnectionsTree() {
                 </span>
               </button>
             )}
+          </div>
+        )}
+        {/* Said on its own line rather than folded into the "left to search"
+            one above, because the remedy is different: a cold database wants
+            the warm button, one that would not answer wants a reconnect or a
+            server that is up. Before this the failure had no line at all — the
+            row it belonged to had been folded away (gotcha #68). */}
+        {filtering && totals.failed > 0 && (
+          <div className="mt-1 text-2xs text-destructive/80">
+            {t("connectionsTree.filter.failedConnections", {
+              count: totals.failed,
+            })}
           </div>
         )}
       </div>

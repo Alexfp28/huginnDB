@@ -276,7 +276,11 @@ describe("the OS tooltip outside ui/", () => {
   const SPREADS_TO_DOM = new Set(["Button", "Switch", "SelectTrigger"]);
 
   const BUDGET: Record<string, number> = {
-    "src/components/connection/ConnectionTreeRow.tsx": 8,
+    // Was 8. `MatchBadge`'s six arms became one `SimpleTooltip` — every one of
+    // them explains a state the glyph cannot carry ("—" means four different
+    // things across them), so the label was the point of the badge and the OS
+    // tooltip the wrong vehicle. The three left are the row's own controls.
+    "src/components/connection/ConnectionTreeRow.tsx": 3,
     "src/components/aggregation/StageCard.tsx": 4,
     "src/components/connection/EnvironmentSwitcher.tsx": 4,
     "src/components/grid/ServerFilterChips.tsx": 1,
@@ -318,7 +322,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${73} in ${40} files`, () => {
+  it(`is down to ${68} in ${40} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -332,6 +336,6 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(73);
+    expect(total(BUDGET)).toBeLessThanOrEqual(68);
   });
 });

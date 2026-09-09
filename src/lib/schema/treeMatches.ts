@@ -14,6 +14,11 @@
  *   something opens that view, gotcha #36). We have not looked, so we do not
  *   say `0`; the row offers to look instead. Typing must never open a pool by
  *   itself — see `warmForSearch`.
+ * - **failed** — we asked and the server would not answer. Added in 1.21.x, and
+ *   its absence was the same bug one state over: a connection whose schema read
+ *   failed is `initialized: true, tables: []`, which read as `none`, so the row
+ *   dimmed, grew a confident `0` and was *folded away by the filter* —
+ *   unmounting the one place the error was rendered. See gotcha #68.
  * - **none** — everything visible is loaded and nothing matched. The only state
  *   in which a `0` badge is the truth.
  *
@@ -43,6 +48,13 @@ export interface SchemaSliceLike {
   tables: { name: string }[];
   loading: boolean;
   initialized: boolean;
+  /**
+   * The last read's failure, if it failed. Load-bearing here rather than a
+   * detail the tree can render on its own: without it a failed slice is
+   * indistinguishable from an empty one, and this file's whole job is to keep
+   * "nothing matched" apart from "nobody looked".
+   */
+  error: string | null;
 }
 
 /** One connection, as the tree knows it before any counting happens. */
@@ -64,6 +76,16 @@ export interface ConnectionMatchSummary {
   databaseNameMatches: string[];
   /** Visible databases with no table list in the store yet. */
   coldDatabases: string[];
+  /**
+   * Why this connection's own schema read failed, or `null`.
+   *
+   * Distinct from `coldDatabases`, which is "we have not looked". This is "we
+   * looked and were refused", and the two have different remedies: one is the
+   * warm button, the other is a reconnect or a server that needs fixing.
+   */
+  failed: string | null;
+  /** Visible databases whose own table list failed to read. */
+  failedDatabases: string[];
   /** The connection's own list is still loading and has never completed. */
   pending: boolean;
   /**
@@ -96,7 +118,10 @@ function lowered(tables: { name: string }[]): string[] {
 }
 
 /** How many of a slice's tables match, using the lowercased-name cache. */
-function countMatches(slice: SchemaSliceLike | undefined, patterns: string[]): number {
+function countMatches(
+  slice: SchemaSliceLike | undefined,
+  patterns: string[],
+): number {
   if (!slice) return 0;
   if (patterns.length === 0) return slice.tables.length;
   let n = 0;
@@ -132,14 +157,18 @@ export function summarizeMatches(
       byDatabase: new Map(),
       databaseNameMatches: [],
       coldDatabases: [],
+      failed: slice?.error ?? null,
+      failedDatabases: [],
       pending: !!slice?.loading && !slice.initialized,
       outOfScope: !scopeIncludes(scope, c.connectionId),
     };
 
     if (summary.outOfScope) {
       // Nothing was read on this connection's behalf, so nothing is claimed
-      // about it — not even that it is still loading.
+      // about it — not even that it is still loading, or that an earlier read
+      // had failed.
       summary.pending = false;
+      summary.failed = null;
       return summary;
     }
 
@@ -163,6 +192,16 @@ export function summarizeMatches(
         summary.coldDatabases.push(name);
         continue;
       }
+      // A failed child is `initialized`, so it used to fall straight through to
+      // `byDatabase.set(name, 0)` — reported as an honest zero, and dropped
+      // from what the warm button offers, because it is no longer "cold".
+      //
+      // Its tables are still counted: `refresh` does not wipe them on the
+      // failure path, so what is there is the last thing the server did say,
+      // and hiding it would lose data the tree is showing. The count is
+      // annotated rather than suppressed — the same treatment `coldDatabases`
+      // gets, where matches win and the incompleteness is flagged beside them.
+      if (child.error) summary.failedDatabases.push(name);
       const n = countMatches(child, patterns);
       summary.byDatabase.set(name, n);
       summary.count += n;
@@ -178,20 +217,28 @@ export function totalMatches(list: Iterable<ConnectionMatchSummary>): {
   connections: number;
   /** Databases nobody has read yet, across every connection. */
   cold: number;
+  /**
+   * Connections that would not answer — the whole connection, or at least one
+   * of its databases. Counted per *connection* rather than per database,
+   * because that is the unit of the remedy: you reconnect a connection.
+   */
+  failed: number;
   /** True while any connection's own list is still on its first fetch. */
   pending: boolean;
 } {
   let matches = 0;
   let connections = 0;
   let cold = 0;
+  let failed = 0;
   let pending = false;
   for (const s of list) {
     matches += s.count;
     if (s.count > 0) connections += 1;
     cold += s.coldDatabases.length;
+    if (s.failed !== null || s.failedDatabases.length > 0) failed += 1;
     pending ||= s.pending;
   }
-  return { matches, connections, cold, pending };
+  return { matches, connections, cold, failed, pending };
 }
 
 /**
@@ -201,10 +248,23 @@ export function totalMatches(list: Iterable<ConnectionMatchSummary>): {
  * all cold has *no* evidence for a `0`, and a provisional `0` is what makes a
  * user abandon a search that would have worked. `out-of-scope` outranks
  * everything for the same reason, one step further out.
+ *
+ * `failed` outranks both, and that ordering is the fix for gotcha #68's last
+ * loose end. A connection whose read failed used to land in `none` — the one
+ * state that means "this really is empty" — so the row dimmed, showed `0`, and
+ * `ConnectionsTree.filterFoldsIgnoringOverride` folded it to a single line,
+ * taking the inline error message off the screen with it. It ranks above
+ * `unloaded` because the two are answered differently: `unloaded` asks the user
+ * to look, `failed` says looking did not work.
+ *
+ * It stays *below* `matches`, like `unloaded` does: a stale count is still a
+ * count, and the partial-ness rides along on the badge's `+` rather than
+ * replacing a number the user can act on.
  */
 export type RowMatchState =
   | "out-of-scope"
   | "pending"
+  | "failed"
   | "unloaded"
   | "none"
   | "matches";
@@ -213,6 +273,8 @@ export function rowMatchState(summary: ConnectionMatchSummary): RowMatchState {
   if (summary.outOfScope) return "out-of-scope";
   if (summary.pending) return "pending";
   if (summary.count > 0) return "matches";
+  if (summary.failed !== null || summary.failedDatabases.length > 0)
+    return "failed";
   if (summary.coldDatabases.length > 0) return "unloaded";
   return "none";
 }

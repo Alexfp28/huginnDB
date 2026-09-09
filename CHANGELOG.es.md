@@ -48,6 +48,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   reducía a un número con el motivo descartado. El árbol de conexiones y la
   paleta de comandos dicen ahora cuántas no respondieron, y por qué.
 
+- **El filtro del árbol podía esconder el fallo del que acababa de avisar.** Una
+  conexión cuyo esquema no se ha podido leer tiene el mismo aspecto que una
+  vacía, así que al filtrar el árbol su fila se atenuaba, mostraba un `0` y se
+  plegaba a una sola línea — que es justo lo que quitaba el mensaje de error de
+  la pantalla. Ahora la fila muestra un `!`, lleva el mensaje al pasar por
+  encima, y no se atenúa ni se pliega: una conexión que el servidor no
+  responde es la fila que más necesitas ver. Un servidor multi-base cuyas bases
+  concretas no responden también lo dice, en lugar de contarlas como cero.
+
 - **Toda acción del menú contextual sobre un nodo de base de datos colapsado
   fallaba en silencio.** "Nueva consulta aquí", "Nueva tabla", "Seguridad",
   exportar, importar, "Nueva colección" y "Refrescar" tienen que abrir antes la

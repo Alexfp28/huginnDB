@@ -16,6 +16,7 @@ function slice(part: Partial<SchemaSliceLike> = {}): SchemaSliceLike {
     tables: [],
     loading: false,
     initialized: true,
+    error: null,
     ...part,
   };
 }
@@ -169,6 +170,7 @@ describe("totalMatches", () => {
       matches: 3,
       connections: 2,
       cold: 0,
+      failed: 0,
       pending: false,
     });
   });
@@ -184,5 +186,106 @@ describe("totalMatches", () => {
       ALL_SCOPE,
     );
     expect(totalMatches(summaries).cold).toBe(3);
+  });
+});
+
+describe("summarizeMatches — a read that failed", () => {
+  // The last loose end of gotcha #68. A connection whose schema read failed is
+  // `initialized: true, tables: []`, which is byte-for-byte what an empty
+  // connection looks like — so it landed in `none`: dimmed row, confident `0`,
+  // and folded away by the filter, which unmounted the one place the error was
+  // rendered.
+
+  it("is not a real zero", () => {
+    const [s] = summarizeMatches(
+      [single("c1")],
+      { c1: slice({ error: "mongodb error: Server selection timeout" }) },
+      parsePatterns("user"),
+      ALL_SCOPE,
+    );
+    expect(s.count).toBe(0);
+    expect(s.failed).toContain("Server selection timeout");
+    expect(rowMatchState(s)).toBe("failed");
+  });
+
+  it("outranks a cold database, because the two ask for different things", () => {
+    // `unloaded` asks the user to look; `failed` says looking did not work.
+    const [s] = summarizeMatches(
+      [multi("p")],
+      {
+        p: slice({
+          databases: [{ name: "shop" }],
+          error: "not connected: p",
+        }),
+      },
+      parsePatterns("zzz"),
+      ALL_SCOPE,
+    );
+    expect(s.coldDatabases).toEqual(["shop"]);
+    expect(rowMatchState(s)).toBe("failed");
+  });
+
+  it("stays below matches, so a stale count is still shown", () => {
+    // `refresh` does not wipe the tables it already had on the failure path, so
+    // what is there is the last thing the server did say. The badge annotates
+    // it with a `+` rather than replacing a number the user can act on.
+    const [s] = summarizeMatches(
+      [single("c1")],
+      { c1: slice({ tables: tables("users"), error: "connection closed" }) },
+      parsePatterns("user"),
+      ALL_SCOPE,
+    );
+    expect(s.count).toBe(1);
+    expect(rowMatchState(s)).toBe("matches");
+    expect(s.failed).toBe("connection closed");
+  });
+
+  it("names the databases that would not answer, and still counts them", () => {
+    const [s] = summarizeMatches(
+      [multi("p")],
+      {
+        p: slice({ databases: [{ name: "shop" }, { name: "logs" }] }),
+        [databaseViewId("p", "shop")]: slice({ tables: tables("users") }),
+        [databaseViewId("p", "logs")]: slice({ error: "connection closed" }),
+      },
+      parsePatterns("user"),
+      ALL_SCOPE,
+    );
+    expect(s.failedDatabases).toEqual(["logs"]);
+    // Not cold: cold means nobody looked, and somebody did.
+    expect(s.coldDatabases).toEqual([]);
+    expect(s.count).toBe(1);
+    expect(rowMatchState(s)).toBe("matches");
+  });
+
+  it("claims nothing about a connection the scope excluded", () => {
+    // Out of scope outranks everything: this connection was not searched, so
+    // neither its emptiness nor its failure is this row's story.
+    const scope: FilterScope = { kind: "connection", connectionId: "other" };
+    const [s] = summarizeMatches(
+      [single("c1")],
+      { c1: slice({ error: "not connected: c1" }) },
+      parsePatterns("user"),
+      scope,
+    );
+    expect(s.failed).toBeNull();
+    expect(rowMatchState(s)).toBe("out-of-scope");
+  });
+
+  it("counts failing connections once, whichever level failed", () => {
+    const summaries = summarizeMatches(
+      [single("a"), multi("p"), single("c")],
+      {
+        a: slice({ error: "not connected: a" }),
+        p: slice({ databases: [{ name: "shop" }] }),
+        [databaseViewId("p", "shop")]: slice({ error: "connection closed" }),
+        c: slice({ tables: tables("users") }),
+      },
+      parsePatterns("user"),
+      ALL_SCOPE,
+    );
+    // Per connection, not per database: a reconnect is what fixes it, and a
+    // connection is what you reconnect.
+    expect(totalMatches(summaries).failed).toBe(2);
   });
 });
