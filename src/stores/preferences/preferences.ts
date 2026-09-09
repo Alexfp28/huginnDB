@@ -27,6 +27,7 @@ import { notify } from "@/lib/notify";
 import { debounce } from "@/lib/schedule";
 import { STORAGE_KEYS } from "@/lib/constants";
 import type {
+  AiPrefs,
   ConnectionPrefs,
   EditorPrefs,
   GridPrefs,
@@ -126,6 +127,23 @@ const DEFAULT_PREFS: Preferences = {
     sampleWhenMinimized: true,
     maxDiskMb: 20,
   },
+  // Mirrors `AiPrefs::default()` in `src-tauri/src/prefs.rs`. Two of these are
+  // load-bearing rather than cosmetic: `enabled: false` means an install that
+  // upgrades into this version never talks to a model, and
+  // `endpointTrust: "untrusted"` means that even once it does, the coupling
+  // rule starts at metadata-only. `baseUrl` is pre-filled with Ollama's
+  // default because it is the endpoint most users will have first and it costs
+  // nothing to guess for the rest; `model` is not, because it depends entirely
+  // on what their endpoint serves.
+  ai: {
+    enabled: false,
+    baseUrl: "http://localhost:11434/v1",
+    model: "",
+    endpointTrust: "untrusted",
+    mode: "assisted",
+    maxContextRows: 50,
+    requestTimeoutSecs: 120,
+  },
   keybindings: {},
 };
 
@@ -139,6 +157,7 @@ interface PreferencesState {
   updateNotifications: (patch: Partial<NotificationPrefs>) => void;
   updateConnections: (patch: Partial<ConnectionPrefs>) => void;
   updatePulse: (patch: Partial<PulsePrefs>) => void;
+  updateAi: (patch: Partial<AiPrefs>) => void;
   /**
    * Merge shortcut overrides. A key mapped to `undefined` is **deleted**,
    * which is how "reset this row to its default" is expressed — writing the
@@ -328,6 +347,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     });
   },
 
+  updateAi(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        ai: { ...s.prefs.ai, ...patch },
+      };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
   updateKeybindings(patch) {
     set((s) => {
       const keybindings: Record<string, string[]> = { ...s.prefs.keybindings };
@@ -368,4 +398,5 @@ export const selectUiPrefs = (s: PreferencesState) => s.prefs.ui;
 export const selectNotificationPrefs = (s: PreferencesState) => s.prefs.notifications;
 export const selectConnectionPrefs = (s: PreferencesState) => s.prefs.connections;
 export const selectPulsePrefs = (s: PreferencesState) => s.prefs.pulse;
+export const selectAiPrefs = (s: PreferencesState) => s.prefs.ai;
 export const selectKeybindings = (s: PreferencesState) => s.prefs.keybindings;

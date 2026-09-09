@@ -30,6 +30,7 @@ import {
   AppWindow,
   Bell,
   BookOpen,
+  Bot,
   Braces,
   Cable,
   Columns3,
@@ -135,6 +136,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   origins: <FolderOpen className="h-4 w-4" />,
   mcp: <Cable className="h-4 w-4" />,
   pulse: <Activity className="h-4 w-4" />,
+  ai: <Bot className="h-4 w-4" />,
   about: <Info className="h-4 w-4" />,
 };
 
@@ -172,6 +174,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const updateNotifications = usePreferences((s) => s.updateNotifications);
   const updateConnections = usePreferences((s) => s.updateConnections);
   const updatePulse = usePreferences((s) => s.updatePulse);
+  const updateAi = usePreferences((s) => s.updateAi);
   const customThemes = useThemeStore((s) => s.customThemes);
   const themeId = useThemeStore((s) => s.themeId);
   const setThemeId = useThemeStore((s) => s.setThemeId);
@@ -194,6 +197,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       updateNotifications,
       updateConnections,
       updatePulse,
+      updateAi,
     };
     /** The action's current primary binding, for the row's badge. `undefined`
      *  when it ships or was left unbound, so no empty chip renders. */
@@ -864,6 +868,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     updateNotifications,
     updateConnections,
     updatePulse,
+    updateAi,
     customThemes,
     themeId,
     setThemeId,

@@ -861,6 +861,9 @@ export interface Preferences {
   connections: ConnectionPrefs;
   /** Pulse's background history sampler. See {@link PulsePrefs}. */
   pulse: PulsePrefs;
+  /** The AI panel: where its model lives, and how much it is trusted. See
+   *  {@link AiPrefs}. */
+  ai: AiPrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
    * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
@@ -952,6 +955,106 @@ export interface PulsePrefs {
   sampleWhenMinimized: boolean;
   /** Soft cap on `pulse.db`'s size, in megabytes. `0` disables it. */
   maxDiskMb: number;
+}
+
+/**
+ * How much the user has declared their inference endpoint may be trusted with
+ * data.
+ *
+ * **Declared, never sniffed.** A hostname resolves wherever DNS says it does,
+ * so a rule derived from a resolver's answer is a rule an attacker on the
+ * network gets to edit. The settings panel pre-fills the guess from
+ * loopback/RFC1918 detection; the stored value is the user's answer.
+ *
+ * Mirrors `EndpointTrust` in `src-tauri/src/ai/scope.rs`.
+ */
+export type AiEndpointTrust = "untrusted" | "trusted";
+
+/**
+ * Which capability mode the panel runs in.
+ *
+ * `assisted` is one model call with context Rust assembles, and works on a 4B.
+ * `agent` is a real tool-call loop and needs a tool-capable model — choosing it
+ * is not enough, {@link AiCapability} has to agree.
+ *
+ * Mirrors `AiMode` in `src-tauri/src/prefs.rs`.
+ */
+export type AiMode = "assisted" | "agent";
+
+/**
+ * The AI panel's configuration. Mirrors `AiPrefs` in `src-tauri/src/prefs.rs`.
+ *
+ * The endpoint's API key is deliberately absent: it lives in the OS keychain,
+ * keyed by the endpoint's origin, and no command returns it. The frontend only
+ * ever learns *whether* one is stored (`api.aiHasKey`).
+ */
+export interface AiPrefs {
+  /** Whether the panel is available at all. `false` on every existing install. */
+  enabled: boolean;
+  /** OpenAI-compatible base URL, e.g. `http://localhost:11434/v1`. Validated
+   *  in Rust (`Endpoint::new`), which also refuses any scheme but http/https. */
+  baseUrl: string;
+  /** Model id to ask for. Empty until the user picks one — it depends entirely
+   *  on what their endpoint serves. */
+  model: string;
+  /** See {@link AiEndpointTrust}. Half of the metadata/rows coupling rule; the
+   *  other half is {@link ConnectionProfile.ai_rows_allowed}. */
+  endpointTrust: AiEndpointTrust;
+  /** See {@link AiMode}. */
+  mode: AiMode;
+  /** Ceiling on rows one tool reply may put in the model's context. Clamped in
+   *  Rust to at most 1000. */
+  maxContextRows: number;
+  /** Seconds a socket may go without delivering a byte. Not a total budget — a
+   *  slow model is not a broken one. */
+  requestTimeoutSecs: number;
+}
+
+/**
+ * What the endpoint can do, as measured rather than assumed.
+ *
+ * The discriminant is what gates agent mode: a small model asked to call a tool
+ * will often answer in prose instead, and an agent loop over one is not a
+ * degraded feature but a broken one. Mirrors `Capability` in
+ * `src-tauri/src/ai/probe.rs`.
+ */
+export type AiCapability =
+  | { kind: "unreachable"; reason: string }
+  | { kind: "chatOnly" }
+  | { kind: "toolCapable" };
+
+/** The capability probe's answer. Mirrors `ProbeReport` in `ai/probe.rs`. */
+export interface AiProbeReport {
+  /** The endpoint+model this answer is about. A configuration change
+   *  invalidates it, which the backend handles — the frontend just displays. */
+  key: string;
+  capability: AiCapability;
+  /** Model ids `GET /models` reported. Empty when the endpoint does not
+   *  implement it, which is normal for llama-server and some gateways. */
+  models: string[];
+  /** One or two sentences to show **verbatim**. Paraphrasing loses the detail
+   *  that identifies the misconfiguration. */
+  note: string;
+}
+
+/** One message the panel sends. Mirrors `ChatMessage` in `commands/ai.rs`,
+ *  which refuses any other role. */
+export interface AiChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/** A finished turn. `content` is the whole reply, for reconciling against
+ *  deltas the panel may have missed. */
+export interface AiTurnResult {
+  content: string;
+  finishReason: string | null;
+}
+
+/** One chunk of a streaming reply, from the `huginndb://ai-delta` event. */
+export interface AiDelta {
+  turnId: string;
+  text: string;
 }
 
 /** Live pool footprint, from the `connection_pool_stats` command. */

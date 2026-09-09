@@ -63,7 +63,93 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-    /// A stable label for this configuration, for cache keys and log lines.
+    /// Validate a user-typed configuration into an endpoint.
+    ///
+    /// The one place a base URL is parsed, and therefore the right place to
+    /// refuse a scheme [`allows`] would reject anyway: a `file://` or `data:`
+    /// base can never be *stored* in an `Endpoint`, so the allowlist is not
+    /// merely checking every call — it is checking a value that was already
+    /// constrained on the way in. Rejecting it here also means the user finds
+    /// out in Settings → AI rather than on their first message.
+    ///
+    /// Pure: no keychain, no prefs, no I/O. [`Self::from_prefs`] is the
+    /// wrapper that has those.
+    pub fn new(
+        base_url: &str,
+        model: &str,
+        api_key: Option<String>,
+        timeout_secs: u64,
+    ) -> AppResult<Self> {
+        let base_url = base_url.trim();
+        if base_url.is_empty() {
+            return Err(AppError::Inference(
+                "no inference endpoint is configured — set one in Settings → AI (for a local \
+                 Ollama that is http://localhost:11434/v1)"
+                    .into(),
+            ));
+        }
+        let parsed = Url::parse(base_url)
+            .map_err(|e| AppError::Inference(format!("{base_url:?} is not a valid URL: {e}")))?;
+        if !matches!(parsed.scheme(), "http" | "https") {
+            return Err(AppError::Inference(format!(
+                "the endpoint must be an http or https URL, not {:?}",
+                parsed.scheme()
+            )));
+        }
+        if parsed.host_str().unwrap_or_default().is_empty() {
+            return Err(AppError::Inference(format!(
+                "{base_url:?} has no host — an endpoint needs one, e.g. \
+                 http://localhost:11434/v1"
+            )));
+        }
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(AppError::Inference(
+                "no model is selected — pick one in Settings → AI".into(),
+            ));
+        }
+        Ok(Self {
+            base_url: parsed,
+            model: model.to_string(),
+            api_key: api_key
+                .map(|key| key.trim().to_string())
+                .filter(|key| !key.is_empty()),
+            // Floored so a `0` cannot make every request fail instantly, and
+            // capped so a typo cannot hang a turn for a day.
+            timeout: Duration::from_secs(timeout_secs.clamp(5, 3600)),
+        })
+    }
+
+    /// Build the endpoint the user's preferences describe, with the BYOK key
+    /// from the keychain.
+    ///
+    /// Refuses when the panel is switched off, so no command has to remember
+    /// to check: `enabled` is the master switch, and a command surface where
+    /// one entry point forgot it is exactly how a disabled feature makes a
+    /// network call.
+    pub fn from_prefs(prefs: &crate::prefs::AiPrefs) -> AppResult<Self> {
+        if !prefs.enabled {
+            return Err(AppError::Inference(
+                "the AI panel is switched off — turn it on in Settings → AI".into(),
+            ));
+        }
+        // The key is looked up by origin, so it has to be parsed first. `new`
+        // does that anyway, and doing it twice is cheaper than duplicating the
+        // validation.
+        let endpoint = Self::new(
+            &prefs.base_url,
+            &prefs.model,
+            None,
+            prefs.request_timeout_secs,
+        )?;
+        let api_key = crate::ai::secrets::key(&endpoint.base_url)?;
+        Ok(Self {
+            api_key,
+            ..endpoint
+        })
+    }
+
+    /// A stable label for this configuration, for cache lines and log lines.
     ///
     /// Deliberately excludes the API key: this string ends up in the Console
     /// and in [`crate::ai::probe`]'s cache key, and a secret that reaches
@@ -207,7 +293,7 @@ pub async fn stream_chat(
     http: &Client,
     endpoint: &Endpoint,
     body: &Value,
-    on_text: &mut dyn FnMut(&str),
+    on_text: &mut (dyn FnMut(&str) + Send),
 ) -> AppResult<AssistantMessage> {
     let response = request(http, endpoint, Method::POST, "chat/completions")?
         .json(body)
@@ -243,7 +329,7 @@ pub async fn stream_chat(
 fn fold(
     assembler: &mut MessageAssembler,
     payload: &str,
-    on_text: &mut dyn FnMut(&str),
+    on_text: &mut (dyn FnMut(&str) + Send),
 ) -> AppResult<bool> {
     let payload = payload.trim();
     if payload.is_empty() {
@@ -530,6 +616,65 @@ mod tests {
             declared.contains(crate::ai::tools::LIST_TABLES),
             "{declared}"
         );
+    }
+
+    /// Validation, as a table. Every row is something a user can type into
+    /// the settings field, and the messages are what they read next.
+    #[test]
+    fn an_endpoint_is_validated_once_on_the_way_in() {
+        // A `file://` base can never be *stored*, so the allowlist is guarding
+        // an already-constrained value rather than doing this job alone.
+        for (base, needle) in [
+            ("", "no inference endpoint"),
+            ("   ", "no inference endpoint"),
+            ("file:///etc/passwd", "http or https"),
+            ("data:text/plain,x", "http or https"),
+            ("ftp://host/v1", "http or https"),
+            ("not a url", "not a valid URL"),
+            ("http://", "not a valid URL"),
+        ] {
+            let err = Endpoint::new(base, "m", None, 120)
+                .expect_err("{base} must be refused")
+                .to_string();
+            assert!(err.contains(needle), "{base:?} → {err}");
+        }
+
+        let err = Endpoint::new("http://localhost:11434/v1", "  ", None, 120)
+            .expect_err("a model is required")
+            .to_string();
+        assert!(err.contains("no model is selected"), "{err}");
+
+        let ok = Endpoint::new("  http://localhost:11434/v1  ", " llama3.1:8b ", None, 120)
+            .expect("a valid configuration");
+        assert_eq!(ok.base_url.as_str(), "http://localhost:11434/v1");
+        assert_eq!(ok.model, "llama3.1:8b");
+        assert_eq!(ok.api_key, None);
+    }
+
+    /// A `0` must not make every request fail instantly, and a typo must not
+    /// hang a turn for a day.
+    #[test]
+    fn the_timeout_is_clamped_at_both_ends() {
+        let with = |secs| {
+            Endpoint::new("http://localhost:11434/v1", "m", None, secs)
+                .unwrap()
+                .timeout
+        };
+        assert_eq!(with(0), Duration::from_secs(5));
+        assert_eq!(with(120), Duration::from_secs(120));
+        assert_eq!(with(u64::MAX), Duration::from_secs(3600));
+    }
+
+    /// An empty key is not a key: some gateways reject `Authorization: Bearer`
+    /// with nothing after it, which is a worse failure than sending no header.
+    #[test]
+    fn a_blank_api_key_is_treated_as_absent() {
+        for blank in ["", "   "] {
+            let endpoint =
+                Endpoint::new("https://openrouter.ai/api/v1", "m", Some(blank.into()), 120)
+                    .unwrap();
+            assert_eq!(endpoint.api_key, None, "{blank:?}");
+        }
     }
 
     /// The fingerprint is a cache key *and* a log line. A key in it would be a

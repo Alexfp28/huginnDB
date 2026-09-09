@@ -11,6 +11,7 @@
 //! garbage. Writes go through an atomic temp-file rename so a crash mid-save
 //! cannot leave a half-written file on Windows.
 
+use crate::ai::scope::EndpointTrust;
 use crate::error::AppResult;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -69,6 +70,9 @@ pub struct Preferences {
     pub connections: ConnectionPrefs,
     /// How Pulse's background history sampler behaves. See [`PulsePrefs`].
     pub pulse: PulsePrefs,
+    /// Where the AI panel's model lives and how much it is trusted. See
+    /// [`AiPrefs`].
+    pub ai: AiPrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
     /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
@@ -369,6 +373,90 @@ impl Default for ConnectionPrefs {
     }
 }
 
+/// Which of the AI panel's two capability modes the user has chosen.
+///
+/// A closed set with a real default, unlike the stringly-typed fields
+/// elsewhere in this file: those keep a *frontend-owned* catalogue (theme ids,
+/// notification corners) as the single source of truth, whereas both of these
+/// are decided in Rust — the agent loop either runs or it does not.
+///
+/// [`Self::Assisted`] is the default because it is the mode that works on the
+/// hardware most users have. Choosing [`Self::Agent`] is not enough to get it:
+/// [`crate::ai::probe::Capability::ToolCapable`] must agree, or the panel
+/// stays in assisted mode and says why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AiMode {
+    /// One model call, context assembled deterministically in Rust, no tool
+    /// loop. Works on a 4B.
+    #[default]
+    Assisted,
+    /// A real tool-call loop. Needs a tool-capable model.
+    Agent,
+}
+
+/// The AI panel's configuration.
+///
+/// Off by default, and the two fields that decide what leaves the machine are
+/// the *conservative* ones when absent: [`Self::enabled`] is `false` and
+/// [`Self::endpoint_trust`] is [`EndpointTrust::Untrusted`], so a `prefs.json`
+/// written before this struct existed — which is every one of them — loads into
+/// a configuration that neither talks to a model nor would send it a row.
+///
+/// The endpoint's API key is deliberately **not** here. It lives in the OS
+/// keychain, keyed by the endpoint's origin; see [`crate::ai::secrets`] for why
+/// `prefs.json` is the wrong place for a secret.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AiPrefs {
+    /// Whether the panel is available at all.
+    pub enabled: bool,
+    /// The OpenAI-compatible base URL, e.g. `http://localhost:11434/v1`.
+    ///
+    /// Kept as a `String` rather than a parsed URL because this is what a
+    /// person types into a text field, and it is invalid at almost every
+    /// keystroke. Parsing and validation happen once, at
+    /// [`crate::ai::provider::Endpoint::new`], which is also where a scheme
+    /// other than http/https is refused.
+    pub base_url: String,
+    /// The model id to ask for. Empty until the user picks one — there is no
+    /// sensible default, since it depends entirely on what their endpoint
+    /// serves.
+    pub model: String,
+    /// How much the user has declared this endpoint may be trusted with data.
+    ///
+    /// Declared, never sniffed. See [`EndpointTrust`] and
+    /// [`crate::ai::scope::DataScope::resolve`] — this is one half of the
+    /// coupling rule, the other being `ConnectionProfile::ai_rows_allowed`.
+    pub endpoint_trust: EndpointTrust,
+    /// Assisted or agent. See [`AiMode`].
+    pub mode: AiMode,
+    /// Ceiling on how many rows one tool reply may put in the model's context.
+    /// Clamped at use time by [`crate::ai::exec::effective_row_cap`], so a
+    /// hand-edited million cannot blow up a context window.
+    pub max_context_rows: i64,
+    /// How long a socket may go without delivering a byte before the request
+    /// is declared dead. Not a total budget — a slow model is not a broken
+    /// one; see [`crate::ai::provider::client`].
+    pub request_timeout_secs: u64,
+}
+
+impl Default for AiPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            // Ollama's default, which is the endpoint most users will have
+            // first and costs nothing to pre-fill for the rest.
+            base_url: "http://localhost:11434/v1".into(),
+            model: String::new(),
+            endpoint_trust: EndpointTrust::default(),
+            mode: AiMode::default(),
+            max_context_rows: crate::ai::exec::DEFAULT_MAX_CONTEXT_ROWS,
+            request_timeout_secs: 120,
+        }
+    }
+}
+
 /// Pulse's background history sampler — the one part of Pulse with a real,
 /// recurring cost, so every knob here exists to keep that cost bounded and
 /// visible rather than to add features. Nothing here has any effect on a
@@ -430,6 +518,7 @@ impl Default for Preferences {
             notifications: NotificationPrefs::default(),
             connections: ConnectionPrefs::default(),
             pulse: PulsePrefs::default(),
+            ai: AiPrefs::default(),
             keybindings: HashMap::new(),
         }
     }
@@ -569,6 +658,59 @@ mod tests {
         assert_eq!(parsed.editor.font_family, "JetBrains Mono");
         assert_eq!(parsed.grid.default_page_size, 100);
         assert!(parsed.ui.restore_tabs_on_open);
+    }
+
+    /// Every existing `prefs.json` predates the `ai` group, so this is the
+    /// upgrade path for every install. Two of the defaults are load-bearing
+    /// rather than cosmetic: `enabled: false` means an upgrade never talks to
+    /// a model, and `endpointTrust: untrusted` means that even once it does,
+    /// the coupling rule starts at metadata-only.
+    #[test]
+    fn a_blob_without_the_ai_group_loads_switched_off_and_untrusted() {
+        let before = r#"{ "version": 1, "pulse": { "retentionDays": 7 } }"#;
+        let parsed: Preferences = serde_json::from_str(before).unwrap();
+        assert_eq!(parsed.pulse.retention_days, 7, "the rest must survive");
+        assert!(!parsed.ai.enabled);
+        assert_eq!(parsed.ai.endpoint_trust, EndpointTrust::Untrusted);
+        assert_eq!(parsed.ai.mode, AiMode::Assisted);
+        assert_eq!(parsed.ai.model, "", "no model can be guessed for the user");
+        assert_eq!(parsed.ai.base_url, "http://localhost:11434/v1");
+        assert_eq!(
+            parsed.ai.max_context_rows,
+            crate::ai::exec::DEFAULT_MAX_CONTEXT_ROWS
+        );
+    }
+
+    /// A half-written `ai` group — a user hand-editing the file, or a
+    /// downgrade — must not resolve to "trusted". Absence has to mean the
+    /// conservative answer field by field, not only for the group as a whole.
+    #[test]
+    fn a_partial_ai_group_still_defaults_the_fields_it_omits() {
+        let partial = r#"{ "ai": { "enabled": true, "model": "llama3.1:8b" } }"#;
+        let parsed: Preferences = serde_json::from_str(partial).unwrap();
+        assert!(parsed.ai.enabled);
+        assert_eq!(parsed.ai.model, "llama3.1:8b");
+        assert_eq!(parsed.ai.endpoint_trust, EndpointTrust::Untrusted);
+        assert_eq!(parsed.ai.request_timeout_secs, 120);
+    }
+
+    /// The wire names the frontend mirrors in `types.ts`.
+    #[test]
+    fn the_ai_group_serialises_in_camel_case() {
+        let json = serde_json::to_value(AiPrefs::default()).unwrap();
+        for key in [
+            "enabled",
+            "baseUrl",
+            "model",
+            "endpointTrust",
+            "mode",
+            "maxContextRows",
+            "requestTimeoutSecs",
+        ] {
+            assert!(json.get(key).is_some(), "missing {key} in {json}");
+        }
+        assert_eq!(json["endpointTrust"], serde_json::json!("untrusted"));
+        assert_eq!(json["mode"], serde_json::json!("assisted"));
     }
 
     /// A `prefs.json` written before the notifications group existed — i.e.

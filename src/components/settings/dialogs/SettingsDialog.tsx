@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next";
 import {
   Activity,
   Bell,
+  Bot,
   Cable,
   Network,
   Cog,
@@ -59,6 +60,7 @@ import { AppearanceSection } from "@/components/settings/sections/AppearanceSect
 import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSection";
 import { McpSection } from "@/components/settings/sections/McpSection";
 import { PulseSection } from "@/components/settings/sections/PulseSection";
+import { AiSection } from "@/components/settings/sections/AiSection";
 import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSection";
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
@@ -88,6 +90,10 @@ const SECTIONS: {
   { id: "origins", icon: FolderSync },
   { id: "mcp", icon: Cable },
   { id: "pulse", icon: Activity },
+  // After Pulse and MCP rather than next to the editor knobs: all three are
+  // about what HuginnDB is allowed to reach and what leaves the machine, which
+  // is the question a user comes to this rail with.
+  { id: "ai", icon: Bot },
   { id: "about", icon: Info },
 ];
 
@@ -182,6 +188,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "origins" && <OriginsSection />}
             {section === "mcp" && <McpSection />}
             {section === "pulse" && <PulseSection />}
+            {section === "ai" && <AiSection />}
             {section === "about" && <AboutSection />}
           </main>
         </div>

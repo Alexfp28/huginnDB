@@ -1026,6 +1026,17 @@ pub struct AppState {
     /// about a server that may not be up next time, and a stale "agent mode is
     /// available" restored from a file is worse than no answer at all.
     pub ai_probe: Arc<RwLock<Option<crate::ai::probe::ProbeReport>>>,
+    /// In-flight AI turns, keyed by the turn id the panel generated, each
+    /// holding the handle `ai_cancel` notifies.
+    ///
+    /// A [`tokio::sync::Notify`] rather than a flag polled between chunks,
+    /// because the difference is whether cancellation *works* on the case that
+    /// needs it: a model that has stalled sends no chunks, so a polled flag
+    /// would not be read again until the read timeout — minutes of a spinner
+    /// after the user pressed stop. `commands::ai` selects on this against the
+    /// streaming future, and dropping that future closes the socket, which is
+    /// what makes the abort real rather than cosmetic.
+    pub ai_turns: Arc<RwLock<HashMap<String, Arc<tokio::sync::Notify>>>>,
 }
 
 impl AppState {
@@ -1117,6 +1128,7 @@ impl AppState {
             pulse_window_intents: Arc::new(RwLock::new(HashMap::new())),
             pulse_store: crate::pulse::store::PulseStore::new(),
             ai_probe: Arc::new(RwLock::new(None)),
+            ai_turns: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }

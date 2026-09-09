@@ -8,6 +8,42 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Settings → AI: the configuration for the in-app assistant, off by default.**
+  The panel itself is still being built (`docs/AI_ROADMAP.md` phase 4); what
+  lands here is everything that decides what it would be allowed to do, so the
+  answer to "what leaves my machine" exists before anything can leave it.
+
+  Two independent axes, because conflating them is the mistake this design is
+  built to avoid. **Where inference runs** is a trust level the user *declares* —
+  loopback and RFC1918 only pre-fill the guess, and nothing is ever inferred
+  from a hostname, since DNS is not a security boundary. **What enters the
+  model's context** is separate: a trusted endpoint may read rows, an untrusted
+  one gets table and column names, types, indexes and `EXPLAIN` output only,
+  unless a particular connection opts in. "Read-only" was never the same promise
+  as "nothing leaves" — a read-only assistant running
+  `SELECT * FROM patients LIMIT 50` has sent fifty patient records to whatever
+  endpoint is configured.
+
+  Reach is per connection and off on every existing profile, as is row access;
+  both are strictly local, preserved across a shared-origin sync and cleared on
+  import, because what a language model on *this* machine may read is not a
+  decision a publisher two machines away gets to make. Any OpenAI-compatible
+  endpoint works — Ollama, LM Studio, `llama-server`, vLLM, or a cloud provider
+  with your own key — and plain `http` is allowed on purpose, because one GPU box
+  serving an office LAN is the deployment this feature is designed around. A
+  BYOK key goes to the OS keychain, keyed to that endpoint's host so editing the
+  URL cannot send it elsewhere, and no command ever reads it back.
+
+  "Test endpoint" measures what the model can actually do rather than assuming:
+  small models asked to call a tool often answer in prose instead, and an agent
+  loop over one is not a degraded feature but a broken one. The verdict —
+  tool-capable, chat only, or unreachable with the server's own reason — is shown
+  verbatim, and agent mode says so when the measured model cannot drive it.
+
+  The panel's own copy points at Settings → MCP for anyone who already pays for
+  Claude or ChatGPT: those subscriptions cannot be spent through HuginnDB, and
+  the connector is the sanctioned route.
+
 - **A publisher can send a corrected connection back to the shared origin
   without reopening the editor.** Saving an origin-owned connection on the
   machine that publishes it now offers to publish that one row. Until now the
@@ -64,6 +100,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a one-way door: a profile saved from a pasted string could never be edited as
   a form again. It now asks, naming each thing that folding would discard, and
   keeps whatever was legible.
+
+### Fixed
+
+- **The clear button in three search fields showed a raw translation key.**
+  `common.clear` was referenced by the search boxes in Settings → MCP and
+  Settings → Pulse and by two connection dialogs, and existed in neither locale,
+  so the accessible label read `common.clear` to a screen reader in both English
+  and Spanish.
 
 ## [1.21.5] — 2026-09-07
 

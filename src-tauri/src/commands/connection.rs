@@ -460,9 +460,9 @@ pub fn set_mcp_write_policy(
 ///
 /// Deliberately scoped to fields that touch neither the keychain nor anything a
 /// shared origin publishes: every current caller sets a *local* trust or
-/// resource decision (`mcp_write`, `mcp_exposed`, `pulse_enabled`), which is
-/// what makes running one over an origin-owned profile safe. Reach for
-/// `save_profile` for anything else.
+/// resource decision (`mcp_write`, `mcp_exposed`, `pulse_enabled`,
+/// `ai_enabled`, `ai_rows_allowed`), which is what makes running one over an
+/// origin-owned profile safe. Reach for `save_profile` for anything else.
 fn set_local_flag(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -536,6 +536,55 @@ pub fn set_mcp_exposed(
             return false;
         }
         p.mcp_exposed = exposed;
+        true
+    })
+}
+
+/// Let the in-app AI panel reach (or stop reaching) several connections.
+///
+/// The same shape and the same local-only reasoning as the three commands
+/// above — `merge_into` preserves it across a shared-origin sync and the bundle
+/// import clears it, because what a language model on *this* machine may read
+/// is not a publisher's decision.
+///
+/// One level coarser than [`set_ai_rows_allowed`] below, and the one to reach
+/// for first: a connection that is off is not reachable by the assistant at
+/// all, by name or by id (`crate::ai::exec::resolve_connection`), so it is also
+/// the answer to "never let the assistant near this client's database".
+#[tauri::command]
+pub fn set_ai_enabled(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    enabled: bool,
+) -> AppResult<usize> {
+    set_local_flag(app, state, ids, |p| {
+        if p.ai_enabled == enabled {
+            return false;
+        }
+        p.ai_enabled = enabled;
+        true
+    })
+}
+
+/// Allow (or stop allowing) these connections' **rows** to reach an inference
+/// endpoint the user has not declared as their own infrastructure.
+///
+/// The per-connection half of `crate::ai`'s coupling rule. It changes nothing
+/// for a trusted endpoint, which may read rows regardless — see
+/// `crate::ai::scope::DataScope::resolve`, which documents that asymmetry.
+#[tauri::command]
+pub fn set_ai_rows_allowed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    allowed: bool,
+) -> AppResult<usize> {
+    set_local_flag(app, state, ids, |p| {
+        if p.ai_rows_allowed == allowed {
+            return false;
+        }
+        p.ai_rows_allowed = allowed;
         true
     })
 }

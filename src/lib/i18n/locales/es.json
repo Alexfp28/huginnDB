@@ -22,7 +22,8 @@
     "errorPanelCrashed": "Algo falló al renderizar este panel.",
     "add": "Añadir",
     "import": "Importar",
-    "export": "Exportar"
+    "export": "Exportar",
+    "clear": "Limpiar"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -1164,6 +1165,10 @@
       "jsonSchemas": {
         "label": "Esquemas JSON",
         "desc": "Validación por columna"
+      },
+      "ai": {
+        "label": "IA",
+        "desc": "Asistente local"
       }
     },
     "general": {
@@ -1512,7 +1517,7 @@
       },
       "bridgeIdleTtl": {
         "label": "Cerrar conexiones del conector inactivas tras",
-        "desc": "Segundos que una conexi\u00f3n abierta por el conector MCP puede estar sin usarse antes de cerrarse. La app no las muestra en ninguna parte, y el conector vuelve a abrirla por su cuenta en la siguiente llamada. 0 las mantiene hasta que cierres la app."
+        "desc": "Segundos que una conexión abierta por el conector MCP puede estar sin usarse antes de cerrarse. La app no las muestra en ninguna parte, y el conector vuelve a abrirla por su cuenta en la siguiente llamada. 0 las mantiene hasta que cierres la app."
       },
       "keepalive": {
         "label": "Intervalo de keepalive",
@@ -1587,7 +1592,76 @@
       }
     },
     "persistFailed": "No se pudieron guardar tus preferencias",
-    "hydrateFailed": "Se ha arrancado con las preferencias por defecto"
+    "hydrateFailed": "Se ha arrancado con las preferencias por defecto",
+    "ai": {
+      "intro": "Dónde corre el modelo del asistente, cuánto se confía en ese endpoint con tus datos y qué conexiones puede leer. Desactivado por defecto, y nada de aquí llega a una base de datos hasta que habilites una conexión abajo.",
+      "enabled": {
+        "label": "Activar el panel de IA",
+        "desc": "Desactivado en toda instalación existente. Mientras esté apagado, HuginnDB no hace ninguna petición a ningún endpoint de inferencia."
+      },
+      "baseUrl": {
+        "label": "Endpoint",
+        "desc": "Una URL base compatible con OpenAI — Ollama, LM Studio, llama-server, vLLM o un proveedor en la nube. Se permite http sin cifrar a propósito: una sola máquina con GPU sirviendo a la LAN de la oficina (http://ai-internal:11434/v1) es el despliegue para el que está pensada esta función. Cualquier esquema que no sea http o https se rechaza."
+      },
+      "model": {
+        "label": "Modelo",
+        "desc": "El id del modelo que se va a pedir. Prueba el endpoint abajo y esto pasa a ser una lista — salvo que el servidor no publique ninguna, lo normal en llama-server."
+      },
+      "modelPlaceholder": "p. ej. qwen2.5-coder:7b",
+      "trust": {
+        "label": "Confianza del endpoint",
+        "desc": "Si este endpoint es tu propia infraestructura. Lo declaras tú; HuginnDB nunca lo deduce del nombre de host, porque el DNS no es una frontera de seguridad. Un endpoint de confianza puede leer filas. Uno no confiable recibe solo nombres de tablas y columnas, tipos, índices y salida de EXPLAIN — salvo que una conexión de abajo lo autorice.",
+        "untrusted": "Terceros",
+        "trusted": "Mi infraestructura",
+        "looksLocal": "Este endpoint parece local (loopback o una red privada) pero está marcado como de terceros, así que las filas se retienen salvo que una conexión lo autorice abajo.",
+        "looksRemote": "Este endpoint no parece local y está marcado como tu propia infraestructura. Se le pueden enviar filas de cualquier conexión alcanzable."
+      },
+      "mode": {
+        "label": "Modo",
+        "desc": "Asistido hace una sola llamada al modelo con el contexto que HuginnDB monta por su cuenta, y funciona en un modelo local pequeño. Agente ejecuta un bucle real de llamadas a herramientas y necesita un modelo que las emita de forma fiable.",
+        "assisted": "Asistido",
+        "agent": "Agente",
+        "notToolCapable": "Este modelo no emite llamadas a herramientas fiables, así que el modo agente no funcionará con él. El modo asistido sí está disponible."
+      },
+      "maxContextRows": {
+        "label": "Presupuesto de filas",
+        "desc": "Cuántas filas puede meter en el contexto del modelo la respuesta de una herramienta. Mucho menos que una página de la cuadrícula a propósito: una ventana de contexto es un presupuesto más estrecho que una pantalla, y el modelo razona peor a medida que se llena. Tope de 1000."
+      },
+      "requestTimeoutSecs": {
+        "label": "Tiempo de inactividad",
+        "desc": "Segundos que una petición puede estar sin recibir un byte antes de abandonarla. No es un presupuesto total — un modelo lento que responde bien no es un modelo roto."
+      },
+      "keyLabel": "Clave de API",
+      "keyStored": "Guardada",
+      "keyHint": "Solo hace falta para un proveedor en la nube; cualquier servidor local la ignora. Se guarda en el llavero del sistema y va ligada al host de este endpoint, así que cambiar el endpoint de arriba no puede enviar esta clave a otro sitio. HuginnDB no la vuelve a mostrar.",
+      "keyPlaceholder": "Pega una clave",
+      "keyReplacePlaceholder": "Pega una clave para sustituir la guardada",
+      "keyClear": "Olvidar",
+      "probeLabel": "Comprobación del endpoint",
+      "probeRun": "Probar endpoint",
+      "probeUntested": "Sin probar todavía. La comprobación pregunta al endpoint qué modelos sirve y hace una llamada pequeña a una herramienta, así que cuesta una petición real.",
+      "probeDisabled": "Activa el panel arriba para probar el endpoint.",
+      "capability": {
+        "toolCapable": "Con herramientas",
+        "chatOnly": "Solo chat",
+        "unreachable": "Inalcanzable"
+      },
+      "connectionsLabel": "Conexiones que el asistente puede leer",
+      "connectionsHint": "Dos decisiones distintas por conexión. Alcance es si el asistente puede verla siquiera — apagado significa que no se la puede nombrar, ni por nombre ni por id. Filas es si se pueden enviar datos de filas a un endpoint no confiable; los metadatos nunca dependen de esto.",
+      "enabledCount": "{{enabled}} de {{total}} alcanzables",
+      "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
+      "enableAll": "Activar todas",
+      "disableAll": "Desactivar todas",
+      "enableAllInSection": "Conmutar todas las conexiones de {{section}}",
+      "rowsColumn": "Filas",
+      "reachColumn": "Alcance",
+      "rowsTooltip": "Permitir que se envíen al endpoint las filas de esta conexión. Los metadatos se envían igual.",
+      "rowsTrustedTooltip": "El endpoint está marcado como tu propia infraestructura, así que las filas se permiten de todos modos. Para retener esta conexión por completo, quítale el alcance.",
+      "rowsFor": "Permitir filas de {{name}}",
+      "reachFor": "Dejar que el asistente alcance {{name}}",
+      "mcpAlternative": "¿Ya pagas Claude o ChatGPT? Esas suscripciones no se pueden gastar a través de HuginnDB. La vía autorizada es el conector MCP, que deja que Claude Code, Claude Desktop o Cursor lean tus bases de datos a través de HuginnDB — a cambio de que tus datos vayan a ese proveedor.",
+      "mcpAlternativeLink": "Abrir ajustes de MCP"
+    }
   },
   "notifications": {
     "openFolder": "Abrir carpeta",

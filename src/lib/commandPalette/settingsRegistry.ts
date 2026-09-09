@@ -45,6 +45,7 @@ export interface PrefsWriters {
   updateNotifications: (patch: Partial<Preferences["notifications"]>) => void;
   updateConnections: (patch: Partial<Preferences["connections"]>) => void;
   updatePulse: (patch: Partial<Preferences["pulse"]>) => void;
+  updateAi: (patch: Partial<Preferences["ai"]>) => void;
 }
 
 export interface SettingEntry {
@@ -582,5 +583,76 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: onOff((p) => p.pulse.sampleWhenMinimized),
     toggle: (p, w) =>
       w.updatePulse({ sampleWhenMinimized: !p.pulse.sampleWhenMinimized }),
+  },
+
+  // ── AI ────────────────────────────────────────────────────────────────────
+  {
+    prefId: "ai.enabled",
+    section: "ai",
+    labelKey: "settings.ai.enabled.label",
+    descKey: "settings.ai.enabled.desc",
+    keywords: "ai assistant llm model chat ia asistente modelo",
+    value: onOff((p) => p.ai.enabled),
+    toggle: (p, w) => w.updateAi({ enabled: !p.ai.enabled }),
+  },
+  {
+    prefId: "ai.baseUrl",
+    section: "ai",
+    labelKey: "settings.ai.baseUrl.label",
+    descKey: "settings.ai.baseUrl.desc",
+    keywords:
+      "ai endpoint url ollama lm studio llama vllm openrouter local ia endpoint local",
+    value: text((p) => p.ai.baseUrl),
+  },
+  {
+    prefId: "ai.model",
+    section: "ai",
+    labelKey: "settings.ai.model.label",
+    descKey: "settings.ai.model.desc",
+    keywords: "ai model llm ia modelo",
+    value: text((p) => p.ai.model),
+  },
+  {
+    prefId: "ai.endpointTrust",
+    section: "ai",
+    labelKey: "settings.ai.trust.label",
+    descKey: "settings.ai.trust.desc",
+    keywords:
+      "ai trust endpoint rows privacy local infrastructure ia confianza filas privacidad infraestructura",
+    value: (p) => ({
+      i18nKey:
+        p.ai.endpointTrust === "trusted"
+          ? "settings.ai.trust.trusted"
+          : "settings.ai.trust.untrusted",
+    }),
+  },
+  {
+    prefId: "ai.mode",
+    section: "ai",
+    labelKey: "settings.ai.mode.label",
+    descKey: "settings.ai.mode.desc",
+    keywords: "ai mode assisted agent tools ia modo asistido agente herramientas",
+    value: (p) => ({
+      i18nKey:
+        p.ai.mode === "agent"
+          ? "settings.ai.mode.agent"
+          : "settings.ai.mode.assisted",
+    }),
+  },
+  {
+    prefId: "ai.maxContextRows",
+    section: "ai",
+    labelKey: "settings.ai.maxContextRows.label",
+    descKey: "settings.ai.maxContextRows.desc",
+    keywords: "ai rows context budget limit ia filas contexto limite",
+    value: num((p) => p.ai.maxContextRows),
+  },
+  {
+    prefId: "ai.requestTimeoutSecs",
+    section: "ai",
+    labelKey: "settings.ai.requestTimeoutSecs.label",
+    descKey: "settings.ai.requestTimeoutSecs.desc",
+    keywords: "ai timeout idle seconds ia tiempo espera segundos",
+    value: num((p) => p.ai.requestTimeoutSecs),
   },
 ];

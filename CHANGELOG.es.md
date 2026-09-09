@@ -10,6 +10,46 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Ajustes → IA: la configuración del asistente integrado, desactivada por
+  defecto.** El panel en sí todavía se está construyendo (fase 4 de
+  `docs/AI_ROADMAP.md`); lo que entra aquí es todo lo que decide qué se le
+  permitiría hacer, de modo que la respuesta a "qué sale de mi máquina" exista
+  antes de que pueda salir nada.
+
+  Dos ejes independientes, porque confundirlos es justo el error que este diseño
+  quiere evitar. **Dónde corre la inferencia** es un nivel de confianza que
+  *declara* el usuario — loopback y RFC1918 solo rellenan la propuesta, y nunca
+  se deduce nada del nombre de host, porque el DNS no es una frontera de
+  seguridad. **Qué entra en el contexto del modelo** es otra cosa: un endpoint de
+  confianza puede leer filas; uno no confiable recibe solo nombres de tablas y
+  columnas, tipos, índices y salida de `EXPLAIN`, salvo que una conexión concreta
+  lo autorice. "Solo lectura" nunca fue la misma promesa que "no sale nada": un
+  asistente de solo lectura que ejecuta `SELECT * FROM pacientes LIMIT 50` ha
+  enviado cincuenta registros de pacientes a lo que haya configurado.
+
+  El alcance es por conexión y está apagado en todos los perfiles existentes, y
+  el acceso a filas igual; ambos son estrictamente locales, se preservan al
+  sincronizar un origen compartido y se limpian al importar, porque lo que un
+  modelo de lenguaje puede leer en *esta* máquina no lo decide quien publica a
+  dos máquinas de distancia. Funciona cualquier endpoint compatible con OpenAI —
+  Ollama, LM Studio, `llama-server`, vLLM o un proveedor en la nube con tu propia
+  clave — y se permite `http` sin cifrar a propósito, porque una sola máquina con
+  GPU sirviendo a la LAN de la oficina es el despliegue para el que está pensado
+  todo esto. Una clave propia va al llavero del sistema, ligada al host de ese
+  endpoint para que cambiar la URL no pueda enviarla a otro sitio, y ningún
+  comando la devuelve nunca.
+
+  "Probar endpoint" mide lo que el modelo puede hacer de verdad en vez de
+  suponerlo: los modelos pequeños a los que se les pide llamar a una herramienta
+  suelen responder en prosa, y un bucle de agente sobre uno de esos no es una
+  función degradada sino una función rota. El veredicto — con herramientas, solo
+  chat, o inalcanzable con el motivo que dé el servidor — se muestra literal, y
+  el modo agente avisa cuando el modelo medido no puede sostenerlo.
+
+  El propio panel remite a Ajustes → MCP para quien ya paga Claude o ChatGPT:
+  esas suscripciones no se pueden gastar a través de HuginnDB, y el conector es
+  la vía autorizada.
+
 - **Quien publica un origen puede devolverle una conexión corregida sin volver a
   abrir el editor.** Al guardar una conexión propiedad de un origen desde la
   máquina que lo publica, ahora se ofrece publicar esa única fila. Hasta ahora la
@@ -71,6 +111,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   guardado desde una cadena pegada no se podía volver a editar como formulario
   nunca más. Ahora pregunta, nombrando cada cosa que se perdería al plegarlo, y
   conserva todo lo que sí era legible.
+
+### Corregido
+
+- **El botón de limpiar de tres campos de búsqueda mostraba una clave de
+  traducción en crudo.** `common.clear` lo usaban los buscadores de Ajustes → MCP
+  y Ajustes → Pulse y dos diálogos de conexión, y no existía en ninguno de los
+  dos idiomas, así que la etiqueta accesible se leía como `common.clear` tanto en
+  inglés como en español.
 
 ## [1.21.5] — 2026-09-07
 

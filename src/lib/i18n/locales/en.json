@@ -22,7 +22,8 @@
     "errorPanelCrashed": "Something went wrong rendering this panel.",
     "add": "Add",
     "import": "Import",
-    "export": "Export"
+    "export": "Export",
+    "clear": "Clear"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -481,7 +482,7 @@
     "dropDatabase": {
       "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone.",
       "done": "Dropped the database {{name}}",
-        "failed": "Could not drop the database {{name}}"
+      "failed": "Could not drop the database {{name}}"
     },
     "exportDatabase": {
       "title": "Export database…",
@@ -1164,6 +1165,10 @@
       "jsonSchemas": {
         "label": "JSON Schemas",
         "desc": "Validation per column"
+      },
+      "ai": {
+        "label": "AI",
+        "desc": "Local-first assistant"
       }
     },
     "general": {
@@ -1587,7 +1592,76 @@
       }
     },
     "persistFailed": "Could not save your preferences",
-    "hydrateFailed": "Started with default preferences"
+    "hydrateFailed": "Started with default preferences",
+    "ai": {
+      "intro": "Where the assistant's model runs, how much that endpoint is trusted with your data, and which connections it may read. Off by default, and nothing here reaches a database until a connection is enabled below.",
+      "enabled": {
+        "label": "Enable the AI panel",
+        "desc": "Off on every existing install. While it is off, HuginnDB makes no request to any inference endpoint."
+      },
+      "baseUrl": {
+        "label": "Endpoint",
+        "desc": "An OpenAI-compatible base URL — Ollama, LM Studio, llama-server, vLLM, or a cloud provider. Plain http is allowed on purpose: one GPU box serving the office LAN (http://ai-internal:11434/v1) is the deployment this feature is built around. Every scheme but http and https is refused."
+      },
+      "model": {
+        "label": "Model",
+        "desc": "The model id to ask for. Test the endpoint below and this becomes a list — unless the server does not publish one, which is normal for llama-server."
+      },
+      "modelPlaceholder": "e.g. qwen2.5-coder:7b",
+      "trust": {
+        "label": "Endpoint trust",
+        "desc": "Whether this endpoint is your own infrastructure. You declare it; HuginnDB never infers it from a hostname, because DNS is not a security boundary. A trusted endpoint may read rows. An untrusted one gets table and column names, types, indexes and EXPLAIN output only — unless a connection below opts in.",
+        "untrusted": "Third party",
+        "trusted": "My infrastructure",
+        "looksLocal": "This endpoint looks local (loopback or a private network) but is marked as a third party, so rows are withheld unless a connection opts in below.",
+        "looksRemote": "This endpoint does not look local, and it is marked as your own infrastructure. Rows from every reachable connection may be sent to it."
+      },
+      "mode": {
+        "label": "Mode",
+        "desc": "Assisted makes one model call with context HuginnDB assembles itself, and works on a small local model. Agent runs a real tool-call loop and needs a model that emits reliable tool calls.",
+        "assisted": "Assisted",
+        "agent": "Agent",
+        "notToolCapable": "This model does not emit reliable tool calls, so agent mode will not work with it. Assisted mode is available."
+      },
+      "maxContextRows": {
+        "label": "Row budget",
+        "desc": "How many rows one tool reply may put into the model's context. Much smaller than a page of the grid on purpose: a context window is a tighter budget than a screen, and a model reasons worse as it fills. Capped at 1000."
+      },
+      "requestTimeoutSecs": {
+        "label": "Idle timeout",
+        "desc": "Seconds a request may go without receiving a byte before it is abandoned. Not a total budget — a slow model answering correctly is not a broken one."
+      },
+      "keyLabel": "API key",
+      "keyStored": "Stored",
+      "keyHint": "Only needed for a cloud provider; every local server ignores it. Stored in the OS keychain and keyed to this endpoint's host, so changing the endpoint above cannot send this key somewhere else. HuginnDB never shows it again.",
+      "keyPlaceholder": "Paste a key",
+      "keyReplacePlaceholder": "Paste a key to replace the stored one",
+      "keyClear": "Forget",
+      "probeLabel": "Endpoint check",
+      "probeRun": "Test endpoint",
+      "probeUntested": "Not tested yet. The check asks the endpoint which models it serves and makes one small tool call, so it costs a real request.",
+      "probeDisabled": "Enable the panel above to test the endpoint.",
+      "capability": {
+        "toolCapable": "Tool-capable",
+        "chatOnly": "Chat only",
+        "unreachable": "Unreachable"
+      },
+      "connectionsLabel": "Connections the assistant may read",
+      "connectionsHint": "Two separate decisions per connection. Reach is whether the assistant can see it at all — off means it cannot be named, by name or by id. Rows is whether row data may be sent to an untrusted endpoint; metadata never depends on it.",
+      "enabledCount": "{{enabled}} of {{total}} reachable",
+      "noConnections": "No saved connections yet — add one first.",
+      "enableAll": "Enable all",
+      "disableAll": "Disable all",
+      "enableAllInSection": "Toggle every connection in {{section}}",
+      "rowsColumn": "Rows",
+      "reachColumn": "Reach",
+      "rowsTooltip": "Allow this connection's rows to be sent to the endpoint. Metadata is sent either way.",
+      "rowsTrustedTooltip": "The endpoint is marked as your own infrastructure, so rows are allowed regardless. To withhold this connection entirely, turn its reach off.",
+      "rowsFor": "Allow rows from {{name}}",
+      "reachFor": "Let the assistant reach {{name}}",
+      "mcpAlternative": "Already paying for Claude or ChatGPT? Those subscriptions cannot be spent through HuginnDB. The sanctioned path is the MCP connector, which lets Claude Code, Claude Desktop or Cursor read your databases through HuginnDB — at the cost of your data going to that vendor.",
+      "mcpAlternativeLink": "Open MCP settings"
+    }
   },
   "notifications": {
     "openFolder": "Open folder",

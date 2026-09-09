@@ -13,6 +13,9 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AiChatMessage,
+  AiProbeReport,
+  AiTurnResult,
   AppTab,
   BulkUpdatePreview,
   CellValue,
@@ -155,6 +158,78 @@ export const api = {
    */
   setMcpExposed: (ids: string[], exposed: boolean) =>
     invoke<number>("set_mcp_exposed", { ids, exposed }),
+
+  /**
+   * Let the in-app AI panel reach (or stop reaching) several connections in one
+   * write. Same "how many actually changed" return as `setMcpWritePolicy`.
+   *
+   * The coarse switch, and the one to reach for first: a connection that is off
+   * is not reachable by the assistant at all — the backend resolves a model's
+   * connection reference only among enabled profiles, so it cannot be named by
+   * id either.
+   */
+  setAiEnabled: (ids: string[], enabled: boolean) =>
+    invoke<number>("set_ai_enabled", { ids, enabled }),
+
+  /**
+   * Allow these connections' **rows** to reach an inference endpoint the user
+   * has not declared as their own infrastructure.
+   *
+   * Changes nothing for a *trusted* endpoint, which may read rows regardless —
+   * see `DataScope::resolve` in `src-tauri/src/ai/scope.rs`, which documents
+   * that asymmetry. Metadata (names, types, indexes, EXPLAIN) is never gated by
+   * this.
+   */
+  setAiRowsAllowed: (ids: string[], allowed: boolean) =>
+    invoke<number>("set_ai_rows_allowed", { ids, allowed }),
+
+  /**
+   * Measure what the configured inference endpoint can actually do.
+   *
+   * Cached in the backend across calls, because the probe costs a real
+   * completion against the user's model — pass `refresh` for the "test again"
+   * button. Never throws for an unreachable endpoint: that comes back as
+   * `capability.kind === "unreachable"` with the reason, since it is a result
+   * the settings panel has to display rather than an error.
+   */
+  aiProbe: (refresh = false) => invoke<AiProbeReport>("ai_probe", { refresh }),
+
+  /**
+   * Stream one turn. Text arrives as `huginndb://ai-delta` events scoped to
+   * this window; the resolved value is the whole assembled reply, so a panel
+   * that missed a delta can reconcile against it.
+   *
+   * `turnId` is the caller's to generate and is what `aiCancel` addresses.
+   */
+  aiSend: (turnId: string, messages: AiChatMessage[]) =>
+    invoke<AiTurnResult>("ai_send", { turnId, messages }),
+
+  /**
+   * Abort an in-flight turn. Returns whether there was one, so a stop button
+   * can tell "stopped" from "it had already finished".
+   *
+   * This closes the socket rather than merely stopping the rendering — the text
+   * already streamed stays on screen, which is the honest outcome of stopping
+   * halfway.
+   */
+  aiCancel: (turnId: string) => invoke<boolean>("ai_cancel", { turnId }),
+
+  /**
+   * Store a BYOK key for the configured endpoint, in the OS keychain.
+   *
+   * Keyed by the endpoint's *origin*, so this is not a global "the API key": a
+   * key belongs to the host that issued it, and editing the base URL therefore
+   * cannot send it somewhere else. There is deliberately no command that reads
+   * it back — see `aiHasKey`.
+   */
+  aiSetKey: (key: string) => invoke<void>("ai_set_key", { key }),
+
+  /** Whether a key is stored for the configured endpoint. The only thing the
+   *  frontend is ever told about it. */
+  aiHasKey: () => invoke<boolean>("ai_has_key"),
+
+  /** Forget the key for the configured endpoint. Succeeds when there was none. */
+  aiClearKey: () => invoke<void>("ai_clear_key"),
 
   /**
    * Run `claude mcp add huginndb -s user -- <sidecar>` for the user, instead of

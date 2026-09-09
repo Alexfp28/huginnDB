@@ -22,6 +22,7 @@ export type SettingsSection =
   | "origins"
   | "mcp"
   | "pulse"
+  | "ai"
   | "about";
 
 interface SettingsDialogState {
