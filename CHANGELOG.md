@@ -19,6 +19,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   total confidence — and it streams token by token, with a stop button that
   actually aborts the request rather than just stopping the rendering.
 
+  The composer carries the two knobs that change an answer: a model picker fed
+  by the endpoint's own `/models` list, and the effort track described below. A
+  badge in the header says whether the assistant may see **rows** or **metadata
+  only** for this connection, and it says so on the screen where you are
+  working rather than only in Settings — a guarantee nobody can see is a
+  guarantee nobody has reason to believe.
+
   **Nothing it proposes runs from the chat.** A statement arrives in a small
   read-only editor with an "open in editor" affordance per statement, which
   hands it to a query tab: every guard already lives there, the result has a
@@ -71,16 +78,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   tool-capable, chat only, or unreachable with the server's own reason — is shown
   verbatim, and agent mode says so when the measured model cannot drive it.
 
-  A **thinking** control, because nearly every model on the current local
+  An **effort** control, because nearly every model on the current local
   library is a thinking model and left alone it spends a paragraph of reasoning
-  before the first useful token — which in a chat panel reads as a hang. It maps
-  onto `reasoning_effort`; *Automatic* sends nothing at all and is the default,
-  since OpenAI rejects the field outright on a model that does not reason, so a
-  build that always sent a value would break BYOK against much of their
-  catalogue. For a local model in assisted mode, *None* is the setting you
-  want. And whatever the server does with the field, reasoning that arrives
-  inlined in `<think>` tags is stripped from the message rather than rendered as
-  prose.
+  before the first useful token — which in a chat panel reads as a hang. It sits
+  in the composer as well as here, as a track with five stops running from
+  faster to smarter, because the choice is an ordered trade-off and a list of
+  six equal-looking words says none of that. *Automatic* is a switch rather than
+  a sixth stop, since it is not less effort: it sends no `reasoning_effort` at
+  all, which is the only setting a strict server cannot reject — OpenAI refuses
+  the field outright on a model that does not reason. For a local model in
+  assisted mode, turn effort off. And whatever the server does with the field,
+  reasoning that arrives inlined in `<think>` tags is stripped from the message
+  rather than rendered as prose.
 
   The panel's own copy points at Settings → MCP for anyone who already pays for
   Claude or ChatGPT: those subscriptions cannot be spent through HuginnDB, and

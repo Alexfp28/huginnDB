@@ -21,6 +21,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   seguridad — y llega token a token, con un botón de parar que aborta la
   petición de verdad en vez de limitarse a dejar de pintar.
 
+  El compositor lleva los dos mandos que cambian una respuesta: un selector de
+  modelo alimentado por la propia lista `/models` del endpoint, y la pista de
+  esfuerzo que se describe más abajo. Una etiqueta en la cabecera dice si el
+  asistente puede ver **filas** o **solo metadatos** en esta conexión, y lo dice
+  en la pantalla donde estás trabajando y no solo en Ajustes — una garantía que
+  nadie puede ver es una garantía que nadie tiene motivo para creer.
+
   **Nada de lo que propone se ejecuta desde el chat.** Una sentencia aparece en
   un editor pequeño de solo lectura con un "abrir en el editor" por sentencia,
   que la entrega a una pestaña de consulta: allí ya están todas las
@@ -79,16 +86,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   chat, o inalcanzable con el motivo que dé el servidor — se muestra literal, y
   el modo agente avisa cuando el modelo medido no puede sostenerlo.
 
-  Un control de **razonamiento**, porque casi todos los modelos de la
-  biblioteca local actual razonan y a su aire se gastan un párrafo de
-  razonamiento antes del primer token útil — que en un panel de chat se lee como
-  un cuelgue. Se traduce a `reasoning_effort`; *Automático* no envía nada y es
-  el valor por defecto, porque OpenAI rechaza el campo de plano en un modelo que
-  no razona, así que un build que enviara siempre un valor rompería el BYOK
-  contra buena parte de su catálogo. Para un modelo local en modo asistido,
-  *Ninguno* es lo que quieres. Y haga lo que haga el servidor con el campo, el
-  razonamiento que llegue incrustado en etiquetas `<think>` se recorta del
-  mensaje en vez de pintarse como prosa.
+  Un control de **esfuerzo**, porque casi todos los modelos de la biblioteca
+  local actual razonan y a su aire se gastan un párrafo de razonamiento antes
+  del primer token útil — que en un panel de chat se lee como un cuelgue. Está
+  en el compositor además de aquí, como una pista de cinco topes que va de más
+  rápido a más inteligente, porque la elección es una compensación ordenada y
+  una lista de seis palabras con el mismo peso no dice nada de eso.
+  *Automático* es un interruptor y no un sexto tope, porque no es menos
+  esfuerzo: no envía ningún `reasoning_effort`, que es el único ajuste que un
+  servidor estricto no puede rechazar — OpenAI rechaza el campo de plano en un
+  modelo que no razona. Para un modelo local en modo asistido, quita el
+  esfuerzo. Y haga lo que haga el servidor con el campo, el razonamiento que
+  llegue incrustado en etiquetas `<think>` se recorta del mensaje en vez de
+  pintarse como prosa.
 
   El propio panel remite a Ajustes → MCP para quien ya paga Claude o ChatGPT:
   esas suscripciones no se pueden gastar a través de HuginnDB, y el conector es

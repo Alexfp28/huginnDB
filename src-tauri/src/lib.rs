@@ -306,6 +306,7 @@ pub fn run() {
             commands::connection::set_ai_enabled,
             commands::connection::set_ai_rows_allowed,
             commands::ai::ai_probe,
+            commands::ai::ai_models,
             commands::ai::ai_send,
             commands::ai::ai_cancel,
             commands::ai::ai_set_key,

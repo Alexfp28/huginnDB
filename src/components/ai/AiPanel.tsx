@@ -28,21 +28,30 @@
  * that connection's own thread instead of re-pointing this one.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, Eraser, Send, Settings2, Square } from "lucide-react";
+import { Bot, Copy, Eraser, Send, Settings2, Square } from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
+import { copyToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
-import { resolveConnectionLabel } from "@/lib/connectionLabel";
+import {
+  parentConnectionId,
+  resolveConnectionLabel,
+} from "@/lib/connectionLabel";
+import { resolveDataScope } from "@/lib/ai/scope";
 import {
   hasVisibleContent,
+  messageText,
   resultFor,
   toWireMessages,
   type AiMessage,
@@ -61,12 +70,14 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import { ReasoningPicker } from "./ReasoningPicker";
 import { TextPart } from "./parts/TextPart";
 import { ToolCallCard } from "./parts/ToolCallCard";
 
 export function AiPanel({ connectionId }: { connectionId: string | null }) {
   const { t } = useTranslation();
   const ai = usePreferences(selectAiPrefs);
+  const updateAi = usePreferences((s) => s.updateAi);
   const profiles = useConnections((s) => s.profiles);
   const openSettings = useSettingsDialog((s) => s.openAt);
 
@@ -78,6 +89,42 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
   const toggleToolDetails = useAi((s) => s.toggleToolDetails);
   const setDraft = useAi((s) => s.setDraft);
   const clear = useAi((s) => s.clear);
+
+  // Populated from `GET /models`, which is one cheap request rather than the
+  // probe's real completion. An endpoint that does not serve the route (normal
+  // for llama-server) leaves this empty and the picker falls back to the model
+  // the user typed in Settings.
+  const [models, setModels] = useState<string[]>([]);
+  useEffect(() => {
+    if (!ai.enabled) return;
+    let cancelled = false;
+    void api
+      .aiModels()
+      .then((list) => {
+        if (!cancelled) setModels(list);
+      })
+      .catch(() => {
+        if (!cancelled) setModels([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ai.enabled, ai.baseUrl]);
+
+  // The connection's own half of the coupling rule. A synthetic per-database id
+  // (`<parent>::db::<name>`) carries no profile of its own, so the flags are
+  // read from the parent — the same connection as far as the backend's gate is
+  // concerned.
+  const profile = useMemo(() => {
+    if (!connectionId) return undefined;
+    const parent = parentConnectionId(connectionId);
+    return profiles.find((p) => p.id === parent);
+  }, [profiles, connectionId]);
+  const reachable = !!profile?.ai_enabled;
+  const scope = resolveDataScope(
+    ai.endpointTrust,
+    !!profile?.ai_rows_allowed,
+  );
 
   const scroller = useRef<HTMLDivElement>(null);
   // Follow the stream. Only ever pinned to the bottom — a "scroll up to read
@@ -149,6 +196,19 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
         <span className={cn(MICRO_HEADING, "truncate text-muted-foreground")}>
           {resolveConnectionLabel(profiles, connectionId)}
         </span>
+        <SimpleTooltip
+          label={
+            scope === "rows"
+              ? t("ai.scope.rowsHint")
+              : t("ai.scope.metadataOnlyHint")
+          }
+        >
+          <span className="shrink-0">
+            <Badge tone={scope === "rows" ? "warning" : "neutral"} size="xs">
+              {t(`ai.scope.${scope}`)}
+            </Badge>
+          </span>
+        </SimpleTooltip>
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           <IconButton
             size="xs"
@@ -170,6 +230,20 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
           />
         </span>
       </div>
+
+      {!reachable && (
+        <div className="border-b border-warning/40 bg-warning/5 px-2 py-1.5">
+          <p className="text-2xs text-warning">{t("ai.notReachable")}</p>
+          <Button
+            variant="link"
+            size="xs"
+            className="h-auto p-0 text-2xs"
+            onClick={() => openSettings("ai")}
+          >
+            {t("ai.openSettings")}
+          </Button>
+        </div>
+      )}
 
       <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
         {messages.length === 0 ? (
@@ -208,6 +282,41 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
       </div>
 
       <div className="border-t border-border p-2">
+        {/* The two knobs that change an answer, next to the thing that asks
+            for one. Both write straight to preferences rather than to a
+            per-conversation override: this *is* the model and the effort in
+            force, so Settings → AI shows the same values live, and a panel
+            that quietly diverged from the settings screen would be the worse
+            surprise. */}
+        <div className="mb-1.5 flex items-center gap-1">
+          <NativeSelect
+            size="xs"
+            mono
+            aria-label={t("ai.modelLabel")}
+            value={ai.model}
+            onChange={(e) => updateAi({ model: e.target.value })}
+            className="min-w-0 flex-1"
+          >
+            {ai.model === "" && (
+              <option value="">{t("ai.noModel")}</option>
+            )}
+            {/* The configured model always appears, even when the endpoint
+                serves no list or has not been asked yet — otherwise the select
+                would render blank and look like it had lost the setting. */}
+            {(models.includes(ai.model) || ai.model === ""
+              ? models
+              : [ai.model, ...models]
+            ).map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </NativeSelect>
+          <ReasoningPicker
+            value={ai.reasoningEffort}
+            onChange={(reasoningEffort) => updateAi({ reasoningEffort })}
+          />
+        </div>
         <Textarea
           value={draft}
           rows={2}
@@ -226,7 +335,7 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
         />
         <div className="flex items-center gap-1.5">
           <span className="truncate text-3xs text-muted-foreground">
-            {ai.model || t("ai.noModel")}
+            {t("ai.enterHint")}
           </span>
           <span className="ml-auto shrink-0">
             {turnId ? (
@@ -265,16 +374,34 @@ function Message({
 }) {
   const { t } = useTranslation();
   const mine = message.role === "user";
+  const text = messageText(message);
   return (
     <div
       className={cn(
-        "rounded-md px-2 py-1.5",
+        "group/row rounded-md px-2 py-1.5",
         mine ? "bg-muted/40" : "bg-transparent",
       )}
     >
-      <span className={cn(MICRO_HEADING, "text-muted-foreground")}>
-        {mine ? t("ai.you") : t("ai.assistant")}
-      </span>
+      <div className="flex items-center gap-1">
+        <span className={cn(MICRO_HEADING, "text-muted-foreground")}>
+          {mine ? t("ai.you") : t("ai.assistant")}
+        </span>
+        {text.trim().length > 0 && (
+          <span className="ml-auto shrink-0">
+            <IconButton
+              size="xs"
+              icon={Copy}
+              label={t("common.copy")}
+              revealOnHover="row"
+              onClick={() => {
+                void copyToClipboard(text).then(() =>
+                  notify.success(t("ai.copied")),
+                );
+              }}
+            />
+          </span>
+        )}
+      </div>
       <div className="mt-1 space-y-1.5">
         {message.parts.map((part, i) => {
           if (part.type === "text") {

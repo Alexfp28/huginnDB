@@ -1633,14 +1633,6 @@
         "label": "Thinking",
         "desc": "How much a thinking model should reason before answering, sent as reasoning_effort. Nearly every current local model is a thinking model, and left alone it spends a paragraph of reasoning before the first useful token — pick None for a local model in assisted mode. Automatic sends nothing at all, which is the only setting guaranteed not to be rejected: OpenAI refuses the field outright on a model that does not reason."
       },
-      "reasoning": {
-        "auto": "Automatic (send nothing)",
-        "none": "None",
-        "low": "Low",
-        "medium": "Medium",
-        "high": "High",
-        "max": "Max"
-      },
       "requestTimeoutSecs": {
         "label": "Idle timeout",
         "desc": "Seconds a request may go without receiving a byte before it is abandoned. Not a total budget — a slow model answering correctly is not a broken one."
@@ -2823,6 +2815,40 @@
     "hideToolDetails": "Collapse tool details by default",
     "openInEditor": "Open in editor",
     "openInEditorHint": "Open this statement in a query tab. Nothing runs until you run it there.",
+    "modelLabel": "Model",
+    "enterHint": "Enter to send",
+    "copied": "Copied",
+    "notReachable": "The assistant cannot read this connection — it has no reach. It can still answer from what you paste in.",
+    "scope": {
+      "metadataOnly": "metadata only",
+      "rows": "rows allowed",
+      "metadataOnlyHint": "This endpoint is marked as a third party, so the assistant may see table and column names, types, indexes and EXPLAIN output — never row data. Anything you paste in yourself is sent regardless.",
+      "rowsHint": "Row data from this connection may be sent to the endpoint, because the endpoint is marked as your own infrastructure or this connection allows rows."
+    },
+    "effort": {
+      "title": "Effort",
+      "faster": "Faster",
+      "smarter": "Smarter",
+      "help": "How much a thinking model reasons before it answers. More is slower and usually better; most local models reason by default and spend a paragraph on it before the first useful token.",
+      "autoLabel": "Automatic",
+      "autoHint": "Send nothing and let the server decide. The only setting no endpoint can reject.",
+      "level": {
+        "auto": "Automatic",
+        "none": "Off",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "max": "Max"
+      }
+    },
+    "reasoningShort": {
+      "auto": "Think: auto",
+      "none": "Think: off",
+      "low": "Think: low",
+      "medium": "Think: med",
+      "high": "Think: high",
+      "max": "Think: max"
+    },
     "tool": {
       "arguments": "Arguments",
       "error": "Refused",

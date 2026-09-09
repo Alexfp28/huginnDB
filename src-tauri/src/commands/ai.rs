@@ -122,6 +122,26 @@ pub async fn ai_probe(state: State<'_, AppState>, refresh: bool) -> AppResult<Pr
     Ok(report)
 }
 
+/// The model ids the configured endpoint serves.
+///
+/// Deliberately **not** [`ai_probe`]: a dropdown needs a list, not a capability
+/// verdict, and the probe costs a real completion against the user's model. The
+/// panel opens this every time it mounts, so it has to be one cheap `GET` —
+/// which is also why an endpoint that does not implement `/models` (normal for
+/// `llama-server` and several gateways) is an empty list here and a caller's
+/// problem to degrade from, not an error worth a notification.
+#[tauri::command]
+pub async fn ai_models(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    let endpoint = {
+        let prefs = state.prefs.read();
+        Endpoint::from_prefs(&prefs.ai)?
+    };
+    let http = provider::client(endpoint.timeout)?;
+    Ok(provider::list_models(&http, &endpoint)
+        .await
+        .unwrap_or_default())
+}
+
 /// Stream one turn, emitting [`AI_DELTA_EVENT`] as text arrives.
 #[tauri::command]
 pub async fn ai_send(

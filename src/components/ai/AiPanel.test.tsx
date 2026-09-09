@@ -29,12 +29,14 @@ const aiSend = vi.fn<
   (turnId: string, messages: AiChatMessage[]) => Promise<AiTurnResult>
 >();
 const aiCancel = vi.fn<(turnId: string) => Promise<boolean>>();
+const aiModels = vi.fn<() => Promise<string[]>>();
 
 vi.mock("@/lib/tauri", () => ({
   api: {
     aiSend: (turnId: string, messages: AiChatMessage[]) =>
       aiSend(turnId, messages),
     aiCancel: (turnId: string) => aiCancel(turnId),
+    aiModels: () => aiModels(),
     // The preferences store schedules a debounced save on every setter.
     updatePreferences: () => Promise.resolve(),
   },
@@ -57,6 +59,7 @@ function enablePanel(enabled: boolean) {
 beforeEach(() => {
   aiSend.mockReset();
   aiCancel.mockReset().mockResolvedValue(true);
+  aiModels.mockReset().mockResolvedValue(["llama3.1:8b", "gemma4:12b"]);
   useAi.setState({ conversations: {}, turnOwners: {}, drafts: {} });
   enablePanel(true);
 });

@@ -654,7 +654,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     descKey: "settings.ai.reasoningEffort.desc",
     keywords:
       "ai reasoning effort thinking think ia razonamiento pensar esfuerzo",
-    value: (p) => ({ i18nKey: `settings.ai.reasoning.${p.ai.reasoningEffort}` }),
+    value: (p) => ({ i18nKey: `ai.effort.level.${p.ai.reasoningEffort}` }),
   },
   {
     prefId: "ai.requestTimeoutSecs",

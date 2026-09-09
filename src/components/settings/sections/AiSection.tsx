@@ -50,9 +50,10 @@ import {
   selectAiPrefs,
 } from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
-import type { AiPrefs, AiProbeReport, ConnectionProfile } from "@/types";
+import type { AiProbeReport, ConnectionProfile } from "@/types";
 import { PrefRow } from "./PrefRow";
 import { AiConnectionTree } from "./AiConnectionTree";
+import { ReasoningPicker } from "@/components/ai/ReasoningPicker";
 
 export function AiSection() {
   const { t } = useTranslation();
@@ -313,27 +314,15 @@ export function AiSection() {
           label={t("settings.ai.reasoningEffort.label")}
           prefId="ai.reasoningEffort"
           description={t("settings.ai.reasoningEffort.desc")}
-          htmlFor="prefs-ai-reasoning"
         >
-          <NativeSelect
-            id="prefs-ai-reasoning"
-            size="sm"
+          {/* The same control the panel's composer carries, rather than a
+              second vocabulary for one setting: a slider here and a dropdown
+              there would leave the two surfaces disagreeing about what the
+              choice even is. */}
+          <ReasoningPicker
             value={ai.reasoningEffort}
-            onChange={(e) =>
-              updateAi({
-                reasoningEffort: e.target.value as AiPrefs["reasoningEffort"],
-              })
-            }
-            className="w-40"
-          >
-            {(
-              ["auto", "none", "low", "medium", "high", "max"] as const
-            ).map((value) => (
-              <option key={value} value={value}>
-                {t(`settings.ai.reasoning.${value}`)}
-              </option>
-            ))}
-          </NativeSelect>
+            onChange={(reasoningEffort) => updateAi({ reasoningEffort })}
+          />
         </PrefRow>
 
         <PrefRow

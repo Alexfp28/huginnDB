@@ -195,6 +195,17 @@ export const api = {
   aiProbe: (refresh = false) => invoke<AiProbeReport>("ai_probe", { refresh }),
 
   /**
+   * The model ids the configured endpoint serves, for a picker.
+   *
+   * Deliberately not `aiProbe`: that costs a real completion, and a dropdown
+   * needs a list rather than a capability verdict. An endpoint that does not
+   * implement `/models` — normal for llama-server and several gateways — comes
+   * back as an empty array rather than an error, so a caller shows the model
+   * the user typed instead of a failure.
+   */
+  aiModels: () => invoke<string[]>("ai_models"),
+
+  /**
    * Stream one turn. Text arrives as `huginndb://ai-delta` events scoped to
    * this window; the resolved value is the whole assembled reply, so a panel
    * that missed a delta can reconcile against it.
