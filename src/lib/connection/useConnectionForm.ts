@@ -19,13 +19,18 @@
  *
  * - **`loadFields`** is the single place a stored profile becomes form state,
  *   including MongoDB's form-vs-raw decision: a URI that parses back into the
- *   discrete fields opens in form mode, anything lossy (SRV, multi-host, an
- *   embedded password, extra options) opens in raw-edit showing it verbatim.
+ *   discrete fields opens in form mode — options the form does not model
+ *   included, since those ride along in `mongoExtraOptions` — and only the four
+ *   shapes a form genuinely cannot hold (SRV, multi-host, an embedded password,
+ *   an unparseable URI) open in raw-edit showing it verbatim.
  * - **`onDriverChange`** only moves the port when it still holds the previous
  *   driver's default, so a hand-picked port survives switching driver.
  * - **`onToggleMongoUriManual`** folds an edited URI back into the fields when
- *   it is representable and otherwise *stays* in raw-edit, rather than silently
- *   dropping what it cannot express.
+ *   it is representable, and otherwise **asks**: it raises
+ *   `mongoFoldConflict` naming what folding would discard and waits, rather
+ *   than either dropping it silently or refusing forever. Refusing forever was
+ *   the old behaviour and it was a dead end — a profile saved from a pasted URI
+ *   could never be edited as a form again, whatever the user wanted.
  * - **`normalizeServerName`** splits SSMS's single-box `HOST\INSTANCE` on blur.
  *   `splitSqlServerName` is the UI twin of the authoritative Rust
  *   `split_instance` (gotcha #37).
@@ -40,7 +45,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { buildMongoUri, parseMongoUri } from "@/lib/db/mongoUri";
+import {
+  buildMongoUri,
+  parseMongoUri,
+  parseMongoUriLossy,
+  type MongoUriFields,
+  type MongoUriLoss,
+  type MongoUriOption,
+} from "@/lib/db/mongoUri";
 import { splitSqlServerName, supportsSshTunnel } from "@/lib/db/driver";
 import { DEFAULT_PORTS } from "@/lib/constants";
 import { api } from "@/lib/tauri";
@@ -86,9 +98,29 @@ export function useConnectionForm(open: boolean) {
    */
   const [mongoDirectConnection, setMongoDirectConnection] = useState(false);
   /** When true, the MongoDB connection string is edited by hand (Compass-style
-   *  escape hatch for SRV / replica sets / extra URI options) and the discrete
-   *  fields are disabled. */
+   *  escape hatch for SRV / replica sets / multi-host seed lists) and the
+   *  discrete fields are disabled. */
   const [mongoUriManual, setMongoUriManual] = useState(false);
+  /**
+   * Query options the form does not model, carried between parse and build so
+   * that editing a `retryWrites=true&w=majority` profile in form mode does not
+   * publish a URI without them. Never rendered: the derived connection-string
+   * field below the form is where the user sees them.
+   */
+  const [mongoExtraOptions, setMongoExtraOptions] = useState<MongoUriOption[]>(
+    [],
+  );
+  /**
+   * A pending request to leave raw-edit mode with a URI the form cannot hold.
+   *
+   * Set instead of acting, because folding here *discards* something — the
+   * extra hosts of a seed list, the SRV lookup, an embedded password — and that
+   * is the user's call to make, not the toggle's. `ConnectionDialog` renders it
+   * as a confirmation naming each `lost` reason; confirming calls
+   * [`confirmMongoUriFold`] and cancelling leaves raw-edit exactly as it was.
+   */
+  const [mongoFoldConflict, setMongoFoldConflict] =
+    useState<MongoUriLoss[] | null>(null);
 
   // SQL Server fields ------------------------------------------------------
   /** Named instance (`SQLEXPRESS`). Non-empty makes the port irrelevant: the
@@ -136,12 +168,14 @@ export function useConnectionForm(open: boolean) {
 
       // MongoDB: decide form vs raw-edit mode. A stored URI we can parse back
       // into the discrete fields opens in form mode (re-populating host / port
-      // / db / user / authSource from the URI); anything we can't represent
-      // losslessly (SRV, multi-host, embedded password, extra options) opens
-      // in raw-edit mode showing the URI verbatim.
+      // / db / user / authSource from the URI, and carrying every option
+      // outside that set through untouched); only a URI no form can hold — SRV,
+      // multi-host, an embedded password, unparseable — opens in raw-edit mode
+      // showing the URI verbatim.
       if (p.driver === "mongodb") {
         const cs = (p.connection_string ?? "").trim();
         const parsed = cs ? parseMongoUri(cs) : null;
+        setMongoExtraOptions(parsed?.extraOptions ?? []);
         if (cs && !parsed) {
           setMongoUriManual(true);
         } else {
@@ -164,7 +198,11 @@ export function useConnectionForm(open: boolean) {
       } else {
         setMongoUriManual(false);
         setMongoDirectConnection(false);
+        setMongoExtraOptions([]);
       }
+      // A fresh load answers whatever the previous profile's toggle was still
+      // asking: the URI it was about to fold is not on screen any more.
+      setMongoFoldConflict(null);
 
       const tunnel = p.ssh_tunnel;
       if (tunnel) {
@@ -206,6 +244,8 @@ export function useConnectionForm(open: boolean) {
       setAuthSource("");
       setMongoUriManual(false);
       setMongoDirectConnection(false);
+      setMongoExtraOptions([]);
+      setMongoFoldConflict(null);
       setMssqlInstance("");
       setMssqlTrustCert(true);
       setMssqlAuth("sql");
@@ -234,8 +274,17 @@ export function useConnectionForm(open: boolean) {
         username,
         authSource,
         directConnection: mongoDirectConnection,
+        extraOptions: mongoExtraOptions,
       }),
-    [host, port, database, username, authSource, mongoDirectConnection],
+    [
+      host,
+      port,
+      database,
+      username,
+      authSource,
+      mongoDirectConnection,
+      mongoExtraOptions,
+    ],
   );
 
   /** The URI this profile will actually connect with: the hand-edited buffer
@@ -279,28 +328,59 @@ export function useConnectionForm(open: boolean) {
     }
   }
 
-  /** Toggle the MongoDB raw-edit mode. Entering seeds the buffer from the
-   *  field-built URI; leaving folds the (possibly edited) URI back into the
-   *  fields when it's representable, otherwise stays in raw-edit so SRV /
-   *  multi-host / option-rich URIs aren't silently lost. */
+  /** Apply a parsed URI to the discrete fields and leave raw-edit mode. The
+   *  one place either fold path writes, so the lossy fold cannot forget a
+   *  field the clean one remembers. */
+  function applyMongoFields(parsed: MongoUriFields) {
+    setHost(parsed.host);
+    setPort(parsed.port);
+    setDatabase(parsed.database);
+    setUsername(parsed.username);
+    setAuthSource(parsed.authSource);
+    setMongoDirectConnection(parsed.directConnection);
+    setMongoExtraOptions(parsed.extraOptions);
+    setMongoUriManual(false);
+    setMongoFoldConflict(null);
+  }
+
+  /**
+   * Toggle the MongoDB raw-edit mode. Entering seeds the buffer from the
+   * field-built URI; leaving folds the (possibly edited) URI back into the
+   * fields.
+   *
+   * A URI the form cannot hold does **not** cancel the toggle any more: it
+   * raises [`mongoFoldConflict`] so the dialog can name what folding would
+   * discard and let the user decide. Silently refusing was worse than it
+   * sounds — a profile saved from a pasted SRV string was stuck in raw-edit
+   * for the rest of its life, with the switch flipping back under the cursor
+   * and nothing on screen saying why.
+   */
   function onToggleMongoUriManual(next: boolean) {
     if (next) {
       setConnectionString(builtMongoUri);
       setMongoUriManual(true);
+      setMongoFoldConflict(null);
       return;
     }
     const parsed = parseMongoUri(connectionString);
     if (parsed) {
-      setHost(parsed.host);
-      setPort(parsed.port);
-      setDatabase(parsed.database);
-      setUsername(parsed.username);
-      setAuthSource(parsed.authSource);
-      setMongoDirectConnection(parsed.directConnection);
-      setMongoUriManual(false);
+      applyMongoFields(parsed);
+      return;
     }
-    // else: parse failed — keep raw-edit on (the Switch reflects mongoUriManual,
-    // so it visibly stays enabled). The amber banner already explains why.
+    setMongoFoldConflict(parseMongoUriLossy(connectionString).lost);
+  }
+
+  /** Fold the raw URI in anyway, keeping whatever the form can hold and
+   *  dropping the rest. Only ever reached through the confirmation the
+   *  `mongoFoldConflict` reasons drive. */
+  function confirmMongoUriFold() {
+    applyMongoFields(parseMongoUriLossy(connectionString).fields);
+  }
+
+  /** Leave raw-edit mode alone. The switch reflects `mongoUriManual`, so it
+   *  visibly stays on. */
+  function cancelMongoUriFold() {
+    setMongoFoldConflict(null);
   }
 
   // Refresh the trusted fingerprint display whenever the SSH host:port
@@ -341,6 +421,8 @@ export function useConnectionForm(open: boolean) {
     authSource, setAuthSource,
     mongoDirectConnection, setMongoDirectConnection,
     mongoUriManual, onToggleMongoUriManual,
+    mongoExtraOptions,
+    mongoFoldConflict, confirmMongoUriFold, cancelMongoUriFold,
     builtMongoUri,
     effectiveMongoUri,
     isMongoSrv,

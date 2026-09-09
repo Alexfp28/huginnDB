@@ -234,9 +234,9 @@
       "directConnectionHint": "Talk only to this host and skip replica-set discovery. Needed when the set's members aren't reachable under the names it reports.",
       "connectionString": "Connection string",
       "connectionStringPlaceholder": "mongodb://localhost:27017  or  mongodb+srv://user:pass@cluster.mongodb.net/db",
-      "connectionStringHint": "Built automatically from the fields above. The password is stored securely and is not embedded.",
+      "connectionStringHint": "Built automatically from the fields above, keeping any URI option the form doesn't show. The password is stored securely and is not embedded.",
       "editConnectionString": "Edit connection string",
-      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Use this for Atlas (mongodb+srv://), replica sets, or extra URI options the form doesn't cover.",
+      "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Needed for Atlas (mongodb+srv://) and multi-host seed lists; other URI options are carried through by the form on their own.",
       "maxConnections": "Max connections for this server",
       "maxConnectionsHint": "Total connections HuginnDB may hold against this server, shared with every database view on it. Blank uses the global preference. It travels with the connection to exports and to the MCP connector.",
       "maxConnectionsPlaceholder": "default"
@@ -298,7 +298,25 @@
     "fromOrigin": "This connection comes from a shared origin, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
     "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
     "fromOriginEditable": "This connection comes from the shared origin “{{origin}}”, which you publish — changes here are saved on this computer and reach everyone else the next time you publish.",
-    "editAtOrigin": "Edit at the origin…"
+    "editAtOrigin": "Edit at the origin…",
+    "mongoFold": {
+      "title": "Go back to the form?",
+      "description": "The connection string you typed can't be described by the form. Going back keeps the host, port, database, user and options it can read, and discards the rest.",
+      "confirm": "Go back to the form",
+      "lost": {
+        "srv": "The mongodb+srv:// lookup: the form connects to one host directly, without asking DNS for the cluster's members.",
+        "multiHost": "Every host but the first: the form has one Host field.",
+        "embeddedPassword": "The password written into the string. Retype it in the Password field and it will be stored in the system keychain instead.",
+        "unparseable": "Anything unreadable: the string isn't a valid MongoDB URI, so the form starts from the little that was legible."
+      },
+      "lostShort": {
+        "srv": "SRV lookup dropped",
+        "multiHost": "extra hosts dropped",
+        "embeddedPassword": "embedded password dropped",
+        "unparseable": "unreadable parts dropped"
+      }
+    },
+    "mongoFoldDone": "Connection string folded back into the form"
   },
   "adhocDriver": {
     "title": "Which database driver?",

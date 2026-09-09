@@ -67,7 +67,9 @@ import {
 } from "@/lib/connection/useConnectionForm";
 import { api } from "@/lib/tauri";
 import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteConnectionsDialog";
+import { MongoUriFoldDialog } from "@/components/connection/dialogs/MongoUriFoldDialog";
 import { isFromOrigin } from "@/lib/connection/origin";
+import { notify } from "@/lib/notify";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
 import { useOriginName, useOrigins } from "@/stores/sync/origins";
 import type {
@@ -151,6 +153,9 @@ export function ConnectionDialog({
     setMongoDirectConnection,
     mongoUriManual,
     onToggleMongoUriManual,
+    mongoFoldConflict,
+    confirmMongoUriFold,
+    cancelMongoUriFold,
     effectiveMongoUri,
     isMongoSrv,
     mssqlInstance,
@@ -1335,6 +1340,25 @@ export function ConnectionDialog({
           }}
         />
       )}
+      <MongoUriFoldDialog
+        lost={mongoFoldConflict}
+        onConfirm={() => {
+          const lost = mongoFoldConflict ?? [];
+          confirmMongoUriFold();
+          // The form visibly repopulates, so the fold itself needs no
+          // announcement — what does is the part that is *not* on screen: the
+          // hosts, the SRV lookup or the password that just stopped existing.
+          // A pill, since the count is the whole message (gotcha #64).
+          notify.warning(t("connectionDialog.mongoFoldDone"), {
+            description: lost
+              .map((reason) =>
+                t(`connectionDialog.mongoFold.lostShort.${reason}`),
+              )
+              .join(", "),
+          });
+        }}
+        onCancel={cancelMongoUriFold}
+      />
     </>
   );
 }

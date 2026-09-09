@@ -234,9 +234,9 @@
       "directConnectionHint": "Hablar solo con este host y omitir el descubrimiento del replica set. Necesario cuando los miembros del conjunto no son alcanzables con los nombres que él mismo anuncia.",
       "connectionString": "Cadena de conexión",
       "connectionStringPlaceholder": "mongodb://localhost:27017  o  mongodb+srv://user:pass@cluster.mongodb.net/db",
-      "connectionStringHint": "Se construye automáticamente a partir de los campos de arriba. La contraseña se guarda de forma segura y no se incrusta en la cadena.",
+      "connectionStringHint": "Se construye automáticamente a partir de los campos de arriba, conservando las opciones de la URI que el formulario no muestra. La contraseña se guarda de forma segura y no se incrusta en la cadena.",
       "editConnectionString": "Editar cadena de conexión",
-      "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Úsalo para Atlas (mongodb+srv://), replica sets u opciones de la URI que el formulario no cubre.",
+      "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Hace falta para Atlas (mongodb+srv://) y listas de varios hosts; el resto de opciones de la URI las conserva el formulario por su cuenta.",
       "maxConnections": "Máximo de conexiones para este servidor",
       "maxConnectionsHint": "Total de conexiones que HuginnDB puede mantener contra este servidor, compartido con todas sus vistas de base de datos. En blanco usa la preferencia global. Viaja con la conexión a las exportaciones y al conector MCP.",
       "maxConnectionsPlaceholder": "por defecto"
@@ -298,7 +298,25 @@
     "fromOrigin": "Esta conexión viene de un origen compartido, así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
     "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
     "fromOriginEditable": "Esta conexión viene del origen compartido «{{origin}}», que tú publicas — los cambios aquí se guardan en este equipo y llegan a los demás la próxima vez que publiques.",
-    "editAtOrigin": "Editar en el origen…"
+    "editAtOrigin": "Editar en el origen…",
+    "mongoFold": {
+      "title": "¿Volver al formulario?",
+      "description": "La cadena de conexión que has escrito no se puede describir con el formulario. Al volver se conservan el host, el puerto, la base de datos, el usuario y las opciones que sí puede leer, y se descarta el resto.",
+      "confirm": "Volver al formulario",
+      "lost": {
+        "srv": "La resolución mongodb+srv://: el formulario conecta directamente contra un host, sin preguntar a DNS por los miembros del clúster.",
+        "multiHost": "Todos los hosts menos el primero: el formulario tiene un único campo Host.",
+        "embeddedPassword": "La contraseña escrita dentro de la cadena. Vuelve a escribirla en el campo Contraseña y se guardará en el llavero del sistema.",
+        "unparseable": "Todo lo ilegible: la cadena no es una URI de MongoDB válida, así que el formulario parte de lo poco que se ha podido leer."
+      },
+      "lostShort": {
+        "srv": "resolución SRV descartada",
+        "multiHost": "hosts adicionales descartados",
+        "embeddedPassword": "contraseña incrustada descartada",
+        "unparseable": "partes ilegibles descartadas"
+      }
+    },
+    "mongoFoldDone": "Cadena de conexión plegada al formulario"
   },
   "adhocDriver": {
     "title": "¿Qué driver de base de datos?",
