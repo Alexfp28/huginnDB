@@ -1013,6 +1013,19 @@ pub struct AppState {
     /// first sampler tick), not at startup, so an install with Pulse never
     /// enabled never creates the file. See [`crate::pulse::store::PulseStore`].
     pub pulse_store: crate::pulse::store::PulseStore,
+    /// The AI panel's last capability probe, or `None` before the first one.
+    ///
+    /// Cached because the probe costs a real completion against the user's
+    /// endpoint — on a local 7B that is seconds, and re-running it every time
+    /// the settings panel mounts would make the panel feel broken. Keyed by
+    /// [`crate::ai::provider::Endpoint::fingerprint`] inside the report, so a
+    /// changed base URL or model invalidates it rather than showing the
+    /// previous endpoint's verdict; see [`crate::ai::probe::cached`].
+    ///
+    /// Session-only, deliberately. Nothing about it goes to disk: the answer is
+    /// about a server that may not be up next time, and a stale "agent mode is
+    /// available" restored from a file is worse than no answer at all.
+    pub ai_probe: Arc<RwLock<Option<crate::ai::probe::ProbeReport>>>,
 }
 
 impl AppState {
@@ -1103,6 +1116,7 @@ impl AppState {
             detached_tab_intents: Arc::new(RwLock::new(HashMap::new())),
             pulse_window_intents: Arc::new(RwLock::new(HashMap::new())),
             pulse_store: crate::pulse::store::PulseStore::new(),
+            ai_probe: Arc::new(RwLock::new(None)),
         }
     }
 }

@@ -12,8 +12,9 @@
 //!
 //! **The webview never talks to the model.** Every byte of HTTP to an
 //! inference endpoint happens in Rust, through one client, against an
-//! allowlist derived solely from the configured base URL (phase 2's
-//! `ai::provider`). This is the network counterpart of "the frontend never
+//! allowlist derived solely from the configured base URL — see
+//! [`provider::request`], the only function in the crate that can address an
+//! endpoint. This is the network counterpart of "the frontend never
 //! talks to a database", and it is load-bearing precisely *because* `csp` is
 //! `null` — Monaco loads its workers as blobs, so the webview is not a barrier
 //! to anything. Egress is auditable only if exactly one function can make the
@@ -59,5 +60,9 @@
 #![allow(dead_code)]
 
 pub mod exec;
+pub mod probe;
+pub mod provider;
 pub mod scope;
+pub mod secrets;
+pub mod stream;
 pub mod tools;

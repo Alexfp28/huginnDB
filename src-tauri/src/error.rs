@@ -113,6 +113,20 @@ pub enum AppError {
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
 
+    /// The AI panel's inference endpoint refused, or answered something the
+    /// stream reader could not use.
+    ///
+    /// Its own variant rather than [`Self::Network`] or [`Self::InvalidInput`]
+    /// because the panel has to tell three failures apart, and only this one is
+    /// about the *endpoint*: a model that is unreachable or returns a 4xx is a
+    /// configuration problem the user fixes in Settings → AI, a tool call with
+    /// a bad table name is the model's mistake to retry, and a driver error is
+    /// the database's. [`Self::Network`] cannot carry the first: `reqwest`
+    /// raises no error for an HTTP status, and a refusal streamed as a frame
+    /// after a `200` raises none at all.
+    #[error("inference error: {0}")]
+    Inference(String),
+
     /// Tauri window-management failure (e.g. creating a new window).
     #[error("window error: {0}")]
     Window(#[from] tauri::Error),
