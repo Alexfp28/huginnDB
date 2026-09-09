@@ -196,5 +196,22 @@ pub async fn open_pool(
     });
 
     let client = Client::with_options(options)?;
-    Ok((DbPool::Mongo(MongoConn { client, database }), handle))
+    let conn = MongoConn { client, database };
+    // Fail fast on an unreachable host or bad credentials, instead of surfacing
+    // the failure on the first schema read. `Client::with_options` is *lazy* —
+    // it parses, validates and spawns the driver's monitor tasks without ever
+    // touching the network — so without this MongoDB was the one driver of five
+    // whose `connect` could not fail: the sqlx pools probe in
+    // `db::pool::connect_probed` and SQL Server pings in `mssql::open_pool`,
+    // both for exactly this reason. What made it more than a latency
+    // difference is that `useSchema.refresh` swallows its error onto the slice
+    // rather than rethrowing, so `connectAndWarm` went on to report
+    // "Connected" for a server that had never answered. See gotcha #68.
+    //
+    // Bounded by the `server_selection_timeout` set above, and it is the same
+    // `ping` "Test connection" has always run through `db::pool::smoke_test` —
+    // which is the evidence that `admin.ping` is reachable wherever a profile
+    // works at all.
+    schema::ping(&conn).await?;
+    Ok((DbPool::Mongo(conn), handle))
 }

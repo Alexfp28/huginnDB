@@ -54,10 +54,19 @@ export const DB_VIEW_WARM_CONCURRENCY = 3;
 export interface WarmResult {
   /** Databases whose table list is now in the store. */
   loaded: number;
-  /** Databases skipped because the server refused more connections. */
+  /** Databases whose view would not open, or whose table list would not read. */
   skipped: number;
   /** The connection-limit error, when that is what stopped us. */
   limitError: unknown | null;
+  /**
+   * The first failure that was *not* a connection limit, kept so a caller can
+   * say what went wrong rather than only how many.
+   *
+   * Before this existed, every non-limit failure was reduced to `skipped += 1`
+   * and the error itself was dropped on the floor — so a Mongo server that had
+   * gone away across nineteen databases produced a counter and nothing else.
+   */
+  firstError: unknown | null;
 }
 
 /**
@@ -66,13 +75,21 @@ export interface WarmResult {
  *
  * Individual failures are counted and skipped — one unreachable database
  * shouldn't cost the others — but a connection-limit refusal aborts the rest.
+ * The first non-limit failure is kept in `firstError` so the caller can name
+ * it; reporting per database is deliberately left to the caller, since a
+ * fan-out of nineteen would otherwise be nineteen cards.
  */
 export async function warmDatabases(
   parentId: string,
   databases: string[],
 ): Promise<WarmResult> {
   const queue = [...databases];
-  const result: WarmResult = { loaded: 0, skipped: 0, limitError: null };
+  const result: WarmResult = {
+    loaded: 0,
+    skipped: 0,
+    limitError: null,
+    firstError: null,
+  };
 
   const worker = async () => {
     for (;;) {
@@ -84,8 +101,22 @@ export async function warmDatabases(
         // attaches the child's persistence subscription, so a tab opened
         // against this view afterwards is actually remembered (gotcha #27).
         const childId = await openTrackedDatabaseView(parentId, name);
-        await useSchema.getState().refresh(childId);
-        result.loaded += 1;
+        // `quiet`: this loop is the one place a failure per database would mean
+        // a card per database, and the caller reports one summary instead.
+        //
+        // The returned message is the point: `refresh` records its failure on
+        // the slice rather than throwing, so `loaded += 1` used to count a
+        // database whose table list had failed — nineteen loaded, nineteen
+        // broken, reported as a clean success. See gotcha #68.
+        const failure = await useSchema
+          .getState()
+          .refresh(childId, { quiet: true });
+        if (failure) {
+          result.skipped += 1;
+          result.firstError ??= failure;
+        } else {
+          result.loaded += 1;
+        }
       } catch (e) {
         if (isTooManyConnections(e)) {
           result.limitError = e;
@@ -95,12 +126,16 @@ export async function warmDatabases(
           return;
         }
         result.skipped += 1;
+        result.firstError ??= e;
       }
     }
   };
 
   await Promise.all(
-    Array.from({ length: Math.min(DB_VIEW_WARM_CONCURRENCY, queue.length) }, worker),
+    Array.from(
+      { length: Math.min(DB_VIEW_WARM_CONCURRENCY, queue.length) },
+      worker,
+    ),
   );
   return result;
 }

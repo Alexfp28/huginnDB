@@ -245,10 +245,28 @@ so the app could not act on a fact it already held. Closed by
 `switchingTo` to cover `createAndEnter`'s seeding pass, which was the slower of
 the two routes into an environment and the unguarded one.
 
-**Class 2 and class 3 have no known open instances.** Stated rather than
-omitted, because an empty class is information: the tooltip-provider default
-and the environment switch target were each the only confirmed member of
-theirs, and both are fixed. The connection surfaces were checked at the same
+**A class 3 instance, open.** `SchemaSliceLike`
+(`src/lib/schema/treeMatches.ts`) is `{ databases, tables, loading,
+initialized }` — it has no concept of a slice whose read **failed**. So a
+connection whose schema could not be loaded is `initialized: true, loading:
+false, tables: []`, which `rowMatchState` reads as `"none"`: the row dims,
+grows a confident `0` badge, and the filter *folds* it away — unmounting the
+one place `cs.error` was rendered. In a multi-DB tree the same thing happens
+one level down: a child whose warm failed is no longer "cold", so it drops out
+of what the warm button offers and is reported as an honest zero. That is
+precisely the failure mode the header of `treeMatches.ts` and `MatchBadge`'s
+doc were written to argue against — saying `0` about something nobody read is
+what makes a user abandon a search. Found while fixing gotcha #68, which makes
+it far less acute (the failure is now a notification, so the tree is no longer
+the only witness) and is why this is an entry rather than a blocker. The work
+is a `"failed"` member of `RowMatchState` and the state to back it, not
+styling.
+
+**Class 2 has no known open instances.** Stated rather than omitted, because an
+empty class is information: the tooltip-provider default and the environment
+switch target were each the only confirmed member of
+theirs, and both were fixed — class 3 has since reopened, one entry above. The
+connection surfaces were checked at the same
 time and already model their targets correctly (`connecting: string | null`,
 `disconnecting: Set<string>`); `useSchema.loading` is per-connection inside its
 slice, and `useOriginSync.syncing` is a genuine batch flag over a pass that

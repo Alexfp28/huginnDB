@@ -290,6 +290,23 @@ export function ConnectionsTree() {
             },
           ],
         });
+      } else if (result.skipped > 0) {
+        // Not a limit refusal, so nothing here is going to be retried by
+        // releasing pools: some databases simply would not answer. Reported
+        // once for the whole fan-out — `warmDatabases` stays quiet precisely so
+        // this can be one card instead of nineteen — and with the first real
+        // error, which used to be discarded entirely.
+        notify.warning(
+          t("connectionsTree.filter.warmPartial", {
+            count: result.loaded,
+            skipped: result.skipped,
+          }),
+          {
+            description: result.firstError
+              ? String(result.firstError)
+              : undefined,
+          },
+        );
       }
     } catch (e) {
       if (isTooManyConnections(e)) setLimitReached(true);

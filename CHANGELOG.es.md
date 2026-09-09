@@ -10,6 +10,52 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Una conexión de MongoDB inalcanzable se anunciaba como conectada.** Apuntar
+  un perfil de MongoDB a un host caído, a un puerto equivocado o a un túnel SSH
+  muerto producía una notificación verde de "Conectado", y el único rastro del
+  fallo era una línea roja dentro del árbol del esquema — que ni siquiera se
+  dibuja si la fila de esa conexión no está expandida, y desaparece del todo
+  mientras hay un filtro activo en el árbol. Tres minutos más tarde el keepalive
+  se daba cuenta y ofrecía reconectar, y esa era la primera cosa cierta que la
+  app había dicho al respecto.
+
+  Dos causas, y había que quitar las dos. El driver de MongoDB construye su
+  cliente sin tocar la red y, al contrario que los otros cuatro drivers, nada
+  hacía ping después — así que `connect` no podía fallar, y el error real nacía
+  ocho segundos más tarde, en la primera lectura del esquema. Y una lectura del
+  esquema fallida se guardaba en la conexión en lugar de reportarse, así que el
+  código que acababa de abrirla no podía saber que había fallado y seguía
+  adelante anunciando el éxito.
+
+  MongoDB comprueba ahora el servidor al conectar, como ya hacían PostgreSQL,
+  MySQL, SQLite y SQL Server, así que una conexión que no puede funcionar falla
+  donde la has pedido — nombrando la conexión, con el mensaje del propio driver
+  y un botón para copiarlo. Una lectura del esquema que falle más tarde también
+  se reporta: una conexión entera, las columnas de una tabla o sus índices, que
+  hasta ahora se escribían en un campo que no mostraba nada. Los fallos de una
+  misma conexión se agrupan en una sola notificación con un contador, así que
+  expandir una base de datos de cuarenta tablas contra un servidor que se ha ido
+  es una tarjeta, no cuarenta.
+
+  Los mensajes de error de MongoDB vuelven a ser legibles, además. Llegaban con
+  la contabilidad interna del driver pegada detrás — y, en cualquier error de
+  comando, con un volcado hexadecimal de la respuesta completa del servidor — en
+  un mensaje pensado para leerse en una fila estrecha del árbol.
+
+- **"Indexar todas las bases de datos" podía saltarse medio servidor y decir que
+  había ido bien.** Una base de datos cuya lista de tablas fallaba se contaba
+  como cargada, y todo fallo que no fuera un rechazo por límite de conexiones se
+  reducía a un número con el motivo descartado. El árbol de conexiones y la
+  paleta de comandos dicen ahora cuántas no respondieron, y por qué.
+
+- **Toda acción del menú contextual sobre un nodo de base de datos colapsado
+  fallaba en silencio.** "Nueva consulta aquí", "Nueva tabla", "Seguridad",
+  exportar, importar, "Nueva colección" y "Refrescar" tienen que abrir antes la
+  base de datos, y cuando eso fallaba el error se escribía en una parte del
+  árbol que solo se dibuja con el nodo expandido: la opción del menú no hacía
+  nada y no decía nada. Un `DROP DATABASE` rechazado hacía lo mismo, mientras su
+  éxito sí se reportaba desde la 1.21.3.
+
 - **Con los pools compartidos activados, una conexión abierta por el conector
   MCP no la cerraba nada.** Activar Ajustes → Conexiones → "Compartir pools con
   el conector MCP" hace que la app de escritorio abra la conexión que necesita

@@ -26,7 +26,20 @@ pub enum AppError {
 
     /// MongoDB driver, command, or BSON failure surfaced by the `mongodb` crate.
     /// Same reasoning as [`Self::Database`] for the manual conversion.
-    #[error("mongodb error: {0}")]
+    ///
+    /// **Renders the `kind` alone, not the whole error.** `mongodb::error::Error`'s
+    /// own `Display` is
+    /// `"Kind: {kind}, labels: {labels:?}, source: {source:?}, server response: {server_response:?}"`,
+    /// and `RawDocumentBuf`'s `Debug` is a **hex dump of its bytes** — so every
+    /// Mongo *command* error used to end with a hex encoding of the entire
+    /// server reply, in a string the user reads. `labels` and `source` are
+    /// empty in almost every case the user sees; the `kind` is the whole
+    /// sentence. See gotcha #68.
+    ///
+    /// Only the *rendering* narrows: `From<mongodb::error::Error>` below still
+    /// scans the full `to_string()` for the connection-limit needles, because
+    /// there the extra text can only help. Do not "unify" the two.
+    #[error("mongodb error: {}", .0.kind)]
     Mongo(mongodb::error::Error),
 
     /// The server refused the connection because it is at its connection
@@ -317,6 +330,26 @@ mod tests {
         let error: AppError = sqlx::Error::PoolTimedOut.into();
         assert!(error.is_too_many_connections());
         assert!(error.to_string().contains("free slot"));
+    }
+
+    /// The message the user actually reads. `mongodb::error::Error`'s own
+    /// `Display` appends `labels`, `source` and a `Debug` of the server reply —
+    /// and that last one is hex-encoded, so a Mongo command error used to drag
+    /// a dump of the whole reply into a tree row. See gotcha #68.
+    #[test]
+    fn a_mongo_error_renders_its_kind_and_nothing_else() {
+        // The one `ErrorKind` constructible from outside the driver crate:
+        // `impl<E> From<E> for Error where ErrorKind: From<E>`, plus
+        // `From<std::io::ErrorKind> for ErrorKind`.
+        let mongo: mongodb::error::Error = std::io::ErrorKind::ConnectionRefused.into();
+        let rendered = AppError::Mongo(mongo).to_string();
+        assert!(rendered.starts_with("mongodb error: "));
+        for noise in ["Kind:", "labels:", "source:", "server response:"] {
+            assert!(
+                !rendered.contains(noise),
+                "{noise:?} is driver bookkeeping, not something to show a user: {rendered}"
+            );
+        }
     }
 
     #[test]

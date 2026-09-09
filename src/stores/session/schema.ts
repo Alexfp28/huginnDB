@@ -7,13 +7,10 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { api } from "@/lib/tauri";
+import i18n from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { isDatabaseViewOf, parentConnectionId } from "@/lib/connectionLabel";
-import type {
-  ColumnInfo,
-  DatabaseInfo,
-  IndexInfo,
-  TableInfo,
-} from "@/types";
+import type { ColumnInfo, DatabaseInfo, IndexInfo, TableInfo } from "@/types";
 
 /**
  * Fetch a connection's schema once, on mount, unless it is already loaded or a
@@ -39,7 +36,7 @@ export function useEnsureSchemaLoaded(id: string): void {
 }
 
 /** Per-connection slice of schema state. */
-interface ConnectionSchema {
+export interface ConnectionSchema {
   databases: DatabaseInfo[];
   tables: TableInfo[];
   /** Columns keyed by `${schema}.${table}`. */
@@ -83,6 +80,55 @@ interface ConnectionSchema {
   initialized: boolean;
 }
 
+/** Options every fetch in this store accepts. */
+export interface SchemaLoadOptions {
+  /**
+   * Record the failure on the slice but do not report it.
+   *
+   * For the two callers that report a *better* message than this store can:
+   * `connectAndWarm` names the profile and adds the wrong-driver hint, and
+   * `warmDatabases` reports one summary for a whole fan-out instead of a card
+   * per database. Two opt-outs at the seam rather than an opt-in at every
+   * other call site — the same shape as `DataGrid`'s `decorateCellSave(quiet)`.
+   */
+  quiet?: boolean;
+}
+
+/**
+ * Record a failed fetch on the slice **and** report it.
+ *
+ * Modelled on `environments.ts`'s `fail`, for the same reason: a store that
+ * only writes an `error` field is a store whose failures depend on some
+ * component happening to render that field. Here the connection-level one is a
+ * bare red line inside the tree that is not even mounted unless the row is
+ * expanded and active, and the per-table index error was rendered by nothing
+ * at all — so a MongoDB server that had gone away could report itself only by
+ * the keepalive noticing, three minutes later. See gotcha #68.
+ *
+ * Grouped per connection, not per call: expanding a database with forty tables
+ * against a dead server must be one card counting to forty, not forty cards.
+ * The anatomy is `surfaceFor`'s decision alone (ADR #64) — all this passes is
+ * the message and the group.
+ *
+ * The i18n singleton rather than the hook, like `environments.ts`: a store is
+ * not a component.
+ */
+function reportSchemaFailure(
+  e: unknown,
+  titleKey: string,
+  connectionId: string,
+  quiet: boolean,
+): string {
+  const message = String(e);
+  if (!quiet) {
+    notify.error(i18n.t(titleKey), {
+      description: message,
+      group: `schema-load:${connectionId}`,
+    });
+  }
+  return message;
+}
+
 interface SchemaState {
   byConnection: Record<string, ConnectionSchema>;
   /**
@@ -94,7 +140,10 @@ interface SchemaState {
    * connection that is almost never the slice the user is looking at — use
    * [`refreshTree`] from anything holding a profile id.
    */
-  refresh: (connectionId: string) => Promise<void>;
+  refresh: (
+    connectionId: string,
+    opts?: SchemaLoadOptions,
+  ) => Promise<string | null>;
   /**
    * Refresh a connection *and* every per-database child slice opened beneath
    * it (`<parent>::db::<db>`).
@@ -114,13 +163,16 @@ interface SchemaState {
     connectionId: string,
     schema: string | undefined,
     table: string,
+    opts?: SchemaLoadOptions,
   ) => Promise<void>;
   /** Populate `indexes[tableKey(schema, table)]`. */
   loadIndexes: (
     connectionId: string,
     schema: string | undefined,
     table: string,
+    opts?: SchemaLoadOptions,
   ) => Promise<void>;
+
   /**
    * Fetch the per-database sizes for `connectionId`, once.
    *
@@ -170,7 +222,8 @@ export function tableKey(schema: string | undefined, table: string) {
 
 export const useSchema = create<SchemaState>((set, get) => ({
   byConnection: {},
-  refresh: async (connectionId) => {
+  refresh: async (connectionId, opts) => {
+    const quiet = opts?.quiet ?? false;
     set((state) => ({
       byConnection: {
         ...state.byConnection,
@@ -244,10 +297,27 @@ export const useSchema = create<SchemaState>((set, get) => ({
       // with its (now current) columns instead of an empty node the guard
       // above would never fill on its own.
       await Promise.all([
-        ...reloadColumns.map((t) => get().loadColumns(connectionId, t.schema, t.name)),
-        ...reloadIndexes.map((t) => get().loadIndexes(connectionId, t.schema, t.name)),
+        ...reloadColumns.map((t) =>
+          get().loadColumns(connectionId, t.schema, t.name, { quiet }),
+        ),
+        ...reloadIndexes.map((t) =>
+          get().loadIndexes(connectionId, t.schema, t.name, { quiet }),
+        ),
       ]);
+      return null;
     } catch (e) {
+      // Nothing to report when the slice is already gone: the staleness case
+      // described in the updater below means this error describes a pool that
+      // no longer exists, and a card about it would be pure noise arriving
+      // after a disconnect. Read before the `set` — nothing awaits in between,
+      // so this is the same check the updater makes.
+      if (!get().byConnection[connectionId]) return null;
+      const message = reportSchemaFailure(
+        e,
+        "schema.loadFailed",
+        connectionId,
+        quiet,
+      );
       set((state) => {
         // If `drop(connectionId)` ran while this call was in flight, the
         // connection is gone (disconnected, or its environment was switched
@@ -275,11 +345,12 @@ export const useSchema = create<SchemaState>((set, get) => ({
               // create a loop. The user can retry manually via the refresh
               // button. Safe only because of the staleness check above.
               initialized: true,
-              error: String(e),
+              error: message,
             },
           },
         };
       });
+      return message;
     }
   },
   refreshTree: async (connectionId) => {
@@ -309,7 +380,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
       },
     }));
   },
-  loadColumns: async (connectionId, schema, table) => {
+  loadColumns: async (connectionId, schema, table, opts) => {
     const key = tableKey(schema, table);
     try {
       const cols = await api.listColumns(connectionId, schema, table);
@@ -335,8 +406,18 @@ export const useSchema = create<SchemaState>((set, get) => ({
       });
     } catch (e) {
       // Never let a rejected promise here leave the explorer's column cell
-      // stuck on its loading skeleton forever — record the error instead so
-      // the UI can render a retry affordance.
+      // stuck on its loading skeleton forever — record the error so the UI can
+      // render its retry affordance, *and* report it. The inline row is the
+      // better affordance and stays; the card is what makes the failure
+      // reachable when the node is collapsed, folded away by the filter, or in
+      // a window the user is not looking at.
+      if (!get().byConnection[connectionId]) return;
+      const message = reportSchemaFailure(
+        e,
+        "schema.columnsLoadFailed",
+        connectionId,
+        opts?.quiet ?? false,
+      );
       set((state) => {
         const current = state.byConnection[connectionId];
         if (!current) return state;
@@ -345,14 +426,14 @@ export const useSchema = create<SchemaState>((set, get) => ({
             ...state.byConnection,
             [connectionId]: {
               ...current,
-              columnErrors: { ...current.columnErrors, [key]: String(e) },
+              columnErrors: { ...current.columnErrors, [key]: message },
             },
           },
         };
       });
     }
   },
-  loadIndexes: async (connectionId, schema, table) => {
+  loadIndexes: async (connectionId, schema, table, opts) => {
     const key = tableKey(schema, table);
     try {
       const idx = await api.listIndexes(connectionId, schema, table);
@@ -372,6 +453,17 @@ export const useSchema = create<SchemaState>((set, get) => ({
         };
       });
     } catch (e) {
+      // `indexErrors` is read by no component yet (`IndexesSectionHeader` is
+      // headers-only), so until this reported, a failed index read was written
+      // to a field nothing rendered and was indistinguishable from a table with
+      // no indexes. The card is currently the *only* way it surfaces.
+      if (!get().byConnection[connectionId]) return;
+      const message = reportSchemaFailure(
+        e,
+        "schema.indexesLoadFailed",
+        connectionId,
+        opts?.quiet ?? false,
+      );
       set((state) => {
         const current = state.byConnection[connectionId];
         if (!current) return state;
@@ -380,7 +472,7 @@ export const useSchema = create<SchemaState>((set, get) => ({
             ...state.byConnection,
             [connectionId]: {
               ...current,
-              indexErrors: { ...current.indexErrors, [key]: String(e) },
+              indexErrors: { ...current.indexErrors, [key]: message },
             },
           },
         };

@@ -66,7 +66,10 @@ import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
-import { useEnvironments, environmentLabel } from "@/stores/session/environments";
+import {
+  useEnvironments,
+  environmentLabel,
+} from "@/stores/session/environments";
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useThemeStore } from "@/stores/preferences/theme";
@@ -92,10 +95,7 @@ import {
   tableTabTitle,
 } from "@/lib/connectionLabel";
 import { resolveVisibleDatabases } from "@/lib/connection/visibleDatabases";
-import {
-  unwarmedDatabases,
-  warmDatabases,
-} from "@/lib/schema/warmDatabases";
+import { unwarmedDatabases, warmDatabases } from "@/lib/schema/warmDatabases";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import {
@@ -217,8 +217,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         detail: resolveConnectionLabel(profiles, queryTarget),
         keywords: "sql editor new query nueva consulta",
         icon: <Plus className="h-4 w-4" />,
-        run: () =>
-          openQueryTab(queryTarget),
+        run: () => openQueryTab(queryTarget),
       });
     }
 
@@ -312,7 +311,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         icon: <RefreshCw className="h-4 w-4" />,
         combo: combo("refreshData"),
         run: () => {
-          if (!refreshTable(activeTab.id)) void refreshSchema(activeTab.connectionId);
+          if (!refreshTable(activeTab.id))
+            void refreshSchema(activeTab.connectionId);
         },
       });
     }
@@ -405,10 +405,36 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       shown: boolean;
       toggle: () => void;
     }[] = [
-      { id: "schema", actionId: "togglePanelSchema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
-      { id: "saved", actionId: "togglePanelSaved", i18nKey: "panels.saved", shown: rightPanel === "saved", toggle: () => useSessionPanelLayout.getState().selectRightPanel("saved") },
-      { id: "pulse", actionId: "togglePanelPulse", i18nKey: "panels.pulse", shown: rightPanel === "pulse", toggle: () => useSessionPanelLayout.getState().selectRightPanel("pulse") },
-      { id: "console", actionId: "togglePanelConsole", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
+      {
+        id: "schema",
+        actionId: "togglePanelSchema",
+        i18nKey: "panels.schema",
+        shown: schemaOpen,
+        toggle: useSessionPanelLayout.getState().toggleSchema,
+      },
+      {
+        id: "saved",
+        actionId: "togglePanelSaved",
+        i18nKey: "panels.saved",
+        shown: rightPanel === "saved",
+        toggle: () =>
+          useSessionPanelLayout.getState().selectRightPanel("saved"),
+      },
+      {
+        id: "pulse",
+        actionId: "togglePanelPulse",
+        i18nKey: "panels.pulse",
+        shown: rightPanel === "pulse",
+        toggle: () =>
+          useSessionPanelLayout.getState().selectRightPanel("pulse"),
+      },
+      {
+        id: "console",
+        actionId: "togglePanelConsole",
+        i18nKey: "panels.console",
+        shown: consoleOpen,
+        toggle: useSessionPanelLayout.getState().toggleConsole,
+      },
     ];
     for (const panel of PANEL_TOGGLES) {
       list.push({
@@ -451,7 +477,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     }
     for (const entry of SETTINGS_INDEX) {
       const value = entry.value?.(prefs);
-      const badge = value?.raw ?? (value?.i18nKey ? t(value.i18nKey) : undefined);
+      const badge =
+        value?.raw ?? (value?.i18nKey ? t(value.i18nKey) : undefined);
       list.push({
         id: `setting:${entry.prefId}`,
         group: "settings",
@@ -594,7 +621,9 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           run: () => {
             if (env.id === activeEnvId) return;
             void switchEnvironment(env.id).catch((e) =>
-              notify.error(t("environments.switchFailed", { error: String(e) })),
+              notify.error(
+                t("environments.switchFailed", { error: String(e) }),
+              ),
             );
           },
         });
@@ -659,7 +688,8 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           detail: t("commandPalette.indexAllDatabasesDetail", {
             count: cold.length,
           }),
-          keywords: "index load all databases tables buscar cargar todas tablas",
+          keywords:
+            "index load all databases tables buscar cargar todas tablas",
           icon: <Layers className="h-4 w-4" />,
           keepOpen: true,
           run: () => {
@@ -667,6 +697,24 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
               const res = await warmDatabases(p.id, cold);
               if (res.limitError) {
                 notify.error(String(res.limitError));
+                return;
+              }
+              // `skipped` used to go unread here, so "index all databases"
+              // could skip half a server and report a clean success — the
+              // more so because a database whose table list failed was
+              // counted as loaded until `refresh` became observable.
+              if (res.skipped > 0) {
+                notify.warning(
+                  t("connectionsTree.filter.warmPartial", {
+                    count: res.loaded,
+                    skipped: res.skipped,
+                  }),
+                  {
+                    description: res.firstError
+                      ? String(res.firstError)
+                      : undefined,
+                  },
+                );
                 return;
               }
               notify.success(
@@ -714,7 +762,9 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
 
     // ── Saved queries + history ──────────────────────────────────────────────
     const openSql = (sql: string, title: string, connectionId: string) => {
-      useTabs.getState().open({ kind: "query", title, connectionId, query: sql });
+      useTabs
+        .getState()
+        .open({ kind: "query", title, connectionId, query: sql });
       setSelected(parentConnectionId(connectionId));
     };
     if (queryTarget) {

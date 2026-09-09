@@ -44,6 +44,7 @@ export async function warmForSearch(
     loaded: 0,
     skipped: 0,
     limitError: null,
+    firstError: null,
     abandonedConnections: 0,
   };
   for (let i = 0; i < targets.length; i += 1) {
@@ -52,6 +53,7 @@ export async function warmForSearch(
     const one = await warmDatabases(target.parentId, target.databases);
     result.loaded += one.loaded;
     result.skipped += one.skipped;
+    result.firstError ??= one.firstError;
     if (one.limitError) {
       result.limitError = one.limitError;
       result.abandonedConnections = targets.length - i - 1;

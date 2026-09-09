@@ -34,6 +34,19 @@ Verified against the 1.8.0 tree; grouped by the version that shipped it.
   **Edit connection string** escape hatch for cases the form can't express.
 - Dedicated **auth source** field + CLI `--auth-source`.
 
+### 1.21.x — connect actually connects
+- `mongo::open_pool` pings the server before handing back a pool. The driver's
+  `Client::with_options` is lazy — it spawns monitor tasks without a round trip
+  — so until this landed MongoDB was the only one of the five drivers whose
+  `connect` could not fail, and a broken profile reported itself as connected
+  while the real error surfaced eight seconds later in the schema tree. See
+  gotcha #68 for the whole chain, including why the frontend then announced
+  success.
+- `AppError::Mongo` renders the error's `kind` alone. The driver's own `Display`
+  appends `labels`, `source` and a `Debug` of the server reply, and that last
+  one is hex-encoded — so every Mongo *command* error used to carry a dump of
+  the whole reply into a user-facing string.
+
 ### 1.4.0 — introspection
 - Users & privileges introspection for the Security panel via `usersInfo`
   (`schema.rs::list_users` / `list_privileges`).

@@ -132,6 +132,7 @@
       "noMatchesHint": "Only table, view and database names are searched.",
       "counting": "Counting…",
       "partialCount": "{{count}} match(es) in what is loaded — {{cold}} database(s) left to search",
+      "warmPartial": "Indexed {{count}} database(s); {{skipped}} would not answer",
       "connectToSearch": "Connect it to include it in the search",
       "clear": "Clear filter",
       "scopeHere": "Search here only",
@@ -189,6 +190,7 @@
     "lost": "Connection lost: {{message}}",
     "refreshFailed": "Could not load the connections",
     "connected": "Connected",
+    "connectFailed": "Could not connect to {{name}}",
     "disconnectedAll": "Disconnected {{count}} connection(s)",
     "lostTitle": "Lost the connection to {{name}}"
   },
@@ -346,6 +348,10 @@
     "refresh": "Refresh",
     "loadingColumns": "loading…",
     "columnsLoadError": "Couldn't load columns — click to retry",
+    "loadFailed": "Could not read the schema",
+    "openDatabaseFailed": "Could not open the database {{name}}",
+    "columnsLoadFailed": "Could not read a table's columns",
+    "indexesLoadFailed": "Could not read a table's indexes",
     "expandColumns": "Show columns",
     "collapseColumns": "Hide columns",
     "tableOpenTooltip": "Open in a tab",
@@ -453,7 +459,8 @@
     },
     "dropDatabase": {
       "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone.",
-      "done": "Dropped the database {{name}}"
+      "done": "Dropped the database {{name}}",
+        "failed": "Could not drop the database {{name}}"
     },
     "exportDatabase": {
       "title": "Export database…",

@@ -8,6 +8,48 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A MongoDB connection that could not be reached reported itself as
+  connected.** Pointing a MongoDB profile at a host that is down, a wrong port
+  or a dead SSH forward produced a green "Connected" notification, and the only
+  trace of the failure was a red line inside the schema tree — which is not even
+  drawn unless that connection's row is expanded, and disappears entirely while
+  a tree filter is running. Three minutes later the keepalive would notice and
+  offer to reconnect, which was the first true thing the app had said about it.
+
+  Two causes, and both had to go. MongoDB's driver builds its client without
+  touching the network, and unlike the other four drivers nothing pinged
+  afterwards — so `connect` could not fail, and the real error was born eight
+  seconds later in the first schema read. And a failed schema read was recorded
+  on the connection rather than reported, so the code that had just opened the
+  connection could not tell it had failed and went on to announce success.
+
+  MongoDB now checks the server at connect time, like PostgreSQL, MySQL, SQLite
+  and SQL Server already did, so a connection that cannot work fails where you
+  asked for it — naming the connection, with the driver's own message and a
+  button to copy it. A schema read that fails later is reported too: a whole
+  connection, a table's columns, or a table's indexes, which until now were
+  written to a field that nothing displayed at all. Failures on the same
+  connection fold into one notification with a count, so expanding a database
+  with forty tables against a server that has gone away is one card, not forty.
+
+  MongoDB error messages are also readable again. They used to arrive with the
+  driver's internal bookkeeping appended — and for any command error, a
+  hex dump of the server's entire reply — in a message meant to be read in a
+  narrow tree row.
+
+- **"Index all databases" could skip half a server and report success.** A
+  database whose table list failed was counted as loaded, and every failure that
+  was not a connection-limit refusal was reduced to a number with the reason
+  discarded. Both the connections tree and the command palette now say how many
+  would not answer, and why.
+
+- **Every context-menu action on a collapsed database node failed silently.**
+  "New query here", "New table", "Security", export, import, "New collection"
+  and "Refresh" all have to open the database first, and when that failed the
+  error was written into a part of the tree that is only drawn when the node is
+  expanded: the menu item did nothing and said nothing. A refused `DROP
+  DATABASE` did the same, while its success has been reporting since 1.21.3.
+
 - **With pool sharing on, a connection the MCP connector opened was never closed
   by anything.** Turning on Settings → Connections → "Share pools with the MCP
   connector" makes the desktop app open the connection a tool call needs, which

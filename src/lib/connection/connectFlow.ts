@@ -32,7 +32,17 @@ import { driverMismatchHint } from "@/lib/db/driver";
 export async function connectAndWarm(id: string): Promise<boolean> {
   try {
     await useConnections.getState().connect(id);
-    await useSchema.getState().refresh(id);
+    // `quiet`, because this function reports the failure better than the store
+    // can: with the profile's name and the wrong-driver hint. What it must not
+    // do is treat a failed schema read as a successful connect — `refresh`
+    // deliberately does not throw (one unreachable child must not abort a
+    // fan-out), so awaiting it inside this `try` used to mean the `catch`
+    // below was unreachable for any failure that happened *after* the pool
+    // opened, and the app reported "Connected" for a server that had never
+    // answered. MongoDB hit that on every connection, because its client is
+    // lazy and `connect` therefore could not fail at all. See gotcha #68.
+    const failure = await useSchema.getState().refresh(id, { quiet: true });
+    if (failure) return report(id, failure);
     // Connecting is the one gesture in the app that reliably takes seconds —
     // a handshake, a keychain read, sometimes an SSH tunnel — which is long
     // enough that people start it and look somewhere else. The tree filling in
@@ -42,11 +52,29 @@ export async function connectAndWarm(id: string): Promise<boolean> {
     });
     return true;
   } catch (e) {
-    const msg = String(e);
-    const hint = driverMismatchHint(msg);
-    notify.error(hint ? `${msg} — ${hint}` : msg);
-    return false;
+    return report(id, String(e));
   }
+}
+
+/**
+ * Report a failed connect and answer `false`, so the two exits above cannot
+ * drift: one is the pool refusing to open and the other is the schema read
+ * failing behind a pool that did open, and the user is owed the same card
+ * either way.
+ *
+ * The profile's name goes in the title and the driver's message in the
+ * description — the app's convention for a reported failure, and the reason
+ * it matters here is that the message alone does not say *which* connection
+ * with eight of them in the tree. Errors are always cards (`surfaceFor`), so
+ * the description costs nothing and arrives monospaced with the free
+ * "Copy error" action.
+ */
+function report(id: string, message: string): false {
+  const hint = driverMismatchHint(message);
+  notify.error(i18n.t("connections.connectFailed", { name: profileName(id) }), {
+    description: hint ? `${message} — ${hint}` : message,
+  });
+  return false;
 }
 
 /**
@@ -114,5 +142,7 @@ export async function disconnectAll(): Promise<void> {
 
 /** Profile name for a notification, falling back to the id we were given. */
 function profileName(id: string): string {
-  return useConnections.getState().profiles.find((p) => p.id === id)?.name ?? id;
+  return (
+    useConnections.getState().profiles.find((p) => p.id === id)?.name ?? id
+  );
 }

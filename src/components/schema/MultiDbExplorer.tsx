@@ -398,16 +398,30 @@ function DatabaseRoot({
   // query or security tab opened against a child id that skipped this never
   // gets remembered — not on the next reconnect, not across an environment
   // switch, not even across a plain app restart (see the CHANGELOG entry).
-  // Returns `null` (after setting `error`) if the open fails, so callers can
-  // just bail with `if (!id) return;`.
+  // Returns `null` (after setting and reporting `error`) if the open fails, so
+  // callers can just bail with `if (!id) return;`.
+  //
+  // Reported as well as recorded, because `error` renders inside the
+  // `effectiveExpanded` branch below — and every context-menu action on this
+  // node ("New query here", "New table", "Security", export, import, "New
+  // collection", "Refresh") goes through here on a node that may well be
+  // *collapsed*. There the state was written into a branch that is not
+  // mounted, so the menu item did nothing at all and said nothing about it.
+  // See gotcha #68.
   const resolveChildId = async (): Promise<string | null> => {
     if (childId) return childId;
     try {
       const id = await openTrackedDatabaseView(parentId, dbName);
       setChildId(id);
+      // Cleared here and not only in the expand effect, so a stale line does
+      // not sit under a subtree that has since worked.
+      setError(null);
       return id;
     } catch (e) {
       setError(String(e));
+      notify.error(t("schema.openDatabaseFailed", { name: dbName }), {
+        description: String(e),
+      });
       return null;
     }
   };
@@ -525,7 +539,12 @@ function DatabaseRoot({
       await useSchema.getState().refresh(parentId);
       notify.success(t("schema.dropDatabase.done", { name: dbName }));
     } catch (e) {
+      // The success path above has always notified; this one only set state
+      // that a collapsed node never renders, so a refused DROP was silent.
       setError(String(e));
+      notify.error(t("schema.dropDatabase.failed", { name: dbName }), {
+        description: String(e),
+      });
     }
   };
 

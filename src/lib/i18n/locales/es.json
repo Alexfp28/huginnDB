@@ -132,6 +132,7 @@
       "noMatchesHint": "Solo se buscan nombres de tablas, vistas y bases de datos.",
       "counting": "Contando…",
       "partialCount": "{{count}} coincidencia(s) en lo ya cargado — faltan {{cold}} base(s) por buscar",
+      "warmPartial": "{{count}} base(s) de datos indexadas; {{skipped}} no respondieron",
       "connectToSearch": "Conecta para incluirla en la búsqueda",
       "clear": "Limpiar filtro",
       "scopeHere": "Buscar solo aquí",
@@ -189,6 +190,7 @@
     "lost": "Conexión perdida: {{message}}",
     "refreshFailed": "No se pudieron cargar las conexiones",
     "connected": "Conectado",
+    "connectFailed": "No se ha podido conectar con {{name}}",
     "disconnectedAll": "{{count}} conexiones cerradas",
     "lostTitle": "Se ha perdido la conexión con {{name}}"
   },
@@ -346,6 +348,10 @@
     "refresh": "Actualizar",
     "loadingColumns": "cargando…",
     "columnsLoadError": "No se pudieron cargar las columnas — clic para reintentar",
+    "loadFailed": "No se ha podido leer el esquema",
+    "openDatabaseFailed": "No se ha podido abrir la base de datos {{name}}",
+    "columnsLoadFailed": "No se han podido leer las columnas de una tabla",
+    "indexesLoadFailed": "No se han podido leer los índices de una tabla",
     "expandColumns": "Mostrar columnas",
     "collapseColumns": "Ocultar columnas",
     "tableOpenTooltip": "Abierta en una pestaña",
@@ -453,7 +459,8 @@
     },
     "dropDatabase": {
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer.",
-      "done": "Base de datos {{name}} eliminada"
+      "done": "Base de datos {{name}} eliminada",
+      "failed": "No se ha podido eliminar la base de datos {{name}}"
     },
     "exportDatabase": {
       "title": "Exportar base de datos…",
