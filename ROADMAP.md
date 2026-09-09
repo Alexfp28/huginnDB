@@ -272,6 +272,56 @@ plus the `error` field on the slice shape to back it. The two places it is
 deliberately *absent* — `filterFoldsIgnoringOverride` and the row's
 `dimmedByFilter` — are the fix.
 
+**Two more class 4 instances, found and closed — the credential direction of
+a shared origin.** An origin's whole value is that one person curates the
+connections; its whole failure mode is that a server resets a password and the
+app had no way to say so in either direction. Neither half was a rendering
+problem and neither was in this queue: both arrived the way the preamble above
+says they do, from someone using the app.
+
+- **A publisher could correct a connection but not publish the correction.**
+  `save_profile` writes `profiles.json` and the local keychain and stops there,
+  so a fixed password reached nobody until somebody walked Settings → the origin
+  editor → find the row → flip its secret to "from the keychain" → publish. One
+  intent expressed twice, with every consumer locked out for the length of the
+  detour and no reminder that the second half existed. Closed by
+  `republish_profile_to_origin`, which is `save_inner` with one row pre-filled
+  rather than a second write path — same role check, write probe, hash conflict
+  check, `.bak` and impact report. The load-bearing detail is that it
+  re-encrypts **only** when the password itself changed: gotcha #69 has why a
+  fresh envelope for an unchanged secret is a correctness problem and not a
+  performance one.
+- **A consumer could not do anything at all.** `connect` takes a password
+  ad-hoc and persists nothing, and saving an origin-owned profile is refused
+  because the next sync would undo it — so the only response to a rotated
+  credential was retyping it on every single connect, indefinitely. Closed by
+  `ConnectionProfile::secret_override`, scoped to the secret and nothing else,
+  and expiring on its own once the origin publishes a different ciphertext. It
+  is the first piece of local state here that is *temporary*; see gotcha #69 for
+  why it is preserved across a merge in order to be expired by one.
+
+**A third class 3 instance, found and closed: MongoDB's raw-edit toggle had
+nowhere to put "I can't".** Leaving raw-edit mode re-parsed the URI and, when
+the parse failed, did nothing — the switch flipped back under the cursor with no
+state
+holding the reason anywhere, so a profile saved from a pasted string could never
+be edited as a form again. Closed by `parseMongoUriLossy`, which always returns
+fields plus the reasons it could not keep everything, and by
+`mongoFoldConflict`/`MongoUriFoldDialog` turning those reasons into a
+confirmation. The other half was smaller and worse: the strict parse refused any
+query option outside `authSource`/`directConnection`, which is every Atlas URI,
+so those connections were *born* in raw-edit. Unmodelled options now ride
+through the form untouched. Gotcha #70.
+
+**Still open from that pass: a local password override is invisible outside the
+connection dialog.** `ConnectionRailRow` marks an origin-owned connection as
+shared and stops there, so "which of my connections are running on a password I
+typed rather than the published one" can only be answered by opening each one.
+Class 3 shaped — the store holds `secret_override` and no list-level surface
+consumes it — and the fix is one badge plus a decision about whether the
+connection rail or Settings → Origins is the right place to answer it at a
+glance.
+
 **Class 2 has no known open instances.** Stated rather than omitted, because an
 empty class is information: the tooltip-provider default was its only confirmed
 member and is fixed. The connection surfaces were checked at the same
