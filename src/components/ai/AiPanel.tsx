@@ -30,13 +30,27 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Bot, Copy, Eraser, Send, Settings2, Square } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  Copy,
+  Eraser,
+  Send,
+  Settings2,
+  Square,
+} from "lucide-react";
 
 import { EmptyState } from "@/components/common/EmptyState";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
-import { NativeSelect } from "@/components/ui/native-select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown";
 import { Textarea } from "@/components/ui/textarea";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { MICRO_HEADING } from "@/components/ui/styles";
@@ -288,35 +302,6 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
             force, so Settings → AI shows the same values live, and a panel
             that quietly diverged from the settings screen would be the worse
             surprise. */}
-        <div className="mb-1.5 flex items-center gap-1">
-          <NativeSelect
-            size="xs"
-            mono
-            aria-label={t("ai.modelLabel")}
-            value={ai.model}
-            onChange={(e) => updateAi({ model: e.target.value })}
-            className="min-w-0 flex-1"
-          >
-            {ai.model === "" && (
-              <option value="">{t("ai.noModel")}</option>
-            )}
-            {/* The configured model always appears, even when the endpoint
-                serves no list or has not been asked yet — otherwise the select
-                would render blank and look like it had lost the setting. */}
-            {(models.includes(ai.model) || ai.model === ""
-              ? models
-              : [ai.model, ...models]
-            ).map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </NativeSelect>
-          <ReasoningPicker
-            value={ai.reasoningEffort}
-            onChange={(reasoningEffort) => updateAi({ reasoningEffort })}
-          />
-        </div>
         <Textarea
           value={draft}
           rows={2}
@@ -333,10 +318,20 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
           }}
           className="mb-1.5 resize-none text-xs"
         />
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-3xs text-muted-foreground">
-            {t("ai.enterHint")}
-          </span>
+        {/* The status row, not a toolbar. Both knobs read as text at rest and
+            only announce themselves under the pointer: they are things to
+            glance at while reading an answer, and a pair of bordered selects
+            above the composer competed with the composer for the eye. */}
+        <div className="flex items-center gap-0.5">
+          <ModelPicker
+            model={ai.model}
+            models={models}
+            onPick={(model) => updateAi({ model })}
+          />
+          <ReasoningPicker
+            value={ai.reasoningEffort}
+            onChange={(reasoningEffort) => updateAi({ reasoningEffort })}
+          />
           <span className="ml-auto shrink-0">
             {turnId ? (
               <Button variant="outline" size="xs" onClick={stop}>
@@ -357,6 +352,64 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The model in force, as a quiet menu.
+ *
+ * The configured model always appears in the list, even when the endpoint
+ * serves no `/models` route or has not answered yet — otherwise the trigger
+ * would read blank and look as though the setting had been lost. An endpoint
+ * with no list at all still gets a menu of one, which is honest: it says what
+ * is in force and offers nothing it cannot offer.
+ */
+function ModelPicker({
+  model,
+  models,
+  onPick,
+}: {
+  model: string;
+  models: string[];
+  onPick: (model: string) => void;
+}) {
+  const { t } = useTranslation();
+  const openSettings = useSettingsDialog((s) => s.openAt);
+  const options = model && !models.includes(model) ? [model, ...models] : models;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="quiet"
+          size="xs"
+          className="h-auto min-w-0 gap-1 px-1 py-0.5 text-2xs font-normal"
+        >
+          <span className="truncate font-mono">
+            {model || t("ai.noModel")}
+          </span>
+          <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="max-w-72">
+        {options.length === 0 ? (
+          <DropdownMenuItem onSelect={() => openSettings("ai")}>
+            {t("ai.noModelsHint")}
+          </DropdownMenuItem>
+        ) : (
+          options.map((id) => (
+            <DropdownMenuCheckboxItem
+              key={id}
+              checked={id === model}
+              onCheckedChange={() => onPick(id)}
+              className="font-mono text-xs"
+            >
+              {id}
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

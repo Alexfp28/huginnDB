@@ -2811,6 +2811,7 @@
     "assistant": "Assistant",
     "thinking": "Thinking…",
     "noModel": "No model selected",
+    "noModelsHint": "No models offered — set one in Settings",
     "showToolDetails": "Expand tool details by default",
     "hideToolDetails": "Collapse tool details by default",
     "openInEditor": "Open in editor",
@@ -2840,14 +2841,6 @@
         "high": "High",
         "max": "Max"
       }
-    },
-    "reasoningShort": {
-      "auto": "Think: auto",
-      "none": "Think: off",
-      "low": "Think: low",
-      "medium": "Think: med",
-      "high": "Think: high",
-      "max": "Think: max"
     },
     "tool": {
       "arguments": "Arguments",

@@ -2,10 +2,16 @@
  * One text part: prose runs, with fenced code rendered as a block.
  *
  * The split itself is pure and tested (`lib/ai/parts.ts`'s `splitBlocks`); this
- * component only chooses a renderer per run. Prose is plain text on purpose —
- * see `splitBlocks`'s doc comment for why the panel does not ship a markdown
- * renderer, and `whitespace-pre-wrap` is what makes a model's own line breaks
- * and indentation survive.
+ * component only chooses a renderer per run: fenced code becomes a `SqlBlock`
+ * (a real Monaco, with a lens onto the query editor), and prose goes through
+ * `Prose`, which renders the small markdown subset in `lib/ai/markdown.ts`.
+ *
+ * Prose started out as plain `whitespace-pre-wrap` text, on the argument that
+ * the only construct worth rendering was the code fence. That was wrong in
+ * practice and the first real answer showed it: models write `**bold**`
+ * headings and numbered lists constantly, and unrendered they arrive as a wall
+ * of asterisks and digits. The subset is closed and hand-rolled rather than a
+ * dependency — see `markdown.ts` for what it deliberately leaves out.
  */
 
 import {
@@ -15,6 +21,7 @@ import {
   stripReasoning,
   type TextBlock,
 } from "@/lib/ai/parts";
+import { Prose } from "./Prose";
 import { SqlBlock } from "./SqlBlock";
 
 export function TextPart({
@@ -45,11 +52,7 @@ function Block({
   connectionId: string | null;
 }) {
   if (block.kind === "prose") {
-    return (
-      <p className="whitespace-pre-wrap break-words text-xs leading-relaxed">
-        {block.text}
-      </p>
-    );
+    return <Prose text={block.text} />;
   }
   const language = fenceLanguage(block.lang);
   if (!language) {

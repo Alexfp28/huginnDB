@@ -111,14 +111,18 @@ export function ReasoningPicker({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
+        {/* Chrome, not a control: the composer's status row is a place to
+            *read* the current state, and a bordered select there competes with
+            the composer for the eye. Quiet at rest, full contrast under the
+            pointer — the `quiet` variant exists for exactly this. */}
         <Button
           variant="quiet"
           size="xs"
-          className="shrink-0 gap-1.5 px-1.5 font-normal"
+          className="h-auto shrink-0 gap-1 px-1 py-0.5 text-2xs font-normal"
         >
           <EffortMeter level={index} dimmed={auto} />
-          <span className="font-mono text-2xs">
-            {t(`ai.reasoningShort.${auto ? "auto" : value}`)}
+          <span className="lowercase">
+            {t(`ai.effort.level.${auto ? "auto" : value}`)}
           </span>
         </Button>
       </DropdownMenuTrigger>

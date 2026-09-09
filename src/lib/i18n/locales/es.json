@@ -2811,6 +2811,7 @@
     "assistant": "Asistente",
     "thinking": "Pensando…",
     "noModel": "Sin modelo seleccionado",
+    "noModelsHint": "Sin modelos ofrecidos — configura uno en Ajustes",
     "showToolDetails": "Desplegar los detalles de herramienta por defecto",
     "hideToolDetails": "Plegar los detalles de herramienta por defecto",
     "openInEditor": "Abrir en el editor",
@@ -2840,14 +2841,6 @@
         "high": "Alto",
         "max": "Máximo"
       }
-    },
-    "reasoningShort": {
-      "auto": "Razona: auto",
-      "none": "Razona: no",
-      "low": "Razona: bajo",
-      "medium": "Razona: medio",
-      "high": "Razona: alto",
-      "max": "Razona: máx"
     },
     "tool": {
       "arguments": "Argumentos",
