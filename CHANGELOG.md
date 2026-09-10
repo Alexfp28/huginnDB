@@ -8,6 +8,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MongoDB: the advanced filter can reach inside a document.** A condition
+  could only ever name a top-level field, while the list view two panels away
+  was already rendering, typing and editing every nested one — so
+  `customData.format` was something you could see and edit but not filter on.
+
+  The field control on a MongoDB collection is now a searchable combobox that
+  lists the nested paths found in the page you are looking at, each one under
+  the field it belongs to and labelled with its BSON type: pick `stats.count`,
+  or `items.sku` to match *any* element of an array of subdocuments. Type to
+  filter the list, arrows and Enter to pick, and — because those paths are a
+  sample of the loaded page rather than a catalog — you can simply type a path
+  the list does not hold, for a field only older documents carry. The same
+  picker serves the "match" half of Bulk update, so the two dialogs cannot
+  disagree about what is filterable.
+
+  Every operator works on a nested path, values are still coerced to the type
+  the field really holds (a `long` compared against a `long`, not a string),
+  and nothing about the saved filter changes shape — a dotted field name is a
+  path the moment the Mongo query builder sees one.
+
 - **The assistant starts with the map, and with whatever you tell it.** Two
   answers to the same complaint: given tools and nothing else, a model fixes on
   whichever table your question named, because as far as it knows nothing else

@@ -10,6 +10,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **MongoDB: el filtro avanzado ya entra dentro del documento.** Una condición
+  solo podía nombrar un campo de primer nivel, mientras la vista de lista dos
+  paneles más allá ya renderizaba, tipaba y editaba todos los anidados — así que
+  `customData.format` era algo que veías y editabas pero por lo que no podías
+  filtrar.
+
+  En una colección de MongoDB el selector de campo es ahora un combobox con
+  búsqueda que lista las rutas anidadas encontradas en la página que tienes
+  delante, cada una bajo el campo al que pertenece y etiquetada con su tipo
+  BSON: elige `stats.count`, o `items.sku` para que coincida *cualquier*
+  elemento de un array de subdocumentos. Escribe para filtrar la lista, flechas
+  y Enter para elegir y — porque esas rutas son una muestra de la página
+  cargada, no un catálogo — puedes escribir directamente una ruta que la lista
+  no tenga, para un campo que solo llevan los documentos antiguos. El mismo
+  selector sirve a la mitad «coincidencia» de la actualización masiva, así que
+  los dos diálogos no pueden discrepar sobre qué es filtrable.
+
+  Todos los operadores funcionan sobre una ruta anidada, los valores se siguen
+  convirtiendo al tipo que el campo realmente guarda (un `long` comparado
+  contra un `long`, no contra una cadena) y el filtro guardado no cambia de
+  forma — un nombre de campo con puntos es una ruta en el momento en que lo ve
+  el constructor de consultas de Mongo.
+
 - **El asistente arranca con el mapa, y con lo que tú le cuentes.** Dos
   respuestas a la misma queja: si le das herramientas y nada más, un modelo se
   centra en la tabla que nombró tu pregunta, porque por lo que él sabe no existe

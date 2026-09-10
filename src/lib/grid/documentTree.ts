@@ -153,8 +153,16 @@ export function resolveType(
   return inferType(value);
 }
 
-/** Descend one level into a type tree, mirroring the descent into the value. */
-function childTree(
+/**
+ * Descend one level into a type tree, mirroring the descent into the value.
+ *
+ * Exported because the list view is no longer the only consumer of a document's
+ * type tree: `fieldPaths.ts` walks the same trees to collect the nested field
+ * *paths* the advanced filter offers, and a second private copy of this descent
+ * is exactly the kind of drift that would let the two disagree about what a
+ * field's type is.
+ */
+export function childTypeTree(
   tree: BsonTypeTree | undefined,
   key: string,
 ): BsonTypeTree | undefined {
@@ -264,14 +272,14 @@ export function flattenDocument(
         // they stay `String(i)` — an indexed loop just skips building the
         // `[key, value]` tuple array `.map` would allocate.
         for (let i = 0; i < value.length; i++) {
-          walk([...path, String(i)], value[i] as CellValue, childTree(tree, String(i)), depth + 1, true);
+          walk([...path, String(i)], value[i] as CellValue, childTypeTree(tree, String(i)), depth + 1, true);
         }
       } else {
         const obj = value as Record<string, CellValue>;
         // `Object.keys` enumerates the same own, enumerable, insertion-order
         // keys `Object.entries` did — only the pair-array allocation is gone.
         for (const k of Object.keys(obj)) {
-          walk([...path, k], obj[k], childTree(tree, k), depth + 1, false);
+          walk([...path, k], obj[k], childTypeTree(tree, k), depth + 1, false);
         }
       }
     }

@@ -2,7 +2,8 @@
  * Bulk update: apply a `$set`-shaped change to every row/document matching a
  * filter, in one round trip. The "match" half reuses the same
  * {@link FilterConditionRow} + `filterConditions.ts` helpers as
- * {@link AdvancedFilterDialog}; the "set" half reuses the same `RowValue`
+ * {@link AdvancedFilterDialog} — MongoDB's nested field paths included, so the
+ * two dialogs can't disagree about what is filterable; the "set" half reuses the same `RowValue`
  * shape the inline insert draft row already sends to `insert_row`.
  *
  * Every match/set change re-runs `previewBulkUpdate` (debounced) so the
@@ -36,6 +37,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "@/lib/tauri";
+import { filterFieldsFor, type FilterField } from "@/lib/grid/fieldPaths";
 import { FilterConditionRow } from "./FilterConditionRow";
 import {
   draftFromFilter,
@@ -65,6 +67,7 @@ export function BulkUpdateDialog({
   schema,
   table,
   columns,
+  nestedFields,
   initialFilters,
   isMongo,
   onApplied,
@@ -74,6 +77,14 @@ export function BulkUpdateDialog({
   schema?: string;
   table: string;
   columns: ColumnInfo[];
+  /**
+   * Nested field paths from the page on screen (MongoDB only — see
+   * `lib/grid/fieldPaths.ts`). Offered in the **match** half only: the `$set`
+   * half writes, and creating `a.b` on every matching document because a
+   * picker made the path easy to reach is a bigger promise than this dialog
+   * should make on its own.
+   */
+  nestedFields?: FilterField[];
   initialFilters: ColumnFilter[];
   isMongo: boolean;
   onApplied: () => void;
@@ -102,6 +113,15 @@ export function BulkUpdateDialog({
   const columnNames = columns.map((c) => c.name);
   const typeByColumn = new Map(columns.map((c) => [c.name, c.data_type]));
 
+  // The match half's field catalogue: the same columns, plus MongoDB's nested
+  // paths under the column each belongs to. `isMongo` also decides whether a
+  // path outside the list can be typed — the two travel together because both
+  // answer "is this driver's field set closed?".
+  const matchFields = filterFieldsFor(columns, nestedFields ?? []);
+  const typeByField = new Map(
+    matchFields.filter((f) => f.type).map((f) => [f.path, f.type as string]),
+  );
+
   const patchMatchRow = (key: number, patch: Partial<FilterConditionDraft>) =>
     setMatchRows((prev) =>
       prev.map((r) => (r.key === key ? patchDraft(r, patch) : r)),
@@ -109,7 +129,10 @@ export function BulkUpdateDialog({
   const removeMatchRow = (key: number) =>
     setMatchRows((prev) => prev.filter((r) => r.key !== key));
   const addMatchRow = () =>
-    setMatchRows((prev) => [...prev, emptyDraft(columnNames[0] ?? "", nextKey++)]);
+    setMatchRows((prev) => [
+      ...prev,
+      emptyDraft(matchFields[0]?.path ?? "", nextKey++),
+    ]);
 
   const patchSetRow = (key: number, patch: Partial<SetFieldDraft>) =>
     setSetRows((prev) =>
@@ -126,7 +149,7 @@ export function BulkUpdateDialog({
   function buildFilters(): ColumnFilter[] {
     return matchRows
       .filter((r) => r.column)
-      .map((r) => filterFromDraft(r, typeByColumn.get(r.column)));
+      .map((r) => filterFromDraft(r, typeByField.get(r.column)));
   }
 
   function buildSetValues(): RowValue[] {
@@ -208,7 +231,9 @@ export function BulkUpdateDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      {/* `3xl`, like the advanced filter: the match rows are the same three
+          controls, and a MongoDB field there is now a dotted path. */}
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {isMongo
@@ -234,8 +259,8 @@ export function BulkUpdateDialog({
                 matchRows.map((r) => (
                   <FilterConditionRow
                     key={r.key}
-                    columnNames={columnNames}
-                    typeByColumn={typeByColumn}
+                    fields={matchFields}
+                    customFields={isMongo}
                     row={r}
                     onPatch={(patch) => patchMatchRow(r.key, patch)}
                     onRemove={() => removeMatchRow(r.key)}
@@ -248,7 +273,9 @@ export function BulkUpdateDialog({
               variant="outline"
               size="sm"
               className="mt-1.5 h-7 gap-1 px-2 text-xs"
-              disabled={columnNames.length === 0}
+              // Same reasoning as the advanced filter's: where the path can be
+              // typed, an empty field list is not an empty condition editor.
+              disabled={matchFields.length === 0 && !isMongo}
               onClick={addMatchRow}
             >
               <Plus className="h-3.5 w-3.5" />

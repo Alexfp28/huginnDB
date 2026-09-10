@@ -688,6 +688,9 @@
       "valuePlaceholder": "Valor",
       "fromPlaceholder": "Desde",
       "toPlaceholder": "Hasta",
+      "fieldPlaceholder": "Campo o ruta",
+      "fieldLabel": "Campo",
+      "fieldNoMatch": "Ningún campo coincide — se usa la ruta tal cual",
       "op": {
         "eq": "igual a",
         "ne": "distinto de",

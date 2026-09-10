@@ -6,6 +6,12 @@
  * The row is single-line for every operator except `in`/`not_in`, whose value
  * control is multi-line: those keep the selects and the remove button on the
  * first line and give {@link FilterValueListEditor} the full width underneath.
+ *
+ * The field control has two shapes, chosen by `customFields`: a closed `Select`
+ * where the driver's catalog enumerates every field (SQL), and
+ * {@link FilterFieldPicker} where it does not (MongoDB — its nested paths come
+ * from the loaded page and a document may hold fields that page never showed).
+ * The operator and value halves are identical either way.
  */
 
 import { forwardRef } from "react";
@@ -22,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { FilterOp } from "@/types";
+import type { FilterField } from "@/lib/grid/fieldPaths";
+import { FilterFieldPicker } from "./FilterFieldPicker";
 import { FilterValueListEditor } from "./FilterValueListEditor";
 import {
   VALUELESS_OPS,
@@ -34,8 +42,15 @@ import {
 export const FilterConditionRow = forwardRef<
   HTMLDivElement,
   {
-    columnNames: string[];
-    typeByColumn: Map<string, string>;
+    /** Selectable fields, in the order the picker lists them. */
+    fields: FilterField[];
+    /**
+     * Whether a field outside `fields` is legal — true for MongoDB, whose
+     * documents are schemaless and whose nested paths are sampled from the
+     * loaded page rather than enumerated by a catalog. Switches the field
+     * control from a closed `Select` to {@link FilterFieldPicker}.
+     */
+    customFields?: boolean;
     row: FilterConditionDraft;
     onPatch: (patch: Partial<FilterConditionDraft>) => void;
     onRemove: () => void;
@@ -43,23 +58,29 @@ export const FilterConditionRow = forwardRef<
     highlighted?: boolean;
   }
 >(function FilterConditionRow(
-  { columnNames, typeByColumn, row, onPatch, onRemove, highlighted },
+  { fields, customFields, row, onPatch, onRemove, highlighted },
   ref,
 ) {
   const { t } = useTranslation();
-  const ops = opsForColumn(typeByColumn.get(row.column));
+  const ops = opsForColumn(fields.find((f) => f.path === row.column)?.type);
   const valueless = VALUELESS_OPS.includes(row.op);
   const list = isListOp(row.op);
 
-  const columnSelect = (
+  const columnSelect = customFields ? (
+    <FilterFieldPicker
+      fields={fields}
+      value={row.column}
+      onChange={(column) => onPatch({ column })}
+    />
+  ) : (
     <Select value={row.column} onValueChange={(v) => onPatch({ column: v })}>
       <SelectTrigger className="h-8 flex-1 text-xs">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {columnNames.map((name) => (
-          <SelectItem key={name} value={name} className="text-xs">
-            {name}
+        {fields.map((f) => (
+          <SelectItem key={f.path} value={f.path} className="text-xs">
+            {f.path}
           </SelectItem>
         ))}
       </SelectContent>

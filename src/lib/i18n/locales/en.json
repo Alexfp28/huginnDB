@@ -688,6 +688,9 @@
       "valuePlaceholder": "Value",
       "fromPlaceholder": "From",
       "toPlaceholder": "To",
+      "fieldPlaceholder": "Field or path",
+      "fieldLabel": "Field",
+      "fieldNoMatch": "No field matches — the path is used as typed",
       "op": {
         "eq": "equals",
         "ne": "not equals",

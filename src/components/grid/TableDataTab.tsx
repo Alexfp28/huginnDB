@@ -96,6 +96,7 @@ import { formatNumber } from "@/lib/utils";
 import { runExport } from "@/lib/grid/exportTable";
 import { clampRowHeight } from "@/lib/grid/rowHeight";
 import { nextOffset, pageWindow, prevOffset } from "@/lib/grid/pagination";
+import { collectNestedFieldPaths } from "@/lib/grid/fieldPaths";
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import {
@@ -409,6 +410,26 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   );
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
+
+  /**
+   * MongoDB's nested field paths for the two filter dialogs, read off the page
+   * on screen (`lib/grid/fieldPaths.ts`). `infer_columns` only ever reports
+   * top-level fields — it doubles as the grid's column list — so without this
+   * the advanced filter could not name `customData.format` while the list view
+   * two panels away was rendering, typing and editing it.
+   *
+   * Computed only while a dialog that shows them is open: the walk is bounded
+   * but it is still a walk of every document in the page, and it would
+   * otherwise re-run on every fetch for a list nobody is looking at.
+   */
+  const nestedFieldsWanted = isMongo && (advanced !== null || bulkUpdateOpen);
+  const nestedFields = useMemo(
+    () =>
+      nestedFieldsWanted && result
+        ? collectNestedFieldPaths(result.columns, result.rows, result.row_types)
+        : [],
+    [nestedFieldsWanted, result],
+  );
 
   /**
    * Every column that participates in the table's PRIMARY KEY, in
@@ -1616,6 +1637,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       {advanced && (
         <AdvancedFilterDialog
           columns={cols ?? []}
+          nestedFields={nestedFields}
+          customFields={isMongo}
           initial={serverFilters}
           focusIndex={advanced.focusIndex}
           onApply={(filters) => {
@@ -1632,6 +1655,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           schema={schema}
           table={table}
           columns={cols ?? []}
+          nestedFields={nestedFields}
           initialFilters={serverFilters}
           isMongo={isMongo}
           onApplied={() => void fetchData()}

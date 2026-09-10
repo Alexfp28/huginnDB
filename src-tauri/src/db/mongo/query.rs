@@ -573,26 +573,48 @@ fn field_value(column: &str, value: &Value) -> Bson {
 /// a document or an array. `onError`/`onNull` fold all three into the empty
 /// string, which simply fails to match.
 ///
+/// **Branch 2 maps over the field rather than converting it whole**, because
+/// `column` can be a path that traverses an array — `items.qty` addresses the
+/// `qty` of *every* element, and that is the shape the advanced filter's field
+/// picker now offers (see `lib/grid/fieldPaths.ts`). A field-path expression
+/// over such a path resolves to an *array* of values, which `$convert` folds to
+/// `""` via `onError`: the exact silent zero-row answer this function exists to
+/// prevent, reopened one level down. `$isArray` picks the shape, `$map` +
+/// `$anyElementTrue` ask the question per element, and a missing field yields
+/// no match rather than an error — checked against a live server, since
+/// `$convert`'s behaviour on these inputs is not something the docs spell out.
+///
 /// **Server floor: MongoDB 4.2**, for `$regexMatch` (`$convert` and `$expr`
 /// landed earlier, in 4.0 and 3.6). The Rust driver's own floor is 4.0, so a
 /// 4.0/4.1 server — EOL since April 2022 — would now fail these three
 /// operators with an unknown-operator error instead of silently returning
 /// nothing.
 fn text_match_branches(column: &str, pattern: &str) -> Vec<Document> {
+    let field = format!("${column}");
     vec![
         doc! { column: { "$regex": pattern, "$options": "i" } },
-        doc! { "$expr": { "$regexMatch": {
-            "input": {
-                "$convert": {
-                    "input": format!("${column}"),
-                    "to": "string",
-                    "onError": "",
-                    "onNull": "",
-                }
-            },
-            "regex": pattern,
-            "options": "i",
-        } } },
+        doc! { "$expr": { "$anyElementTrue": { "$map": {
+            // One element for a scalar field, every element for an array one —
+            // see the doc comment for why the array case cannot be left to
+            // `$convert`.
+            "input": { "$cond": [
+                { "$isArray": field.as_str() },
+                field.as_str(),
+                [field.as_str()],
+            ] },
+            "in": { "$regexMatch": {
+                "input": {
+                    "$convert": {
+                        "input": "$$this",
+                        "to": "string",
+                        "onError": "",
+                        "onNull": "",
+                    }
+                },
+                "regex": pattern,
+                "options": "i",
+            } },
+        } } } },
     ]
 }
 
@@ -1254,16 +1276,45 @@ mod tests {
     }
 
     /// Pull the `$regexMatch` regex out of a text-match clause's `$expr` branch.
-    fn expr_branch_regex(clause: &Document, key: &str) -> String {
-        let branches = clause.get_array(key).unwrap();
-        branches[1]
+    /// Branch 2's per-element `$map`.
+    fn expr_branch_map<'a>(clause: &'a Document, key: &str) -> &'a Document {
+        clause.get_array(key).unwrap()[1]
             .as_document()
             .unwrap()
             .get_document("$expr")
             .unwrap()
+            .get_document("$anyElementTrue")
+            .unwrap()
+            .get_document("$map")
+            .unwrap()
+    }
+
+    /// The `$regexMatch` branch 2 applies to each element.
+    fn expr_branch_match<'a>(clause: &'a Document, key: &str) -> &'a Document {
+        expr_branch_map(clause, key)
+            .get_document("in")
+            .unwrap()
             .get_document("$regexMatch")
             .unwrap()
+    }
+
+    fn expr_branch_regex(clause: &Document, key: &str) -> String {
+        expr_branch_match(clause, key)
             .get_str("regex")
+            .unwrap()
+            .to_string()
+    }
+
+    /// The field path branch 2 maps over, read off its `$isArray` test.
+    fn expr_branch_field(clause: &Document, key: &str) -> String {
+        expr_branch_map(clause, key)
+            .get_document("input")
+            .unwrap()
+            .get_array("$cond")
+            .unwrap()[0]
+            .as_document()
+            .unwrap()
+            .get_str("$isArray")
             .unwrap()
             .to_string()
     }
@@ -1289,22 +1340,43 @@ mod tests {
         assert_eq!(expr_branch_regex(&f, "$or"), "1788");
 
         // The stringification has to tolerate a missing field or a subdocument;
-        // a bare `$toString` would abort the whole query on either.
-        let convert = f.get_array("$or").unwrap()[1]
-            .as_document()
-            .unwrap()
-            .get_document("$expr")
-            .unwrap()
-            .get_document("$regexMatch")
-            .unwrap()
+        // a bare `$toString` would abort the whole query on either. It converts
+        // one element at a time (`$$this`), never the field as a whole — see
+        // the array test below.
+        let convert = expr_branch_match(&f, "$or")
             .get_document("input")
             .unwrap()
             .get_document("$convert")
             .unwrap();
-        assert_eq!(convert.get_str("input").unwrap(), "$ts");
+        assert_eq!(convert.get_str("input").unwrap(), "$$this");
         assert_eq!(convert.get_str("to").unwrap(), "string");
         assert_eq!(convert.get_str("onError").unwrap(), "");
         assert_eq!(convert.get_str("onNull").unwrap(), "");
+        assert_eq!(expr_branch_field(&f, "$or"), "$ts");
+    }
+
+    #[test]
+    fn text_match_asks_per_element_so_a_path_through_an_array_still_matches() {
+        // `items.qty` resolves to an array of numbers, and `$convert` folds an
+        // array to `""` — so converting the field whole answered zero rows for
+        // every numeric field reachable through an array, which is precisely
+        // what the nested-path field picker made reachable.
+        let f = build_filter(
+            &text_filter(FilterOp::Contains, "items.qty", "17"),
+            None,
+            &[],
+        );
+        assert_eq!(expr_branch_field(&f, "$or"), "$items.qty");
+        assert_eq!(expr_branch_regex(&f, "$or"), "17");
+        let cond = expr_branch_map(&f, "$or")
+            .get_document("input")
+            .unwrap()
+            .get_array("$cond")
+            .unwrap();
+        // Array branch: the field itself. Scalar branch: the field wrapped in a
+        // one-element array, so the same `$map` serves both.
+        assert_eq!(cond[1].as_str().unwrap(), "$items.qty");
+        assert_eq!(cond[2].as_array().unwrap().len(), 1);
     }
 
     #[test]
@@ -1351,17 +1423,6 @@ mod tests {
             None,
             &[],
         );
-        let convert = f.get_array("$or").unwrap()[1]
-            .as_document()
-            .unwrap()
-            .get_document("$expr")
-            .unwrap()
-            .get_document("$regexMatch")
-            .unwrap()
-            .get_document("input")
-            .unwrap()
-            .get_document("$convert")
-            .unwrap();
-        assert_eq!(convert.get_str("input").unwrap(), "$customData.format");
+        assert_eq!(expr_branch_field(&f, "$or"), "$customData.format");
     }
 }

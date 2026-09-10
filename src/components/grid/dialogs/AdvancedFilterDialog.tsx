@@ -24,6 +24,13 @@
  * AND list (no nested OR groups) — enough for the "too many columns, the
  * global search feels limiting" case the issue describes without a full
  * query-builder tree.
+ *
+ * **On MongoDB a condition can name a nested path.** `nestedFields` carries
+ * the paths found in the page on screen and `customFields` lets one be typed
+ * outright; `lib/grid/fieldPaths.ts` explains where those come from and why
+ * they are a sample rather than a catalog. Nothing about the filter DTO changes
+ * for it — a dotted `column` is a field path the moment the Mongo builder sees
+ * one, which is why the whole feature lives in the picker.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -39,6 +46,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { ColumnInfo, ColumnFilter } from "@/types";
+import { filterFieldsFor, type FilterField } from "@/lib/grid/fieldPaths";
 import { FilterConditionRow } from "./FilterConditionRow";
 import {
   draftFromFilter,
@@ -55,12 +63,22 @@ let nextKey = 1;
 
 export function AdvancedFilterDialog({
   columns,
+  nestedFields,
+  customFields,
   initial,
   focusIndex,
   onApply,
   onClose,
 }: {
   columns: ColumnInfo[];
+  /**
+   * Nested field paths found in the page currently on screen (MongoDB only —
+   * see `lib/grid/fieldPaths.ts`). Listed under the column they belong to, so
+   * `customData.format` is one click away from `customData`.
+   */
+  nestedFields?: FilterField[];
+  /** Let the user type a field the lists don't hold — MongoDB only. */
+  customFields?: boolean;
   initial: ColumnFilter[];
   /**
    * Index into `initial` of the filter the dialog was opened to edit — set
@@ -94,19 +112,22 @@ export function AdvancedFilterDialog({
     el.querySelector<HTMLElement>("input, textarea, button")?.focus();
   }, [focusedKey]);
 
-  const columnNames = useMemo(() => columns.map((c) => c.name), [columns]);
+  const fields = useMemo(
+    () => filterFieldsFor(columns, nestedFields ?? []),
+    [columns, nestedFields],
+  );
   const typeByColumn = useMemo(() => {
     const m = new Map<string, string>();
-    for (const c of columns) m.set(c.name, c.data_type);
+    for (const f of fields) if (f.type) m.set(f.path, f.type);
     return m;
-  }, [columns]);
+  }, [fields]);
 
   /** Rows whose value list is over the backend's cap — Apply is blocked while
    *  any exists, rather than truncating or letting the call fail. */
   const overlong = useMemo(() => overlongListRows(rows), [rows]);
 
   const addRow = () =>
-    setRows((prev) => [...prev, emptyDraft(columnNames[0] ?? "", nextKey++)]);
+    setRows((prev) => [...prev, emptyDraft(fields[0]?.path ?? "", nextKey++)]);
 
   const removeRow = (key: number) =>
     setRows((prev) => prev.filter((r) => r.key !== key));
@@ -127,7 +148,9 @@ export function AdvancedFilterDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+      {/* `3xl`, not `2xl`: three controls and a remove button share the row,
+          and a MongoDB field is now a dotted path rather than a column name. */}
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("tableData.filter.title")}</DialogTitle>
           <DialogDescription>
@@ -146,8 +169,8 @@ export function AdvancedFilterDialog({
                 key={r.key}
                 ref={r.key === focusedKey ? focusedRef : undefined}
                 highlighted={r.key === focusedKey}
-                columnNames={columnNames}
-                typeByColumn={typeByColumn}
+                fields={fields}
+                customFields={customFields}
                 row={r}
                 onPatch={(patch) => patchRow(r.key, patch)}
                 onRemove={() => removeRow(r.key)}
@@ -161,7 +184,10 @@ export function AdvancedFilterDialog({
           variant="outline"
           size="sm"
           className="h-7 gap-1 self-start px-2 text-xs"
-          disabled={columnNames.length === 0}
+          // A field list that came back empty (a collection whose sample held
+          // nothing) still leaves a condition writable when the path can be
+          // typed, which is exactly the MongoDB case.
+          disabled={fields.length === 0 && !customFields}
           onClick={addRow}
         >
           <Plus className="h-3.5 w-3.5" />
