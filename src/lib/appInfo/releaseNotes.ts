@@ -56,6 +56,7 @@ import {
   Tags,
   Target,
   Timer,
+  Wand2,
 } from "lucide-react";
 
 export interface ReleaseHighlight {
@@ -86,6 +87,43 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.22.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_22_0.tagline",
+    highlights: [
+      {
+        icon: Bot,
+        titleKey: "whatsNew.releases.1_22_0.items.aiPanel.title",
+        bodyKey: "whatsNew.releases.1_22_0.items.aiPanel.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_22_0.items.aiTwoSwitches.title",
+        bodyKey: "whatsNew.releases.1_22_0.items.aiTwoSwitches.body",
+      },
+      {
+        icon: Wand2,
+        titleKey: "whatsNew.releases.1_22_0.items.aiAssisted.title",
+        bodyKey: "whatsNew.releases.1_22_0.items.aiAssisted.body",
+      },
+      {
+        icon: SquareTerminal,
+        titleKey: "whatsNew.releases.1_22_0.items.aiAgent.title",
+        bodyKey: "whatsNew.releases.1_22_0.items.aiAgent.body",
+      },
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_22_0.items.mongoNestedFilter.title",
+        bodyKey: "whatsNew.releases.1_22_0.items.mongoNestedFilter.body",
+      },
+      {
+        icon: Share2,
+        titleKey: "whatsNew.releases.1_22_0.items.originCredentials.title",
+        bodyKey: "whatsNew.releases.1_22_0.items.originCredentials.body",
+      },
+    ],
+  },
   {
     version: "1.21.0",
     major: true,

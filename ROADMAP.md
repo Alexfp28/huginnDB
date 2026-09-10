@@ -39,41 +39,25 @@ in a roadmap and now don't:
 | Reconnect-on-launch + session-level workspace layout | 1.11.0 | Restores live connections, focus, and pane geometry at startup. |
 | Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
 | **HuginnDB Pulse** — live server health/performance monitoring | 1.20.0 | Vital signs, top time-consuming statements (with `EXPLAIN`), storage, sessions and index usage for **MySQL and MongoDB**, docked next to the workspace or expanded into its own window; an opt-in per-connection history sampler (`pulse.db`) answers "was this slow yesterday too"; reachable over MCP through seven read-only tools. Postgres/SQLite/SQL Server show an explicit "not supported yet" state. See `docs/PULSE.md`. |
+| **AI panel** — an in-app, local-first assistant | 1.22.0 | Docked beside Pulse, off by default. Two independently declared axes (where inference runs, whether rows may enter the context) gate everything; four assisted actions run on one model call each, agent mode drives the read-only tool catalogue and is gated on a measured tool-capable endpoint, and no write tool exists at all. Conversations are memory-only. See `docs/AI.md` for what exists, `docs/AI_ROADMAP.md` for the design rationale and the questions deferred past v1, and gotchas #71–#74 for the invariants. |
 
 ## Open (priority order)
 
-1. **AI panel** — an in-app assistant docked in the right dock next to
-   Pulse, built local-first. The whole design, the locked decisions and a
-   phase-by-phase execution plan live in
-   [`docs/AI_ROADMAP.md`](docs/AI_ROADMAP.md); read that before starting, not
-   this paragraph. The short version: one OpenAI-compatible client in Rust
-   serves both a local/self-hosted endpoint (Ollama, LM Studio, llama.cpp,
-   vLLM, or one GPU box serving a whole office over the LAN) and BYOK cloud;
-   the tool surface is the `BridgeRequest` data path the MCP connector already
-   uses, under the same `McpWritePolicy`; v1 is read-only and *proposes* SQL
-   rather than executing writes. Two knobs, safely coupled — where inference
-   runs, and whether rows may enter the context — because "read-only" does not
-   mean "nothing leaves". An *assisted* mode (Rust builds the context, one
-   call, no tool loop) ships before agent mode, because it is the mode a
-   laptop without a GPU can actually run. Note this narrows, and does not
-   remove, `CLAUDE.md`'s standing "no AI features" line: LLM autocomplete in
-   the editor and anything cloud-by-default stay out of scope.
-
-2. **Bulk row insert** in the data browser. Bulk delete shipped in 1.0.2;
+1. **Bulk row insert** in the data browser. Bulk delete shipped in 1.0.2;
    inserting several rows at once (paste-from-clipboard or a multi-row draft)
    is still a one-row-at-a-time affair on the SQL drivers. **MongoDB is
    covered**: the free-form document dialog accepts an array and inserts it
    with `insert_many`, which falls out of the shell parser already accepting
    one. What remains is the SQL side, where a multi-row draft has no
    equivalent.
-3. **Schema diff & export** — DDL extraction and a side-by-side compare
+2. **Schema diff & export** — DDL extraction and a side-by-side compare
    between two schemas or two points in time. No backend or UI work started.
-4. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in
+3. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in
    `CONTRIBUTING.md`. Microsoft SQL Server shipped (see above); what is left
    there is its DDL surface — the structure editor, table/view rename and
    `.sql` export/import — which needs a T-SQL builder in `db/ddl.rs`,
    `db/view_ddl.rs` and `db/dump.rs`.
-5. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
+4. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
    Supabase project's Postgres endpoint already connects today through the
    existing PostgreSQL driver (it's plain Postgres on the wire), so this
    isn't a new driver — it's ergonomics and pooler-awareness on top of the
@@ -88,10 +72,10 @@ in a roadmap and now don't:
    plain Postgres. No design work started; needs scoping (Supabase-only vs.
    a generic "cloud Postgres" abstraction covering Neon/PlanetScale too)
    before implementation begins.
-6. **Tighter CSP** for the webview. Currently `csp: null` (`tauri.conf.json`)
+5. **Tighter CSP** for the webview. Currently `csp: null` (`tauri.conf.json`)
    because Monaco loads its workers as blobs — see `CLAUDE.md`'s architecture
    invariants for why the relaxation is considered narrow today.
-7. **Automated tests, wider coverage.** Backend unit tests already cover a
+6. **Automated tests, wider coverage.** Backend unit tests already cover a
    meaningful slice (`tab_state` migrations, `db::ddl`/`view_ddl` builders,
    `db::sql`, the Mongo shell parser/value coercion/aggregation/indexes,
    `mcp::mod`, `bridge`, prefs, store, SQL Server's pool/schema/values — see
@@ -101,7 +85,7 @@ in a roadmap and now don't:
    schema,values}.rs` and `bridge/{protocol,server}.rs`). Still missing:
    integration tests against ephemeral Postgres/MySQL (`testcontainers-rs`),
    and any frontend test coverage (Playwright).
-8. **Broaden Linux distribution.** The `ubuntu-22.04` leg in
+7. **Broaden Linux distribution.** The `ubuntu-22.04` leg in
    `.github/workflows/release.yml` is now **enabled**, so a tagged build
    publishes `x86_64` `.deb` + `.AppImage` alongside the Windows installer,
    and the README documents both. One caveat before treating this as closed:
@@ -142,12 +126,12 @@ in a roadmap and now don't:
    write and maintain a `PKGBUILD` for the AUR, which is an external
    packaging/publishing step (an aur.archlinux.org account + SSH key), not a
    change to this repo's build.
-9. **macOS bundle with code signing.** The build is expected to work but is
+8. **macOS bundle with code signing.** The build is expected to work but is
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).
-10. **Visual query builder** — low priority. Monaco is fast enough that most
+9. **Visual query builder** — low priority. Monaco is fast enough that most
    users probably don't want one; only pursue if there's real demand.
-11. **Keyset (seek) pagination for deep table navigation** — low priority.
+10. **Keyset (seek) pagination for deep table navigation** — low priority.
    The data browser paginates with `LIMIT/OFFSET` (and `.skip()` on MongoDB),
    which is O(offset): jumping deep into a multi-million-row table makes the
    engine scan and discard every skipped row. A `WHERE (sort_key) > :last`

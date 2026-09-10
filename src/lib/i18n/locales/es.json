@@ -2187,6 +2187,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_22_0": {
+        "tagline": "HuginnDB ya tiene asistente — local primero, de solo lectura y apagado hasta que lo actives: responde sobre tu base de datos a partir de lo que ha leído de verdad, y nunca ejecuta una escritura.",
+        "items": {
+          "aiPanel": {
+            "title": "El panel del asistente, en el dock derecho",
+            "body": "Un tercer inquilino junto a Consultas guardadas y Pulse, con una conversación por conexión y nada escrito en disco. Lo que propone se abre en una pestaña de consulta — nunca ejecuta una sentencia por ti."
+          },
+          "aiTwoSwitches": {
+            "title": "Dos interruptores deciden qué sale de tu máquina",
+            "body": "Configuración → IA: dónde corre la inferencia es un nivel de confianza que declaras tú, y que las filas entren en el contexto es aparte y por conexión. Ambos apagados en todos los perfiles existentes; un endpoint no confiable solo ve nombres, tipos, índices y la salida de EXPLAIN."
+          },
+          "aiAssisted": {
+            "title": "Explica una sentencia, documenta una tabla, escribe el SQL",
+            "body": "Cuatro tareas cuyo contexto monta HuginnDB, con una sola llamada al modelo — así funcionan en un modelo demasiado pequeño para un bucle de herramientas. Clic derecho en una sentencia o en una tabla, o la varita del compositor."
+          },
+          "aiAgent": {
+            "title": "El modo agente se lo busca él solo",
+            "body": "Lista las tablas, describe las que necesita y responde desde lo que leyó — solo en un modelo que la comprobación del endpoint haya medido como capaz de usar herramientas. Cada llamada, y el número de filas que volvió, queda en la Consola."
+          },
+          "mongoNestedFilter": {
+            "title": "MongoDB: filtra por un campo anidado",
+            "body": "El campo del filtro avanzado es ahora un combo buscable con las rutas anidadas de la página que estás viendo, con su tipo — elige customData.format, o escribe una ruta que solo tengan los documentos antiguos."
+          },
+          "originCredentials": {
+            "title": "Una contraseña rotada ya no rompe un origen compartido",
+            "body": "Quien publica puede enviar la conexión corregida sin pasar por el editor del origen, y quien consume puede quedarse con su propia contraseña para una conexión hasta que el origen publique otra."
+          }
+        }
+      },
       "1_21_0": {
         "tagline": "Las conexiones MCP se gestionan ahora desde la propia app — elige qué exponer, instala con un clic — además de insertar y duplicar etapas del pipeline, un grid que confirma tus escrituras, y correcciones de fiabilidad para colecciones de MongoDB muy grandes.",
         "items": {

@@ -2187,6 +2187,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_22_0": {
+        "tagline": "HuginnDB has an assistant now — local-first, read-only, off until you switch it on: it answers about your database from what it actually read, and never runs a write.",
+        "items": {
+          "aiPanel": {
+            "title": "The assistant panel, in the right dock",
+            "body": "A third occupant beside Saved Queries and Pulse, with a conversation kept per connection and nothing written to disk. Anything it proposes opens in a query tab — it never runs a statement for you."
+          },
+          "aiTwoSwitches": {
+            "title": "Two switches decide what leaves your machine",
+            "body": "Settings → AI: where inference runs is a trust level you declare, and whether rows may enter the context is separate and per connection. Both off on every existing profile; an untrusted endpoint sees names, types, indexes and EXPLAIN output only."
+          },
+          "aiAssisted": {
+            "title": "Explain a statement, document a table, write the SQL",
+            "body": "Four jobs whose context HuginnDB assembles itself, one model call each — so they work on a model far too small for a tool loop. Right-click a statement or a table, or use the wand in the composer."
+          },
+          "aiAgent": {
+            "title": "Agent mode looks things up on its own",
+            "body": "It lists the tables, describes the ones it needs and answers from what it read — only on a model the endpoint check measured as tool-capable. Every call, and the row count that came back, lands in the Console."
+          },
+          "mongoNestedFilter": {
+            "title": "MongoDB: filter on a nested field",
+            "body": "The advanced filter's field control is now a searchable combobox of the nested paths in the page you are looking at, typed and labelled — pick customData.format, or type a path only older documents carry."
+          },
+          "originCredentials": {
+            "title": "A rotated password no longer breaks a shared origin",
+            "body": "The publisher can push a corrected connection without walking through the origin editor, and a consumer can keep their own password for one connection until the origin publishes a different one."
+          }
+        }
+      },
       "1_21_0": {
         "tagline": "MCP connections are now managed from inside the app — pick what's exposed, install with one click — plus pipeline stage insert/duplicate, a grid that confirms your writes, and reliability fixes for very large MongoDB collections.",
         "items": {

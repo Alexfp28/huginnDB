@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.22.0] — 2026-09-10
+
 ### Añadido
 
 - **MongoDB: el filtro avanzado ya entra dentro del documento.** Una condición
