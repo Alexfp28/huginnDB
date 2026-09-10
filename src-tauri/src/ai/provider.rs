@@ -782,9 +782,6 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut socket, _) = listener.accept().await.expect("accept");
-            // Read only as far as the blank line ending the head. The body
-            // follows and is not needed to reply, and it is small enough that
-            // leaving it unread cannot block the client's write.
             let mut head = Vec::new();
             let mut buffer = [0u8; 4096];
             while !head.windows(4).any(|window| window == b"\r\n\r\n") {
@@ -793,7 +790,39 @@ mod tests {
                     read => head.extend_from_slice(&buffer[..read]),
                 }
             }
-            let _ = tx.send(String::from_utf8_lossy(&head).into_owned());
+            let text = String::from_utf8_lossy(&head).into_owned();
+
+            // **Drain the body.** The first version of this server stopped at
+            // the blank line, on the reasoning that the body is not needed to
+            // reply — which held only while the body was small. Growing the
+            // tool descriptions pushed the request past a socket buffer, and
+            // the test started failing with a connection reset: the server
+            // replied and closed while the client was still writing. A test
+            // double that works by virtue of its input being small is a test
+            // double that fails on the day the input grows, having said nothing
+            // about the code under test.
+            let already = head.len()
+                - head
+                    .windows(4)
+                    .position(|w| w == b"\r\n\r\n")
+                    .map_or(0, |at| at + 4);
+            let length = text
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.trim()
+                        .eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().ok())?
+                })
+                .unwrap_or(0);
+            let mut drained = already;
+            while drained < length {
+                match socket.read(&mut buffer).await.expect("read body") {
+                    0 => break,
+                    read => drained += read,
+                }
+            }
+            let _ = tx.send(text);
 
             socket
                 .write_all(format!("{status_line}\r\n{headers}\r\n").as_bytes())

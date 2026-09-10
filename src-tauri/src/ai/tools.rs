@@ -156,7 +156,8 @@ pub const CATALOGUE: &[ToolSpec] = &[
     ToolSpec {
         name: DESCRIBE_TABLE,
         description: "Describe one table: its columns, types, nullability, defaults and keys. \
-                      For a view, also its definition.",
+                      For a view, also its definition. Call this whenever you need to know a \
+                      table's columns — do not ask the user to paste a schema you can read.",
         schema: table_args,
         needs_rows: false,
     },
@@ -195,14 +196,25 @@ pub const CATALOGUE: &[ToolSpec] = &[
     },
     ToolSpec {
         name: RUN_QUERY,
-        description: "Run one read-only statement and return its rows. Writes are refused — \
-                      propose the SQL to the user instead of trying to run it.",
+        // The description a model reads *while deciding whether to call this*,
+        // which is why the propose-instead sentence cannot live here. It used
+        // to, and a 12B duly generalised it: asked to summarise a table, it
+        // wrote `SELECT * FROM t LIMIT 5` and asked the *user* to run it — a
+        // tool telling the model to delegate the one thing the tool is for.
+        // The write refusal is still enforced (`exec::refuse_unless_read`) and
+        // still explained, in the refusal itself, where it is read only by a
+        // model that actually tried to write.
+        description: "Run one read-only statement and return its rows. This is how you answer \
+                      questions about data — run the query yourself, never ask the user to run \
+                      one for you.",
         schema: query_args,
         needs_rows: true,
     },
     ToolSpec {
         name: BROWSE_TABLE,
-        description: "Read a page of rows from one table, without writing SQL.",
+        description: "Read a page of rows from one table, without writing SQL. Use this for \
+                      sample data rather than asking the user for it. The reply carries the \
+                      table's real row count alongside the page.",
         schema: browse_args,
         needs_rows: true,
     },
@@ -643,6 +655,61 @@ mod tests {
                 spec.name
             );
         }
+    }
+
+    /// A regression guard on the *descriptions*, which is where the bug was.
+    ///
+    /// A tool's description is read at the moment the model decides whether to
+    /// call it. One that tells it to hand the job to the user is a tool that
+    /// does not get called — and that is precisely what happened: `run_query`
+    /// carried "propose the SQL to the user instead of trying to run it", and a
+    /// 12B asked to summarise a table wrote the SELECT out and waited.
+    #[test]
+    fn no_tool_tells_the_model_to_delegate_its_own_job() {
+        for spec in CATALOGUE {
+            let description = spec.description.to_lowercase();
+            for forbidden in ["propose", "instead of trying"] {
+                assert!(
+                    !description.contains(forbidden),
+                    "{}'s description says {forbidden:?} — a tool must not tell the model to \
+                     delegate the thing the tool exists for",
+                    spec.name
+                );
+            }
+            // Mentioning the user running something is fine when it is being
+            // *forbidden*, which is what these descriptions now do. The first
+            // version of this guard matched the substring and failed on the
+            // prohibition — the pattern to catch is the instruction, so every
+            // occurrence has to carry its negation.
+            for phrase in ["ask the user", "asking the user"] {
+                for (at, _) in description.match_indices(phrase) {
+                    let before = &description[..at];
+                    assert!(
+                        before.ends_with("never ")
+                            || before.ends_with("rather than ")
+                            || before.ends_with("not "),
+                        "{}'s description says {phrase:?} without negating it",
+                        spec.name
+                    );
+                }
+            }
+        }
+    }
+
+    /// The three tools a model reaches for when it needs to look say so, in the
+    /// imperative. A small model picks tools by description, not by inference.
+    #[test]
+    fn the_reading_tools_tell_the_model_to_use_them() {
+        let of = |name: &str| {
+            CATALOGUE
+                .iter()
+                .find(|s| s.name == name)
+                .map(|s| s.description.to_lowercase())
+                .unwrap_or_default()
+        };
+        assert!(of(RUN_QUERY).contains("run the query yourself"));
+        assert!(of(DESCRIBE_TABLE).contains("call this whenever"));
+        assert!(of(BROWSE_TABLE).contains("rather than asking the user"));
     }
 
     #[test]

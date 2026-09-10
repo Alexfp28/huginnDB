@@ -99,21 +99,50 @@ impl Default for AgentLimits {
 
 /// The system prompt agent mode runs under.
 ///
-/// Its load-bearing lines are the two that constrain *behaviour* rather than
-/// tone: look before answering, and never claim to have read something a tool
-/// did not return. The second is the failure this whole feature is built to
-/// avoid — a confident answer about a schema nobody looked at is worse than no
-/// answer, because the user cannot tell them apart.
+/// # What the first version got wrong
+///
+/// It gave one sentence to "use the tools" and a whole paragraph, with
+/// mechanics, to "propose the statement and leave it to the user". A 12B
+/// weighted them the way they were written and generalised the loud one to
+/// *every* statement: asked for the last three rows of a table, it explained
+/// that it needed to know the ordering column and suggested the user run
+/// `DESCRIBE logRecord` — while holding a `describe_table` tool. Twice in one
+/// session it wrote out a `SELECT` and waited to be told to run it.
+///
+/// So the ordering and the scoping are the design here, not the phrasing:
+///
+/// * The reading instruction comes first, names the tools, and forbids the
+///   specific failure (asking the user to run a read) rather than merely
+///   encouraging the opposite.
+/// * The write restriction is scoped **explicitly and by name** to statements
+///   that change something. "You cannot write" alone is a sentence a small
+///   model applies to SQL in general.
+/// * "Never say you are showing data you did not receive" is separate from
+///   both, because the observed failure was a model announcing "here are the
+///   last three records" above a query it had not run.
+///
+/// The other load-bearing line is the older one: never claim to have read
+/// something a tool did not return. A confident answer about a schema nobody
+/// looked at is worse than no answer, because the user cannot tell them apart.
 pub const SYSTEM_PROMPT: &str = concat!(
-    "You are a database assistant embedded in HuginnDB, with read-only tools ",
-    "over the user's connection.\n\n",
-    "Use the tools to look before you answer. Never state a table name, a ",
-    "column, a type or a count that a tool did not return — if you need ",
-    "something you have not read, read it. If a tool refuses, say what it ",
-    "refused and why rather than working around it.\n\n",
-    "You cannot write. When a change is warranted, propose the statement in a ",
-    "fenced code block tagged with the dialect and leave it to the user, who ",
-    "runs it from their own editor. Never present a statement as executed.\n\n",
+    "You are a database assistant embedded in HuginnDB. You have read-only ",
+    "tools over the user's live connection, and you are expected to use them ",
+    "without being asked.\n\n",
+    "Look things up, then answer. Need a table's columns? Call ",
+    "describe_table. Need rows, a count, or a sample? Call browse_table or ",
+    "run_query. Never ask the user to run a query for you, never ask them to ",
+    "paste a schema you can read yourself, and never end a turn by asking ",
+    "permission to look — looking is your job. Do not re-read something you ",
+    "already read earlier in this conversation.\n\n",
+    "Never state a table name, a column, a type or a count that a tool did ",
+    "not return. If a tool refuses, say what it refused and why rather than ",
+    "working around it.\n\n",
+    "You cannot change anything, and this applies ONLY to statements that ",
+    "write: INSERT, UPDATE, DELETE, MERGE, CREATE, ALTER, DROP, TRUNCATE, ",
+    "GRANT. For those, and only for those, put the statement in a fenced code ",
+    "block tagged with the dialect and leave it for the user to run. Reads are ",
+    "yours to run.\n\n",
+    "Never say you are showing data you did not receive from a tool.\n\n",
     "Be brief. Answer in the language the user writes in."
 );
 
@@ -490,10 +519,48 @@ mod tests {
     /// The prompt's job is to stop the one failure this feature exists to
     /// avoid: a confident answer about a schema nobody looked at.
     #[test]
-    fn the_system_prompt_forbids_claiming_unread_facts_and_writes() {
+    fn the_system_prompt_forbids_claiming_unread_facts() {
         assert!(SYSTEM_PROMPT.contains("Never state a table name"));
-        assert!(SYSTEM_PROMPT.contains("You cannot write"));
-        assert!(SYSTEM_PROMPT.contains("Never present a statement as executed"));
+        assert!(SYSTEM_PROMPT.contains("Never say you are showing data you did not receive"));
+    }
+
+    /// The regression the first version had: a model that wrote the SELECT out
+    /// and waited to be told to run it. The prompt has to forbid the specific
+    /// behaviour, not merely encourage its opposite.
+    #[test]
+    fn the_system_prompt_forbids_delegating_a_read() {
+        for required in [
+            "Never ask the user to run a query for you",
+            "paste a schema you can read yourself",
+            "asking permission to look",
+            "Reads are yours to run",
+        ] {
+            assert!(SYSTEM_PROMPT.contains(required), "missing: {required}");
+        }
+        // And it names the tools, because a small model picks them by name
+        // rather than by working out which one applies.
+        assert!(SYSTEM_PROMPT.contains("describe_table"));
+        assert!(SYSTEM_PROMPT.contains("browse_table"));
+        assert!(SYSTEM_PROMPT.contains("run_query"));
+    }
+
+    /// "You cannot write" alone is a sentence a small model applies to SQL in
+    /// general — which is how the propose-instead rule leaked onto reads.
+    #[test]
+    fn the_write_restriction_is_scoped_to_statements_that_write() {
+        assert!(SYSTEM_PROMPT.contains("ONLY to statements that write"));
+        for verb in [
+            "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "TRUNCATE",
+        ] {
+            assert!(SYSTEM_PROMPT.contains(verb), "unnamed write verb: {verb}");
+        }
+    }
+
+    /// Re-reading is not wrong, only wasteful — and with a turn-wide character
+    /// budget, waste is what ends a turn early.
+    #[test]
+    fn the_system_prompt_discourages_re_reading() {
+        assert!(SYSTEM_PROMPT.contains("Do not re-read something you already read"));
     }
 
     /// The reversal has to round-trip, or the loop would advertise row tools
