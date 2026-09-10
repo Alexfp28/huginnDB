@@ -8,6 +8,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **A guide for the AI panel, in the app and in the repo.** Help →
+  Documentation gains an **AI panel** page (English and Spanish, like every
+  other doc here) that answers the two questions the feature actually turns on:
+  where the model runs, and whether it may see rows. It carries the coupling
+  table for those two switches, what leaves your machine in each configuration,
+  a hardware table for picking a model your GPU can hold, the shared-endpoint
+  pattern for a team with one GPU box, the three outcomes of the capability
+  check, and the known rough edges — including the fact that a small model will
+  sometimes write a `SELECT` and wait for you instead of reading the table
+  itself.
+
+  It ends by pointing anyone who already pays for Claude or ChatGPT at the MCP
+  connector instead: a subscription is not available to third-party apps, and
+  the connector is the sanctioned way to spend a licence you already have.
+
+  `PRIVACY.md` was updated in the same pass, because this feature changes the
+  answer to the question that document exists to answer: the inference endpoint
+  you configure joins the list of hosts HuginnDB contacts, conversations are
+  recorded as living nowhere but memory, and a provider API key is recorded as
+  living in the OS keychain and nowhere else.
+
 - **Agent mode: the assistant looks things up on its own.** Switch it on in
   Settings → AI and plain chat stops being blind — it lists the tables,
   describes the ones it needs and answers from what it actually read, rather

@@ -2162,6 +2162,10 @@
       "shortcuts": {
         "title": "Keyboard shortcuts",
         "description": "Rebind anything, chord sequences, scopes and reserved keys."
+      },
+      "ai": {
+        "title": "AI panel",
+        "description": "Local-first assistant"
       }
     }
   },

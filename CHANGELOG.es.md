@@ -10,6 +10,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Una guía del panel de IA, en la app y en el repositorio.** Ayuda →
+  Documentación incorpora una página **Panel de IA** (en inglés y español, como
+  el resto de la documentación) que responde a las dos preguntas que la función
+  plantea de verdad: dónde corre el modelo y si puede ver filas. Incluye la
+  tabla de combinación de esos dos interruptores, qué sale de tu máquina en cada
+  configuración, una tabla de hardware para elegir un modelo que quepa en tu
+  GPU, el patrón de endpoint compartido para un equipo con una sola máquina con
+  GPU, los tres resultados de la comprobación de capacidad y las asperezas
+  conocidas — incluida la de que un modelo pequeño a veces escribe un `SELECT` y
+  se queda esperándote en lugar de leer la tabla él mismo.
+
+  Termina remitiendo al conector MCP a quien ya paga Claude o ChatGPT: una
+  suscripción no está disponible para aplicaciones de terceros, y el conector es
+  la vía admitida para aprovechar una licencia que ya tienes.
+
+  `PRIVACY.md` se actualizó en la misma pasada, porque esta función cambia la
+  respuesta a la pregunta para la que existe ese documento: el endpoint de
+  inferencia que configures se suma a la lista de hosts con los que HuginnDB
+  habla, las conversaciones quedan registradas como algo que no vive en ningún
+  sitio salvo la memoria, y la clave de API de un proveedor como algo que vive
+  en el llavero del sistema y en ningún otro lugar.
+
 - **Modo agente: el asistente se lo busca él solo.** Actívalo en Ajustes → IA y
   el chat normal deja de estar ciego — lista las tablas, describe las que
   necesita y responde con lo que ha leído de verdad, no con lo que ha supuesto.

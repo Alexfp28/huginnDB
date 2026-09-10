@@ -34,6 +34,8 @@ import mcpRaw from "../../../docs/MCP.md?raw";
 import mcpEsRaw from "../../../docs/MCP.es.md?raw";
 import shortcutsRaw from "../../../docs/SHORTCUTS.md?raw";
 import shortcutsEsRaw from "../../../docs/SHORTCUTS.es.md?raw";
+import aiRaw from "../../../docs/AI.md?raw";
+import aiEsRaw from "../../../docs/AI.es.md?raw";
 
 export interface DocEntry {
   /** Stable id (used as the selected-doc key and React key). */
@@ -129,6 +131,19 @@ export const DOCS: DocEntry[] = [
     path: "docs/MCP.md",
     bodies: { en: mcpRaw, es: mcpEsRaw },
     updated: dates["docs/MCP.md"] ?? null,
+  },
+  {
+    // Last, and immediately after MCP on purpose: the two answer the same
+    // question from opposite ends ("I want an AI to see my database"), and the
+    // AI guide's own closing section sends anyone with an existing Claude or
+    // Codex licence back to the connector. A reader who arrives at one should
+    // find the other next to it.
+    id: "ai",
+    titleKey: "docs.entries.ai.title",
+    descriptionKey: "docs.entries.ai.description",
+    path: "docs/AI.md",
+    bodies: { en: aiRaw, es: aiEsRaw },
+    updated: dates["docs/AI.md"] ?? null,
   },
 ];
 

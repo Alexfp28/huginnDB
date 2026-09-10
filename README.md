@@ -25,6 +25,7 @@ HuginnDB gives every cell a full Monaco editor, a real schema-aware SQL/aggregat
 - **Real SQL/aggregation workspace** — schema-aware autocomplete, `Ctrl+Enter` to run, per-statement CodeLens, history that survives restarts.
 - **Visual structure editor** — add/rename/drop columns, indexes, FKs — previewed as the exact DDL that will run.
 - **Free MCP connector** — expose your schema to Claude Code, Claude Desktop, Cursor & co., read-only by default.
+- **[Local-first AI panel](docs/AI.md)** — chat about your database against a model *you* point it at: a process on your machine, a GPU box on your LAN, or a cloud provider with your own key. No HuginnDB service in the middle. Off by default, per-connection opt-in, and an untrusted endpoint sees metadata only — never rows — unless you say otherwise.
 - **Credentials in the OS keychain**, always — never on disk in plaintext.
 
 ```bash
@@ -62,6 +63,7 @@ claude mcp add huginndb -s user -- /absolute/path/to/huginndb-mcp --connections 
 - **View editor** — create, edit, rename, drop, with a live preview grid and read-only DDL pane.
 - **Server-side security panel** — read users/roles and privileges straight from the server, for every driver.
 - **[HuginnDB Pulse](docs/PULSE.md)** — dockable panel or its own window, six views (Status, Time spent, Storage, Sessions, Indexes, History), all seven metrics also reachable read-only over MCP.
+- **[AI panel](docs/AI.md)** — assisted mode assembles a task's context in Rust for one model call (explain a statement, diagnose a slow one, write SQL against the real schema, document a table), so it works on a 4B; agent mode runs a read-only tool loop, gated on a capability probe rather than a preference. Every read it makes is in the Console, and it never writes — a statement it proposes opens in your editor for you to run.
 - **Saved queries** — a local library with name, description, tags.
 - **Multi-window** — pop a connection's workspace, or a single tab, into its own OS window.
 - **Ten themes** with a light/dark pair each, plus a visual colour editor grouped by surfaces/actions/status/borders.
@@ -193,7 +195,7 @@ is in [docs/PRIVACY.md](docs/PRIVACY.md).
 User guides live in [`docs/`](docs/README.md), and the same files are readable
 inside the app under **Help → Documentation**. Each one has a Spanish twin.
 
-[Connections](docs/CONNECTIONS.md) · [Environments](docs/ENVIRONMENTS.md) · [MongoDB](docs/MONGODB.md) · [SQL Server](docs/SQL_SERVER.md) · [MCP connector](docs/MCP.md)
+[Connections](docs/CONNECTIONS.md) · [Environments](docs/ENVIRONMENTS.md) · [MongoDB](docs/MONGODB.md) · [SQL Server](docs/SQL_SERVER.md) · [MCP connector](docs/MCP.md) · [AI panel](docs/AI.md)
 
 [Roadmap](ROADMAP.md) · [Security](SECURITY.md) · [Privacy](docs/PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 

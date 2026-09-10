@@ -2162,6 +2162,10 @@
       "shortcuts": {
         "title": "Atajos de teclado",
         "description": "Reasignar cualquier cosa, secuencias, ámbitos y teclas reservadas."
+      },
+      "ai": {
+        "title": "Panel de IA",
+        "description": "Asistente local"
       }
     }
   },
