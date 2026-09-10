@@ -22,7 +22,7 @@ import type { LogEntry } from "@/types";
  *  the virtualized list. */
 const MAX_ENTRIES = 2000;
 
-export type LogKindFilter = "sql" | "connection";
+export type LogKindFilter = "sql" | "connection" | "ai";
 
 interface LogState {
   entries: LogEntry[];
@@ -44,7 +44,10 @@ export const useLogs = create<LogState>((set) => ({
   entries: [],
   paused: false,
   query: "",
-  kinds: { sql: true, connection: true },
+  // The AI kind starts visible: its whole reason for existing is that a user
+  // auditing what the assistant read should find it there without knowing to
+  // turn a filter on.
+  kinds: { sql: true, connection: true, ai: true },
   push: (entry) =>
     set((state) => {
       if (state.paused) return state;

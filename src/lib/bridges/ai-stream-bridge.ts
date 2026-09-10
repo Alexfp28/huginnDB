@@ -23,17 +23,36 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { useAi } from "@/stores/session/ai";
-import type { AiDelta } from "@/types";
+import type { AiDelta, AiToolEvent } from "@/types";
 
 const AI_DELTA_EVENT = "huginndb://ai-delta";
+const AI_TOOL_EVENT = "huginndb://ai-tool";
 
 export async function startAiStreamBridge(): Promise<UnlistenFn> {
   const label = getCurrentWindow().label;
-  return listen<AiDelta>(
+  const unlistenDelta = await listen<AiDelta>(
     AI_DELTA_EVENT,
     (event) => {
       useAi.getState().pushDelta(event.payload.turnId, event.payload.text);
     },
     { target: label },
   );
+  // Agent mode's steps. Two events with one id: `args` present means the model
+  // has asked, and the second event carries what came back.
+  const unlistenTool = await listen<AiToolEvent>(
+    AI_TOOL_EVENT,
+    (event) => {
+      const { turnId, id, name, args, result, error } = event.payload;
+      if (args !== undefined) {
+        useAi.getState().pushToolCall(turnId, { id, name, args });
+        return;
+      }
+      useAi.getState().pushToolResult(turnId, { id, name, result, error });
+    },
+    { target: label },
+  );
+  return () => {
+    unlistenDelta();
+    unlistenTool();
+  };
 }

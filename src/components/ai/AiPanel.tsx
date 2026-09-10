@@ -164,11 +164,19 @@ export function AiPanel({ connectionId }: { connectionId: string | null }) {
     const history = toWireMessages(messages);
     useAi.getState().startTurn(connectionId, id, text);
     try {
-      const result = await api.aiSend(id, [
-        { role: "system", content: SYSTEM_PROMPT },
-        ...history,
-        { role: "user", content: text },
-      ]);
+      const result = await api.aiSend(
+        id,
+        [
+          { role: "system", content: SYSTEM_PROMPT },
+          ...history,
+          { role: "user", content: text },
+        ],
+        // Agent mode's tools address a database, so the turn has to name one.
+        // The backend drops this prompt and supplies its own when the loop
+        // runs — see `ai::agent`'s docs on why the webview does not get to
+        // write the system prompt for a turn that has tools.
+        connectionId,
+      );
       useAi.getState().finishTurn(id, result.content);
     } catch (e) {
       useAi.getState().failTurn(id, String(e));

@@ -212,9 +212,16 @@ export const api = {
    * that missed a delta can reconcile against it.
    *
    * `turnId` is the caller's to generate and is what `aiCancel` addresses.
+   *
+   * `connectionId` is what agent mode needs — its tools address a database — and
+   * what plain chat ignores. A turn without one can only ever be plain chat,
+   * which is why it is optional rather than required.
    */
-  aiSend: (turnId: string, messages: AiChatMessage[]) =>
-    invoke<AiTurnResult>("ai_send", { turnId, messages }),
+  aiSend: (
+    turnId: string,
+    messages: AiChatMessage[],
+    connectionId?: string | null,
+  ) => invoke<AiTurnResult>("ai_send", { turnId, messages, connectionId }),
 
   /**
    * Abort an in-flight turn. Returns whether there was one, so a stop button

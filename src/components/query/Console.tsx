@@ -216,6 +216,14 @@ export function Console() {
           />
           {t("console.kindConnection")}
         </label>
+        <label className="flex items-center gap-1 text-2xs text-muted-foreground">
+          <Checkbox
+            size="xs"
+            checked={kinds.ai}
+            onChange={() => toggleKind("ai")}
+          />
+          {t("console.kindAi")}
+        </label>
         <div className="mx-1 h-5 w-px bg-border" />
         <SearchField
           size="sm"

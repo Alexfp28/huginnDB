@@ -8,6 +8,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Agent mode: the assistant looks things up on its own.** Switch it on in
+  Settings → AI and plain chat stops being blind — it lists the tables,
+  describes the ones it needs and answers from what it actually read, rather
+  than from what it guessed.
+
+  **It refuses to run on a model that cannot do it.** Agent mode is a
+  measurement away, not a preference away: the endpoint check has to come back
+  tool-capable, and if it has never run, one runs before the loop does. A small
+  model asked to chain tool calls does not degrade gracefully — it fabricates,
+  and the assistant looks like it is working right up to the point where nothing
+  it claims to have read was ever read. Assisted mode is what everyone else
+  gets, and for its four jobs it is *better*, because the context was chosen
+  deliberately rather than discovered.
+
+  **Every step is in the Console**, under its own AI filter: the tools it was
+  offered and whether they included row access, each call with its arguments,
+  and each result's row *count*. The payload never is — that is the data the
+  metadata-only guarantee is about, and writing it into a panel you can copy out
+  of would be an odd way to keep the promise. This is the part that makes the
+  guarantee checkable instead of merely stated.
+
+  Three hard budgets bound a turn: six model calls, twelve reads, and the row
+  cap every tool already carries. Hitting one ends the turn and says so in the
+  answer, because "the model gave up" and "the model was cut off" are different
+  facts and only one is worth retrying. Stop still aborts the request rather
+  than the rendering — between two tool calls it ends the turn instead of
+  letting the next one start.
+
+  It still cannot write. The tools are read-only, no write is in the catalogue
+  at all, and a `run_query` carrying anything but a read is refused with an
+  instruction to propose the statement instead.
+
 - **The assistant can read your database now, when you ask it to.** Four jobs
   whose context HuginnDB assembles itself, each one model call with no tool
   loop — which is what makes them work on a model far too small to be trusted

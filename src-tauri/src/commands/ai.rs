@@ -23,11 +23,13 @@
 //! consenting to send it. The rule in [`crate::ai::scope`] governs what the
 //! *assistant* may read on its own initiative, which is a different question.
 
+use crate::ai::agent;
 use crate::ai::probe::{self, ProbeReport};
 use crate::ai::provider::{self, Endpoint};
 use crate::ai::scope::DataScope;
 use crate::ai::tasks::{self, TaskInput};
 use crate::error::{AppError, AppResult};
+use crate::prefs::AiMode;
 use crate::state::AppState;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -38,6 +40,10 @@ use tauri::{AppHandle, Emitter, State};
 /// would render one window's tokens in the other.
 pub const AI_DELTA_EVENT: &str = "huginndb://ai-delta";
 
+/// A tool call the agent loop made, or its result. Same window scoping as
+/// [`AI_DELTA_EVENT`], and same reason.
+pub const AI_TOOL_EVENT: &str = "huginndb://ai-tool";
+
 /// One chunk of a streaming reply.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +52,30 @@ pub struct AiDelta {
     /// across tabs, and a delta with no owner is worse than none.
     pub turn_id: String,
     pub text: String,
+}
+
+/// One step of the agent loop, on its way to the panel's tool card.
+///
+/// The call and its result are two events rather than one, because they are
+/// separated by however long the database took — a card that could not render
+/// until the result arrived would leave a slow query looking like a hung
+/// assistant, which is exactly when someone wants to see what it is doing.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiToolEvent {
+    pub turn_id: String,
+    /// The id the model gave the call, and what pairs the two events up.
+    pub id: String,
+    pub name: String,
+    /// Present on the call, absent on the result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<serde_json::Value>,
+    /// Present on a successful result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<serde_json::Value>,
+    /// Present on a refusal or a failure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// One message in the conversation the frontend is sending.
@@ -145,6 +175,10 @@ pub async fn ai_models(state: State<'_, AppState>) -> AppResult<Vec<String>> {
 }
 
 /// Stream one turn, emitting [`AI_DELTA_EVENT`] as text arrives.
+///
+/// `connection_id` is the conversation's connection when the panel has one.
+/// Agent mode needs it, because its tools address a database; plain chat
+/// ignores it, and a turn with no connection can only ever be plain chat.
 #[tauri::command]
 pub async fn ai_send(
     app: AppHandle,
@@ -152,17 +186,184 @@ pub async fn ai_send(
     state: State<'_, AppState>,
     turn_id: String,
     messages: Vec<ChatMessage>,
+    connection_id: Option<String>,
 ) -> AppResult<AiTurnResult> {
-    let body = {
+    let (endpoint, mode, trust, max_rows) = {
         let prefs = state.prefs.read();
-        let endpoint = Endpoint::from_prefs(&prefs.ai)?;
         (
-            provider::chat_body(&endpoint, wire_messages(&messages)?, &[], true),
-            endpoint,
+            Endpoint::from_prefs(&prefs.ai)?,
+            prefs.ai.mode,
+            prefs.ai.endpoint_trust,
+            prefs.ai.max_context_rows,
         )
     };
-    let (request, endpoint) = body;
+    let wire = wire_messages(&messages)?;
+
+    // Agent mode is a *measurement* away, not a preference away: the
+    // preference says what the user wants and the probe says whether this model
+    // can deliver it. A loop over a model that answers in prose is not a
+    // degraded feature, it is one that fabricates.
+    if mode == AiMode::Agent {
+        if let Some(connection) = connection_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+        {
+            return run_agent(
+                &app, &window, state, &endpoint, trust, max_rows, turn_id, connection, wire,
+            )
+            .await;
+        }
+    }
+
+    let request = provider::chat_body(&endpoint, wire, &[], true);
     stream_turn(&app, &window, state, &endpoint, turn_id, &request).await
+}
+
+/// The agent loop, wrapped in the same cancellation the plain turn has.
+///
+/// Cancelling drops this whole future, which drops whichever `stream_chat` is
+/// in flight and closes its socket — the same mechanism, one level up, so a
+/// stop pressed between two tool calls ends the turn rather than letting the
+/// next one start.
+#[allow(clippy::too_many_arguments)]
+async fn run_agent(
+    app: &AppHandle,
+    window: &tauri::Window,
+    state: State<'_, AppState>,
+    endpoint: &Endpoint,
+    trust: crate::ai::scope::EndpointTrust,
+    max_rows: i64,
+    turn_id: String,
+    connection: &str,
+    conversation: Vec<serde_json::Value>,
+) -> AppResult<AiTurnResult> {
+    let report = probe::cached(state.inner(), endpoint);
+    let capability = match report {
+        Some(report) => report.capability,
+        // Nothing measured yet. Measuring costs one small completion, which is
+        // cheaper than letting the loop run and produce a fabricated answer.
+        None => {
+            let http = provider::client(endpoint.timeout)?;
+            let fresh = probe::probe(&http, endpoint).await;
+            probe::store(state.inner(), &fresh);
+            fresh.capability
+        }
+    };
+    if capability != probe::Capability::ToolCapable {
+        return Err(AppError::Inference(
+            "this model does not emit reliable tool calls, so agent mode cannot run on it.              Switch to assisted mode in Settings → AI, or pick a tool-capable model."
+                .into(),
+        ));
+    }
+
+    let rows_allowed = {
+        let profiles = state.profiles.read();
+        let id = crate::ai::exec::resolve_connection(connection, &profiles)?;
+        profiles
+            .iter()
+            .find(|p| p.id == id)
+            .is_some_and(|p| p.ai_rows_allowed)
+    };
+    let scope = DataScope::resolve(trust, rows_allowed);
+    let http = provider::client(endpoint.timeout)?;
+    let sink = crate::log_bus::TauriSink::new(app, window.label());
+
+    let cancel = Arc::new(tokio::sync::Notify::new());
+    state
+        .ai_turns
+        .write()
+        .insert(turn_id.clone(), cancel.clone());
+
+    // Each sink owns its captures rather than borrowing them. `AgentSinks`
+    // holds `&mut dyn FnMut(&…)` behind a higher-ranked lifetime, and a closure
+    // borrowing a local from this frame cannot satisfy it — cloning three cheap
+    // handles is the fix, not a lifetime parameter threaded through the loop.
+    let label = window.label().to_string();
+    let mut on_text = {
+        let (app, label, turn_id) = (app.clone(), label.clone(), turn_id.clone());
+        move |text: &str| {
+            let _ = app.emit_to(
+                label.as_str(),
+                AI_DELTA_EVENT,
+                AiDelta {
+                    turn_id: turn_id.clone(),
+                    text: text.to_string(),
+                },
+            );
+        }
+    };
+    let mut on_tool_call = {
+        let (app, label, turn_id) = (app.clone(), label.clone(), turn_id.clone());
+        move |call: &crate::ai::stream::ToolCall| {
+            let _ = app.emit_to(
+                label.as_str(),
+                AI_TOOL_EVENT,
+                AiToolEvent {
+                    turn_id: turn_id.clone(),
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    args: Some(call.arguments.clone()),
+                    result: None,
+                    error: None,
+                },
+            );
+        }
+    };
+    let mut on_tool_result = {
+        let (app, label, turn_id) = (app.clone(), label.clone(), turn_id.clone());
+        move |id: &str, name: &str, result: Option<&serde_json::Value>, error: Option<&str>| {
+            let _ = app.emit_to(
+                label.as_str(),
+                AI_TOOL_EVENT,
+                AiToolEvent {
+                    turn_id: turn_id.clone(),
+                    id: id.to_string(),
+                    name: name.to_string(),
+                    args: None,
+                    result: result.cloned(),
+                    error: error.map(str::to_string),
+                },
+            );
+        }
+    };
+    let mut sinks = agent::AgentSinks {
+        on_text: &mut on_text,
+        on_tool_call: &mut on_tool_call,
+        on_tool_result: &mut on_tool_result,
+    };
+
+    let limits = agent::AgentLimits {
+        max_context_rows: max_rows,
+        ..agent::AgentLimits::default()
+    };
+    let outcome = tokio::select! {
+        result = agent::run(
+            state.inner(),
+            &sink,
+            &http,
+            endpoint,
+            connection,
+            scope,
+            conversation,
+            limits,
+            &mut sinks,
+        ) => result,
+        _ = cancel.notified() => Err(AppError::Inference("the turn was cancelled".into())),
+    };
+    state.ai_turns.write().remove(&turn_id);
+
+    let (message, stop) = outcome?;
+    Ok(AiTurnResult {
+        // The budget note is appended to the answer rather than raised as an
+        // error: the investigation up to the cap is worth reading, and losing
+        // it to report the cap would be the wrong trade.
+        content: match stop.note() {
+            Some(note) => format!("{}{note}", message.content),
+            None => message.content,
+        },
+        finish_reason: message.finish_reason,
+    })
 }
 
 /// Stream one completion and report it, with cancellation registered.

@@ -59,6 +59,7 @@
 // outlives its reason is how a module starts accumulating unreachable code.
 #![allow(dead_code)]
 
+pub mod agent;
 pub mod exec;
 pub mod probe;
 pub mod provider;

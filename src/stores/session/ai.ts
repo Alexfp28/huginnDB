@@ -27,7 +27,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import { STORAGE_KEYS } from "@/lib/constants";
-import { appendText, type AiMessage, type MessagePart } from "@/lib/ai/parts";
+import {
+  appendText,
+  appendToolCall,
+  appendToolResult,
+  type AiMessage,
+  type MessagePart,
+} from "@/lib/ai/parts";
 
 /** One connection's transcript, plus whatever is in flight for it. */
 export interface AiConversation {
@@ -72,6 +78,22 @@ interface AiState {
   startTurn: (connectionId: string, turnId: string, text: string) => void;
   /** Fold one streamed delta into the turn's assistant message. */
   pushDelta: (turnId: string, text: string) => void;
+  /**
+   * Record a tool call the agent loop made.
+   *
+   * Its own action rather than part of `pushDelta` because the two arrive on
+   * different events: a call lands the moment the model asks, and its result
+   * whenever the database answers.
+   */
+  pushToolCall: (
+    turnId: string,
+    call: { id: string; name: string; args: unknown },
+  ) => void;
+  /** Record a tool result, or a refusal. */
+  pushToolResult: (
+    turnId: string,
+    result: { id: string; name: string; result: unknown; error?: string },
+  ) => void;
   /**
    * Close a turn, reconciling against the whole reply.
    *
@@ -161,6 +183,26 @@ export const useAi = create<AiState>()(
             ...conversation,
             messages: mapLastAssistant(conversation.messages, (parts) =>
               appendText(parts, text),
+            ),
+          })),
+        ),
+
+      pushToolCall: (turnId, call) =>
+        set((s) =>
+          inTurn(s, turnId, (conversation) => ({
+            ...conversation,
+            messages: mapLastAssistant(conversation.messages, (parts) =>
+              appendToolCall(parts, call),
+            ),
+          })),
+        ),
+
+      pushToolResult: (turnId, result) =>
+        set((s) =>
+          inTurn(s, turnId, (conversation) => ({
+            ...conversation,
+            messages: mapLastAssistant(conversation.messages, (parts) =>
+              appendToolResult(parts, result),
             ),
           })),
         ),

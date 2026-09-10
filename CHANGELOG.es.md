@@ -10,6 +10,38 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Modo agente: el asistente se lo busca él solo.** Actívalo en Ajustes → IA y
+  el chat normal deja de estar ciego — lista las tablas, describe las que
+  necesita y responde con lo que ha leído de verdad, no con lo que ha supuesto.
+
+  **Se niega a funcionar en un modelo que no puede hacerlo.** El modo agente
+  está a una medición de distancia, no a una preferencia: la comprobación del
+  endpoint tiene que decir que hay herramientas, y si nunca se ha hecho, se hace
+  una antes de arrancar el bucle. Un modelo pequeño al que le pides encadenar
+  llamadas a herramientas no se degrada con elegancia — se lo inventa, y el
+  asistente parece estar funcionando hasta justo el punto en que resulta que
+  nada de lo que dice haber leído se leyó nunca. El modo asistido es lo que
+  reciben los demás, y para sus cuatro trabajos es *mejor*, porque el contexto
+  se eligió a propósito en vez de descubrirse.
+
+  **Cada paso está en la Consola**, con su propio filtro de IA: las herramientas
+  que se le ofrecieron y si incluían acceso a filas, cada llamada con sus
+  argumentos, y el *número* de filas de cada resultado. El contenido nunca — esos
+  son los datos de los que trata la garantía de solo metadatos, y escribirlos en
+  un panel del que puedes copiar sería una forma rara de cumplirla. Esta es la
+  parte que hace la garantía comprobable en vez de solo enunciada.
+
+  Tres topes duros acotan un turno: seis llamadas al modelo, doce lecturas y el
+  límite de filas que ya lleva cada herramienta. Llegar a uno termina el turno y
+  lo dice en la respuesta, porque "el modelo se rindió" y "al modelo lo cortaron"
+  son hechos distintos y solo uno merece reintentarse. Parar sigue abortando la
+  petición y no el pintado — entre dos llamadas a herramienta termina el turno en
+  vez de dejar que empiece la siguiente.
+
+  Sigue sin poder escribir. Las herramientas son de solo lectura, ninguna
+  escritura está en el catálogo, y un `run_query` que lleve algo que no sea una
+  lectura se rechaza con la instrucción de proponer la sentencia en su lugar.
+
 - **El asistente ya puede leer tu base de datos, cuando se lo pides.** Cuatro
   trabajos cuyo contexto monta HuginnDB, cada uno una sola llamada al modelo sin
   bucle de herramientas — que es justo lo que hace que funcionen en un modelo

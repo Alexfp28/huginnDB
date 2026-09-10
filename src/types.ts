@@ -1102,6 +1102,22 @@ export interface AiTaskInput {
   question?: string | null;
 }
 
+/**
+ * One step of the agent loop, from the `huginndb://ai-tool` event.
+ *
+ * The call and its result arrive as two events with the same `id`, because they
+ * are separated by however long the database took. `args` is present on the
+ * call; `result` or `error` on the result.
+ */
+export interface AiToolEvent {
+  turnId: string;
+  id: string;
+  name: string;
+  args?: unknown;
+  result?: unknown;
+  error?: string;
+}
+
 /** One chunk of a streaming reply, from the `huginndb://ai-delta` event. */
 export interface AiDelta {
   turnId: string;
@@ -1832,7 +1848,7 @@ export interface PersistedTab {
 export interface LogEntry {
   id: number;
   timestamp_ms: number;
-  kind: "sql" | "connection";
+  kind: "sql" | "connection" | "ai";
   connection_id?: string;
   driver?: string;
   sql?: string;

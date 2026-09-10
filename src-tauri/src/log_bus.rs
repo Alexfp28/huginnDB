@@ -36,6 +36,11 @@ pub enum LogKind {
     Sql,
     /// A connection lifecycle event (open / close / smoke-test).
     Connection,
+    /// One step of the AI panel's agent loop: what it was offered, what it
+    /// called, and how much came back. Its own kind so the Console can filter
+    /// to it — a user auditing what the assistant did should not have to read
+    /// past their own statements to do it.
+    Ai,
 }
 
 impl LogKind {
@@ -43,6 +48,7 @@ impl LogKind {
         match self {
             LogKind::Sql => "sql",
             LogKind::Connection => "connection",
+            LogKind::Ai => "ai",
         }
     }
 }

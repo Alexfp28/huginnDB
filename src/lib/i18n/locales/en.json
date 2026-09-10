@@ -1941,7 +1941,8 @@
     "kindConnection": "Connection",
     "filterPlaceholder": "Filter SQL, error, driver…",
     "emptyNoActivity": "No backend activity yet. Run a query or open a connection.",
-    "emptyNoMatch": "No entries match the current filter."
+    "emptyNoMatch": "No entries match the current filter.",
+    "kindAi": "AI"
   },
   "pulse": {
     "title": "Pulse",
