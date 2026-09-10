@@ -149,6 +149,84 @@ pub const SYSTEM_PROMPT: &str = concat!(
     "Be brief. Answer in the language the user writes in."
 );
 
+/// The nudge sent when an answer hands over a read instead of running it.
+///
+/// # Why a message and not more prompt
+///
+/// Because prompting had already been tried. The instruction to run reads is
+/// first in [`SYSTEM_PROMPT`], the tool descriptions say it (gotcha #74), the
+/// refusals no longer contradict it (gotcha #77), the connection's dialect is
+/// supplied so a statement stands a chance of working — and a 12B still ends
+/// some turns by printing a `SELECT` and waiting. At that point the honest
+/// reading is that the model's instruction-following is the limit, and the
+/// answer is not a louder prompt: it is to notice the specific failure after
+/// the fact and ask for the one call that was missing.
+///
+/// Sent with `role: "user"`, which is not a lie the user has to see — the panel
+/// renders its own store, not the wire history — and is the role a small model
+/// obeys most reliably. It is logged to the Console like everything else the
+/// loop does, so the extra step is visible rather than magic.
+pub const RUN_IT_YOURSELF: &str = concat!(
+    "You wrote that statement instead of running it. Call run_query with it ",
+    "now, then answer from the rows it returns. Do not print the statement ",
+    "again — only a statement that writes is mine to run."
+);
+
+/// The read statement an answer proposes instead of running, if there is one.
+///
+/// Fenced code blocks first, because that is where the prompt tells the model
+/// to put a statement. The unfenced fallback is deliberately narrow — a *whole
+/// line* that classifies as a read and reads like a query rather than like
+/// prose about one — because the cost of a false positive is a wasted
+/// iteration, and a statement buried mid-sentence would mean guessing where
+/// the prose ends. Guessing wrong nudges a model that was answering fine.
+///
+/// A write is never returned: proposing one is correct behaviour (D4), and a
+/// nudge would be asking the model to do the one thing the assistant must not.
+pub fn unrun_read(content: &str) -> Option<&str> {
+    let fenced = fenced_blocks(content);
+    let candidates: Vec<&str> = if fenced.is_empty() {
+        content
+            .lines()
+            .map(str::trim)
+            .filter(|line| looks_like_a_query(line))
+            .collect()
+    } else {
+        fenced
+    };
+    candidates.into_iter().find(|candidate| {
+        crate::db::sql::split_statements(candidate).len() == 1
+            && crate::db::classify::classify_statement(candidate) == crate::db::sql::StmtClass::Read
+    })
+}
+
+/// The bodies of ``` fences in `content`, info string dropped.
+fn fenced_blocks(content: &str) -> Vec<&str> {
+    let mut blocks = Vec::new();
+    let mut open: Option<usize> = None;
+    for line in content.split_inclusive('\n') {
+        if !line.trim_start().starts_with("```") {
+            continue;
+        }
+        let offset = line.as_ptr() as usize - content.as_ptr() as usize;
+        match open.take() {
+            // The fence that closes a block: the body is everything between.
+            Some(body_start) => blocks.push(content[body_start..offset].trim()),
+            None => open = Some(offset + line.len()),
+        }
+    }
+    blocks
+}
+
+/// Whether an unfenced line is a statement rather than prose mentioning one.
+///
+/// `SELECT` alone is a word an answer may well use in a sentence; `SELECT …
+/// FROM …`, or a mongosh call, is a query somebody wrote out.
+fn looks_like_a_query(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    (lower.contains(" from ") || lower.starts_with("db.")) && line.len() > 12
+}
+
 /// The system message the loop actually sends: [`SYSTEM_PROMPT`] plus, when we
 /// know it, [`crate::ai::exec::target_brief`]'s two lines about the connection.
 ///
@@ -316,12 +394,45 @@ pub async fn run(
 
     let mut spent = 0usize;
     let mut carried = 0usize;
+    // Row-returning calls that succeeded, and whether the backstop below has
+    // already fired. Together they scope it to the failure it is for: a turn
+    // that answered about data without ever reading any.
+    let mut rows_read = 0usize;
+    let mut nudged = false;
     let mut last = AssistantMessage::default();
     for step in 1..=limits.max_iterations {
         let body = provider::chat_body(endpoint, messages.clone(), &catalogue, true);
         let message = provider::stream_chat(http, endpoint, &body, sinks.on_text).await?;
 
         if message.tool_calls.is_empty() {
+            // The backstop. An answer that hands over a read, from a turn that
+            // read no rows, on a connection where rows are allowed, is the one
+            // failure prompting could not fix — so ask for the call instead of
+            // ending the turn on it. Once per turn, and never for a write.
+            //
+            // The abandoned text has already been streamed to the panel; it
+            // disappears at the end, because `AiTurnResult` carries the final
+            // message's content and the store replaces the turn's text with it
+            // wholesale rather than patching (see `finishTurn`).
+            if !nudged && rows_read == 0 && scope.allows_rows() {
+                if let Some(statement) = unrun_read(&message.content) {
+                    log(
+                        sink,
+                        connection,
+                        format!(
+                            "step {step}: the answer proposed a read instead of running it \
+                             ({}) — asking for the call",
+                            statement.chars().take(80).collect::<String>()
+                        ),
+                        None,
+                    );
+                    messages.push(json!({ "role": "assistant", "content": message.content }));
+                    messages.push(json!({ "role": "user", "content": RUN_IT_YOURSELF }));
+                    nudged = true;
+                    last = message;
+                    continue;
+                }
+            }
             return Ok((message, StopReason::Answered));
         }
         if spent + message.tool_calls.len() > limits.max_tool_calls {
@@ -358,6 +469,9 @@ pub async fn run(
                     let rows = result_rows(&value);
                     let payload = value.to_string();
                     carried += payload.len();
+                    if matches!(call.name.as_str(), tools::RUN_QUERY | tools::BROWSE_TABLE) {
+                        rows_read += 1;
+                    }
                     // The size is logged alongside the row count because size
                     // is what actually ends a turn, and a user reading the
                     // Console to understand why should not have to infer it.
@@ -450,6 +564,55 @@ mod tests {
             name: name.into(),
             arguments: args,
         }
+    }
+
+    /// The backstop's whole decision: which answers are a handed-over read.
+    #[test]
+    fn a_proposed_read_is_recognised_and_a_proposed_write_is_not() {
+        let proposed = "Puedo mirarlo con esta consulta:\n\n```sql\nSELECT id, ts FROM \
+                        logRecord ORDER BY ts DESC LIMIT 3\n```\n\n¿La ejecutas?";
+        assert_eq!(
+            unrun_read(proposed),
+            Some("SELECT id, ts FROM logRecord ORDER BY ts DESC LIMIT 3")
+        );
+        // mongosh counts, and so does a fence with no info string.
+        assert_eq!(
+            unrun_read("```\ndb.logRecord.find({}).limit(3)\n```"),
+            Some("db.logRecord.find({}).limit(3)")
+        );
+        // Unfenced, because a small model does not always fence — but only
+        // when the line *is* the statement. A statement buried mid-sentence is
+        // out of scope on purpose: recovering it would mean guessing where the
+        // prose ends, and guessing wrong nudges a model that was doing fine.
+        assert_eq!(
+            unrun_read("Sería así:\nSELECT count(*) FROM orders WHERE total > 100"),
+            Some("SELECT count(*) FROM orders WHERE total > 100")
+        );
+        assert_eq!(
+            unrun_read("Sería: SELECT count(*) FROM orders WHERE total > 100"),
+            None
+        );
+
+        // A write is the assistant's *correct* behaviour: never nudged.
+        assert_eq!(unrun_read("```sql\nDELETE FROM logRecord\n```"), None);
+        assert_eq!(unrun_read("```sql\nDROP TABLE logRecord\n```"), None);
+        // A batch is refused by the tool anyway, so asking for the call would
+        // only produce a refusal.
+        assert_eq!(unrun_read("```sql\nUSE shop; SELECT 1\n```"), None);
+        // Nothing statement-shaped: an ordinary answer, and prose that merely
+        // uses the word.
+        assert_eq!(unrun_read("La tabla tiene 41 892 filas."), None);
+        assert_eq!(unrun_read("Puedes usar SELECT para filtrar."), None);
+        assert_eq!(unrun_read("```json\n{\"a\": 1}\n```"), None);
+    }
+
+    /// The nudge has to name the tool and forbid the thing that produced it,
+    /// or it is one more sentence a 12B reads past.
+    #[test]
+    fn the_nudge_asks_for_the_call_and_keeps_the_write_exception() {
+        assert!(RUN_IT_YOURSELF.contains("run_query"));
+        assert!(RUN_IT_YOURSELF.contains("Do not print the statement again"));
+        assert!(RUN_IT_YOURSELF.contains("writes"));
     }
 
     /// One system message, with the connection brief appended rather than sent

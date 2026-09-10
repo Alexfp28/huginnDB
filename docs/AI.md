@@ -260,14 +260,21 @@ feature.
 
 ## Known rough edges
 
-- **Small models still under-use their tools sometimes.** They will
-  occasionally write a `SELECT` and wait for you to run it even though they can
-  run it themselves; telling them to go ahead works. Three of the causes were
-  ours and are fixed: the assistant is now told which engine and database it is
-  connected to (so it stops guessing `LIMIT` at SQL Server or SQL at MongoDB),
-  `DESCRIBE` is recognised as the read it is instead of being refused as a
-  write, and a batch or a `USE` is answered with what to fix rather than with
-  "hand it to the user". What is left is the model's own judgement.
+- **Small models under-use their tools, and the panel now works around it.**
+  Some models end a turn by writing a `SELECT` and waiting for you to run it,
+  even holding a `run_query` tool. Four causes were ours and are fixed: the
+  assistant is told which engine and database it is connected to (so it stops
+  guessing `LIMIT` at SQL Server or SQL at MongoDB), `DESCRIBE` is recognised
+  as the read it is instead of refused as a write, a batch or a `USE` is
+  answered with what to fix rather than "hand it to the user", and a MongoDB
+  connection opened at a database works at all.
+
+  For what is left — the model's own judgement — the loop no longer relies on
+  persuasion. When an answer hands you a read, in a turn that read no rows, on
+  a connection where rows are allowed, the panel asks the model for that one
+  call and answers from the rows. It happens at most once per turn, never for a
+  statement that writes, and the extra step is in the Console like every
+  other.
 - **Prose renders as a small markdown subset** — bold, italic, inline code,
   lists, headings, quotes and fenced code. Tables are not rendered yet.
 - **Links in an answer are shown, not clickable.** A model-authored URL that

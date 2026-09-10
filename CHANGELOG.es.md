@@ -248,6 +248,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Ya no hay que convencer al asistente de que ejecute una consulta.** Incluso
+  después de las cuatro correcciones de abajo, algunos modelos terminan el turno
+  escribiendo un `SELECT` y esperándote — con una herramienta `run_query` en la
+  mano y nada que se lo impida. El modo agente detecta ahora esa forma concreta:
+  una respuesta que te entrega una **lectura**, en un turno que no leyó ninguna
+  fila y en una conexión donde las filas están permitidas. Le pide al modelo esa
+  única llamada y responde con las filas que devuelve.
+
+  Como máximo una vez por turno, así que un modelo terco cuesta un paso extra y
+  no el presupuesto entero; nunca con una sentencia que escribe, porque pasarte
+  esas es el trabajo del asistente y no un fallo; y nunca cuando el endpoint es
+  solo-metadatos, donde proponer la sentencia es el comportamiento correcto. El
+  paso extra aparece en la Consola como cualquier otro, bajo el filtro de IA.
+
 - **El asistente escribía las consultas y esperaba a que las ejecutaras tú en
   lugar de ejecutarlas.** Ya elegía sus herramientas por su cuenta, pero se
   atascaba en el último paso: imprimía un `SELECT` y te pedía que lo ejecutaras,

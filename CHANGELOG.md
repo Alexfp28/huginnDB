@@ -232,6 +232,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The assistant no longer needs to be talked into running a query.** Even
+  after the four fixes below, some models end a turn by writing a `SELECT` and
+  waiting for you — with a `run_query` tool in hand and nothing stopping them.
+  Agent mode now catches that specific shape: an answer that hands you a
+  **read**, in a turn that read no rows, on a connection where rows are
+  allowed. It asks the model for that one call and answers from the rows it
+  returns.
+
+  At most once per turn, so a stubborn model costs one extra step rather than
+  the whole budget; never for a statement that writes, because handing those to
+  you is the assistant's job and not a failure; and never when the endpoint is
+  metadata-only, where proposing a statement is the correct behaviour. The extra
+  step appears in the Console like every other, under the AI filter.
+
 - **The assistant wrote out queries and waited for you instead of running
   them.** It had started picking its tools on its own, and then stalled at the
   last step — printing a `SELECT` and asking you to run it, in agent mode, with

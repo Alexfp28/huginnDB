@@ -269,15 +269,22 @@ que falta.
 
 ## Asperezas conocidas
 
-- **Los modelos pequeños todavía usan sus herramientas menos de lo que
-  deberían, a veces.** De vez en cuando escriben un `SELECT` y esperan a que lo
-  ejecutes tú aunque puedan ejecutarlo ellos; decirles que sigan funciona. Tres
-  de las causas eran nuestras y están corregidas: ahora se le dice al asistente
-  a qué motor y a qué base de datos está conectado (así deja de probar `LIMIT`
-  en SQL Server o SQL en MongoDB), `DESCRIBE` se reconoce como la lectura que es
-  en lugar de rechazarse como escritura, y a un lote o a un `USE` se le responde
-  qué corregir en vez de "dáselo al usuario". Lo que queda es el criterio del
-  propio modelo.
+- **Los modelos pequeños usan sus herramientas menos de lo que deberían, y el
+  panel ya lo compensa.** Algunos modelos terminan un turno escribiendo un
+  `SELECT` y esperando a que lo ejecutes tú, incluso teniendo una herramienta
+  `run_query` en la mano. Cuatro causas eran nuestras y están corregidas: se le
+  dice al asistente a qué motor y a qué base de datos está conectado (así deja
+  de probar `LIMIT` en SQL Server o SQL en MongoDB), `DESCRIBE` se reconoce como
+  la lectura que es en lugar de rechazarse como escritura, a un lote o a un
+  `USE` se le responde qué corregir en vez de "dáselo al usuario", y una
+  conexión MongoDB abierta en una base de datos funciona.
+
+  Para lo que queda — el criterio del propio modelo — el bucle ya no depende de
+  convencerlo. Cuando una respuesta te entrega una lectura, en un turno que no
+  leyó ninguna fila y en una conexión donde las filas están permitidas, el panel
+  le pide al modelo esa única llamada y responde con las filas. Ocurre como
+  máximo una vez por turno, nunca con una sentencia que escribe, y el paso extra
+  queda en la Consola como todos los demás.
 - **La prosa se renderiza como un subconjunto pequeño de markdown** — negrita,
   cursiva, código en línea, listas, encabezados, citas y bloques de código. Las
   tablas todavía no.
