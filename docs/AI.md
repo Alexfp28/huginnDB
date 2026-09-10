@@ -260,9 +260,14 @@ feature.
 
 ## Known rough edges
 
-- **Small models under-use their tools.** They will sometimes write a `SELECT`
-  and wait for you to run it even though they can run it themselves. Telling
-  them to go ahead works; a better prompt is being worked on.
+- **Small models still under-use their tools sometimes.** They will
+  occasionally write a `SELECT` and wait for you to run it even though they can
+  run it themselves; telling them to go ahead works. Three of the causes were
+  ours and are fixed: the assistant is now told which engine and database it is
+  connected to (so it stops guessing `LIMIT` at SQL Server or SQL at MongoDB),
+  `DESCRIBE` is recognised as the read it is instead of being refused as a
+  write, and a batch or a `USE` is answered with what to fix rather than with
+  "hand it to the user". What is left is the model's own judgement.
 - **Prose renders as a small markdown subset** — bold, italic, inline code,
   lists, headings, quotes and fenced code. Tables are not rendered yet.
 - **Links in an answer are shown, not clickable.** A model-authored URL that

@@ -248,6 +248,51 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El asistente escribía las consultas y esperaba a que las ejecutaras tú en
+  lugar de ejecutarlas.** Ya elegía sus herramientas por su cuenta, pero se
+  atascaba en el último paso: imprimía un `SELECT` y te pedía que lo ejecutaras,
+  en modo agente, con una herramienta `run_query` en la mano. Cuatro causas,
+  todas nuestras:
+
+  **Nunca se le decía con qué motor estaba hablando.** Nada en el prompt
+  nombraba el driver, así que escribía el dialecto que más había visto — `LIMIT`
+  contra SQL Server, comillas invertidas contra Postgres, SQL contra MongoDB — y
+  una sola llamada fallida basta para que un modelo pequeño deje de fiarse de sí
+  mismo y te pase la sentencia. Ahora cada turno empieza con el nombre de la
+  conexión, su motor, su base de datos, cómo cita identificadores ese motor y
+  cómo pagina.
+
+  **`DESCRIBE` se clasificaba como escritura.** Es como un modelo le pregunta a
+  MySQL por la forma de una tabla, y se rechazaba como mutación con la
+  instrucción de dártela a ti. `DESCRIBE`/`DESC` y un `(` inicial — como en
+  `(SELECT …) UNION (SELECT …)` — se reconocen como las lecturas que son. El
+  editor se lleva la misma corrección: ahí `DESCRIBE t` reportaba un número de
+  filas en lugar de mostrar las columnas.
+
+  **Un solo rechazo servía para tres problemas distintos.** Una escritura, un
+  lote de dos sentencias y un `USE` recibían todos "presenta la sentencia al
+  usuario como propuesta" — la instrucción más contundente del bucle. A un lote
+  se le dice ahora que envíe una sola sentencia, a un `USE` que la conexión ya
+  está abierta en su base de datos y que cualifique el nombre, y solo una
+  escritura de verdad recibe la indicación de proponer algo.
+
+  **Una conexión MongoDB abierta en una base de datos no funcionaba en
+  absoluto.** Esas llevan un id sintético que no tiene perfil propio, así que
+  cada llamada a herramienta volvía con "no connection named …". Ahora se
+  resuelve a su padre, y la base de datos que tenías abierta pasa a ser el
+  destino por defecto en lugar de descartarse.
+
+- **Una escritura podía esconderse detrás de una lectura.** `SELECT 1; DELETE
+  FROM t` se clasificaba por su primera palabra clave, así que pasaba como
+  lectura — para el panel de IA, que nunca escribe, y para una conexión MCP en
+  `read-only`. Que el `DELETE` llegara a ejecutarse dependía del driver: lo
+  rechaza el protocolo preparado en PostgreSQL y MySQL, y lo ejecutan un lote
+  T-SQL y SQLite. El nivel de una sentencia es ahora el más estricto de todas
+  las sentencias del texto, ignorando correctamente los puntos y coma dentro de
+  literales de cadena, identificadores citados, comentarios y cuerpos con
+  comillas de dólar de Postgres. Varias lecturas en una misma cadena siguen
+  siendo una lectura.
+
 - **El botón de limpiar de tres campos de búsqueda mostraba una clave de
   traducción en crudo.** `common.clear` lo usaban los buscadores de Ajustes → MCP
   y Ajustes → Pulse y dos diálogos de conexión, y no existía en ninguno de los

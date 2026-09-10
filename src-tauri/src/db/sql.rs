@@ -242,14 +242,6 @@ fn skip_leading_noise(sql: &str) -> &str {
     }
 }
 
-/// Best-effort classification of a SQL statement as a read-only query.
-///
-/// We use this to decide whether [`crate::commands::query::execute_query`]
-/// should fetch a result set or just report `rows_affected`. The check is
-/// intentionally simple — it inspects the first keyword after leading
-/// whitespace/comments. Anything unusual (e.g. multi-statement scripts, DDL
-/// that returns rows on some drivers) falls back to the write path and the
-/// user still sees the row-count summary.
 /// Which kind of relation a [`Dialect::rename_stmt`] call is renaming.
 ///
 /// The only thing it changes is Postgres's keyword and the wording of the SQL
@@ -329,13 +321,40 @@ impl Dialect {
     }
 }
 
+/// Best-effort classification of a SQL statement as a read-only query.
+///
+/// We use this to decide whether [`crate::commands::query::execute_query`]
+/// should fetch a result set or just report `rows_affected`. The check is
+/// intentionally simple — it inspects the first keyword after leading
+/// whitespace, comments and opening parentheses. Anything unusual (DDL that
+/// returns rows on some drivers) falls back to the write path and the user
+/// still sees the row-count summary.
+///
+/// Three of the things it recognises were added because an *AI client* writes
+/// SQL differently from a person at the editor, and this function decides
+/// whether `crate::ai`'s `run_query` is allowed to run at all:
+///
+/// * **`DESCRIBE` / `DESC`** is how a model asks MySQL for a table's shape.
+///   It is a read (MySQL implements it as `EXPLAIN`), it returns a result set,
+///   and treating it as a write meant the assistant was refused its own read
+///   and told to hand the statement to the user — the exact behaviour gotcha
+///   #74 is about. Fixing it here also fixes the editor, which until now ran
+///   `DESCRIBE t` down the DML path and showed a row count instead of the
+///   columns.
+/// * **A leading `(`**, because `(SELECT …) UNION (SELECT …)` is a perfectly
+///   ordinary query that no `starts_with("select")` will ever match.
 pub fn is_read_only(sql: &str) -> bool {
-    let head = skip_leading_noise(sql).to_ascii_lowercase();
+    let head = skip_leading_noise(sql)
+        .trim_start_matches(|c: char| c == '(' || c.is_whitespace())
+        .to_ascii_lowercase();
     head.starts_with("select")
         || head.starts_with("with")
         || head.starts_with("show")
         || head.starts_with("explain")
         || head.starts_with("pragma")
+        || head.starts_with("describe")
+        || head.starts_with("desc ")
+        || head == "desc"
 }
 
 /// Write-capability tier a single SQL statement requires. Drives the MCP
@@ -347,11 +366,14 @@ pub fn is_read_only(sql: &str) -> bool {
 /// feature's enforcement path, but its unit tests run under the default
 /// feature set, so it stays compiled unconditionally and only silences the
 /// dead-code lint when `mcp` is off.
+/// The variants are declared least- to most-privileged and the ordering is
+/// load-bearing: [`classify`] takes the `max` over a multi-statement string, so
+/// reordering them would silently pick the *wrong* tier rather than fail.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StmtClass {
-    /// `SELECT` / `WITH` / `SHOW` / `EXPLAIN` / `PRAGMA` — reads nothing back
-    /// that changes state.
+    /// `SELECT` / `WITH` / `SHOW` / `EXPLAIN` / `PRAGMA` / `DESCRIBE` — reads
+    /// nothing back that changes state.
     Read,
     /// Row-level DML: `INSERT` / `UPDATE` / `DELETE` / `MERGE` / … — changes
     /// data but not schema.
@@ -405,16 +427,167 @@ fn is_select_into(head_lower: &str) -> bool {
         && contains_word(head_lower, "into")
 }
 
-/// Classify a single statement into the write tier it requires.
+/// Split `sql` into its top-level statements.
 ///
-/// DDL is checked first, then reads, then everything else falls to row-level
-/// DML — the conservative default, since an unrecognised non-read statement
-/// must not slip in under a read-only or data-only policy. The DDL-first order
-/// matters: [`is_ddl`] catches statements that *look* like reads by their first
-/// keyword but change schema (`SELECT … INTO`), and it must win over
-/// [`is_read_only`] for those.
+/// A `;` separates only when it is not inside a string literal, a quoted
+/// identifier (`"…"`, `` `…` ``, `[…]`), a comment, or a Postgres
+/// dollar-quoted body. Empty statements — a trailing semicolon, a `;;` — are
+/// dropped, so a single statement written either way yields exactly one part.
+///
+/// # Why this exists
+///
+/// [`classify`] used to read the first keyword of whatever text it was handed
+/// and report *one* tier for it. That is correct for one statement and wrong
+/// for two: `SELECT 1; DELETE FROM t` classified as a read, and both
+/// enforcement points that consume this — the MCP connector's per-connection
+/// policy and `crate::ai::exec`'s no-write rule — took that answer. Whether
+/// the second statement actually ran was then a driver accident rather than a
+/// decision: the prepared protocol rejects a multi-statement string on
+/// Postgres and MySQL, while a T-SQL batch and SQLite's own loop run every
+/// statement in it. An authorisation boundary that holds on three drivers out
+/// of five is not a boundary.
+///
+/// This is not a SQL parser and is not trying to be (gotcha #33): it only
+/// needs to know where a statement ends, which is a lexical question.
+pub fn split_statements(sql: &str) -> Vec<&str> {
+    let bytes = sql.as_bytes();
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut i = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            // A string literal or a quoted identifier. The closing quote may be
+            // doubled to escape itself in every dialect here, and backslash-
+            // escaped inside MySQL's string literals.
+            quote @ (b'\'' | b'"' | b'`') => {
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b'\\' && quote != b'`' {
+                        i += 2;
+                        continue;
+                    }
+                    if bytes[i] == quote {
+                        if bytes.get(i + 1) == Some(&quote) {
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            // T-SQL's bracketed identifier: `]]` escapes a bracket.
+            b'[' => {
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == b']' {
+                        if bytes.get(i + 1) == Some(&b']') {
+                            i += 2;
+                            continue;
+                        }
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+            b'-' if bytes.get(i + 1) == Some(&b'-') => {
+                i += 2;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+            }
+            // Postgres nests block comments; the others do not, and treating
+            // them as nesting only ever ends a comment later than they would.
+            b'/' if bytes.get(i + 1) == Some(&b'*') => {
+                i += 2;
+                let mut depth = 1usize;
+                while i < bytes.len() && depth > 0 {
+                    if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
+                        depth += 1;
+                        i += 2;
+                    } else if bytes[i] == b'*' && bytes.get(i + 1) == Some(&b'/') {
+                        depth -= 1;
+                        i += 2;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            // `$tag$ … $tag$`, which is how a Postgres function body carries
+            // semicolons. An unterminated one swallows the rest, which is the
+            // safe direction: the statement is one statement.
+            b'$' => match dollar_tag(&sql[i..]) {
+                Some(tag) => {
+                    i += tag.len();
+                    match sql[i..].find(tag) {
+                        Some(at) => i += at + tag.len(),
+                        None => i = bytes.len(),
+                    }
+                }
+                None => i += 1,
+            },
+            b';' => {
+                parts.push(&sql[start..i]);
+                start = i + 1;
+                i += 1;
+            }
+            _ => i += 1,
+        }
+    }
+    parts.push(&sql[start..]);
+    parts
+        .into_iter()
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// The `$tag$` opening a dollar-quoted body at the start of `rest`, if there is
+/// one. `$$` is the anonymous tag; `$1` (a bind placeholder) is not a tag.
+fn dollar_tag(rest: &str) -> Option<&str> {
+    let bytes = rest.as_bytes();
+    debug_assert_eq!(bytes.first(), Some(&b'$'));
+    let mut end = 1;
+    while bytes
+        .get(end)
+        .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
+    {
+        end += 1;
+    }
+    (bytes.get(end) == Some(&b'$')).then(|| &rest[..=end])
+}
+
+/// Classify `sql` into the write tier it requires — the **strictest** tier any
+/// statement in it requires, if it carries more than one.
+///
+/// Per statement, DDL is checked first, then reads, then everything else falls
+/// to row-level DML — the conservative default, since an unrecognised non-read
+/// statement must not slip in under a read-only or data-only policy. The
+/// DDL-first order matters: [`is_ddl`] catches statements that *look* like reads
+/// by their first keyword but change schema (`SELECT … INTO`), and it must win
+/// over [`is_read_only`] for those.
+///
+/// Taking the maximum over [`split_statements`] is what makes the answer safe
+/// for text an AI client wrote: see that function for what the head-only
+/// version let through.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn classify(sql: &str) -> StmtClass {
+    split_statements(sql)
+        .into_iter()
+        .map(classify_one)
+        // Nothing to classify — an empty string, or only semicolons. Reported
+        // as a write for the same reason an unrecognised statement is: the
+        // conservative direction is the safe one.
+        .fold(None, |worst: Option<StmtClass>, class| {
+            Some(worst.map_or(class, |worst| worst.max(class)))
+        })
+        .unwrap_or(StmtClass::DataWrite)
+}
+
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+fn classify_one(sql: &str) -> StmtClass {
     if is_ddl(sql) {
         StmtClass::Ddl
     } else if is_read_only(sql) {
@@ -436,13 +609,17 @@ pub fn classify(sql: &str) -> StmtClass {
 /// a comment is a tolerated blind spot — single AI-authored statements rarely
 /// carry comments, and this is a guard-rail layered on top of the tier check,
 /// not the primary authorisation.
+/// Checked per statement, for the same reason [`classify`] is: the guard has to
+/// see a whole-table `DELETE` that arrives behind a harmless first statement.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn is_unfiltered_write(sql: &str) -> bool {
-    let head = sql.trim_start().to_ascii_lowercase();
-    if !(head.starts_with("update") || head.starts_with("delete")) {
-        return false;
-    }
-    !contains_word(&head, "where")
+    split_statements(sql).into_iter().any(|part| {
+        let head = part.trim_start().to_ascii_lowercase();
+        if !(head.starts_with("update") || head.starts_with("delete")) {
+            return false;
+        }
+        !contains_word(&head, "where")
+    })
 }
 
 /// True if `word` appears in `haystack_lower` (already lowercased) delimited by
@@ -458,7 +635,8 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify, is_ddl, is_read_only, is_unfiltered_write, Dialect, Relation, StmtClass,
+        classify, is_ddl, is_read_only, is_unfiltered_write, split_statements, Dialect, Relation,
+        StmtClass,
     };
 
     #[test]
@@ -711,6 +889,86 @@ mod tests {
         assert_eq!(classify("execute dbo.DoSomething"), StmtClass::Ddl);
         // A plain SELECT with no INTO stays a read.
         assert_eq!(classify("SELECT TOP 10 * FROM orders"), StmtClass::Read);
+    }
+
+    #[test]
+    fn a_semicolon_only_splits_outside_quotes_comments_and_dollar_bodies() {
+        // The ordinary cases: one statement however it is punctuated.
+        for sql in ["SELECT 1", "SELECT 1;", "  SELECT 1 ;; ", ";SELECT 1"] {
+            assert_eq!(split_statements(sql).len(), 1, "{sql:?}");
+        }
+        assert_eq!(split_statements("SELECT 1; SELECT 2").len(), 2);
+
+        // A semicolon that is data, not punctuation.
+        for sql in [
+            "SELECT ';'",
+            "SELECT 'it''s; fine'",
+            "SELECT 'escaped\\'; still one'",
+            "SELECT \"a;b\" FROM t",
+            "SELECT `a;b` FROM t",
+            "SELECT [a;b] FROM t",
+            "SELECT 1 -- ; not a statement",
+            "SELECT 1 /* ; nor this */",
+            "SELECT 1 /* /* nested ; */ */",
+            "SELECT $$a; b$$",
+            "SELECT $tag$a; b$tag$",
+        ] {
+            assert_eq!(split_statements(sql).len(), 1, "{sql:?}");
+        }
+
+        // A bind placeholder is not a dollar-quoted body, so the semicolon
+        // after it still separates.
+        assert_eq!(split_statements("SELECT $1; SELECT $2").len(), 2);
+        // Non-ASCII text is sliced on the right boundaries.
+        assert_eq!(
+            split_statements("SELECT 'año'; SELECT 'ñ'"),
+            vec!["SELECT 'año'", "SELECT 'ñ'"]
+        );
+    }
+
+    /// The hole this closed: a write hidden behind a leading read.
+    ///
+    /// `classify` reported `Read` for the whole string, so both the MCP
+    /// connector's read-only tier and the AI panel's no-write rule admitted it,
+    /// and whether the `DELETE` ran came down to which driver's protocol
+    /// happened to reject multi-statement text.
+    #[test]
+    fn a_write_behind_a_read_is_classified_as_the_write() {
+        assert_eq!(
+            classify("SELECT 1; DELETE FROM t WHERE id = 1"),
+            StmtClass::DataWrite
+        );
+        assert_eq!(classify("SELECT 1; DROP TABLE t"), StmtClass::Ddl);
+        assert_eq!(
+            classify("-- innocent\nSELECT 1;\nGRANT ALL ON t TO u"),
+            StmtClass::Ddl
+        );
+        // And the guard sees it too, wherever in the batch it sits.
+        assert!(is_unfiltered_write("SELECT 1; DELETE FROM t"));
+        assert!(!is_unfiltered_write("SELECT 1; DELETE FROM t WHERE id = 1"));
+
+        // Several reads stay a read: the rule is the strictest tier present,
+        // not "more than one statement is suspicious".
+        assert_eq!(classify("SELECT 1; SELECT 2"), StmtClass::Read);
+    }
+
+    /// `DESCRIBE` is how a model asks MySQL for a table's shape, and it is a
+    /// read. Classified as a write, it was refused on the AI surface with an
+    /// instruction to hand the statement to the user — gotcha #74's failure,
+    /// arriving through the classifier instead of through a description.
+    #[test]
+    fn metadata_reads_a_model_actually_writes_are_reads() {
+        for sql in [
+            "DESCRIBE logRecord",
+            "desc logRecord",
+            "DESC `logRecord`",
+            "(SELECT 1) UNION (SELECT 2)",
+        ] {
+            assert!(is_read_only(sql), "expected a read: {sql:?}");
+            assert_eq!(classify(sql), StmtClass::Read, "{sql:?}");
+        }
+        // Not a false positive on a column that merely starts the same way.
+        assert!(!is_read_only("UPDATE t SET description = 1"));
     }
 
     #[test]

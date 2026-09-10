@@ -49,7 +49,7 @@ use crate::bridge::protocol::BridgeRequest;
 use crate::db::sql::StmtClass;
 use crate::error::{AppError, AppResult};
 use crate::log_bus::LogSink;
-use crate::state::{AppState, ConnectionProfile};
+use crate::state::{AppState, ConnectionProfile, Driver};
 use serde_json::Value;
 
 /// Hard ceiling on the rows one tool reply may carry, whatever the user's
@@ -98,6 +98,29 @@ pub const PROPOSE_INSTEAD: &str =
     "this tool runs read-only statements, and the assistant never writes. Do not retry: \
      present the statement to the user as a proposal instead — they run it themselves from \
      the editor.";
+
+/// The refusal a *batch* gets.
+///
+/// Separate from [`PROPOSE_INSTEAD`] because the fix is different and the model
+/// can apply it: `USE shop; SELECT …` is not a write the user has to run, it is
+/// one statement too many. Told to propose it — which is what the single
+/// refusal used to say, since the batch classifies as whatever its `USE`
+/// requires — a model hands over a read it was perfectly entitled to run.
+pub const ONE_STATEMENT: &str =
+    "this tool takes exactly one statement. Send only the read itself, with no second \
+     statement after a semicolon, and call the tool again.";
+
+/// The refusal a session statement gets.
+///
+/// `USE`, `SET`, `BEGIN` and friends are not writes in any interesting sense
+/// and there is nothing to propose: the connection is already open on its
+/// database, and each tool call may land on a different pooled connection
+/// anyway, so session state set by one would not be there for the next. What a
+/// model needs to hear is "you do not need this", with what to do instead.
+pub const NO_SESSION_STATE: &str =
+    "this tool cannot change session state, and does not need to: the connection is already \
+     open on its own database. Qualify the name instead (database.table, or the \"schema\" \
+     argument) and run the read directly. Do not hand this to the user.";
 
 /// The configuration that comes from `prefs.json` rather than from the
 /// connection. Phase 3 builds this from `AiPrefs`.
@@ -153,11 +176,12 @@ pub async fn execute(
     let spec = tools::available(call.tool, scope)?;
     let max_rows = effective_row_cap(runtime.max_context_rows);
 
+    let selected = crate::state::split_database_view(call.connection.trim()).map(|(_, db)| db);
     let request = tools::to_request(
         spec,
         call.args,
         &ToolCtx {
-            connection_id: resolve_target(state, &policy_id, call.args).await?,
+            connection_id: resolve_target(state, &policy_id, call.args, selected).await?,
             policy_id: policy_id.clone(),
             max_context_rows: max_rows,
         },
@@ -296,7 +320,15 @@ fn serialised_len(value: &Value) -> usize {
 /// user has not enabled, and a reference naming a real but disabled one is told
 /// exactly that, with the fix, instead of "unknown connection".
 pub fn resolve_connection(reference: &str, profiles: &[ConnectionProfile]) -> AppResult<String> {
-    let reference = reference.trim();
+    // A synthetic per-database view (`<parent>::db::<name>`) has no profile of
+    // its own, and the panel hands us whichever connection the user has
+    // selected — including one of those. Resolving the parent is what the
+    // frontend already does for the same reason (gotcha #36); without it, every
+    // tool call on a MongoDB connection opened *at a database* failed with "no
+    // connection named …::db::…", which is to say agent mode did not work at
+    // all there. The database half is not lost: `execute` carries it into
+    // `resolve_target` as the default target.
+    let reference = crate::state::parent_connection_id(reference.trim()).trim();
     if reference.is_empty() {
         return Err(AppError::InvalidInput(
             "a connection is required: pass the name or id of one of the connections listed for \
@@ -354,11 +386,113 @@ pub fn resolve_connection(reference: &str, profiles: &[ConnectionProfile]) -> Ap
 /// driver-aware — the SQL keyword heuristic alone calls `db.users.find({})` a
 /// write, which would refuse a MongoDB connection its own reads (see gotcha
 /// #54).
+///
+/// # Three refusals, not one
+///
+/// A refusal is read by the model at the moment it decides what to do next
+/// (gotcha #74), so a refusal that names the wrong fix produces the wrong
+/// behaviour. Only a genuine write should ever hear "propose it to the user":
+/// a batch needs to be split, and a `USE` needs to be dropped. Both of those
+/// used to arrive as [`PROPOSE_INSTEAD`], and both produced the same symptom —
+/// an assistant printing a `SELECT` it was entitled to run and waiting to be
+/// told to run it.
 pub fn refuse_unless_read(sql: &str) -> AppResult<()> {
+    if crate::db::sql::split_statements(sql).len() > 1 {
+        return Err(AppError::InvalidInput(ONE_STATEMENT.to_string()));
+    }
+    if session_statement(sql) {
+        return Err(AppError::InvalidInput(NO_SESSION_STATE.to_string()));
+    }
     match crate::db::classify::classify_statement(sql) {
         StmtClass::Read => Ok(()),
         _ => Err(AppError::InvalidInput(PROPOSE_INSTEAD.to_string())),
     }
+}
+
+/// What the agent loop tells the model about *where it is*, in two lines.
+///
+/// # Why the model needs this at all
+///
+/// Until this existed, nothing in the prompt said which engine was on the other
+/// end. A model that cannot know the dialect writes the one it saw most in
+/// training — `LIMIT 10` against SQL Server, backticks against Postgres, SQL
+/// against MongoDB — and a statement that fails is a statement the model stops
+/// trusting itself to run: the observed behaviour was one failed call followed
+/// by the query printed in prose for the user to fix. Naming the dialect is
+/// cheaper than any number of retries, and far cheaper than a `server_version`
+/// call it has to think to make.
+///
+/// Pure, and deliberately terse: it is prepended to every request of every turn
+/// in the conversation, so each line is paid for repeatedly.
+pub fn target_brief(driver: Driver, label: &str, database: &str) -> String {
+    let where_it_is = match driver {
+        Driver::Postgres => format!(
+            "PostgreSQL, database {database:?}. Identifiers in \"double quotes\"; page with \
+             LIMIT n; the catalogue is information_schema."
+        ),
+        Driver::Mysql => format!(
+            "MySQL or MariaDB, database {database:?}. Identifiers in `backticks`; page with \
+             LIMIT n; SHOW and DESCRIBE both work."
+        ),
+        Driver::Sqlite => format!(
+            "SQLite, file {database:?}. Identifiers in \"double quotes\"; page with LIMIT n; \
+             the catalogue is sqlite_master."
+        ),
+        Driver::MsSql => format!(
+            "Microsoft SQL Server, database {database:?}. Identifiers in [brackets]; page with \
+             TOP n or OFFSET … FETCH — there is no LIMIT."
+        ),
+        Driver::Mongo => format!(
+            "MongoDB, database {database:?}. run_query takes mongosh syntax — \
+             db.<collection>.find({{}}), .aggregate([…]), .countDocuments({{}}) — never SQL."
+        ),
+    };
+    format!(
+        "You are connected to {label:?}: {where_it_is}\nOne statement per run_query call, and \
+         the connection is already open on that database — never send USE, SET or a transaction \
+         statement."
+    )
+}
+
+/// [`target_brief`] for the connection the panel is pointed at, or `None` when
+/// the reference resolves to nothing the assistant may use.
+///
+/// Reads the profile rather than the live pool: a driver is a fact about the
+/// connection the user configured, and asking the pool would make the brief
+/// depend on whether a MongoDB per-database view happened to be open.
+pub fn brief_for(state: &AppState, reference: &str) -> Option<String> {
+    let selected = crate::state::split_database_view(reference.trim()).map(|(_, db)| db);
+    let profiles = state.profiles.read();
+    let id = resolve_connection(reference, &profiles).ok()?;
+    let profile = profiles.iter().find(|p| p.id == id)?;
+    Some(target_brief(
+        profile.driver,
+        &profile.name,
+        selected.unwrap_or(&profile.database),
+    ))
+}
+
+/// Whether `sql` sets session state rather than reading anything.
+///
+/// Not a tier question — [`crate::db::sql::classify`] already refuses all of
+/// these as non-reads — but a *message* question: these are the statements a
+/// model writes out of habit when it thinks it has to select a database first,
+/// and the useful answer is that it does not.
+fn session_statement(sql: &str) -> bool {
+    let head = sql.trim_start().to_ascii_lowercase();
+    [
+        "use ",
+        "set ",
+        "begin",
+        "start transaction",
+        "commit",
+        "rollback",
+        "savepoint ",
+        "lock ",
+        "unlock ",
+    ]
+    .iter()
+    .any(|verb| head.starts_with(verb))
 }
 
 /// The row cap actually applied: the user's preference, bounded below by 1 and
@@ -411,13 +545,22 @@ pub fn cap_rows(value: &mut Value, max: i64) -> bool {
 /// `run_query`'s `database`) is its only way to say which database it means.
 /// Both keys are read here so the tools keep the argument names the MCP
 /// connector already uses for the same job.
-async fn resolve_target(state: &AppState, id: &str, args: &Value) -> AppResult<String> {
+/// `selected` is the database the *user* had open, taken from a synthetic
+/// `<parent>::db::<name>` reference. It is the fallback, not the override: a
+/// model that names a database in the call means that one.
+async fn resolve_target(
+    state: &AppState,
+    id: &str,
+    args: &Value,
+    selected: Option<&str>,
+) -> AppResult<String> {
     let database = args
         .get("schema")
         .or_else(|| args.get("database"))
         .and_then(Value::as_str)
         .map(str::trim)
-        .filter(|database| !database.is_empty());
+        .filter(|database| !database.is_empty())
+        .or(selected);
     let Some(database) = database else {
         return Ok(id.to_string());
     };
@@ -551,9 +694,108 @@ mod tests {
             "SHOW TABLES",
             "db.users.find({})",
             "db.users.aggregate([{$match: {a: 1}}])",
+            // How a model asks MySQL for a table's shape. Refused as a write
+            // until the classifier learned it, and refused with the one
+            // message that tells the model to hand it over.
+            "DESCRIBE logRecord",
+            "DESC logRecord",
+            // Legal, ordinary, and matched by no `starts_with("select")`.
+            "(SELECT 1) UNION (SELECT 2)",
+            // A trailing semicolon is punctuation, not a second statement.
+            "SELECT 1;",
         ] {
             refuse_unless_read(sql).unwrap_or_else(|e| panic!("{sql} should be a read: {e}"));
         }
+    }
+
+    /// The two refusals that are *not* "propose it to the user", and the reason
+    /// they exist: told to propose, a model hands over a read it was entitled
+    /// to run (gotcha #74). Neither of these is a write, and both have a fix
+    /// the model itself can apply.
+    #[test]
+    fn a_batch_and_a_session_statement_get_their_own_refusals() {
+        for sql in ["USE shop; SELECT 1", "SELECT 1; SELECT 2"] {
+            let err = refuse_unless_read(sql)
+                .expect_err("a batch must be refused")
+                .to_string();
+            assert!(err.contains("exactly one statement"), "{sql}: {err}");
+            assert!(!err.contains("proposal"), "{sql}: {err}");
+        }
+        for sql in ["USE shop", "SET NAMES utf8", "BEGIN", "COMMIT"] {
+            let err = refuse_unless_read(sql)
+                .expect_err("a session statement must be refused")
+                .to_string();
+            assert!(err.contains("already"), "{sql}: {err}");
+            assert!(!err.contains("proposal"), "{sql}: {err}");
+        }
+    }
+
+    /// The write hole this closed on the AI surface: `SELECT 1; DELETE …`
+    /// classified as a read, so the assistant could have run a write.
+    #[test]
+    fn a_write_hidden_behind_a_read_is_still_refused() {
+        for sql in [
+            "SELECT 1; DELETE FROM users",
+            "SELECT 1; DROP TABLE users",
+            "-- look away\nSELECT 1;\nUPDATE users SET a = 1 WHERE id = 1",
+        ] {
+            refuse_unless_read(sql).expect_err("a hidden write must be refused");
+        }
+    }
+
+    /// The dialect line is the difference between a model that runs a
+    /// statement and one that guesses `LIMIT` at SQL Server and then gives up.
+    #[test]
+    fn the_brief_names_the_dialect_and_the_database() {
+        let brief = target_brief(Driver::Mysql, "Producción", "shop");
+        assert!(brief.contains("Producción"), "{brief}");
+        assert!(brief.contains("MySQL"), "{brief}");
+        assert!(brief.contains("shop"), "{brief}");
+        assert!(brief.contains("backticks"), "{brief}");
+
+        // The two engines a model most reliably gets wrong.
+        let mssql = target_brief(Driver::MsSql, "dw", "Reporting");
+        assert!(mssql.contains("TOP n"), "{mssql}");
+        assert!(mssql.contains("no LIMIT"), "{mssql}");
+        let mongo = target_brief(Driver::Mongo, "logs", "app");
+        assert!(mongo.contains("mongosh"), "{mongo}");
+        assert!(mongo.contains("never SQL"), "{mongo}");
+
+        // Every driver says the same thing about batches and session state,
+        // which is the other half of what stopped the loop running queries.
+        for driver in [
+            Driver::Postgres,
+            Driver::Mysql,
+            Driver::Sqlite,
+            Driver::MsSql,
+            Driver::Mongo,
+        ] {
+            let brief = target_brief(driver, "c", "d");
+            assert!(
+                brief.contains("One statement per run_query call"),
+                "{brief}"
+            );
+            assert!(brief.contains("never send USE"), "{brief}");
+        }
+    }
+
+    /// A MongoDB connection opened *at a database* is a synthetic
+    /// `<parent>::db::<name>` id with no profile of its own, and the panel
+    /// hands us exactly that. Before this resolved to its parent, every tool
+    /// call on such a connection failed with "no connection named …".
+    #[test]
+    fn a_per_database_view_resolves_to_its_parent_profile() {
+        let profiles = vec![enabled("id-1", "Mongo")];
+        assert_eq!(
+            resolve_connection("id-1::db::shop", &profiles).unwrap(),
+            "id-1"
+        );
+        // The name form works the same way, and the parent's own id still does.
+        assert_eq!(
+            resolve_connection("Mongo::db::shop", &profiles).unwrap(),
+            "id-1"
+        );
+        assert_eq!(resolve_connection("id-1", &profiles).unwrap(), "id-1");
     }
 
     #[test]

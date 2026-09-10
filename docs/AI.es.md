@@ -269,10 +269,15 @@ que falta.
 
 ## Asperezas conocidas
 
-- **Los modelos pequeños usan sus herramientas menos de lo que deberían.** A
-  veces escriben un `SELECT` y esperan a que lo ejecutes tú aunque puedan
-  ejecutarlo ellos. Decirles que sigan funciona; se está trabajando en un prompt
-  mejor.
+- **Los modelos pequeños todavía usan sus herramientas menos de lo que
+  deberían, a veces.** De vez en cuando escriben un `SELECT` y esperan a que lo
+  ejecutes tú aunque puedan ejecutarlo ellos; decirles que sigan funciona. Tres
+  de las causas eran nuestras y están corregidas: ahora se le dice al asistente
+  a qué motor y a qué base de datos está conectado (así deja de probar `LIMIT`
+  en SQL Server o SQL en MongoDB), `DESCRIBE` se reconoce como la lectura que es
+  en lugar de rechazarse como escritura, y a un lote o a un `USE` se le responde
+  qué corregir en vez de "dáselo al usuario". Lo que queda es el criterio del
+  propio modelo.
 - **La prosa se renderiza como un subconjunto pequeño de markdown** — negrita,
   cursiva, código en línea, listas, encabezados, citas y bloques de código. Las
   tablas todavía no.

@@ -45,7 +45,8 @@
 //!
 //! The panel sends a chat prompt that tells the model it has no database
 //! access, which is true of plain chat and false here. The loop drops whatever
-//! system message arrived and supplies [`SYSTEM_PROMPT`]. That is mostly
+//! system message arrived and supplies its own ([`system_message`]:
+//! [`SYSTEM_PROMPT`] plus the connection's dialect brief). That is mostly
 //! hygiene — the frontend is ours — but it also means the one instruction that
 //! governs what the assistant may do with its tools is not something a page can
 //! rewrite.
@@ -130,7 +131,9 @@ pub const SYSTEM_PROMPT: &str = concat!(
     "without being asked.\n\n",
     "Look things up, then answer. Need a table's columns? Call ",
     "describe_table. Need rows, a count, or a sample? Call browse_table or ",
-    "run_query. Never ask the user to run a query for you, never ask them to ",
+    "run_query. A count, an aggregate, a join or a filter is a run_query call: ",
+    "write the statement and call the tool with it, in this connection's own ",
+    "dialect. Never ask the user to run a query for you, never ask them to ",
     "paste a schema you can read yourself, and never end a turn by asking ",
     "permission to look — looking is your job. Do not re-read something you ",
     "already read earlier in this conversation.\n\n",
@@ -145,6 +148,21 @@ pub const SYSTEM_PROMPT: &str = concat!(
     "Never say you are showing data you did not receive from a tool.\n\n",
     "Be brief. Answer in the language the user writes in."
 );
+
+/// The system message the loop actually sends: [`SYSTEM_PROMPT`] plus, when we
+/// know it, [`crate::ai::exec::target_brief`]'s two lines about the connection.
+///
+/// One message rather than two, because not every server honours a second
+/// system message — some concatenate, some drop it, and llama.cpp's template
+/// handling depends on the model's own chat template. Appending is the only
+/// shape that behaves the same everywhere.
+pub fn system_message(brief: Option<&str>) -> Value {
+    let content = match brief {
+        Some(brief) => format!("{SYSTEM_PROMPT}\n\n{brief}"),
+        None => SYSTEM_PROMPT.to_string(),
+    };
+    json!({ "role": "system", "content": content })
+}
 
 /// What the caller is told as the loop runs.
 ///
@@ -276,8 +294,9 @@ pub async fn run(
         max_context_rows: limits.max_context_rows,
     };
 
+    let brief = crate::ai::exec::brief_for(state, connection);
     let mut messages = Vec::with_capacity(conversation.len() + 4);
-    messages.push(json!({ "role": "system", "content": SYSTEM_PROMPT }));
+    messages.push(system_message(brief.as_deref()));
     messages.extend(conversation);
 
     log(
@@ -431,6 +450,23 @@ mod tests {
             name: name.into(),
             arguments: args,
         }
+    }
+
+    /// One system message, with the connection brief appended rather than sent
+    /// as a second one: servers disagree about what to do with two.
+    #[test]
+    fn the_brief_is_appended_to_the_one_system_message() {
+        let brief =
+            crate::ai::exec::target_brief(crate::state::Driver::Postgres, "Producción", "shop");
+        let message = system_message(Some(&brief));
+        assert_eq!(message["role"], "system");
+        let content = message["content"].as_str().unwrap();
+        assert!(content.starts_with(SYSTEM_PROMPT), "{content}");
+        assert!(content.contains("PostgreSQL"), "{content}");
+
+        // No connection resolved: the prompt alone, unchanged, so a turn that
+        // cannot name its target does not send a half-built sentence.
+        assert_eq!(system_message(None)["content"], SYSTEM_PROMPT);
     }
 
     /// The wire wants `arguments` as a JSON **string**. An object there is

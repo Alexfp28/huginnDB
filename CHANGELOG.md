@@ -232,6 +232,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The assistant wrote out queries and waited for you instead of running
+  them.** It had started picking its tools on its own, and then stalled at the
+  last step — printing a `SELECT` and asking you to run it, in agent mode, with
+  a `run_query` tool in hand. Four causes, all ours:
+
+  **It was never told which engine it was talking to.** Nothing in the prompt
+  named the driver, so it wrote whichever dialect it had seen most — `LIMIT`
+  against SQL Server, backticks against Postgres, SQL against MongoDB — and one
+  failed call is enough for a small model to stop trusting itself and hand the
+  statement over. Every turn now opens with the connection's name, its engine,
+  its database, how that engine quotes identifiers and how it pages.
+
+  **`DESCRIBE` was classified as a write.** It is how a model asks MySQL for a
+  table's shape, and it was refused as a mutation with an instruction to give it
+  to you. `DESCRIBE`/`DESC` and a leading `(` — as in `(SELECT …) UNION
+  (SELECT …)` — are recognised as the reads they are. The editor gains the same
+  fix: `DESCRIBE t` there used to report a row count instead of showing the
+  columns.
+
+  **One refusal served three different problems.** A write, a two-statement
+  batch and a `USE` all came back with "present the statement to the user as a
+  proposal" — the loudest instruction in the loop. A batch is now told to send
+  one statement, a `USE` is told the connection is already open on its database
+  and to qualify the name instead, and only an actual write is told to propose
+  anything.
+
+  **A MongoDB connection opened at a database did not work at all.** Those carry
+  a synthetic id with no connection profile of its own, so every tool call came
+  back "no connection named …". It resolves to its parent now, and the database
+  you had open becomes the default target rather than being discarded.
+
+- **A write could hide behind a read.** `SELECT 1; DELETE FROM t` was classified
+  by its first keyword, so it passed as a read — for the AI panel, which never
+  writes, and for a `read-only` MCP connection. Whether the `DELETE` then ran
+  was down to the driver: rejected by the prepared protocol on PostgreSQL and
+  MySQL, executed by a T-SQL batch and by SQLite. A statement's tier is now the
+  strictest tier of every statement in the text, with semicolons inside string
+  literals, quoted identifiers, comments and Postgres dollar-quoted bodies
+  correctly ignored. Several reads in one string are still a read.
+
 - **The clear button in three search fields showed a raw translation key.**
   `common.clear` was referenced by the search boxes in Settings → MCP and
   Settings → Pulse and by two connection dialogs, and existed in neither locale,
