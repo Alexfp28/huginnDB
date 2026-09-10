@@ -232,6 +232,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Answers hallucinated less, and you can now check the ones that do.** Every
+  request asks for a low sampling temperature. Ollama's and llama.cpp's own
+  default is **0.8** — a creative-writing setting for an assistant whose job is
+  reporting what a table contains, and the mechanism by which a plausible column
+  name that does not exist beats the one that does. It is not sent when you have
+  chosen a reasoning effort, because OpenAI's reasoning models reject the two
+  together.
+
+  Sampling only lowers the rate, so the panel also makes a claim checkable:
+  **a tool card now opens to show what came back.** Rows render as a table —
+  with a JSON value kept as JSON rather than as `[object Object]` — and anything
+  else as indented JSON. A `run_query` card carries a button that opens that
+  exact statement in a query tab, where the grid, the pager and your own edits
+  are. And the card's badge reads "20 of 41,892" rather than "20 rows" when the
+  reply carried the table's real total, because a sample read as a population is
+  a specific way for an answer to be wrong.
+
+- **A value that is JSON or code is now shown as a code block even when the
+  model forgets to fence it.** On a configuration database most of the
+  interesting columns hold a JSON document or a snippet of pseudocode, and a
+  400-character object pasted into the middle of a sentence is unreadable
+  however correct it is. Valid JSON is hoisted out and pretty-printed; a
+  multi-line bracketed block that is *not* valid JSON — pseudocode, a template,
+  JSON with unquoted keys — is kept verbatim as preformatted text. A short blob
+  or a mongosh filter mid-explanation stays in the sentence it belongs to. The
+  prompts ask for the fence as well, in both agent mode and "Document with AI";
+  this is the half that does not depend on the model complying.
+
 - **The assistant no longer needs to be talked into running a query.** Even
   after the four fixes below, some models end a turn by writing a `SELECT` and
   waiting for you — with a `run_query` tool in hand and nothing stopping them.

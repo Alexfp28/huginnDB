@@ -275,6 +275,24 @@ feature.
   call and answers from the rows. It happens at most once per turn, never for a
   statement that writes, and the extra step is in the Console like every
   other.
+- **It hallucinates, and the panel is built so you can catch it.** A model this
+  size will sometimes state a column or a count that nothing returned. Three
+  things push back: every request asks for a low sampling temperature (the
+  servers' own default, 0.8, is a creative-writing setting), the prompt forbids
+  stating anything a tool did not return, and — the one that actually settles an
+  argument — **every tool card opens to show what came back**. Rows render as a
+  table, anything else as JSON, and a `run_query` card has a button that puts
+  that exact statement in a query tab. The claim and its evidence are one click
+  apart.
+
+  The badge helps too: it reads "20 of 41,892" rather than "20 rows" when the
+  reply carried the table's real total, because a sample read as a population is
+  a specific way for an answer to be wrong.
+- **A value that is JSON or code is shown as a code block even when the model
+  forgets to fence it.** Configuration tables are mostly columns like that, and
+  a 400-character JSON object pasted into the middle of a sentence is
+  unreadable. Valid JSON is pretty-printed; a multi-line bracketed block that
+  is not valid JSON — pseudocode, a template — is kept verbatim.
 - **Prose renders as a small markdown subset** — bold, italic, inline code,
   lists, headings, quotes and fenced code. Tables are not rendered yet.
 - **Links in an answer are shown, not clickable.** A model-authored URL that

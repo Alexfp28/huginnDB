@@ -197,6 +197,63 @@ describe("AiPanel", () => {
     expect(screen.getByText(/capped/)).toBeTruthy();
   });
 
+  /**
+   * The evidence under the claim. A model this size hallucinates, so an
+   * expanded card has to show the rows the answer is *about* — not a tick and
+   * not a count alone.
+   */
+  it("shows the rows a read returned, and offers the statement to the editor", () => {
+    useAi.setState({
+      showToolDetails: true,
+      conversations: {
+        c1: {
+          turnId: null,
+          error: null,
+          messages: [
+            {
+              id: "m1",
+              role: "assistant",
+              parts: [
+                {
+                  type: "toolCall",
+                  id: "call_1",
+                  name: "run_query",
+                  args: { sql: "SELECT id, settings FROM config LIMIT 2" },
+                },
+                {
+                  type: "toolResult",
+                  id: "call_1",
+                  name: "run_query",
+                  result: {
+                    columns: [{ name: "id" }, { name: "settings" }],
+                    rows: [
+                      [1, { retries: 3 }],
+                      [2, null],
+                    ],
+                    total: 41892,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    render(<AiPanel connectionId="c1" />);
+
+    // The badge distinguishes the sample from the population.
+    expect(screen.getByText(/41[.,]892/)).toBeTruthy();
+    // The columns and the cells, with a JSON value kept as JSON rather than
+    // rendered as [object Object].
+    expect(screen.getByText("settings")).toBeTruthy();
+    expect(screen.getByText('{"retries":3}')).toBeTruthy();
+    expect(screen.getByText("NULL")).toBeTruthy();
+    // And the read itself is one click from a real grid.
+    expect(
+      screen.getByRole("button", { name: /open in editor/i }),
+    ).toBeTruthy();
+  });
+
   /** The conversation is keyed by connection, so switching shows that
    *  connection's own thread rather than re-pointing this one. */
   it("keeps each connection's conversation separate", () => {

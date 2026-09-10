@@ -172,7 +172,9 @@ fn instruction(task: AssistedTask) -> &'static str {
              column means, note the keys and what the indexes suggest about how \
              it is queried, and flag anything that looks like a modelling \
              problem. Be brief. Do not list every column mechanically — the \
-             reader can already see the schema."
+             reader can already see the schema. When you quote a value that is \
+             JSON, XML or code, put it in a fenced code block rather than \
+             inline in a sentence."
         }
     }
 }

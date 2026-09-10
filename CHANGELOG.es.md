@@ -248,6 +248,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Las respuestas alucinan menos, y ahora puedes comprobar las que lo hacen.**
+  Cada petición pide una temperatura de muestreo baja. El valor por defecto de
+  Ollama y de llama.cpp es **0.8** — una configuración de escritura creativa
+  para un asistente cuyo trabajo es informar de lo que contiene una tabla, y el
+  mecanismo por el que un nombre de columna verosímil que no existe le gana al
+  que sí. No se envía cuando has elegido un esfuerzo de razonamiento, porque los
+  modelos de razonamiento de OpenAI rechazan los dos juntos.
+
+  El muestreo solo reduce la frecuencia, así que el panel además hace
+  comprobable cada afirmación: **una tarjeta de herramienta se abre ahora para
+  mostrar lo que llegó.** Las filas se renderizan como tabla — con un valor JSON
+  conservado como JSON en lugar de como `[object Object]` — y todo lo demás como
+  JSON indentado. Una tarjeta de `run_query` lleva un botón que abre esa misma
+  sentencia en una pestaña de consulta, donde están la rejilla, el paginador y
+  tus propias ediciones. Y la etiqueta de la tarjeta dice "20 de 41.892" en
+  lugar de "20 filas" cuando la respuesta traía el total real de la tabla,
+  porque leer una muestra como si fuera la población es una forma concreta de
+  equivocarse.
+
+- **Un valor que es JSON o código se muestra ahora como bloque de código incluso
+  cuando el modelo se olvida de vallarlo.** En una base de datos de
+  configuración la mayoría de las columnas interesantes guardan un documento
+  JSON o un fragmento de seudocódigo, y un objeto de 400 caracteres pegado en
+  mitad de una frase es ilegible por correcto que sea. El JSON válido se extrae
+  y se formatea; un bloque entre llaves de varias líneas que *no* es JSON válido
+  — seudocódigo, una plantilla, JSON con claves sin comillas — se conserva
+  literal como texto preformateado. Un blob corto o un filtro de mongosh en
+  mitad de una explicación se quedan en la frase a la que pertenecen. Los
+  prompts piden también la valla, tanto en modo agente como en "Documentar con
+  IA"; esto es la mitad que no depende de que el modelo obedezca.
+
 - **Ya no hay que convencer al asistente de que ejecute una consulta.** Incluso
   después de las cuatro correcciones de abajo, algunos modelos terminan el turno
   escribiendo un `SELECT` y esperándote — con una herramienta `run_query` en la

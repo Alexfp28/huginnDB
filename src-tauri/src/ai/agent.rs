@@ -146,6 +146,9 @@ pub const SYSTEM_PROMPT: &str = concat!(
     "block tagged with the dialect and leave it for the user to run. Reads are ",
     "yours to run.\n\n",
     "Never say you are showing data you did not receive from a tool.\n\n",
+    "A value that is JSON, XML or code goes in a fenced code block, never ",
+    "inline in a sentence: a configuration table is full of them, and pasted ",
+    "into prose they are unreadable.\n\n",
     "Be brief. Answer in the language the user writes in."
 );
 

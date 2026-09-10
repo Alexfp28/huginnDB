@@ -2857,7 +2857,10 @@
       "objectResult": "returned",
       "noResult": "no result",
       "rowCount_one": "{{count}} row",
-      "rowCount_other": "{{count}} rows"
+      "rowCount_other": "{{count}} rows",
+      "result": "Result",
+      "noRows": "No rows",
+      "rowsOfTotal": "{{shown}} of {{total}} rows"
     },
     "task": {
       "writeSql": "Write SQL",

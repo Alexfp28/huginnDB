@@ -7,6 +7,7 @@ import {
   fenceLanguage,
   hasVisibleContent,
   isRunnable,
+  promoteUnfenced,
   resultFor,
   splitBlocks,
   stripReasoning,
@@ -76,6 +77,69 @@ describe("tool parts", () => {
   });
 });
 
+describe("promoteUnfenced", () => {
+  it("hoists a JSON value out of the sentence it was pasted into", () => {
+    const blocks = promoteUnfenced(
+      'El campo settings vale {"retries": 3, "backoff": "exponential", "targets": ["a", "b"]} en esa fila.',
+    );
+    expect(blocks.map((b) => b.kind)).toEqual(["prose", "code", "prose"]);
+    expect(blocks[1]).toMatchObject({ lang: "json", closed: true });
+    // Pretty-printed, because arriving on one line is why it was unreadable.
+    expect((blocks[1] as { code: string }).code).toContain('\n  "retries": 3');
+    expect(blocks[2]).toMatchObject({ text: " en esa fila." });
+  });
+
+  it("takes the backticks with it rather than leaving one on each side", () => {
+    const blocks = promoteUnfenced(
+      'vale `{"retries": 3, "backoff": "exponential", "mode": "fast"}` ahora',
+    );
+    expect(blocks.map((b) => b.kind)).toEqual(["prose", "code", "prose"]);
+    expect(blocks[0]).toMatchObject({ text: "vale " });
+    expect(blocks[2]).toMatchObject({ text: " ahora" });
+  });
+
+  it("keeps multi-line pseudocode verbatim, as text rather than as JSON", () => {
+    const code = "{\n  onSuccess: notify(user),\n  retries: 3,\n}";
+    const blocks = promoteUnfenced(`La regla es:\n${code}`);
+    expect(blocks.map((b) => b.kind)).toEqual(["prose", "code"]);
+    // Not valid JSON (unquoted keys, a call), so it is not relabelled as such
+    // and it is not reformatted.
+    expect(blocks[1]).toMatchObject({ lang: "text", code });
+  });
+
+  it("leaves short or single-line non-JSON blobs in the prose", () => {
+    for (const text of [
+      "el objeto llega como {} vacío",
+      'la bandera es {"on": true}',
+      "el filtro es db.config.find({clave: 1}) y devuelve una fila",
+      "un mensaje con } suelto",
+    ]) {
+      expect(promoteUnfenced(text)).toEqual([{ kind: "prose", text }]);
+    }
+  });
+
+  it("handles a brace inside a string value without closing early", () => {
+    const blocks = promoteUnfenced(
+      '{"template": "hola {nombre}, tienes {n} avisos", "activo": true}',
+    );
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ kind: "code", lang: "json" });
+  });
+
+  it("promotes an array and every blob in one answer", () => {
+    const blocks = promoteUnfenced(
+      'a ["primero", "segundo", "tercero", "cuarto"] b {"x": 1, "y": 2, "z": 3, "w": 4, "v": 5} c',
+    );
+    expect(blocks.map((b) => b.kind)).toEqual([
+      "prose",
+      "code",
+      "prose",
+      "code",
+      "prose",
+    ]);
+  });
+});
+
 describe("splitBlocks", () => {
   it("returns plain prose untouched", () => {
     expect(splitBlocks("Just a sentence.")).toEqual([
@@ -140,6 +204,15 @@ describe("splitBlocks", () => {
     expect(blocks).toHaveLength(3);
     expect(blocks[0]).toMatchObject({ code: "SELECT 1;" });
     expect(blocks[2]).toMatchObject({ code: "SELECT 2;" });
+  });
+
+  it("promotes unfenced JSON inside a prose run", () => {
+    const blocks = splitBlocks(
+      'La fila dice {"retries": 3, "backoff": "exponential", "on": true} y nada más.\n\n```sql\nSELECT 1;\n```',
+    );
+    expect(blocks.map((b) => b.kind)).toEqual(["prose", "code", "prose", "code"]);
+    expect(blocks[1]).toMatchObject({ lang: "json" });
+    expect(blocks[3]).toMatchObject({ lang: "sql", code: "SELECT 1;" });
   });
 });
 

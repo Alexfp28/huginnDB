@@ -196,7 +196,7 @@ export function splitBlocks(text: string): TextBlock[] {
     if (prose.length === 0) return;
     const joined = prose.join("\n");
     // Whitespace-only prose between two fences is framing, not content.
-    if (joined.trim()) blocks.push({ kind: "prose", text: joined });
+    if (joined.trim()) blocks.push(...promoteUnfenced(joined));
     prose = [];
   };
 
@@ -230,6 +230,133 @@ export function splitBlocks(text: string): TextBlock[] {
   }
   return blocks;
 }
+
+/**
+ * Split a prose run around any code the model forgot to fence.
+ *
+ * # Why the renderer fixes this and not the prompt
+ *
+ * A configuration database is mostly columns whose *values* are JSON or
+ * pseudocode, so an answer about one is full of them — and a model that pastes
+ * a 400-character JSON object into the middle of a sentence has produced
+ * something unreadable no matter how correct it is. The prompt asks for a fence
+ * (`ai::agent::SYSTEM_PROMPT`), and a small model complies some of the time;
+ * this is the half that does not depend on compliance, the same argument as
+ * gotcha #78's backstop.
+ *
+ * # What counts, and what deliberately does not
+ *
+ * Two shapes, both found by matching brackets rather than by regex, because a
+ * JSON object is nested and a regex cannot balance:
+ *
+ * - **Valid JSON** — an object or array that `JSON.parse` accepts. Re-emitted
+ *   *pretty-printed*, since the reason it is unreadable is usually that it
+ *   arrived on one line.
+ * - **A multi-line bracketed block** that is not valid JSON: pseudocode, a
+ *   template, JSON with unquoted keys. Kept verbatim and marked `text`, so it
+ *   renders as a `<pre>` rather than being highlighted as something it is not.
+ *
+ * A single-line blob that is not valid JSON stays in the prose. That is the
+ * conservative direction: `{}` in a sentence, a mongosh filter mid-explanation
+ * (`db.c.find({a: 1})`) or a brace in an error message are all prose, and
+ * hoisting them out would break the sentence they belong to.
+ */
+export function promoteUnfenced(text: string): TextBlock[] {
+  const blocks: TextBlock[] = [];
+  let cursor = 0;
+  let at = 0;
+  while (at < text.length) {
+    const char = text[at];
+    if (char !== "{" && char !== "[") {
+      at += 1;
+      continue;
+    }
+    const end = matchBracket(text, at);
+    if (end === null) {
+      at += 1;
+      continue;
+    }
+    const candidate = text.slice(at, end);
+    const promoted = asCodeBlock(candidate);
+    if (!promoted) {
+      at += 1;
+      continue;
+    }
+    // A blob the model wrapped in backticks: take those with it, or the prose
+    // keeps a stray one on each side.
+    const backticked = text[at - 1] === "`" && text[end] === "`";
+    const before = text.slice(cursor, backticked ? at - 1 : at);
+    if (before.trim()) blocks.push({ kind: "prose", text: before });
+    blocks.push(promoted);
+    cursor = backticked ? end + 1 : end;
+    at = cursor;
+  }
+  const rest = text.slice(cursor);
+  if (rest.trim()) blocks.push({ kind: "prose", text: rest });
+  // All of it was code: still return something, so a caller can rely on a
+  // non-empty run producing at least one block.
+  return blocks.length > 0 ? blocks : [{ kind: "prose", text }];
+}
+
+/**
+ * The index just past the bracket that closes the one at `open`, or `null`.
+ *
+ * String-aware, because a `}` inside a JSON string value is not a close, and
+ * escape-aware for the same reason.
+ */
+function matchBracket(text: string, open: number): number | null {
+  const close = text[open] === "{" ? "}" : "]";
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = open; i < text.length; i++) {
+    const char = text[i];
+    if (quote) {
+      if (char === "\\") i += 1;
+      else if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "{" || char === "[") depth += 1;
+    else if (char === "}" || char === "]") {
+      depth -= 1;
+      if (depth === 0) return char === close ? i + 1 : null;
+      if (depth < 0) return null;
+    }
+  }
+  return null;
+}
+
+/** The block `candidate` should become, or `null` to leave it as prose. */
+function asCodeBlock(candidate: string): TextBlock | null {
+  // Short enough to read in place is short enough to leave alone.
+  if (candidate.length < MIN_PROMOTED_CHARS) return null;
+  try {
+    const parsed: unknown = JSON.parse(candidate);
+    if (parsed === null || typeof parsed !== "object") return null;
+    return {
+      kind: "code",
+      lang: "json",
+      code: JSON.stringify(parsed, null, 2),
+      closed: true,
+    };
+  } catch {
+    // Not JSON. Only trusted as code when it spans lines — see the doc above.
+    if (!candidate.includes("\n")) return null;
+    return { kind: "code", lang: "text", code: candidate, closed: true };
+  }
+}
+
+/**
+ * Below this, a bracketed value is left in the sentence it appears in.
+ *
+ * Forty characters is about where a one-line JSON object stops being readable
+ * as part of a sentence: `{"enabled": true}` is fine mid-prose, and a nested
+ * object never is.
+ */
+export const MIN_PROMOTED_CHARS = 40;
 
 /**
  * Monaco's language id for a fence's info string, or `null` when the block is

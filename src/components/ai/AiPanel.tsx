@@ -507,6 +507,7 @@ function Message({
                 call={part}
                 result={resultFor(message.parts, part.id)}
                 defaultOpen={showToolDetails}
+                connectionId={connectionId}
               />
             );
           }

@@ -285,6 +285,26 @@ que falta.
   le pide al modelo esa única llamada y responde con las filas. Ocurre como
   máximo una vez por turno, nunca con una sentencia que escribe, y el paso extra
   queda en la Consola como todos los demás.
+- **Alucina, y el panel está hecho para que lo puedas pillar.** Un modelo de
+  este tamaño a veces afirma una columna o un recuento que no devolvió nada.
+  Hay tres cosas que lo frenan: cada petición pide una temperatura de muestreo
+  baja (el valor por defecto de los servidores, 0.8, es de escritura creativa),
+  el prompt prohíbe afirmar cualquier cosa que no haya devuelto una herramienta
+  y — la que de verdad zanja una discusión — **cada tarjeta de herramienta se
+  abre para mostrar lo que llegó**. Las filas se renderizan como tabla, el resto
+  como JSON, y una tarjeta de `run_query` tiene un botón que pone esa misma
+  sentencia en una pestaña de consulta. La afirmación y su prueba están a un
+  clic.
+
+  La etiqueta también ayuda: dice "20 de 41.892" en lugar de "20 filas" cuando
+  la respuesta traía el total real de la tabla, porque leer una muestra como si
+  fuera la población es una forma concreta de equivocarse.
+- **Un valor que es JSON o código se muestra como bloque de código incluso
+  cuando el modelo se olvida de vallarlo.** Las tablas de configuración son
+  sobre todo columnas así, y un objeto JSON de 400 caracteres pegado en mitad de
+  una frase es ilegible. El JSON válido se formatea; un bloque entre llaves de
+  varias líneas que no es JSON válido — seudocódigo, una plantilla — se deja
+  literal.
 - **La prosa se renderiza como un subconjunto pequeño de markdown** — negrita,
   cursiva, código en línea, listas, encabezados, citas y bloques de código. Las
   tablas todavía no.

@@ -2857,7 +2857,10 @@
       "objectResult": "respondió",
       "noResult": "sin resultado",
       "rowCount_one": "{{count}} fila",
-      "rowCount_other": "{{count}} filas"
+      "rowCount_other": "{{count}} filas",
+      "result": "Resultado",
+      "noRows": "Sin filas",
+      "rowsOfTotal": "{{shown}} de {{total}} filas"
     },
     "task": {
       "writeSql": "Escribir SQL",

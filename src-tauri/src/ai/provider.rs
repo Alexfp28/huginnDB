@@ -268,12 +268,43 @@ pub fn tool_declarations(tools: &[&'static ToolSpec]) -> Vec<Value> {
         .collect()
 }
 
+/// The sampling temperature every request asks for.
+///
+/// # Why this is not the server's default
+///
+/// Ollama's chat default is **0.8**, which is a creative-writing setting, and
+/// llama.cpp's is 0.8 too. For an assistant whose entire job is reporting what
+/// a table contains, high-entropy sampling is not a feature — it is the
+/// mechanism by which a plausible column name that does not exist wins over
+/// the one that does. A small model is where this bites hardest: it has less
+/// margin in the logits to begin with, so the temperature does more of the
+/// deciding.
+///
+/// Not zero. Greedy decoding makes a small model repeat itself — the same
+/// sentence, or the same tool call with the same arguments, until a budget ends
+/// the turn — and a tool-call loop is exactly the shape that exposes it. 0.15
+/// is low enough that the top token wins essentially always and high enough to
+/// break a tie.
+///
+/// Deliberately a constant rather than a preference. A preference here is a
+/// dial whose right setting is the same for every user of a *database* client,
+/// and whose wrong setting looks like a broken product rather than like a
+/// choice they made.
+pub const TEMPERATURE: f64 = 0.15;
+
 /// Build a `/chat/completions` body.
 ///
 /// `tools` and `tool_choice` are **omitted** when there are none rather than
 /// sent empty: several servers reject `"tools": []` outright, and one of them
 /// is llama.cpp's, so an empty array would break assisted mode on the
 /// deployment this feature is built around.
+///
+/// `temperature` and `reasoning_effort` are mutually exclusive on purpose, and
+/// the two rejections are complementary: OpenAI's reasoning models accept an
+/// effort and **400 on any temperature but 1**, while their ordinary models
+/// accept a temperature and 400 on an effort. The user declaring an effort is
+/// the declaration that this is a reasoning model, so it is also the signal to
+/// stop sending a temperature — one field or the other, never both.
 pub fn chat_body(
     endpoint: &Endpoint,
     messages: Vec<Value>,
@@ -294,8 +325,13 @@ pub fn chat_body(
     // validates this field and rejects the request on a non-reasoning model,
     // so a build that always sent a value would break BYOK against half their
     // catalogue — see `AiReasoningEffort::Auto`.
-    if let Some(effort) = endpoint.reasoning_effort.wire() {
-        object.insert("reasoning_effort".into(), Value::String(effort.into()));
+    match endpoint.reasoning_effort.wire() {
+        Some(effort) => {
+            object.insert("reasoning_effort".into(), Value::String(effort.into()));
+        }
+        None => {
+            object.insert("temperature".into(), json!(TEMPERATURE));
+        }
     }
     body
 }
@@ -634,6 +670,27 @@ mod tests {
             let body = chat_body(&endpoint, vec![], &[], true);
             assert_eq!(body["reasoning_effort"], json!(wire), "{choice:?}");
         }
+    }
+
+    /// The server's own default is 0.8 — a creative-writing setting for an
+    /// assistant whose job is reporting what a table contains. And the two
+    /// fields are mutually exclusive because their rejections are: a reasoning
+    /// model 400s on any temperature but 1, an ordinary one 400s on an effort.
+    #[test]
+    fn a_low_temperature_is_sent_unless_a_reasoning_effort_is() {
+        let endpoint = endpoint("http://localhost:11434/v1");
+        let body = chat_body(&endpoint, vec![], &[], true);
+        assert_eq!(body["temperature"], json!(TEMPERATURE));
+        // Read back off the wire rather than off the constant: the property
+        // worth pinning is that what a server receives stays low, and greedy
+        // (0.0) makes a small model repeat itself.
+        let sent = body["temperature"].as_f64().expect("a number");
+        assert!(sent > 0.0 && sent < 0.3, "{sent}");
+
+        let mut reasoning = endpoint.clone();
+        reasoning.reasoning_effort = AiReasoningEffort::High;
+        let body = chat_body(&reasoning, vec![], &[], true);
+        assert!(body.get("temperature").is_none(), "{body}");
     }
 
     /// A metadata-only conversation must not even *declare* the row tools, or
