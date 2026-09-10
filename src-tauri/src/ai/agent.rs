@@ -29,11 +29,17 @@
 //!
 //! # Budgets, and what happens at the end of one
 //!
-//! Three hard caps — iterations, total tool calls, and the row cap every tool
-//! already carries. A loop that hits one stops and says so *in the transcript*
-//! rather than silently returning half an investigation, because "the model
-//! gave up" and "the model was cut off" are different facts and only one of
-//! them is worth retrying.
+//! Four hard caps: iterations, total tool calls, the row and character caps
+//! every reply already carries ([`crate::ai::exec`]), and a **turn-wide**
+//! character budget across all of them. The last exists because the loop
+//! re-sends its whole accumulated history on every iteration, so twelve replies
+//! that each fit comfortably still add up to a context nobody can hold — the
+//! per-reply cap bounds one read, and this bounds the turn.
+//!
+//! A loop that hits any of them stops and says so *in the transcript* rather
+//! than silently returning half an investigation, because "the model gave up"
+//! and "the model was cut off" are different facts and only one of them is
+//! worth retrying.
 //!
 //! # The webview does not write the system prompt here
 //!
@@ -71,6 +77,13 @@ pub struct AgentLimits {
     pub max_tool_calls: usize,
     /// Passed through to every tool. See `crate::ai::exec::effective_row_cap`.
     pub max_context_rows: i64,
+    /// Characters of tool *results* one turn may accumulate.
+    ///
+    /// The cap the per-reply one cannot be: every iteration re-sends the whole
+    /// history, so a turn's cost is the sum of its replies rather than the size
+    /// of its largest. Three replies at the per-reply ceiling is where a
+    /// 4096-token window stops having room for the question.
+    pub max_result_chars: usize,
 }
 
 impl Default for AgentLimits {
@@ -79,6 +92,7 @@ impl Default for AgentLimits {
             max_iterations: 6,
             max_tool_calls: 12,
             max_context_rows: crate::ai::exec::DEFAULT_MAX_CONTEXT_ROWS,
+            max_result_chars: 3 * crate::ai::exec::MAX_TOOL_RESULT_CHARS,
         }
     }
 }
@@ -128,6 +142,9 @@ pub enum StopReason {
     Iterations,
     /// [`AgentLimits::max_tool_calls`] was reached.
     ToolCalls,
+    /// [`AgentLimits::max_result_chars`] was reached — the turn had read more
+    /// than it could carry into another iteration.
+    ResultBudget,
 }
 
 impl StopReason {
@@ -145,6 +162,10 @@ impl StopReason {
             Self::ToolCalls => Some(
                 "\n\n_Stopped: this turn reached its limit on how many reads one \
                  question may make._",
+            ),
+            Self::ResultBudget => Some(
+                "\n\n_Stopped: this turn read more than it can carry. Ask about one \
+                 table at a time, or lower the row budget in Settings → AI._",
             ),
         }
     }
@@ -246,6 +267,7 @@ pub async fn run(
     );
 
     let mut spent = 0usize;
+    let mut carried = 0usize;
     let mut last = AssistantMessage::default();
     for step in 1..=limits.max_iterations {
         let body = provider::chat_body(endpoint, messages.clone(), &catalogue, true);
@@ -286,17 +308,30 @@ pub async fn run(
             match outcome {
                 Ok(value) => {
                     let rows = result_rows(&value);
+                    let payload = value.to_string();
+                    carried += payload.len();
+                    // The size is logged alongside the row count because size
+                    // is what actually ends a turn, and a user reading the
+                    // Console to understand why should not have to infer it.
                     log(
                         sink,
                         connection,
                         match rows {
-                            Some(n) => format!("step {step}: {} returned {n} rows", call.name),
-                            None => format!("step {step}: {} returned", call.name),
+                            Some(n) => format!(
+                                "step {step}: {} returned {n} rows, {} chars ({carried} carried)",
+                                call.name,
+                                payload.len()
+                            ),
+                            None => format!(
+                                "step {step}: {} returned {} chars ({carried} carried)",
+                                call.name,
+                                payload.len()
+                            ),
                         },
                         None,
                     );
                     (sinks.on_tool_result)(&call.id, &call.name, Some(&value), None);
-                    messages.push(tool_result_message(call, &value.to_string()));
+                    messages.push(tool_result_message(call, &payload));
                 }
                 Err(e) => {
                     // A refusal is *content*, not a failure: the model is told
@@ -313,6 +348,18 @@ pub async fn run(
                     messages.push(tool_result_message(call, &reason));
                 }
             }
+        }
+        // Checked after the results are in rather than before the next call, so
+        // the reads the user already paid for are in the transcript either way:
+        // the budget ends the *turn*, it does not discard what it bought.
+        if carried >= limits.max_result_chars {
+            log(
+                sink,
+                connection,
+                format!("turn stopped: {carried} chars of results carried"),
+                None,
+            );
+            return Ok((message, StopReason::ResultBudget));
         }
         last = message;
     }
@@ -418,7 +465,26 @@ mod tests {
     /// and one that was cut off mid-investigation.
     #[test]
     fn the_stop_reasons_are_distinguishable() {
-        assert_ne!(StopReason::Iterations.note(), StopReason::ToolCalls.note());
+        let notes = [
+            StopReason::Iterations.note(),
+            StopReason::ToolCalls.note(),
+            StopReason::ResultBudget.note(),
+        ];
+        let unique: std::collections::HashSet<_> = notes.iter().collect();
+        assert_eq!(unique.len(), notes.len(), "two budgets read the same");
+    }
+
+    /// The cap a per-reply one cannot be: every iteration re-sends the whole
+    /// history, so a turn costs the *sum* of its replies. Three replies at the
+    /// per-reply ceiling is where the question stops fitting alongside them.
+    #[test]
+    fn the_turn_budget_is_a_few_replies_worth_not_one() {
+        let limits = AgentLimits::default();
+        assert_eq!(
+            limits.max_result_chars,
+            3 * crate::ai::exec::MAX_TOOL_RESULT_CHARS
+        );
+        assert!(limits.max_result_chars > crate::ai::exec::MAX_TOOL_RESULT_CHARS);
     }
 
     /// The prompt's job is to stop the one failure this feature exists to

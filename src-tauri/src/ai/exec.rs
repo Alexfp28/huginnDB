@@ -13,8 +13,10 @@
 //! 5. build the [`BridgeRequest`] and refuse a `run_query` that is not a read,
 //! 6. re-check the connection's write policy through
 //!    [`crate::bridge::server::check_policy`],
-//! 7. run it through [`crate::bridge::exec::execute`] with a [`LogSink`], and
-//!    cap the reply's rows.
+//! 7. run it through [`crate::bridge::exec::execute`] with a [`LogSink`], then
+//!    cap the reply's rows, strip the fields a model has no use for, and bound
+//!    what is left by *size* — see [`MAX_TOOL_RESULT_CHARS`] for the failure
+//!    that last step exists for.
 //!
 //! # Where the tests are
 //!
@@ -57,6 +59,25 @@ use serde_json::Value;
 /// operative cap here — [`DEFAULT_MAX_CONTEXT_ROWS`] is, and it is twenty times
 /// smaller — but it bounds a hand-edited `prefs.json` that asks for a million.
 pub const MAX_TOOL_ROWS: i64 = 1000;
+
+/// Characters one tool reply may put in the model's context.
+///
+/// **The cap that actually matters, and the one this code was missing.** A row
+/// count is a proxy for size and a poor one: fifty rows of a two-column lookup
+/// table is nothing, and fifty rows of a configuration table whose values are
+/// JSON blobs is several thousand tokens. The first real agent turn against a
+/// wide table proved it — the reply filled the context, Ollama truncated *from
+/// the front* (which is where the system prompt and the user's question live),
+/// and the model answered a question it could no longer see, in English,
+/// having been handed nothing but rows.
+///
+/// Four thousand characters is roughly a thousand tokens: a quarter of a
+/// default 4096-token window, which leaves room for the prompt, the question
+/// and the history to survive alongside it. It is deliberately not derived
+/// from `max_context_rows` — that preference bounds how many rows a *user*
+/// wants to see reach the model, and this bounds what the model can physically
+/// hold. Both apply; whichever bites first wins.
+pub const MAX_TOOL_RESULT_CHARS: usize = 4000;
 
 /// Rows one tool reply may put in the model's context, by default.
 ///
@@ -155,7 +176,109 @@ pub async fn execute(
 
     let mut value = crate::bridge::exec::execute(state, sink, &request).await?;
     cap_rows(&mut value, max_rows);
+    compact_result(&mut value);
+    fit_to_budget(&mut value, MAX_TOOL_RESULT_CHARS);
     Ok(value)
+}
+
+/// Strip the fields of a `QueryResult` a model has no use for.
+///
+/// Three of them, and one is genuinely large: `row_types` is MongoDB's
+/// per-*cell* BSON type tree, mirroring `rows` entry for entry, which doubles
+/// the payload to tell a model something `columns` already implies. `elapsed_ms`
+/// and `rows_affected` are facts about the *read*, not about the data, and a
+/// model shown them tends to report them as though they were the answer.
+///
+/// `columns` stays: a model that cannot see the column names cannot describe
+/// the rows underneath them.
+pub fn compact_result(value: &mut Value) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    if !object.contains_key("rows") {
+        return;
+    }
+    for noise in ["row_types", "elapsed_ms", "rows_affected"] {
+        object.remove(noise);
+    }
+}
+
+/// Trim `value` until its serialised form fits `max_chars`.
+///
+/// Returns whether anything was dropped. Halves the row count rather than
+/// removing one row at a time: a payload twenty times over budget would
+/// otherwise cost twenty serialisations to find that out.
+///
+/// The `note` it leaves behind is not decoration. A model handed a silently
+/// shortened result describes it as the whole table — the cap has to be
+/// *legible* to the thing reading it, exactly as the truncation marker in
+/// `crate::ai::tasks`'s sections is.
+pub fn fit_to_budget(value: &mut Value, max_chars: usize) -> bool {
+    if serialised_len(value) <= max_chars {
+        return false;
+    }
+
+    // A row-shaped reply: drop rows until it fits.
+    if let Some(rows) = value
+        .as_object()
+        .and_then(|o| o.get("rows"))
+        .and_then(Value::as_array)
+        .map(Vec::len)
+    {
+        let mut keep = rows;
+        while keep > 0 && serialised_len(value) > max_chars {
+            keep /= 2;
+            if let Some(Value::Array(items)) = value.as_object_mut().and_then(|o| o.get_mut("rows"))
+            {
+                items.truncate(keep);
+            }
+        }
+        if let Some(object) = value.as_object_mut() {
+            object.insert("truncated".into(), Value::Bool(true));
+            object.insert(
+                "note".into(),
+                Value::String(format!(
+                    "Only {keep} of the {rows} rows read are shown here; the rest did not                      fit. Say so rather than describing this as the whole table."
+                )),
+            );
+        }
+        return true;
+    }
+
+    // A bare list — `list_tables` on a server with thousands of them.
+    if let Some(items) = value.as_array().map(Vec::len) {
+        let mut keep = items;
+        while keep > 0 && serialised_len(value) > max_chars {
+            keep /= 2;
+            if let Value::Array(list) = value {
+                list.truncate(keep);
+            }
+        }
+        if let Value::Array(list) = value {
+            list.push(Value::String(format!(
+                "… {keep} of {items} shown; the rest did not fit."
+            )));
+        }
+        return true;
+    }
+
+    // Anything else — a very long `EXPLAIN`, a view body. Keep the prefix and
+    // say what happened, which beats handing back nothing.
+    let text = value.to_string();
+    let cut = text
+        .char_indices()
+        .nth(max_chars)
+        .map(|(i, _)| i)
+        .unwrap_or(text.len());
+    *value = Value::String(format!(
+        "{}… (truncated: this result did not fit the context budget)",
+        &text[..cut]
+    ));
+    true
+}
+
+fn serialised_len(value: &Value) -> usize {
+    serde_json::to_string(value).map(|s| s.len()).unwrap_or(0)
 }
 
 /// Resolve a model-supplied connection reference — a profile **id or name** —
@@ -472,6 +595,102 @@ mod tests {
         assert!(!cap_rows(&mut value, 50));
         assert_eq!(value["rows"].as_array().unwrap().len(), 1);
         assert_eq!(value["truncated"], json!(false));
+    }
+
+    /// The bug the first real agent turn produced: fifty rows of a wide table
+    /// filled the context, the server truncated from the front — where the
+    /// system prompt and the question live — and the model answered something
+    /// it could no longer see.
+    #[test]
+    fn a_reply_over_the_character_budget_is_trimmed_and_says_so() {
+        let wide: Vec<Value> = (0..50)
+            .map(|i| json!([i, "x".repeat(400), "y".repeat(400)]))
+            .collect();
+        let mut value = json!({
+            "columns": [{ "name": "id" }, { "name": "a" }, { "name": "b" }],
+            "rows": wide,
+        });
+        assert!(fit_to_budget(&mut value, MAX_TOOL_RESULT_CHARS));
+
+        let len = serde_json::to_string(&value).unwrap().len();
+        assert!(len <= MAX_TOOL_RESULT_CHARS, "still {len} chars");
+        assert_eq!(value["truncated"], json!(true));
+        // Legible to the *model*, not only to us: one handed a silently
+        // shortened result describes it as the whole table.
+        let note = value["note"].as_str().unwrap();
+        assert!(note.contains("of the 50 rows"), "{note}");
+        assert!(note.contains("rather than describing this as the whole table"));
+        // The columns survive — a model that cannot name them cannot describe
+        // the rows underneath.
+        assert!(value["columns"].is_array());
+    }
+
+    #[test]
+    fn a_reply_within_the_budget_is_left_exactly_as_it_was() {
+        let mut value = json!({ "columns": [], "rows": [[1], [2]] });
+        let before = value.clone();
+        assert!(!fit_to_budget(&mut value, MAX_TOOL_RESULT_CHARS));
+        assert_eq!(value, before);
+    }
+
+    /// `list_tables` on a server with thousands of them.
+    #[test]
+    fn a_long_bare_list_is_trimmed_with_a_count_appended() {
+        let mut value = Value::Array(
+            (0..2000)
+                .map(|i| Value::String(format!("table_number_{i}")))
+                .collect(),
+        );
+        assert!(fit_to_budget(&mut value, 500));
+        let items = value.as_array().unwrap();
+        assert!(serde_json::to_string(&value).unwrap().len() <= 700);
+        assert!(items
+            .last()
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("of 2000 shown"));
+    }
+
+    /// A shape with neither rows nor items — a very long `EXPLAIN`, a view
+    /// body. Handing back a prefix beats handing back nothing.
+    #[test]
+    fn an_unshaped_oversized_reply_keeps_its_prefix() {
+        let mut value = json!({ "plan": "Seq Scan ".repeat(2000) });
+        assert!(fit_to_budget(&mut value, 300));
+        let text = value.as_str().expect("collapsed to a string");
+        assert!(text.starts_with("{\"plan\":\"Seq Scan "));
+        assert!(text.contains("did not fit the context budget"));
+    }
+
+    /// `row_types` mirrors `rows` cell for cell, so leaving it in doubles the
+    /// payload to say what `columns` already implies — and the two timing
+    /// fields get reported by a model as though they were the answer.
+    #[test]
+    fn compacting_drops_the_fields_a_model_has_no_use_for() {
+        let mut value = json!({
+            "columns": [{ "name": "id", "data_type": "int" }],
+            "rows": [[1]],
+            "row_types": [["int"]],
+            "elapsed_ms": 12,
+            "rows_affected": 1,
+            "total": 900,
+        });
+        compact_result(&mut value);
+        assert!(value.get("row_types").is_none());
+        assert!(value.get("elapsed_ms").is_none());
+        assert!(value.get("rows_affected").is_none());
+        // Kept: the names the rows are described by, and the table's real size.
+        assert!(value.get("columns").is_some());
+        assert_eq!(value["total"], json!(900));
+    }
+
+    #[test]
+    fn compacting_leaves_a_metadata_reply_alone() {
+        let mut value = json!({ "version": "8.0.36", "elapsed_ms": 3 });
+        compact_result(&mut value);
+        // No `rows`, so this is not a result set and its fields are its own.
+        assert_eq!(value["elapsed_ms"], json!(3));
     }
 
     /// Every metadata reply is a different shape — a list of tables, a version

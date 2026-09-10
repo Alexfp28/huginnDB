@@ -310,9 +310,15 @@ pub fn to_request(spec: &ToolSpec, args: &Value, ctx: &ToolCtx) -> AppResult<Bri
             // throw most of them away.
             limit: clamped_limit(args, ctx.max_context_rows)?,
             offset: optional_i64(args, "offset")?.unwrap_or(0).max(0),
-            // The model has no use for the table's total row count, and asking
-            // for it costs a second query.
-            with_count: Some(false),
+            // Asked for, and the first sentence of this comment used to say the
+            // opposite. "Summarise these rows" is the question a model gets
+            // most often here, and without the total it answers about the page
+            // it was handed as though that were the table — which is the same
+            // class of confident-and-wrong the whole feature is built to avoid.
+            // It is nearly free besides: `fetch_table_data_inner` returns the
+            // planner's O(1) estimate for a whole-table browse rather than a
+            // real `COUNT(*)`.
+            with_count: Some(true),
         },
         other => {
             return Err(AppError::InvalidInput(format!(
@@ -695,7 +701,9 @@ mod tests {
                 } => {
                     assert_eq!(limit, expected, "{args}");
                     assert_eq!(offset, 0);
-                    assert_eq!(with_count, Some(false));
+                    // The total is what stops a model describing one page as
+                    // the whole table.
+                    assert_eq!(with_count, Some(true));
                 }
                 other => panic!("wrong variant: {}", other.label()),
             }
