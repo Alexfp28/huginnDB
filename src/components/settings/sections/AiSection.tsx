@@ -31,12 +31,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/ui/segmented";
 import { Spinner } from "@/components/ui/spinner";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { guessEndpointTrust } from "@/lib/ai/endpointTrust";
+import { MAX_AI_NOTES_CHARS } from "@/lib/ai/scope";
 import {
   filterByScope,
   isFromOrigin,
@@ -68,6 +70,12 @@ export function AiSection() {
   const [probing, setProbing] = useState(false);
   const [hasKey, setHasKey] = useState(false);
   const [keyDraft, setKeyDraft] = useState("");
+  // The connection whose notes are being edited, and the draft. Kept here
+  // rather than in the tree: a note is written once per database and read on
+  // every question, so it is a block of its own under the list, not a control
+  // repeated on every row.
+  const [notesFor, setNotesFor] = useState("");
+  const [notesDraft, setNotesDraft] = useState("");
 
   useEffect(() => {
     void api
@@ -137,6 +145,52 @@ export function AiSection() {
     try {
       if (field === "ai_enabled") await api.setAiEnabled(ids, value);
       else await api.setAiRowsAllowed(ids, value);
+    } catch (e) {
+      notify.error(String(e));
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+    }
+  }
+
+  /** The connections a note could be written for: the ones it can reach. */
+  const notable = useMemo(
+    () => profiles.filter((p) => p.ai_enabled),
+    [profiles],
+  );
+
+  // Follow the list: the first enabled connection when nothing is selected,
+  // and away from one the user just switched off (its notes are kept on disk,
+  // they are simply not in play).
+  useEffect(() => {
+    if (notable.length === 0) {
+      if (notesFor) setNotesFor("");
+      return;
+    }
+    if (notable.some((p) => p.id === notesFor)) return;
+    const next = notable[0];
+    setNotesFor(next.id);
+    setNotesDraft(next.ai_notes ?? "");
+  }, [notable, notesFor]);
+
+  /**
+   * Persist the draft, on blur.
+   *
+   * On blur rather than on every keystroke: this is prose, a debounce would
+   * write a dozen half-sentences to `profiles.json`, and there is no reactive
+   * consumer that needs it sooner — the next turn reads the profile fresh.
+   */
+  async function saveNotes() {
+    const profile = profiles.find((p) => p.id === notesFor);
+    if (!profile) return;
+    const next = notesDraft.trim();
+    if ((profile.ai_notes ?? "") === next) return;
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === profile.id ? { ...p, ai_notes: next } : p)),
+    );
+    try {
+      await api.setAiNotes(profile.id, next);
     } catch (e) {
       notify.error(String(e));
       void api
@@ -555,6 +609,56 @@ export function AiSection() {
                   sharedTooltip={sharedTooltip}
                   searching={filter.trim().length > 0}
                 />
+              )}
+            </div>
+            {/* The one piece of context no tool can discover. A model can read
+                every table and still not know which of two similar ones is
+                live — see `ConnectionProfile::ai_notes`. */}
+            <div className="mt-3 space-y-1.5 border-t border-border pt-3">
+              <p className="text-[12px] font-medium">
+                {t("settings.ai.notesTitle")}
+              </p>
+              <p className="text-2xs text-muted-foreground">
+                {t("settings.ai.notesHint")}
+              </p>
+              {notable.length === 0 ? (
+                <p className="text-2xs text-muted-foreground">
+                  {t("settings.ai.notesNone")}
+                </p>
+              ) : (
+                <>
+                  <NativeSelect
+                    size="xs"
+                    aria-label={t("settings.ai.notesConnection")}
+                    value={notesFor}
+                    onChange={(e) => {
+                      // Save what is on screen before moving: switching the
+                      // selector is the same gesture as leaving the field.
+                      void saveNotes();
+                      const next = e.target.value;
+                      setNotesFor(next);
+                      setNotesDraft(
+                        profiles.find((p) => p.id === next)?.ai_notes ?? "",
+                      );
+                    }}
+                  >
+                    {notable.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                  <Textarea
+                    value={notesDraft}
+                    onChange={(e) => setNotesDraft(e.target.value)}
+                    onBlur={() => void saveNotes()}
+                    maxLength={MAX_AI_NOTES_CHARS}
+                    rows={5}
+                    spellCheck={false}
+                    className="font-mono text-2xs"
+                    placeholder={t("settings.ai.notesPlaceholder")}
+                  />
+                </>
               )}
             </div>
           </>

@@ -333,6 +333,27 @@ pub struct ConnectionProfile {
     /// Local and off by default, exactly like `ai_enabled` above.
     #[serde(default)]
     pub ai_rows_allowed: bool,
+    /// What the *user* knows about this database that its schema does not say.
+    ///
+    /// The gap it closes is the one thing tools cannot: a model can read every
+    /// table and still not know that `cfg_*` holds one row per tenant, that
+    /// `status` uses the codes an old system wrote, or that the table everyone
+    /// asks about is the one with the least obvious name. A person answering
+    /// database questions carries that knowledge; an assistant given a schema
+    /// and six steps does not, and it shows up as an answer that fixes on
+    /// whichever table the question happened to name.
+    ///
+    /// Prepended to every prompt for this connection — agent turns and assisted
+    /// tasks alike — bounded by `crate::ai::exec::MAX_AI_NOTES_CHARS` so a
+    /// pasted-in wiki page cannot crowd out the question.
+    ///
+    /// Local, like the two flags above, and for a weaker reason: notes describe
+    /// the *database*, so a publisher documenting it once for a team is a
+    /// genuinely good idea — but that means a field in the origin document and
+    /// a schema version, which is its own decision. Until then a refresh must
+    /// not erase what the user wrote here.
+    #[serde(default)]
+    pub ai_notes: Option<String>,
     /// This machine's own password for an origin-owned connection takes
     /// precedence over the one the origin publishes.
     ///

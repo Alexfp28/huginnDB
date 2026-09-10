@@ -1666,7 +1666,13 @@
       "rowsFor": "Permitir filas de {{name}}",
       "reachFor": "Dejar que el asistente alcance {{name}}",
       "mcpAlternative": "¿Ya pagas Claude o ChatGPT? Esas suscripciones no se pueden gastar a través de HuginnDB. La vía autorizada es el conector MCP, que deja que Claude Code, Claude Desktop o Cursor lean tus bases de datos a través de HuginnDB — a cambio de que tus datos vayan a ese proveedor.",
-      "mcpAlternativeLink": "Abrir ajustes de MCP"
+      "mcpAlternativeLink": "Abrir ajustes de MCP",
+      "notesTitle": "Lo que el asistente debería saber",
+      "notesHint": "Lo que el esquema de esta base de datos no dice: qué códigos usa una columna, cuál de dos tablas parecidas es la viva, para qué sirve. Se envía con cada pregunta sobre esta conexión.",
+      "notesPlaceholder": "cfg_* es una fila por tenant. status usa los códigos antiguos: 0 pendiente, 1 activo, 9 archivado. Ignora log_old — nada escribe ahí desde 2024.",
+      "notesConnection": "Conexión",
+      "notesNone": "Activa una conexión arriba para darle notas.",
+      "notesSaved": "Notas guardadas"
     }
   },
   "notifications": {

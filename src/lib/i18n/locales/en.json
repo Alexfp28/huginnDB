@@ -1666,7 +1666,13 @@
       "rowsFor": "Allow rows from {{name}}",
       "reachFor": "Let the assistant reach {{name}}",
       "mcpAlternative": "Already paying for Claude or ChatGPT? Those subscriptions cannot be spent through HuginnDB. The sanctioned path is the MCP connector, which lets Claude Code, Claude Desktop or Cursor read your databases through HuginnDB — at the cost of your data going to that vendor.",
-      "mcpAlternativeLink": "Open MCP settings"
+      "mcpAlternativeLink": "Open MCP settings",
+      "notesTitle": "What the assistant should know",
+      "notesHint": "What this database's schema does not say: which codes a column uses, which of two similar tables is the live one, what it is for. Sent with every question about this connection.",
+      "notesPlaceholder": "cfg_* is one row per tenant. status uses the legacy codes: 0 pending, 1 live, 9 archived. Ignore log_old — nothing writes to it since 2024.",
+      "notesConnection": "Connection",
+      "notesNone": "Enable a connection above to give it notes.",
+      "notesSaved": "Notes saved"
     }
   },
   "notifications": {

@@ -10,6 +10,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **El asistente arranca con el mapa, y con lo que tú le cuentes.** Dos
+  respuestas a la misma queja: si le das herramientas y nada más, un modelo se
+  centra en la tabla que nombró tu pregunta, porque por lo que él sabe no existe
+  nada más.
+
+  **Cada turno del agente abre ahora con la lista de tablas**, leída una vez
+  antes de la primera llamada al modelo. Solo nombres — ochenta cuestan unos
+  cientos de tokens, mientras que ochenta estructuras de tabla llenarían el
+  contexto y no dejarían sitio a la pregunta — y con las dos frases que hacen
+  que una lista sea algo más que un adorno: que es toda la superficie, y que la
+  tabla de al lado puede ser la que la pregunta busca de verdad. La Consola
+  muestra cuánto preámbulo salió.
+
+  **Y Ajustes → IA tiene un campo de notas por conexión**: "Lo que el asistente
+  debería saber". Es el contexto que ninguna herramienta puede descubrir — que
+  `cfg_*` es una fila por tenant, que `status` usa los códigos de un sistema
+  antiguo, que la tabla por la que todo el mundo pregunta es la del nombre menos
+  obvio. Lo escribes una vez y se envía con cada pregunta sobre esa conexión,
+  tanto en turnos de agente como en tareas asistidas, etiquetado como tuyo para
+  que el modelo lo pese como conocimiento sobre la base de datos y no como una
+  cosa más que ha leído. Dos mil caracteres, recortados avisando a partir de
+  ahí. Local a esta máquina y preservado ante una actualización de origen
+  compartido, igual que los dos interruptores de encima.
+
 - **Una guía del panel de IA, en la app y en el repositorio.** Ayuda →
   Documentación incorpora una página **Panel de IA** (en inglés y español, como
   el resto de la documentación) que responde a las dos preguntas que la función

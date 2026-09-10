@@ -45,6 +45,7 @@ pub fn profile(id: &str) -> ConnectionProfile {
         mcp_exposed: false,
         ai_enabled: false,
         ai_rows_allowed: false,
+        ai_notes: None,
         secret_override: None,
     }
 }

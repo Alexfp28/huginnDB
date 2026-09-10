@@ -175,6 +175,13 @@ export interface ConnectionProfile {
    *  types, indexes, `EXPLAIN`) is never gated by this; a trusted endpoint
    *  reads rows without it. `false`/absent by default. */
   ai_rows_allowed?: boolean;
+  /** What the user knows about this database that its schema does not say —
+   *  prepended to every prompt for this connection, agent turns and assisted
+   *  tasks alike. The one piece of context no tool can discover: which codes a
+   *  column uses, which of two similar tables is the live one, what the
+   *  database is *for*. Bounded server-side (2000 characters). Local, and
+   *  preserved across a shared-origin refresh. */
+  ai_notes?: string | null;
   /**
    * Set when this machine keeps its **own** password for a connection a shared
    * origin publishes — the supported answer to "the server reset the password

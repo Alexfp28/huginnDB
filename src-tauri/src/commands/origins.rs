@@ -692,6 +692,13 @@ pub(crate) fn merge_into(
                 // an assistant answering from metadata with no visible reason.
                 profile.ai_enabled = existing.ai_enabled;
                 profile.ai_rows_allowed = existing.ai_rows_allowed;
+                // And what the user wrote about the database for the
+                // assistant's benefit. Not a permission but the same
+                // direction: a refresh that erased somebody's notes would
+                // destroy work nothing else in the app can recover. Publishing
+                // them team-wide would be a better feature and a different
+                // one — it needs a field in the origin document.
+                profile.ai_notes = existing.ai_notes.clone();
                 // And the one local field that is not a permanent decision:
                 // the consumer's own password standing in for the published
                 // one. `merge_profiles_bundle` is what expires it, by comparing

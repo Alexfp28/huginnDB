@@ -26,6 +26,7 @@ const aiProbe = vi.fn<(refresh?: boolean) => Promise<AiProbeReport>>();
 const setAiEnabled = vi.fn<(ids: string[], on: boolean) => Promise<number>>();
 const setAiRowsAllowed =
   vi.fn<(ids: string[], on: boolean) => Promise<number>>();
+const setAiNotes = vi.fn<(id: string, notes: string) => Promise<number>>();
 
 vi.mock("@/lib/tauri", () => ({
   api: {
@@ -35,6 +36,7 @@ vi.mock("@/lib/tauri", () => ({
     setAiEnabled: (ids: string[], on: boolean) => setAiEnabled(ids, on),
     setAiRowsAllowed: (ids: string[], on: boolean) =>
       setAiRowsAllowed(ids, on),
+    setAiNotes: (id: string, notes: string) => setAiNotes(id, notes),
     aiSetKey: () => Promise.resolve(),
     aiClearKey: () => Promise.resolve(),
     // The preferences store schedules a debounced save on every setter.
@@ -84,6 +86,7 @@ beforeEach(() => {
   aiProbe.mockReset();
   setAiEnabled.mockReset().mockResolvedValue(1);
   setAiRowsAllowed.mockReset().mockResolvedValue(1);
+  setAiNotes.mockReset().mockResolvedValue(1);
   // A fresh install: the store starts on `DEFAULT_PREFS`, which is the state
   // this test is partly about.
   usePreferences.setState((s) => ({
@@ -214,6 +217,48 @@ describe("Settings → AI", () => {
    * An empty state that pretended this panel were the only option would cost a
    * user the licence they already have.
    */
+  /**
+   * The context a schema cannot carry. A model can read every table and still
+   * not know which of two similar ones is live — so the user gets to say it
+   * once, per connection, instead of retyping it every conversation.
+   */
+  it("saves per-connection context notes on blur, through their own command", async () => {
+    listProfiles
+      .mockReset()
+      .mockResolvedValue([
+        profile({ ai_enabled: true, ai_notes: "cfg_* is one row per tenant" }),
+      ]);
+    render(<AiSection />);
+    await settle();
+
+    const notes = screen.getByPlaceholderText(/cfg_\*/i) as HTMLTextAreaElement;
+    // Loaded from the profile, not empty: the note is a thing you edit.
+    expect(notes.value).toBe("cfg_* is one row per tenant");
+    // Bounded, so the textarea cannot accept what the backend would drop.
+    expect(notes.getAttribute("maxlength")).toBe("2000");
+
+    fireEvent.change(notes, { target: { value: "  status uses legacy codes  " } });
+    // Nothing written yet: prose is saved on blur, not per keystroke.
+    expect(setAiNotes).not.toHaveBeenCalled();
+    fireEvent.blur(notes);
+    await vi.waitFor(() =>
+      expect(setAiNotes).toHaveBeenCalledWith("p1", "status uses legacy codes"),
+    );
+
+    // Unchanged text does not write again.
+    setAiNotes.mockClear();
+    fireEvent.blur(notes);
+    expect(setAiNotes).not.toHaveBeenCalled();
+  });
+
+  /** A connection the assistant cannot reach has nothing to be told. */
+  it("offers no notes editor until a connection is reachable", async () => {
+    render(<AiSection />);
+    await settle();
+    expect(screen.queryByPlaceholderText(/cfg_\*/i)).toBeNull();
+    expect(screen.getByText(/enable a connection above/i)).toBeTruthy();
+  });
+
   it("offers the MCP connector as the route for an existing subscription", async () => {
     render(<AiSection />);
     await settle();

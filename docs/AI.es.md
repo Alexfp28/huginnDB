@@ -172,6 +172,44 @@ hasta justo el punto en el que resulta que nada de lo que dice haber leído se
 leyó nunca. Condicionarlo a la sonda es lo que evita que eso sea tu problema y
 lo descubras tú.
 
+### Lo que sabe antes de empezar
+
+Un modelo al que le das herramientas y nada más no tiene mapa. Se centra en la
+tabla que nombró tu pregunta, porque por lo que él sabe no existe nada más —
+mientras tú tienes el árbol de esquema en pantalla antes de escribir una
+palabra. Así que cada turno abre con tres cosas, y su tamaño se ve en la
+Consola:
+
+- **Dónde está**: el nombre de la conexión, su motor, su base de datos, cómo
+  cita identificadores ese motor y cómo pagina. Es lo que evita que pruebe
+  `LIMIT` en SQL Server o SQL en MongoDB.
+- **Qué hay**: la lista de tablas, leída una vez al empezar el turno. Solo
+  nombres — ochenta cuestan unos cientos de tokens, mientras que ochenta
+  estructuras de tabla llenarían la ventana y no dejarían sitio a tu pregunta.
+- **Lo que le hayas contado** (más abajo), al final, lo más cerca posible de la
+  pregunta.
+
+### Cuéntale lo que el esquema no dice
+
+**Ajustes → IA → "Lo que el asistente debería saber"**, por conexión. Es la
+única pieza de contexto que ninguna herramienta puede descubrir, y en una base
+de datos con la que alguien ha convivido es la mayor parte de lo que hace que
+una respuesta sea buena:
+
+```text
+cfg_* es una fila por tenant. status usa los códigos antiguos: 0 pendiente,
+1 activo, 9 archivado. Ignora log_old — nada escribe ahí desde 2024.
+```
+
+Se envía con cada pregunta sobre esa conexión — tanto en modo agente como en
+las tareas asistidas — y va etiquetado como *tuyo*, así que el modelo lo trata
+como conocimiento sobre la base de datos y no como una cosa más que ha leído.
+Dos mil caracteres; a partir de ahí se recorta y se le avisa.
+
+Las notas son **locales a esta máquina** y sobreviven a una actualización de
+origen compartido, igual que los dos interruptores de encima. Publicar las
+notas de un equipo desde un origen sería una función mejor y distinta.
+
 ### Las herramientas que recibe
 
 De solo lectura, todas. **Ninguna escritura está en la lista**, y un `run_query`
@@ -258,6 +296,7 @@ datos *a través* de HuginnDB, usando la licencia que ya tienes. Ver
 | Presupuesto de filas | Cuántas filas puede meter en el contexto del modelo la respuesta de una herramienta. Tope de 1000; encima se aplica un presupuesto de caracteres. |
 | Tiempo de inactividad | Segundos sin recibir un byte antes de abandonar una petición. No es un presupuesto total — un modelo lento no es un modelo roto. |
 | Clave de API | Solo hace falta para un proveedor en la nube. Se guarda en el llavero del sistema, ligada al host de ese endpoint, así que cambiar el endpoint no puede enviarla a otro sitio. HuginnDB no la vuelve a mostrar y ningún comando la devuelve. |
+| Lo que el asistente debería saber | Notas en texto libre para una conexión, enviadas con cada pregunta sobre ella. Lo que el esquema no puede decir. 2000 caracteres, locales, preservadas ante una actualización de origen compartido. |
 | Conexiones | Dos interruptores cada una: **alcance** (¿puede el asistente ver esta conexión siquiera?) y **filas**. Los dos apagados por defecto, los dos estrictamente locales — se preservan al sincronizar un origen compartido y se limpian al importar, porque lo que un modelo puede leer en *tu* máquina no lo decide quien publica a dos máquinas de distancia. |
 
 **La conversación nunca se escribe en disco.** Contiene nombres de esquema, SQL

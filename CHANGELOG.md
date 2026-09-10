@@ -8,6 +8,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The assistant starts with the map, and with whatever you tell it.** Two
+  answers to the same complaint: given tools and nothing else, a model fixes on
+  whichever table your question named, because as far as it knows nothing else
+  exists.
+
+  **Every agent turn now opens with the table list**, read once before the
+  first model call. Names only — eighty of them cost a few hundred tokens,
+  while eighty table structures would fill the context and leave no room for
+  the question — and with the two sentences that make a list more than trivia:
+  that it is the whole surface, and that a neighbouring table may be the one
+  the question is really about. The Console shows how much preamble went out.
+
+  **And Settings → AI has a notes field per connection**: "What the assistant
+  should know". This is the context no tool can discover — that `cfg_*` is one
+  row per tenant, that `status` uses an old system's codes, that the table
+  everyone asks about is the one with the least obvious name. You write it once
+  and it is sent with every question about that connection, agent turns and
+  assisted tasks alike, labelled as yours so the model weighs it as knowledge
+  about the database rather than as one more thing it read. Two thousand
+  characters, truncated out loud past that. Local to this machine and preserved
+  across a shared-origin refresh, like the two switches above it.
+
 - **A guide for the AI panel, in the app and in the repo.** Help →
   Documentation gains an **AI panel** page (English and Spanish, like every
   other doc here) that answers the two questions the feature actually turns on:

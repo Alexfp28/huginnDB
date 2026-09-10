@@ -32,3 +32,12 @@ export function resolveDataScope(
 ): AiDataScope {
   return trust === "trusted" || rowsAllowed ? "rows" : "metadataOnly";
 }
+
+/**
+ * Characters of a connection's context notes the backend keeps.
+ *
+ * Mirrors `ai::exec::MAX_AI_NOTES_CHARS`. Here it only stops the textarea
+ * accepting text the backend would silently drop — the bound that matters is
+ * the one on the prompt, and it is enforced there.
+ */
+export const MAX_AI_NOTES_CHARS = 2000;

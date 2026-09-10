@@ -185,6 +185,15 @@ export const api = {
     invoke<number>("set_ai_rows_allowed", { ids, allowed }),
 
   /**
+   * Set (or clear, with an empty string) one connection's context notes.
+   *
+   * One id, not a list, unlike the two flags above: a note is about one
+   * database. See {@link ConnectionProfile.ai_notes}.
+   */
+  setAiNotes: (id: string, notes: string) =>
+    invoke<number>("set_ai_notes", { id, notes }),
+
+  /**
    * Measure what the configured inference endpoint can actually do.
    *
    * Cached in the backend across calls, because the probe costs a real

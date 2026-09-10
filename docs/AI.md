@@ -167,6 +167,41 @@ fabricates, and the assistant looks like it is working right up to the point
 where nothing it claims to have read was ever read. Gating on the probe is what
 keeps that from being your problem to discover.
 
+### What it knows before it starts
+
+A model handed tools and nothing else has no map. It fixes on whichever table
+your question named, because as far as it knows nothing else exists — while you
+have the schema tree on screen before you type a word. So every turn opens with
+three things, and you can see the size of them in the Console:
+
+- **Where it is**: the connection's name, its engine, its database, how that
+  engine quotes identifiers and how it pages. This is what stops a model
+  guessing `LIMIT` at SQL Server or SQL at MongoDB.
+- **What is there**: the table list, read once at the start of the turn. Names
+  only — eighty of them cost a few hundred tokens, while eighty table
+  structures would fill the window and leave no room for your question.
+- **What you told it** (see below), last, closest to the question.
+
+### Tell it what the schema cannot
+
+**Settings → AI → "What the assistant should know"**, per connection. This is
+the one piece of context no tool can discover, and on a database anyone has
+lived with it is most of what makes an answer good:
+
+```text
+cfg_* is one row per tenant. status uses the legacy codes: 0 pending, 1 live,
+9 archived. Ignore log_old — nothing writes to it since 2024.
+```
+
+It is sent with every question about that connection — agent turns and the
+assisted tasks alike — and it is labelled as *yours*, so the model treats it as
+knowledge about the database rather than as one more thing it read. Two
+thousand characters; past that it is truncated and the model is told so.
+
+Notes are **local to this machine** and survive a shared-origin refresh, like
+the two switches above them. Publishing a team's notes from an origin would be
+a better feature and a different one.
+
 ### The tools it gets
 
 Read-only, all of them. **No write is in the list at all**, and a `run_query`
@@ -249,6 +284,7 @@ databases *through* HuginnDB, using the licence you already have. See
 | Row budget | How many rows one tool reply may put in the model's context. Capped at 1000; a character budget applies on top. |
 | Idle timeout | Seconds without a byte before a request is abandoned. Not a total budget — a slow model is not a broken one. |
 | API key | Only needed for a cloud provider. Stored in your OS keychain, keyed to that endpoint's host, so changing the endpoint cannot send it elsewhere. HuginnDB never shows it again and no command returns it. |
+| What the assistant should know | Free-text notes for one connection, sent with every question about it. What the schema cannot say. 2000 characters, local, preserved across a shared-origin refresh. |
 | Connections | Two switches each: **reach** (may the assistant see this connection at all) and **rows**. Both off by default, both strictly local — preserved across a shared-origin sync and cleared on import, because what a model on *your* machine may read is not a decision a publisher two machines away gets to make. |
 
 **The conversation is never written to disk.** It holds schema names, proposed

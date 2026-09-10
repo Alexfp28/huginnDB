@@ -589,6 +589,44 @@ pub fn set_ai_rows_allowed(
     })
 }
 
+/// Set (or clear) the free-text notes the assistant reads for one connection.
+///
+/// `ConnectionProfile::ai_notes`'s write half — the answer to "the model does
+/// not understand my database". Empty (or whitespace) clears it, so the field
+/// has one representation for absent rather than `Some("")` and `None` both
+/// meaning nothing.
+///
+/// One id rather than a list, unlike the flag commands above: a note is about
+/// one database, and applying the same paragraph to several connections at once
+/// is not a gesture anyone wants. Local for the same reason as the flags, with
+/// the caveat written on the field: publishing a team's notes would need a
+/// field in the origin document.
+#[tauri::command]
+pub fn set_ai_notes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    notes: String,
+) -> AppResult<usize> {
+    let notes = notes.trim();
+    let notes = (!notes.is_empty()).then(|| {
+        // Bounded on the way in as well as in the prompt: a `profiles.json`
+        // carrying a pasted-in wiki page is a slow load and a big write on
+        // every unrelated flag change.
+        notes
+            .chars()
+            .take(crate::ai::exec::MAX_AI_NOTES_CHARS)
+            .collect::<String>()
+    });
+    set_local_flag(app, state, vec![id], |p| {
+        if p.ai_notes == notes {
+            return false;
+        }
+        p.ai_notes = notes.clone();
+        true
+    })
+}
+
 /// Delete the profile with `id` and its associated keychain entries.
 ///
 /// Also drops the persisted per-connection tab state (open tabs, schema-tree

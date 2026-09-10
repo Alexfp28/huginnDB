@@ -454,6 +454,42 @@ pub fn target_brief(driver: Driver, label: &str, database: &str) -> String {
     )
 }
 
+/// Characters of `ConnectionProfile::ai_notes` that reach a prompt.
+///
+/// Two thousand is a page — enough for what a database's schema does not say,
+/// and short of the point where the note *is* the prompt. A model whose context
+/// is mostly somebody's notes has the same problem as one whose context is
+/// mostly rows (see [`MAX_TOOL_RESULT_CHARS`]): no room left for the question.
+pub const MAX_AI_NOTES_CHARS: usize = 2000;
+
+/// The user's own notes about this connection, ready to prepend, or `None`.
+///
+/// Truncation is announced rather than silent, exactly as it is for a tool
+/// result: a model reading a note that stops mid-sentence should know the
+/// sentence continues somewhere it cannot see.
+pub fn notes_for(state: &AppState, reference: &str) -> Option<String> {
+    let profiles = state.profiles.read();
+    let id = resolve_connection(reference, &profiles).ok()?;
+    notes_section(profiles.iter().find(|p| p.id == id)?.ai_notes.as_deref()?)
+}
+
+/// The prompt section one connection's notes become. Pure.
+pub fn notes_section(notes: &str) -> Option<String> {
+    let notes = notes.trim();
+    if notes.is_empty() {
+        return None;
+    }
+    let mut out = String::from("What the user says about this database:\n");
+    match notes.char_indices().nth(MAX_AI_NOTES_CHARS) {
+        None => out.push_str(notes),
+        Some((cut, _)) => {
+            out.push_str(&notes[..cut]);
+            out.push_str("\n… (the note continues)");
+        }
+    }
+    Some(out)
+}
+
 /// [`target_brief`] for the connection the panel is pointed at, or `None` when
 /// the reference resolves to nothing the assistant may use.
 ///
@@ -777,6 +813,27 @@ mod tests {
             );
             assert!(brief.contains("never send USE"), "{brief}");
         }
+    }
+
+    /// The section the user's own notes become: labelled as *theirs*, so a
+    /// model weighs it as domain knowledge rather than as one more tool reply,
+    /// and bounded so a pasted-in wiki page cannot become the whole prompt.
+    #[test]
+    fn the_notes_section_is_attributed_and_bounded() {
+        let section = notes_section("  cfg_* is one row per tenant  ").expect("a note");
+        assert!(section.starts_with("What the user says about this database:"));
+        assert!(section.contains("cfg_* is one row per tenant"), "{section}");
+        // Trimmed, so an accidental blank line is not "notes".
+        assert!(notes_section("   \n  ").is_none());
+        assert!(notes_section("").is_none());
+
+        // Truncation says so, for the same reason a capped tool result does:
+        // a model reading a sentence that stops mid-word must not conclude the
+        // note ended there.
+        let long = "x".repeat(MAX_AI_NOTES_CHARS + 500);
+        let section = notes_section(&long).expect("a note");
+        assert!(section.contains("the note continues"), "{}", &section[..80]);
+        assert!(section.len() < long.len(), "not bounded");
     }
 
     /// A MongoDB connection opened *at a database* is a synthetic

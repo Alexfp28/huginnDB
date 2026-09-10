@@ -61,6 +61,7 @@
 
 pub mod agent;
 pub mod exec;
+pub mod orient;
 pub mod probe;
 pub mod provider;
 pub mod scope;

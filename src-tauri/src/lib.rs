@@ -305,6 +305,7 @@ pub fn run() {
             commands::connection::set_mcp_exposed,
             commands::connection::set_ai_enabled,
             commands::connection::set_ai_rows_allowed,
+            commands::connection::set_ai_notes,
             commands::ai::ai_probe,
             commands::ai::ai_models,
             commands::ai::ai_send,

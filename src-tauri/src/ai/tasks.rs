@@ -99,6 +99,13 @@ pub struct TaskContext {
     pub relevant: Vec<(String, Value)>,
     /// A bounded page of rows. `None` under metadata-only.
     pub sample: Option<Value>,
+    /// What the user wrote about this database (`ConnectionProfile::ai_notes`).
+    ///
+    /// The one section that comes from a person rather than from a read, and
+    /// the only one that can say what a schema does not — which codes a column
+    /// uses, which of two similar tables is the live one, what the database is
+    /// *for*.
+    pub notes: Option<String>,
     pub scope: DataScope,
 }
 
@@ -185,6 +192,11 @@ fn instruction(task: AssistedTask) -> &'static str {
 /// suite next door pins the whole prompt for each task without a server.
 pub fn build_prompt(input: &TaskInput, ctx: &TaskContext) -> Vec<Value> {
     let mut body = String::new();
+    // First, before the schema: it is the section that changes how everything
+    // after it should be read.
+    if let Some(notes) = &ctx.notes {
+        body.push_str(&section("Notes", notes));
+    }
     if let Some(server) = &ctx.server {
         body.push_str(&section("Server", server));
     }
@@ -280,6 +292,9 @@ pub async fn gather(
     let mut ctx = TaskContext {
         scope,
         statement: input.statement.clone(),
+        // Free: already in memory, no round trip, and the section most likely
+        // to stop a one-shot task guessing at a column's meaning.
+        notes: crate::ai::exec::notes_for(state, &input.connection),
         ..TaskContext::default()
     };
 
@@ -446,7 +461,7 @@ fn require_statement(input: &TaskInput) -> AppResult<String> {
 /// bridge (see `crate::bridge::protocol`), and a task that hard-failed because
 /// one driver spells the key differently would be a task that works on four
 /// drivers out of five.
-fn table_names(tables: &Value) -> Vec<String> {
+pub(crate) fn table_names(tables: &Value) -> Vec<String> {
     tables
         .as_array()
         .map(|rows| {
@@ -492,6 +507,27 @@ mod tests {
             messages[0]["content"].as_str().unwrap().to_string(),
             messages[1]["content"].as_str().unwrap().to_string(),
         )
+    }
+
+    /// The user's notes lead the prompt, before the schema: they are what
+    /// changes how everything after them should be read, and the only section
+    /// no read could have produced.
+    #[test]
+    fn the_users_notes_lead_the_context() {
+        let i = input(AssistedTask::NlToSql);
+        let ctx = TaskContext {
+            notes: crate::ai::exec::notes_section("cfg_* is one row per tenant"),
+            server: Some("MySQL 8.0.36".into()),
+            tables: Some(json!(["cfg_app", "cfg_tenant"])),
+            ..TaskContext::default()
+        };
+        let (_, user) = prompt(&i, &ctx);
+        assert!(user.contains("## Notes"), "{user}");
+        assert!(user.contains("one row per tenant"), "{user}");
+        assert!(
+            user.find("## Notes") < user.find("## Server"),
+            "the notes must come first: {user}"
+        );
     }
 
     /// Each task opens with its *own* instruction. One shared preamble is how

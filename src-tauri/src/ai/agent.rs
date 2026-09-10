@@ -375,9 +375,24 @@ pub async fn run(
         max_context_rows: limits.max_context_rows,
     };
 
-    let brief = crate::ai::exec::brief_for(state, connection);
+    // Orientation, before the first model call. The dialect brief says *where*
+    // it is; the table map says what is *there* — see `crate::ai::orient` for
+    // why a model that has to discover the map by spending iterations on it
+    // will instead answer about whichever table the question named.
+    let preamble = [
+        crate::ai::exec::brief_for(state, connection),
+        crate::ai::orient::overview(state, sink, runtime, connection).await,
+        // Last, so the user's own words are the closest thing to the question:
+        // they are the part no tool could have discovered.
+        crate::ai::exec::notes_for(state, connection),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join("\n\n");
+
     let mut messages = Vec::with_capacity(conversation.len() + 4);
-    messages.push(system_message(brief.as_deref()));
+    messages.push(system_message((!preamble.is_empty()).then_some(&*preamble)));
     messages.extend(conversation);
 
     log(
@@ -392,6 +407,12 @@ pub async fn run(
             },
             limits.max_iterations
         ),
+        None,
+    );
+    log(
+        sink,
+        connection,
+        format!("orientation: {} chars of preamble", preamble.len()),
         None,
     );
 
