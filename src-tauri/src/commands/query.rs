@@ -1063,6 +1063,14 @@ pub const MAX_ADHOC_QUERY_ROWS: usize = 50_000;
 /// report a SELECT that returned nothing.
 pub const MAX_BATCH_RESULT_ROWS: usize = MAX_ADHOC_QUERY_ROWS;
 
+/// The invariant the shared budget exists to hold, checked when the crate is
+/// compiled rather than when its tests are run: if these ever diverge upward,
+/// N statements are N times the ceiling the per-statement cap is there to
+/// enforce, which is the bug the shared budget was introduced to prevent. A
+/// `const` assertion is the right severity for a bound the whole
+/// out-of-memory argument above rests on — it fails the build, not a test.
+const _: () = assert!(MAX_BATCH_RESULT_ROWS <= MAX_ADHOC_QUERY_ROWS);
+
 /// Trim `rows` to whatever of a batch's [`MAX_BATCH_RESULT_ROWS`] budget is
 /// left, advancing `kept` by what survived. Returns `true` when rows were
 /// shed, which every caller folds into [`QueryResult::truncated`].
@@ -3097,14 +3105,6 @@ mod batch_tests {
         let mut data = rows(MAX_BATCH_RESULT_ROWS);
         assert!(!shed_to_batch_budget(&mut data, &mut kept));
         assert_eq!(data.len(), MAX_BATCH_RESULT_ROWS);
-    }
-
-    #[test]
-    fn the_batch_budget_is_not_a_multiple_of_the_statement_cap() {
-        // If these ever diverge upward, N statements are N times the ceiling
-        // the per-statement cap exists to hold — which is the bug the shared
-        // budget was introduced to prevent.
-        assert!(MAX_BATCH_RESULT_ROWS <= MAX_ADHOC_QUERY_ROWS);
     }
 
     #[test]
