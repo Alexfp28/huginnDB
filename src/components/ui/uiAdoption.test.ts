@@ -347,3 +347,92 @@ describe("the OS tooltip outside ui/", () => {
     expect(total(BUDGET)).toBeLessThanOrEqual(68);
   });
 });
+
+describe("DialogContent still on the transitional `padded` tier", () => {
+  /**
+   * `dialogContentVariants` in `ui/dialog.tsx` gained three real tiers
+   * (`prompt`/`panel`/`workbench`) alongside `padded`, the one that
+   * reproduces the old single anatomy byte for byte — `defaultVariants`
+   * still resolves to it, so a call site that has not been touched yet
+   * keeps rendering exactly as before. This is that migration's worklist:
+   * every `<DialogContent>` that does not yet pass a `tier` prop.
+   *
+   * Two of these are shared shells rather than per-domain dialogs —
+   * `common/ConfirmDialog.tsx` (16 consumers) and
+   * `schema/dialogs/NamePromptDialog.tsx` — and fixing their one call site
+   * each (to `tier="prompt"`) is what carries every one of their consumers
+   * along for free, without those consumer files ever appearing here.
+   *
+   * Counted per call site the same way rule H counts `title=`: a tag is
+   * flagged only when its own attribute list, brace-depth aware so a
+   * `className={cn(...)}` spanning the tag doesn't fool the boundary scan,
+   * has no `tier=`.
+   */
+  const openTag = (src: string, from: number) => {
+    let depth = 0;
+    for (let i = from; i < src.length; i++) {
+      const c = src[i];
+      if (c === "{") depth++;
+      else if (c === "}") depth--;
+      else if (c === ">" && depth === 0) return i;
+    }
+    return -1;
+  };
+
+  const count = (src: string) => {
+    let n = 0;
+    for (const m of src.matchAll(/<DialogContent\b/g)) {
+      const end = openTag(src, m.index + m[0].length);
+      if (end === -1) continue;
+      const attrs = src.slice(m.index + m[0].length, end);
+      if (!/\btier=/.test(attrs)) n++;
+    }
+    return n;
+  };
+
+  const BUDGET: Record<string, number> = {
+    "src/components/aggregation/dialogs/ExportPipelineDialog.tsx": 1,
+    "src/components/aggregation/dialogs/SaveViewDialog.tsx": 1,
+    "src/components/common/ConfirmDialog.tsx": 1,
+    "src/components/connection/ConnectionsTree.tsx": 1,
+    "src/components/connection/dialogs/AdHocDriverDialog.tsx": 1,
+    "src/components/connection/dialogs/CliConnectChoiceDialog.tsx": 1,
+    "src/components/connection/dialogs/ConnectionDialog.tsx": 1,
+    "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 1,
+    "src/components/connection/dialogs/ExportEnvironmentDialog.tsx": 1,
+    "src/components/connection/dialogs/ExportProfilesDialog.tsx": 1,
+    "src/components/connection/dialogs/ImportEnvironmentDialog.tsx": 1,
+    "src/components/connection/dialogs/ImportProfilesDialog.tsx": 1,
+    "src/components/grid/dialogs/AdvancedFilterDialog.tsx": 1,
+    "src/components/grid/dialogs/BulkUpdateDialog.tsx": 1,
+    "src/components/grid/dialogs/CellEditor.tsx": 1,
+    "src/components/grid/dialogs/InsertDocumentDialog.tsx": 1,
+    "src/components/grid/SideEditorPanel.tsx": 1,
+    "src/components/grid/TableDataTab.tsx": 1,
+    "src/components/indexes/dialogs/IndexEditorDialog.tsx": 1,
+    "src/components/jsonSchema/dialogs/ExportJsonSchemasDialog.tsx": 1,
+    "src/components/jsonSchema/dialogs/ImportJsonSchemasDialog.tsx": 1,
+    "src/components/jsonSchema/dialogs/InferSchemaDialog.tsx": 1,
+    "src/components/origins/OriginEditorOverlay.tsx": 1,
+    "src/components/query/dialogs/SaveQueryDialog.tsx": 1,
+    "src/components/schema/dialogs/DatabaseVisibilityDialog.tsx": 1,
+    "src/components/schema/dialogs/ExportDatabaseDialog.tsx": 1,
+    "src/components/schema/dialogs/ImportSqlDialog.tsx": 1,
+    "src/components/schema/dialogs/NamePromptDialog.tsx": 1,
+    "src/components/schema/StructureEditorTab.tsx": 1,
+    "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
+    "src/components/settings/dialogs/SettingsDialog.tsx": 1,
+    "src/components/shell/dialogs/DocsDialog.tsx": 1,
+    "src/components/shell/dialogs/FeedbackDialog.tsx": 1,
+    "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
+  };
+
+  it(`is down to ${34} in ${34} files`, () => {
+    const measured = census(count);
+    expect(delta(measured, BUDGET)).toEqual({});
+  });
+
+  it("headline count only moves down", () => {
+    expect(total(BUDGET)).toBeLessThanOrEqual(34);
+  });
+});

@@ -253,6 +253,45 @@ describe("H — an icon button does not carry the OS tooltip", () => {
   });
 });
 
+describe("J — the modal plane is declared once", () => {
+  /**
+   * The scrim and overlay used to be built twice — `ui/dialog.tsx` and
+   * `shell/OverlayPalette.tsx` each hand-copied the same
+   * `DialogPrimitive.Overlay` with a literal `bg-black/60` — which was the
+   * one place the modal stack escaped the theme system (a light theme got a
+   * blackout, a warm preset got a cold wash). `OverlayPalette` now imports
+   * `DialogOverlay`, so this half of the guard is real from the day it was
+   * written.
+   *
+   * The other half — no `className` on `DialogContent`/`DialogHeader`/
+   * `DialogFooter`/`DialogBody` starting with a padding, gap, radius or
+   * top/bottom border utility — is not added yet: several call sites still
+   * hand-copy a header rail or a footer border (the seven-rails-five-
+   * spellings gotcha the tier system exists to fix), and this file's own
+   * rule is "empty allowlist or it doesn't belong here". That half lands
+   * once the domain migrations finish and `uiAdoption.test.ts`'s `padded`
+   * census reaches `{}`.
+   */
+  it("no DialogPrimitive.Overlay outside ui/dialog.tsx", () => {
+    expect(
+      hits(
+        OUTSIDE_UI.filter((f) => f !== "src/components/shell/OverlayPalette.tsx"),
+        /DialogPrimitive\.Overlay\b/,
+      ),
+    ).toEqual([]);
+  });
+
+  it("no bg-scrim outside ui/dialog.tsx", () => {
+    expect(hits(OUTSIDE_UI, /\bbg-scrim\b/)).toEqual([]);
+  });
+
+  it("no bg-black/* anywhere in components/", () => {
+    // The one legitimate literal black left is `common/DriverBadge.tsx`'s
+    // `bg-white` plate under a logo — not this pattern at all.
+    expect(hits(ALL, /\bbg-black\/\d+\b/)).toEqual([]);
+  });
+});
+
 describe("G — the patterns that now have a primitive", () => {
   it("no raw select outside ui/native-select", () => {
     expect(hits(OUTSIDE_UI, /<select[\s/>]/)).toEqual([]);
