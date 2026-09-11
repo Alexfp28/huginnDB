@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -580,16 +581,17 @@ export function ConnectionDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[85vh] max-w-6xl flex-col gap-0 overflow-hidden p-0">
-          <DialogHeader className="border-b border-border px-5 py-3">
+        <DialogContent tier="workbench" className="flex h-[85vh] max-w-6xl flex-col gap-0">
+          <DialogHeader>
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="flex items-center gap-2 text-base">
                 <Database className="h-4 w-4 text-primary" />
                 {t("connectionDialog.managerTitle")}
               </DialogTitle>
-              {/* `mr-8` clears the dialog's absolute close button (right-4 top-4)
-                so the import/export actions don't sit under the X. */}
-              <div className="mr-8 flex items-center gap-1">
+              {/* `mr-2` clears the header's own `pr-10` close-button gap
+                (set by the `workbench` tier) so the import/export actions
+                don't sit under the X. */}
+              <div className="mr-2 flex items-center gap-1">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -632,7 +634,7 @@ export function ConnectionDialog({
             name, a driver badge and a shared-origin mark, and at 240 the names
             truncated mid-word. The dialog widened with it (4xl → 6xl) so the
             editor beside it did not pay for the space. */}
-          <div className="grid flex-1 grid-cols-[320px_1fr] overflow-hidden">
+          <DialogBody className="grid grid-cols-[320px_1fr]">
             <ConnectionRail
               profiles={profiles}
               active={active}
@@ -1370,7 +1372,7 @@ export function ConnectionDialog({
                 </div>
               </div>
             </main>
-          </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
 

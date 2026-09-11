@@ -10,9 +10,9 @@
  *
  * There is deliberately **no close button here**. `DialogContent` already renders
  * one, absolutely positioned at the top-right corner of the surface — adding a
- * second put two X's side by side. The `pr-12` below is what keeps the primitive's
- * from landing on top of Save, and it is the reason this header stops short of
- * the right edge.
+ * second put two X's side by side. The `workbench` tier's own `pr-10` header
+ * padding (see `ui/dialog.tsx`) is what keeps the primitive's from landing on
+ * top of Save.
  */
 
 import { useTranslation } from "react-i18next";
@@ -20,6 +20,7 @@ import { AlertTriangle, Eye, PencilLine, RotateCcw, Save } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { DialogHeader } from "@/components/ui/dialog";
 import type { OriginDocument } from "@/types";
 
 export function OriginEditorHeader({
@@ -49,7 +50,7 @@ export function OriginEditorHeader({
   const RoleIcon = readOnly ? Eye : PencilLine;
 
   return (
-    <header className="flex items-start gap-3 border-b border-border py-3 pl-5 pr-12">
+    <DialogHeader className="flex-row items-start gap-3 space-y-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <h2 className="truncate text-base font-semibold">{doc.name}</h2>
@@ -128,6 +129,6 @@ export function OriginEditorHeader({
           </Button>
         )}
       </div>
-    </header>
+    </DialogHeader>
   );
 }

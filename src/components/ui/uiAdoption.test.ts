@@ -397,7 +397,6 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/connection/ConnectionsTree.tsx": 1,
     "src/components/connection/dialogs/AdHocDriverDialog.tsx": 1,
     "src/components/connection/dialogs/CliConnectChoiceDialog.tsx": 1,
-    "src/components/connection/dialogs/ConnectionDialog.tsx": 1,
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 1,
     "src/components/connection/dialogs/ExportEnvironmentDialog.tsx": 1,
     "src/components/connection/dialogs/ExportProfilesDialog.tsx": 1,
@@ -405,7 +404,6 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/connection/dialogs/ImportProfilesDialog.tsx": 1,
     "src/components/grid/dialogs/AdvancedFilterDialog.tsx": 1,
     "src/components/grid/dialogs/BulkUpdateDialog.tsx": 1,
-    "src/components/grid/dialogs/CellEditor.tsx": 1,
     "src/components/grid/dialogs/InsertDocumentDialog.tsx": 1,
     "src/components/grid/SideEditorPanel.tsx": 1,
     "src/components/grid/TableDataTab.tsx": 1,
@@ -413,26 +411,22 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/jsonSchema/dialogs/ExportJsonSchemasDialog.tsx": 1,
     "src/components/jsonSchema/dialogs/ImportJsonSchemasDialog.tsx": 1,
     "src/components/jsonSchema/dialogs/InferSchemaDialog.tsx": 1,
-    "src/components/origins/OriginEditorOverlay.tsx": 1,
     "src/components/query/dialogs/SaveQueryDialog.tsx": 1,
     "src/components/schema/dialogs/DatabaseVisibilityDialog.tsx": 1,
-    "src/components/schema/dialogs/ExportDatabaseDialog.tsx": 1,
     "src/components/schema/dialogs/ImportSqlDialog.tsx": 1,
     "src/components/schema/dialogs/NamePromptDialog.tsx": 1,
     "src/components/schema/StructureEditorTab.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
-    "src/components/settings/dialogs/SettingsDialog.tsx": 1,
-    "src/components/shell/dialogs/DocsDialog.tsx": 1,
     "src/components/shell/dialogs/FeedbackDialog.tsx": 1,
     "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${34} in ${34} files`, () => {
+  it(`is down to ${28} in ${28} files`, () => {
     const measured = census(count);
     expect(delta(measured, BUDGET)).toEqual({});
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(34);
+    expect(total(BUDGET)).toBeLessThanOrEqual(28);
   });
 });

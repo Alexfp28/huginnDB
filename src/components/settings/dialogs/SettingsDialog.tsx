@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -121,8 +122,8 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex h-[85vh] max-w-6xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-5 py-3">
+      <DialogContent tier="workbench" className="flex h-[85vh] max-w-6xl flex-col gap-0">
+        <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Sparkles className="h-4 w-4 text-primary" />
             {t("settings.title")}
@@ -138,7 +139,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid flex-1 grid-cols-[200px_1fr] overflow-hidden">
+        <DialogBody className="grid grid-cols-[200px_1fr]">
           <aside className="overflow-y-auto border-r border-border bg-card/40 py-1">
             {SECTIONS.map((s) => {
               const Icon = s.icon;
@@ -191,7 +192,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "ai" && <AiSection />}
             {section === "about" && <AboutSection />}
           </main>
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

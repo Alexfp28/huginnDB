@@ -362,21 +362,17 @@ export function CellEditor({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        tier={fullscreen ? "workbench" : "panel"}
         className={cn(
-          "flex flex-col gap-0 overflow-hidden p-0",
-          fullscreen
-            ? "h-full w-full max-w-none rounded-none border-0"
-            : "h-[80vh] max-w-5xl",
+          "flex flex-col gap-0 overflow-hidden",
+          fullscreen ? "rounded-none border-0" : "h-[80vh] max-w-5xl",
         )}
       >
-        {/* Edge-to-edge header rail, same convention as SettingsDialog /
-            WhatsNewDialog: a `border-b` on the surface itself, not a second
-            bordered card floating inside it — that double outline (plus the
-            card's own shadow) is what made the rail read as "meaningless
-            borders" and pushed the dialog's built-in close button into the
-            gap between the two, over low-contrast background. `pr-10`
-            reserves room for that button instead. */}
-        <DialogHeader className="flex-row items-center gap-2 space-y-0 border-b border-border px-4 py-2.5 pr-10">
+        {/* The header rail (border-b, rail padding, the close button's pr-10
+            gap) is the `panel`/`workbench` tier's own chrome now — see
+            `ui/dialog.tsx` — so this only overrides the row layout a stacked
+            title+description header defaults to. */}
+        <DialogHeader className="flex-row items-center gap-2 space-y-0">
           <DialogTitle className="flex min-w-0 flex-1 items-center gap-2 text-sm">
             <span className="truncate font-mono font-semibold">
               {columnName ?? t("cellEditor.title")}
@@ -445,7 +441,7 @@ export function CellEditor({
             {saveError}
           </div>
         )}
-        <DialogFooter className="items-center border-t border-border px-4 py-3 sm:justify-between">
+        <DialogFooter className="items-center sm:justify-between">
           {canSave && (
             <span className="mr-auto flex items-center gap-1 text-2xs text-muted-foreground">
               <Kbd>{saveHint}</Kbd>

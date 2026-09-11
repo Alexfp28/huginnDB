@@ -236,7 +236,10 @@ export function OriginEditorOverlay() {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
-      <DialogContent className="flex h-[92vh] max-w-[min(1400px,95vw)] flex-col gap-0 overflow-hidden p-0">
+      <DialogContent
+        tier="workbench"
+        className="flex h-[92vh] max-w-[min(1400px,95vw)] flex-col gap-0"
+      >
         {loading && !doc ? (
           <div className="flex flex-1 items-center justify-center">
             <Spinner size="lg" className="text-muted-foreground" />

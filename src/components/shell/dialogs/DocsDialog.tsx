@@ -128,8 +128,11 @@ export function DocsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="flex max-w-4xl flex-col gap-0 p-0">
-        <DialogHeader className="border-b px-5 py-3">
+      <DialogContent
+        tier="workbench"
+        className="flex h-auto max-w-4xl flex-col gap-0"
+      >
+        <DialogHeader>
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
               <BookOpen className="h-4 w-4" />
