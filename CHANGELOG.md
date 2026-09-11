@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.23.0] — 2026-09-11
+
 ### Added
 
 - **A results panel per statement that returns rows, instead of only the

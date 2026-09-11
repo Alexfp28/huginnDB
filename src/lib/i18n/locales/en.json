@@ -2192,6 +2192,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_23_0": {
+        "tagline": "A script of several statements now shows every grid it produced, MongoDB query tabs get an editor that actually knows the shell, and the app's dialogs stop borrowing the operating system's.",
+        "items": {
+          "multiResults": {
+            "title": "Every statement that returns rows gets its own grid",
+            "body": "Run ten SELECTs — or ten .find calls — and a strip above the results picks which one is on screen: #1 · 120 rows, #2 · 8 rows. SQL Server's extra result sets, which were being fetched and discarded, arrive too. The 50 000-row cap is now a budget the whole batch shares."
+          },
+          "mongoEditor": {
+            "title": "MongoDB query tabs have their own editor language",
+            "body": "Shell syntax highlighting, // as the comment Ctrl+/ inserts, and completion that follows the chain: db. offers collections, a collection offers the methods the backend accepts as runnable snippets, and an argument list offers field names plus the operators that fit the call."
+          },
+          "mongoComments": {
+            "title": "A comment above a MongoDB statement no longer breaks it",
+            "body": "A // note on the line above was rejected with 'statements must start with db.' — and, worse, hid the statement from the write guard, so a commented deleteMany({}) slipped past the whole-collection-delete refusal the MCP connector applies at every tier. Both comment forms are skipped now, by one helper the guard shares."
+          },
+          "dialogTiers": {
+            "title": "Dialogs and tab chips, redesigned",
+            "body": "Three anatomies instead of a hand-copied header rail per dialog: a compact prompt for confirms, a panel for forms, and a full workbench for Settings, the connection manager and Documentation. The active tab chip now merges into the panel below it instead of floating over a trench."
+          },
+          "inAppConfirm": {
+            "title": "No more of the operating system's own prompts",
+            "body": "The ten places that froze the window on a native confirm — dropping a database, importing SQL, rebuilding an index — now show a themed in-app dialog, with the same wording and the same type-to-confirm gate they had before."
+          },
+          "gridClipping": {
+            "title": "The results grid stops hiding its last rows",
+            "body": "Dropped onto a line that already held a header, the grid hung below its container by exactly the header's height and the panel clipped the overhang — the final rows were unreachable and no scrollbar said so. Measured at 48px on the reported case."
+          }
+        }
+      },
       "1_22_0": {
         "tagline": "HuginnDB has an assistant now — local-first, read-only, off until you switch it on: it answers about your database from what it actually read, and never runs a write.",
         "items": {

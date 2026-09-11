@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.23.0] — 2026-09-11
+
 ### Añadido
 
 - **Un panel de resultados por cada sentencia que devuelve filas, en vez de

@@ -2192,6 +2192,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_23_0": {
+        "tagline": "Un script con varias sentencias muestra ahora todos los grids que produjo, las pestañas de consulta de MongoDB tienen un editor que entiende de verdad la shell, y los diálogos de la app dejan de tomar prestados los del sistema operativo.",
+        "items": {
+          "multiResults": {
+            "title": "Cada sentencia que devuelve filas tiene su propio grid",
+            "body": "Ejecuta diez SELECT — o diez llamadas .find — y una tira encima de los resultados elige cuál se ve: #1 · 120 filas, #2 · 8 filas. Los conjuntos de resultados extra de SQL Server, que se traían y se tiraban, también llegan. El tope de 50 000 filas pasa a ser un presupuesto que comparte todo el lote."
+          },
+          "mongoEditor": {
+            "title": "Las pestañas de consulta de MongoDB tienen su propio lenguaje de editor",
+            "body": "Resaltado de la shell, // como comentario que inserta Ctrl+/, y autocompletado que sigue la cadena: db. ofrece colecciones, una colección ofrece los métodos que acepta el backend como snippets ejecutables, y una lista de argumentos ofrece nombres de campo más los operadores que encajan en esa llamada."
+          },
+          "mongoComments": {
+            "title": "Un comentario encima de una sentencia MongoDB ya no la rompe",
+            "body": "Una nota // en la línea anterior se rechazaba con «las sentencias deben empezar por db.» — y, peor aún, ocultaba la sentencia al guardián de escrituras, así que un deleteMany({}) comentado se colaba por delante del rechazo al borrado de colección entera que el conector MCP aplica en todos los niveles. Ahora se saltan ambas formas de comentario, con un único helper que comparte el guardián."
+          },
+          "dialogTiers": {
+            "title": "Diálogos y pestañas, rediseñados",
+            "body": "Tres anatomías en lugar de una cabecera copiada a mano por diálogo: un prompt compacto para las confirmaciones, un panel para los formularios y un workbench a pantalla completa para Ajustes, el gestor de conexiones y la Documentación. La pestaña activa se funde ahora con el panel de debajo en vez de flotar sobre una zanja."
+          },
+          "inAppConfirm": {
+            "title": "Se acabaron los avisos propios del sistema operativo",
+            "body": "Los diez sitios que congelaban la ventana con un confirm nativo — eliminar una base de datos, importar SQL, reconstruir un índice — muestran ahora un diálogo propio y con el tema de la app, con el mismo texto y la misma barrera de escribir para confirmar que tenían antes."
+          },
+          "gridClipping": {
+            "title": "El grid de resultados deja de ocultar sus últimas filas",
+            "body": "Colocado en una línea que ya tenía una cabecera, el grid colgaba por debajo de su contenedor exactamente la altura de esa cabecera y el panel recortaba el sobrante — las últimas filas eran inalcanzables y ningún scrollbar lo indicaba. Medido en 48px en el caso reportado."
+          }
+        }
+      },
       "1_22_0": {
         "tagline": "HuginnDB ya tiene asistente — local primero, de solo lectura y apagado hasta que lo actives: responde sobre tu base de datos a partir de lo que ha leído de verdad, y nunca ejecuta una escritura.",
         "items": {

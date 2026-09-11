@@ -88,6 +88,43 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.23.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_23_0.tagline",
+    highlights: [
+      {
+        icon: LayoutList,
+        titleKey: "whatsNew.releases.1_23_0.items.multiResults.title",
+        bodyKey: "whatsNew.releases.1_23_0.items.multiResults.body",
+      },
+      {
+        icon: SquareTerminal,
+        titleKey: "whatsNew.releases.1_23_0.items.mongoEditor.title",
+        bodyKey: "whatsNew.releases.1_23_0.items.mongoEditor.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_23_0.items.mongoComments.title",
+        bodyKey: "whatsNew.releases.1_23_0.items.mongoComments.body",
+      },
+      {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_23_0.items.dialogTiers.title",
+        bodyKey: "whatsNew.releases.1_23_0.items.dialogTiers.body",
+      },
+      {
+        icon: Palette,
+        titleKey: "whatsNew.releases.1_23_0.items.inAppConfirm.title",
+        bodyKey: "whatsNew.releases.1_23_0.items.inAppConfirm.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_23_0.items.gridClipping.title",
+        bodyKey: "whatsNew.releases.1_23_0.items.gridClipping.body",
+      },
+    ],
+  },
+  {
     version: "1.22.0",
     major: true,
     taglineKey: "whatsNew.releases.1_22_0.tagline",

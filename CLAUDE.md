@@ -7,7 +7,7 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - **HuginnDB** — desktop database manager, Tauri 2 (Rust backend) + React + TypeScript frontend.
 - Targets PostgreSQL, MySQL, SQLite, **MongoDB**, and **Microsoft SQL Server**. Inspired by HeidiSQL but minimal-UI / keyboard-first / Monaco-everywhere.
 - Public repo: <https://github.com/Alexfp28/huginnDB>.
-- License: MIT. Status: **1.22.x** (stable; SemVer applies). MongoDB support landed in 1.1.0; the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.9 line (per-connection write policy in 1.9.0); HuginnDB Pulse (live server health/performance monitoring, MySQL + MongoDB) landed in 1.20.0; the AI panel (local-first, read-only, off by default — Settings → AI, assisted actions and agent mode) landed in 1.22.0.
+- License: MIT. Status: **1.23.x** (stable; SemVer applies). MongoDB support landed in 1.1.0; the headless MCP connector (`huginndb-mcp`) landed across the 1.5–1.9 line (per-connection write policy in 1.9.0); HuginnDB Pulse (live server health/performance monitoring, MySQL + MongoDB) landed in 1.20.0; the AI panel (local-first, read-only, off by default — Settings → AI, assisted actions and agent mode) landed in 1.22.0. Since 1.23.0 every dialog declares one of three anatomies (`prompt`/`panel`/`workbench`) through `DialogContent`, and `window.confirm` is retired in favour of the in-app `ConfirmHost` — do not reintroduce either a hand-written header rail or a native prompt.
 
 ## Maintainer / collaboration notes
 

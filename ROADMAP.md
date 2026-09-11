@@ -184,8 +184,8 @@ four look like styling problems while having nothing to do with styling.
 
 ### Open
 
-**Adoption debt.** 139 raw `<button>` elements across 72 files and 81 native
-`title=` attributes across 41, both counted and ratcheted by
+**Adoption debt.** 136 raw `<button>` elements across 74 files and 68 native
+`title=` attributes across 40, both counted and ratcheted by
 `src/components/ui/uiAdoption.test.ts`. The budgets can only shrink, so this
 entry needs no separate tracking — read the maps. **They are not all
 migratable, and the target is not zero**: working `DocumentListView` established
@@ -323,13 +323,42 @@ consumes it — and the fix is one badge plus a decision about whether the
 connection rail or Settings → Origins is the right place to answer it at a
 glance.
 
+**Two class 1 instances and a class 2, found and closed: the modal plane.**
+Seven dialogs had hand-copied their own header rail, in five spellings between
+them, and the reason is not carelessness — `DialogContent` had exactly one
+anatomy, so a call site that needed a different shape had nowhere to say so and
+rebuilt the rail instead. Closed by a `tier` prop (`prompt` for the ~11 one-line
+confirms, `panel` for the ~18 forms, `workbench` for Settings, the connection
+manager, the shared-origin editor, Documentation and the fullscreen cell editor)
+plus a `DialogHeader`/`DialogBody`/`DialogFooter` trio that reads it from a
+private context: the rail, the body padding, the radius and the close button's
+gap are now declared once and a call site cannot re-declare them. The second
+class 1 member is smaller and the same shape — `DialogActions` carried a `size`
+prop whose two values split the app's footers down the middle, and dropping it
+settles the divergence rather than recording it.
+
+The class 2 member in that pass is `window.confirm`: the browser's own prompt,
+unthemed and window-freezing, in ten places — dropping a database, an SQL
+import, an index rebuild, an MCP-sidecar warning before installing an update,
+among them. A default nobody chose, applied app-wide, with no file it was
+missing from, which is the class exactly. Closed by `ConfirmHost`, keeping the
+same wording and the same type-to-confirm gate. Two more fell out of the same
+work and are worth naming because both had been shipping silently: `--scrim`
+was a literal `bg-black/60` hard-coded in the two places the modal stack is
+built, and so the one point where that stack escaped the theme system entirely
+(a light theme got a blackout rather than a dim); and the open/close animation
+had been broken since shadcn's default `Dialog` was adopted, because centring
+and the zoom both wrote `transform` and one replaced the other — every dialog
+entered from the viewport's top-left corner rather than its own centre.
+
 **Class 2 has no known open instances.** Stated rather than omitted, because an
-empty class is information: the tooltip-provider default was its only confirmed
-member and is fixed. The connection surfaces were checked at the same
-time and already model their targets correctly (`connecting: string | null`,
-`disconnecting: Set<string>`); `useSchema.loading` is per-connection inside its
-slice, and `useOriginSync.syncing` is a genuine batch flag over a pass that
-really does sweep every origin. The classes stay in the taxonomy because they
+empty class is information: its two confirmed members — the tooltip-provider
+default and `window.confirm` — are both fixed. The connection surfaces were
+checked at the same time and already model their targets correctly
+(`connecting: string | null`, `disconnecting: Set<string>`);
+`useSchema.loading` is per-connection inside its slice, and
+`useOriginSync.syncing` is a genuine batch flag over a pass that really does
+sweep every origin. The classes stay in the taxonomy because they
 describe how those two bugs happened and what the next one will look like, not
 because there is a backlog behind them.
 
