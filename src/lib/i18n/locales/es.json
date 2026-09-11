@@ -2086,8 +2086,7 @@
     "resultTabs": "Conjuntos de resultados",
     "resultTabTitle": "Resultado de la sentencia {{index}}",
     "resultTabTruncatedTitle": "Primeras {{rows}} filas — se alcanzó el presupuesto de filas del lote",
-    "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n",
-    "mongoNewTabPlaceholder": "// db.coleccion.find({}) — pulsa Ctrl+Intro\n"
+    "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"
   },
   "saved": {
     "connectFirst": "Conéctate primero a una base de datos.",

@@ -25,7 +25,7 @@
  *
  * MongoDB's query tab runs the same `;`-splitting over `mongosh` source, and
  * its lexical contexts are *not* SQL's: the line comment is `//` (which is
- * what a new Mongo tab seeds itself with, semicolon included), `--` means
+ * also what Ctrl+/ inserts there), `--` means
  * nothing, backticks are not identifier quotes, `\` escapes inside a string
  * rather than a doubled quote, and `$` opens an operator name on nearly every
  * line rather than a dollar-quoted body. Passing `"mongo"` swaps exactly

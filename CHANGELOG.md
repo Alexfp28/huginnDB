@@ -108,12 +108,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A new MongoDB query tab failing on its very first run, because of the hint
+  it seeded itself with.** The tab opened holding
+  `// db.collection.find({}) — press Ctrl+Enter`, and `shell::parse` trims
+  whitespace and a trailing `;` and then requires the statement to start with
+  `db.` — it does not skip comments. So running the buffer as it arrived was
+  rejected with "MongoDB statements must start with `db.`", and deleting the
+  hint was what made the tab work. A Mongo tab now opens empty. The SQL seed is
+  a `--` comment and stays, because every SQL engine here skips one.
+
+  This removes the symptom, not the underlying asymmetry: a `//` note written
+  by hand above a statement — which is exactly what Ctrl+/ now inserts in that
+  tab — still fails the same way, and `looks_like_mongo` still reads such a
+  buffer as not-Mongo at all. Teaching `shell::parse` to skip leading comments
+  is the real fix and is deliberately not folded in here.
+
 - **The query tab's autocomplete on a MongoDB connection, which was SQL's.**
   The editor asked Monaco for the `"sql"` language literally, with no driver
   branch anywhere in the file except the status-bar label — so a Mongo tab got
-  SQL's Monarch grammar, SQL's comment configuration (`--`, which is why the
-  `//` the tab seeds itself with tokenised as an operator and Ctrl+/ inserted
-  a comment the backend does not skip), SQL's `;` splitter, and a flat
+  SQL's Monarch grammar, SQL's comment configuration (`--`, which is why a
+  `//` note tokenised as an operator and Ctrl+/ inserted a `--` the Mongo
+  grammar does not know), SQL's `;` splitter, and a flat
   suggestion list with no trigger characters. Typing `db` produced an *empty*
   widget: `"db"` is in no catalogue, so Monaco fuzzy-matched it against ~70
   unrelated items and matched none.
@@ -135,8 +150,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   **dialect**: under `mongo` the line comment is `//`, `--` is not a comment,
   backticks are not identifier quotes, and `$` no longer opens a Postgres
   dollar-quoted body — previously a `$gt` … `$lt` pair looked exactly like one
-  and swallowed every `;` between them, and the seeded comment's own `;` split
-  the buffer so the "▶ Run" lens anchored on the comment line. And the query
+  and swallowed every `;` between them, and a `;` inside a `//` note split the
+  buffer so the "▶ Run" lens anchored on the comment line. And the query
   tab now warms the schema itself (`useEnsureSchemaLoaded`) instead of relying
   on the user having expanded the connection in the explorer first, so a
   freshly opened tab has its tables — or collections — from the start. Fields

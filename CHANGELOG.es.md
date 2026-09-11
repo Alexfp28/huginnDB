@@ -118,13 +118,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Una pestaña de query nueva contra MongoDB fallaba en su primera ejecución,
+  por culpa de la propia pista que se sembraba.** La pestaña se abría con
+  `// db.coleccion.find({}) — pulsa Ctrl+Intro`, y `shell::parse` recorta
+  espacios y un `;` final y después exige que la sentencia empiece por `db.` —
+  no ignora comentarios. Así que ejecutar el buffer tal y como venía se
+  rechazaba con «MongoDB statements must start with `db.`», y borrar la pista
+  era lo que hacía funcionar la pestaña. Una pestaña de Mongo se abre ahora
+  vacía. La semilla de SQL sigue siendo un comentario `--`, porque todos los
+  motores SQL de aquí lo ignoran.
+
+  Esto quita el síntoma, no la asimetría de fondo: una nota `//` escrita a mano
+  encima de una sentencia — que es justo lo que Ctrl+/ inserta ahora en esa
+  pestaña — sigue fallando igual, y `looks_like_mongo` sigue leyendo un buffer
+  así como si no fuera de Mongo. Enseñar a `shell::parse` a saltarse los
+  comentarios iniciales es el arreglo de verdad, y queda deliberadamente fuera
+  de este cambio.
+
 - **El autocompletado de la pestaña de query en una conexión MongoDB, que era
   el de SQL.** El editor le pedía a Monaco el lenguaje `"sql"` de forma
   literal, sin ninguna rama por driver en todo el archivo salvo la etiqueta de
   la barra de estado — así que una pestaña de Mongo recibía la gramática
   Monarch de SQL, su configuración de comentarios (`--`, que es la razón de que
-  el `//` con el que la propia pestaña se siembra se tokenizase como un
-  operador y de que Ctrl+/ insertara un comentario que el backend no ignora),
+  una nota `//` se tokenizase como un operador y de que Ctrl+/ insertara un
+  `--` que la gramática de Mongo no conoce),
   su splitter por `;` y una lista plana de sugerencias sin caracteres de
   disparo. Escribir `db` abría un widget *vacío*: `"db"` no está en ningún
   catálogo, así que Monaco lo filtraba difusamente contra unos 70 elementos sin
@@ -148,8 +165,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   **dialecto**: con `mongo`, el comentario de línea es `//`, `--` no es un
   comentario, las comillas invertidas no delimitan identificadores y `$` ya no
   abre un cuerpo dollar-quoted de Postgres — antes un par `$gt` … `$lt` parecía
-  exactamente eso y se tragaba todos los `;` intermedios, y el propio `;` del
-  comentario sembrado partía mal el buffer, con lo que el lens «▶ Run» se
+  exactamente eso y se tragaba todos los `;` intermedios, y un `;` dentro de una
+  nota `//` partía mal el buffer, con lo que el lens «▶ Run» se
   anclaba en la línea del comentario. Y la pestaña de query calienta ahora el
   esquema por su cuenta (`useEnsureSchemaLoaded`) en vez de depender de que el
   usuario haya expandido antes la conexión en el explorador, así que una

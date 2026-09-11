@@ -36,10 +36,17 @@ export interface OpenQueryTabOptions {
  *
  * MongoDB's query tab does not run SQL — it runs a bounded `mongosh`-style
  * command (`db.<collection>.<method>(...)`, see
- * `src-tauri/src/db/mongo/shell.rs`), parsed with JS-style `//`/`/* *\/`
- * comments, not SQL's `--`. Defaulting to `"query.sql"` and a `--` comment
- * regardless of driver is what caused real confusion (issues reported by the
- * team mistaking this tab for a SQL surface against Mongo).
+ * `src-tauri/src/db/mongo/shell.rs`). Defaulting to `"query.sql"` and a `--`
+ * comment regardless of driver is what caused real confusion (issues reported
+ * by the team mistaking this tab for a SQL surface against Mongo).
+ *
+ * **A Mongo tab opens empty, with no seeded comment.** It used to carry
+ * `// db.collection.find({}) — press Ctrl+Enter`, and that line made the tab
+ * fail on its first run: `shell::parse` trims whitespace and a trailing `;`
+ * and then insists the statement starts with `db.`, so a buffer that begins
+ * with a comment is rejected outright with "MongoDB statements must start with
+ * `db.`" — a hint that broke the thing it was hinting at. The SQL seed is a
+ * `--` comment and stays, because every SQL engine here skips one.
  */
 function defaultQuerySeed(connectionId: string): { title: string; query: string } {
   const driver = resolveConnectionDriver(
@@ -47,10 +54,7 @@ function defaultQuerySeed(connectionId: string): { title: string; query: string 
     connectionId,
   );
   if (driver === "mongodb") {
-    return {
-      title: i18n.t("tabs.mongoQueryFileName"),
-      query: i18n.t("query.mongoNewTabPlaceholder"),
-    };
+    return { title: i18n.t("tabs.mongoQueryFileName"), query: "" };
   }
   return {
     title: i18n.t("tabs.queryFileName"),

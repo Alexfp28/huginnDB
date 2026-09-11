@@ -134,8 +134,8 @@ function scan(text: string, offset: number): ScanState {
   while (i < end) {
     const c = text[i];
 
-    // Comments — both forms, because this grammar is JavaScript-shaped and a
-    // `//` line comment is what the new-tab placeholder itself seeds.
+    // Comments — both forms, because this grammar is JavaScript-shaped and
+    // `//` is what Ctrl+/ writes in a Mongo query tab.
     if (c === "/" && text[i + 1] === "/") {
       while (i < end && text[i] !== "\n") i += 1;
       if (i >= end) st.inComment = true;

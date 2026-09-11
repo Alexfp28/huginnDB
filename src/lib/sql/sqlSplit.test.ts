@@ -188,9 +188,9 @@ describe("splitSql mongo dialect", () => {
   });
 
   it("treats `//` as a line comment, so a `;` inside one is not a boundary", () => {
-    // The exact buffer a new MongoDB query tab seeds itself with. Under the
-    // SQL rules the `;` in the comment split it, and the "▶ Run" lens for the
-    // real statement anchored on the comment line instead.
+    // A note above a statement, which is what Ctrl+/ writes in a Mongo tab.
+    // Under the SQL rules the `;` in the comment split the buffer, and the
+    // "▶ Run" lens for the real statement anchored on the comment line.
     const seeded = "// db.collection.find({}) - press Ctrl+Enter;\ndb.users.find({});";
     expect(mongoTexts(seeded)).toEqual(["db.users.find({});"]);
   });

@@ -9,9 +9,9 @@
  * literally and with no driver branch. `keywordsFor("mongodb")` already
  * returned Mongo vocabulary, so the *words* were roughly right, but
  * everything around them was SQL: a Monarch grammar that highlights `SELECT`,
- * a comment configuration where the line comment is `--` (so the `//` the new
- * Mongo tab seeds itself with tokenised as an operator, and Ctrl+/ inserted
- * `--`), and a flat completion list with no trigger characters and no idea
+ * a comment configuration where the line comment is `--` (so a `//` note tokenised as an
+ * operator, and Ctrl+/ inserted a `--` the Mongo grammar does not know), and
+ * a flat completion list with no trigger characters and no idea
  * what a chain is. Typing `db` produced an empty widget, because `"db"` is in
  * no catalogue and Monaco had ~70 unrelated items to fuzzy-match it against.
  *
