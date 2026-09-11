@@ -34,6 +34,51 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   tab-chip redesign, split out so the change that spends it is reviewable on its
   own.
 
+### Changed
+
+- **Dialogs now have three anatomies (`prompt`/`panel`/`workbench`) instead of
+  one, and the tab strip is coupled to its panel instead of floating chips over
+  a trench.** `DialogContent` picks a `tier`, and `DialogHeader`/`DialogBody`
+  (new)/`DialogFooter` read it from a private context — a call site says one
+  word and can no longer re-declare the header rail, the body padding, the
+  radius or the close button's gap, which is exactly what seven hand-copied
+  header rails (five spellings between them) used to invite. `prompt` (8px,
+  the tab chip's own radius) is the ~11 one-line confirms; `panel` (10px, the
+  island's own radius, and the default) is the ~18 forms; `workbench`
+  (edge-to-edge, borrowing the workspace island's border/fill/`shadow-island`)
+  is Settings, the connection manager, the shared-origin editor, Documentation,
+  and the cell editor's fullscreen mode. `DialogActions` drops its `size` prop
+  (buttons are always `sm` now, settling a divergence half the app's footers
+  had already resolved one way and half the other) and Cancel converges on a
+  ghost button everywhere.
+
+  The tab strip's active chip now merges into the panel below it: a top-only
+  radius, its bottom seam painted over instead of cut across by the strip's own
+  divider, no fill on inactive chips, and no drop-shadow lift — a coupled tab
+  doesn't also float above the surface it belongs to. The strip itself steps
+  from 42px to 38px. Per-tab colours and `Preferences → General`'s three accent
+  styles (cap/rail/boxed) are unaffected.
+
+  `window.confirm` is retired in favour of an in-app confirm dialog
+  (`ConfirmHost`) that matches the rest of the app's theme instead of showing
+  the OS's own unstyled prompt — the ten places that used to freeze the window
+  on a native dialog (dropping a database, an SQL import, an index rebuild, an
+  MCP-sidecar warning before installing an update, among others) now show a
+  themed one instead, with the same wording and the same "type to confirm"
+  safety gate they had before.
+
+### Fixed
+
+- **The dialog open/close animation, which had been silently broken since
+  shadcn's default `Dialog` was adopted.** Every dialog centred itself with a
+  `transform`, and the fade/zoom animation also writes to `transform` for the
+  200ms it runs — one replaced the other, so every dialog actually entered
+  from the viewport's top-left corner rather than its own centre. Centring now
+  lives on a wrapping layer instead of the dialog's own `transform`, which also
+  means a dialog taller than the screen scrolls instead of being clipped at
+  both edges, and the command palette / tab switcher overlay gains the closing
+  fade it never had.
+
 ## [1.22.0] — 2026-09-10
 
 ### Added

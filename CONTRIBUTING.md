@@ -136,7 +136,11 @@ passphrase, interrupting someone else's live AI session. And a destructive
 action that has to explain *why* it failed uses `ConfirmDialog`, whose `error`
 slot keeps the dialog open — a toast is the wrong surface for that. The
 preference was never a blanket "never ask me anything", and reading it as one
-turns one stale toggle into silent data loss.
+turns one stale toggle into silent data loss. Both helpers return
+`Promise<boolean>`, awaiting `ConfirmHost` — a `tier="prompt"` dialog over
+`stores/dialogs/confirmRequest.ts` — rather than blocking on `window.confirm`
+(see gotcha #82); `await` them like any other async call, and don't read state
+you captured before the `await` afterward without checking it is still current.
 
 **Busy belongs to the control.** *Can this be a round trip?* Then pass `loading`
 to `Button` / `IconButton` rather than swapping in a `Spinner` by hand — it

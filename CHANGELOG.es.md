@@ -38,6 +38,55 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   diálogos y chips de pestaña, separada para que el cambio que los gasta se
   pueda revisar por su cuenta.
 
+### Cambiado
+
+- **Los diálogos tienen ahora tres anatomías (`prompt`/`panel`/`workbench`) en
+  vez de una, y la tira de pestañas está acoplada a su panel en vez de flotar
+  como una fila de chips sobre una trinchera.** `DialogContent` elige un
+  `tier`, y `DialogHeader`/`DialogBody` (nuevo)/`DialogFooter` lo leen de un
+  contexto privado — un sitio de llamada dice una palabra y ya no puede volver
+  a declarar el riel de la cabecera, el padding del cuerpo, el radio ni el
+  hueco del botón de cerrar, que es justo lo que siete rieles copiados a mano
+  (en cinco ortografías distintas) invitaban a hacer. `prompt` (8 px, el radio
+  del propio chip de pestaña) son los ~11 confirms de una línea; `panel`
+  (10 px, el radio de la isla, y el que se usa por defecto) son los ~18
+  formularios; `workbench` (a sangre, tomando prestado el borde/relleno/
+  `shadow-island` de la isla del workspace) es Ajustes, el gestor de
+  conexiones, el editor de orígenes compartidos, Documentación, y el modo a
+  pantalla completa del editor de celda. `DialogActions` pierde su prop `size`
+  (los botones son siempre `sm` ahora, zanjando una divergencia que la mitad de
+  los pies de la app ya había resuelto en un sentido y la otra mitad en el
+  otro) y Cancelar converge en un botón `ghost` en todos los sitios.
+
+  El chip activo de la tira de pestañas ahora se funde con el panel de abajo:
+  radio sólo en las esquinas de arriba, su costura inferior se pinta encima en
+  vez de que la línea de la tira la corte, los chips inactivos pierden su
+  relleno, y desaparece el `drop-shadow` que los levantaba — una pestaña
+  acoplada no flota además sobre la superficie a la que pertenece. La propia
+  tira baja de 42 a 38 px. Los colores por pestaña y los tres estilos de
+  acento de `Preferencias → General` (cap/rail/boxed) no se ven afectados.
+
+  `window.confirm` se retira en favor de un diálogo de confirmación propio de
+  la app (`ConfirmHost`) que sigue el tema del resto de la aplicación en vez de
+  mostrar el aviso sin estilo del sistema operativo — los diez sitios que antes
+  congelaban la ventana con un diálogo nativo (borrar una base de datos,
+  importar un `.sql`, reconstruir un índice, el aviso del sidecar de MCP antes
+  de instalar una actualización, entre otros) muestran ahora uno con el mismo
+  texto y la misma protección de "escribe para confirmar" que tenían antes.
+
+### Corregido
+
+- **La animación de apertura/cierre de los diálogos, rota en silencio desde que
+  se adoptó el `Dialog` por defecto de shadcn.** Cada diálogo se centraba con
+  un `transform`, y la animación de fundido/zoom también escribe en
+  `transform` durante los 200 ms que dura — uno sustituía al otro, así que en
+  la práctica todo diálogo entraba desde la esquina superior izquierda del
+  viewport en vez de desde su propio centro. El centrado vive ahora en una capa
+  contenedora en vez de en el propio `transform` del diálogo, lo que además
+  hace que un diálogo más alto que la pantalla haga scroll en vez de recortarse
+  por los dos bordes, y que la paleta de comandos / el selector de pestañas
+  gane la animación de salida que nunca tuvo.
+
 ## [1.22.0] — 2026-09-10
 
 ### Añadido
