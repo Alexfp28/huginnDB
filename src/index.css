@@ -372,18 +372,22 @@ input[type="password"]::-ms-clear {
 /* -------------------------------------------------------------------------
  * Inner workspace dockview (open table / query tabs) — `.inner-dock`
  * -------------------------------------------------------------------------
- * Extends the "island" language of `AppShell`/`IslandShell`/`ConsoleDock`
- * (plain React/CSS now, not dockview — see `stores/session/panelLayout.ts`)
- * down to individual tabs: each open table/query is its own floating
- * rounded chip over a recessed backdrop, rather than a flush segment in a
- * flat strip. `--dv-tab-margin` and `--dv-tab-border-radius` are dockview's
- * own theming hooks — the same two variables its bundled "-spaced" themes
- * (nord-spaced, github-dark-spaced, …) use — so the gap and rounding come
- * from supported theming, not a layout hack; dockview's drag/reorder math
- * already accounts for a margin-carrying tab. `.dv-dockview` carries the
- * theme className, so setting vars there overrides the shared defaults. */
+ * The tab strip is **coupled** to the panel below it, not a row of chips
+ * floating over a trench: the active chip's radius is top-only, its bottom
+ * seam is painted over so the strip's own hairline doesn't cut across it,
+ * and it carries no lift — a tab that merges into its panel doesn't also
+ * float above it. `--dv-tab-margin` and `--dv-tab-border-radius` are
+ * dockview's own theming hooks — the same two variables its bundled
+ * "-spaced" themes (nord-spaced, github-dark-spaced, …) use — so the gap
+ * still comes from supported theming, not a layout hack; dockview's
+ * drag/reorder math already accounts for a margin-carrying tab.
+ * `--dv-tab-border-radius` itself stays the plain 4-corner radius (the
+ * overflow popover below still wants that shape for its own, un-coupled
+ * rows); the coupled strip overrides it with its own top-only value.
+ * `.dv-dockview` carries the theme className, so setting vars there
+ * overrides the shared defaults. */
 .inner-dock .dv-dockview {
-  --dv-tabs-and-actions-container-height: 42px;
+  --dv-tabs-and-actions-container-height: 38px;
   --dv-tab-font-size: 12px;
   --dv-tab-border-radius: calc(var(--radius) - 2px);
   --dv-tab-margin: 7px 3px 0 3px;
@@ -399,13 +403,17 @@ input[type="password"]::-ms-clear {
   border-bottom: 1px solid var(--border);
 }
 .inner-dock .dv-tab {
-  border-radius: var(--dv-tab-border-radius);
   border: 1px solid transparent;
   background-color: color-mix(in srgb, var(--card) 55%, transparent);
   transition:
     background-color 0.12s ease,
-    border-color 0.12s ease,
-    filter 0.12s ease;
+    border-color 0.12s ease;
+}
+/* Top-only radius, scoped to the horizontal strip so the overflow popover's
+   own stacked rows (further down) keep their plain 4-corner shape — a
+   standalone row has no seam to couple to. */
+.inner-dock .dv-tabs-container.dv-horizontal .dv-tab {
+  border-radius: 8px 8px 0 0;
 }
 /* dockview's own hairline divider (`::before`) is meant for flush tabs; the
    margin gap above already separates each chip, so a bare vertical line
@@ -413,35 +421,57 @@ input[type="password"]::-ms-clear {
 .inner-dock .dv-tabs-container.dv-horizontal .dv-tab:not(:first-child)::before {
   content: none;
 }
+/* Unfilled by default — the strip carries one surface (the active chip),
+   not a row of chips competing with it. */
+.inner-dock .dv-tabs-container.dv-horizontal .dv-tab:not(.dv-active-tab) {
+  background-color: transparent;
+}
 .inner-dock .dv-tab:not(.dv-active-tab):hover {
   background-color: var(--accent);
   border-color: color-mix(in srgb, var(--border) 70%, transparent);
 }
-/* Active tab merges into the content surface, is lifted with the same
- * elevation recipe as the outer islands' floating panels (via `filter`,
- * which stays independent of `box-shadow` — see below), and carries a brand
+/* Active tab merges into the content surface below it and carries a brand
  * accent in one of three styles (`ui.tabAccentStyle`, stamped as
  * `data-tab-accent` on `.inner-dock` by TabbedArea). Default is "cap" — kept
  * unprefixed so an unset/unknown value still renders the original look. A
  * per-tab custom colour (`WorkspaceTab`'s inline `boxShadow`) overrides this
  * box-shadow entirely on that one tab — matching axis, computed from the
- * same preference, so the two never fight over conflicting positions; using
- * `filter` (not `box-shadow`) for the elevation keeps that override from
- * also erasing the lift. */
+ * same preference, so the two never fight over conflicting positions. No
+ * lift here (no `filter`/`box-shadow` elevation): a coupled tab reads as
+ * part of the panel, not a chip floating above the trench. */
 .inner-dock .dv-tab.dv-active-tab {
   background-color: var(--background);
   border-color: var(--border);
+  border-bottom-color: transparent;
   box-shadow: inset 0 2px 0 0 var(--brand);
-  filter:
-    drop-shadow(0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent))
-    drop-shadow(0 2px 6px color-mix(in srgb, var(--foreground) 8%, transparent));
+}
+/* `position: relative` is what gives the seam-covering `::after` below a
+   containing block to position against. */
+.inner-dock .dv-tabs-container.dv-horizontal .dv-tab.dv-active-tab {
+  position: relative;
+}
+/* The strip's own `border-bottom` (on `.dv-tabs-and-actions-container`)
+ * would otherwise cut across the active chip's bottom edge — a tab that
+ * merges into its panel can't have a line drawn between the two. Painting
+ * over that one-pixel seam in the panel's own background is more reliable
+ * than trying to make the chip's margin swallow a border that belongs to
+ * its *parent*, not to it. `-1px` on the sides covers the chip's own
+ * 1px side borders too, so no sliver of them survives at the seam. */
+.inner-dock .dv-tabs-container.dv-horizontal .dv-tab.dv-active-tab::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  bottom: -1px;
+  height: 1px;
+  background-color: var(--background);
 }
 .inner-dock[data-tab-accent="rail"] .dv-tab.dv-active-tab {
   box-shadow: inset 3px 0 0 0 var(--brand);
 }
-/* "boxed" now means the plain elevated chip with no colour line — every
- * active tab already gets the lift above, so this style just omits the
- * accent stripe rather than duplicating it. */
+/* "boxed" now means the plain merged chip with no colour line — every
+ * active tab already merges into the panel above, so this style just omits
+ * the accent stripe rather than duplicating it. */
 .inner-dock[data-tab-accent="boxed"] .dv-tab.dv-active-tab {
   box-shadow: none;
 }

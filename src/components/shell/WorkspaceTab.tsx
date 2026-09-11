@@ -382,7 +382,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
               // matching weight so the label reads as the active one too.
               isActive
                 ? "font-medium text-foreground"
-                : "text-muted-foreground/70",
+                : "text-muted-foreground/75",
             )}
             style={
               tabColor
