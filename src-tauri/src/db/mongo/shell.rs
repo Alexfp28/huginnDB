@@ -222,6 +222,47 @@ pub fn parse_relaxed_value(input: &str) -> AppResult<Bson> {
     Ok(value)
 }
 
+/// Skip leading whitespace and comments, in both forms this grammar accepts.
+///
+/// Shared by [`looks_like_mongo`] and [`parse`] so the two cannot disagree
+/// about where a statement begins — the pair of them is an authorisation
+/// decision (`db::classify`), and a prefix check that says "not Mongo" for a
+/// statement the parser would happily run is exactly the shape of a hole.
+///
+/// It exists because neither skipped comments at all. A buffer opening with a
+/// `// note` was rejected with "MongoDB statements must start with `db.`",
+/// which a new query tab hit on its very first run: it used to seed itself
+/// with a `//` hint, so the line explaining what the tab ran was the line
+/// stopping it from running. Hand-written notes are the general case, and
+/// `Ctrl+/` in that tab inserts exactly this.
+///
+/// Trailing trivia needs no equivalent: [`finish`] stops at the first thing
+/// that is not a chained `.modifier(`, so anything after the statement is
+/// already ignored.
+fn strip_leading_trivia(sql: &str) -> &str {
+    let mut rest = sql.trim_start();
+    loop {
+        let tail = if let Some(after) = rest.strip_prefix("//") {
+            // An unterminated line comment runs to the end of the input.
+            match after.find('\n') {
+                Some(i) => &after[i + 1..],
+                None => "",
+            }
+        } else if let Some(after) = rest.strip_prefix("/*") {
+            // An unterminated block comment swallows the rest, which then
+            // fails the `db.` check below — the same answer the user would
+            // get from the server, and never a half-read statement.
+            match after.find("*/") {
+                Some(i) => &after[i + 2..],
+                None => "",
+            }
+        } else {
+            return rest;
+        };
+        rest = tail.trim_start();
+    }
+}
+
 /// Whether `sql` is addressed to the mongosh grammar rather than to a SQL
 /// dialect.
 ///
@@ -232,12 +273,15 @@ pub fn parse_relaxed_value(input: &str) -> AppResult<Bson> {
 /// silently answered "no" for every bridged call. The statement text is the one
 /// thing both sides always have.
 pub fn looks_like_mongo(sql: &str) -> bool {
-    sql.trim_start().starts_with("db.")
+    strip_leading_trivia(sql).starts_with("db.")
 }
 
 /// Parse one `mongosh`-style statement.
 pub fn parse(input: &str) -> AppResult<ParsedCommand> {
-    let src = input.trim().trim_end_matches(';').trim();
+    let src = strip_leading_trivia(input)
+        .trim_end()
+        .trim_end_matches(';')
+        .trim_end();
     if !src.starts_with("db.") {
         return Err(AppError::InvalidInput(
             "MongoDB statements must start with `db.` (e.g. db.users.find({}))".into(),
@@ -1249,12 +1293,103 @@ mod tests {
             "db.t.find({})",
             "  db.t.find({})",
             "db.getCollection(\"t\").find({})",
+            "// a note
+db.t.find({})",
+            "/* a note */ db.t.find({})",
         ] {
             assert!(looks_like_mongo(sql), "{sql}");
+            assert!(parse(sql).is_ok(), "{sql}");
         }
         for sql in ["SELECT * FROM db.t", "select 1", "  DROP TABLE t"] {
             assert!(!looks_like_mongo(sql), "{sql}");
             assert!(parse(sql).is_err(), "{sql}");
+        }
+    }
+
+    /// Leading comments are skipped by both the prefix check and the parser.
+    ///
+    /// They were skipped by neither, which a new MongoDB query tab used to hit
+    /// on its first run: it seeded itself with a `//` hint, and that line made
+    /// the buffer fail the `db.` check. The seed is gone, but a hand-written
+    /// note is the general case — `Ctrl+/` in that tab writes exactly this.
+    mod leading_comments {
+        use super::*;
+
+        fn collection_of(sql: &str) -> String {
+            parse(sql).unwrap().collection
+        }
+
+        #[test]
+        fn a_line_comment_above_the_statement_is_skipped() {
+            assert_eq!(
+                collection_of(
+                    "// what this does
+db.users.find({})"
+                ),
+                "users"
+            );
+        }
+
+        #[test]
+        fn a_block_comment_before_the_statement_is_skipped() {
+            assert_eq!(
+                collection_of(
+                    "/* what this does */
+db.users.find({})"
+                ),
+                "users"
+            );
+            assert_eq!(collection_of("/* inline */ db.users.find({})"), "users");
+        }
+
+        #[test]
+        fn several_comments_and_blank_lines_are_skipped() {
+            let src = "
+// one
+
+/* two */
+  // three
+
+db.users.find({});
+";
+            assert_eq!(collection_of(src), "users");
+        }
+
+        #[test]
+        fn a_comment_after_the_statement_still_costs_nothing() {
+            // `finish` stops at the first thing that is not a chained
+            // `.modifier(`, so trailing trivia was already ignored — pinned
+            // here so a future trailing-trim never has to be re-derived.
+            assert_eq!(collection_of("db.users.find({}) // and this"), "users");
+            assert_eq!(collection_of("db.users.find({}); // and this"), "users");
+        }
+
+        #[test]
+        fn a_comment_does_not_smuggle_a_statement_past_the_check() {
+            // A buffer with nothing but commentary is still not a statement,
+            // and an unterminated block comment swallows the rest rather than
+            // leaving a half-read one behind.
+            for sql in ["// db.users.find({})", "/* db.users.find({})", "   "] {
+                assert!(parse(sql).is_err(), "{sql}");
+                assert!(!looks_like_mongo(sql), "{sql}");
+            }
+        }
+
+        #[test]
+        fn a_commented_statement_keeps_its_write_classification() {
+            // The pair is an authorisation decision (`db::classify`): before
+            // this, `looks_like_mongo` said "not Mongo" for a commented
+            // `deleteMany({})`, so the unfiltered-write guard never ran the
+            // Mongo parser that would have caught it.
+            let bare = parse("db.users.deleteMany({})").unwrap();
+            let noted = parse(
+                "// cleanup
+db.users.deleteMany({})",
+            )
+            .unwrap();
+            assert!(bare.op.is_unfiltered_write());
+            assert!(noted.op.is_unfiltered_write());
+            assert_eq!(bare.op.class(), noted.op.class());
         }
     }
 

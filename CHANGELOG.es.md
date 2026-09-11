@@ -118,6 +118,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Un comentario al principio dejaba una sentencia MongoDB inejecutable — y, peor,
+  invisible para la protección de escrituras.** `shell::parse` recortaba espacios
+  y un `;` final y después exigía que el texto empezara por `db.`; nunca se
+  saltaba los comentarios. Así que un `// nota` encima de la sentencia se
+  rechazaba con «MongoDB statements must start with `db.`» — el fallo con el que
+  una pestaña de query nueva tropezaba por culpa de su propia pista sembrada, y
+  con el que sigue tropezando cualquiera que escriba una nota (o pulse Ctrl+/,
+  que ahí inserta `//`). Ahora se saltan ambas formas, `//` y `/* … */`, con un
+  único helper compartido con `looks_like_mongo` para que los dos no puedan
+  discrepar sobre dónde empieza una sentencia.
+
+  Esa parte compartida es la mitad relevante para la seguridad.
+  `looks_like_mongo` es lo que enruta una sentencia al clasificador de Mongo en
+  `db::classify`, así que un `db.users.deleteMany({})` comentado respondía «no es
+  Mongo», caía al clasificador de SQL — que jamás ha oído hablar de `deleteMany`
+  — y se colaba por delante de `is_unfiltered_write`, la protección contra el
+  borrado de colección entera que el conector MCP rechaza en todos los niveles.
+  La sentencia idéntica sin el comentario sí se rechazaba. Ahora se rechazan las
+  dos.
+
 - **Una pestaña de query nueva contra MongoDB fallaba en su primera ejecución,
   por culpa de la propia pista que se sembraba.** La pestaña se abría con
   `// db.coleccion.find({}) — pulsa Ctrl+Intro`, y `shell::parse` recorta

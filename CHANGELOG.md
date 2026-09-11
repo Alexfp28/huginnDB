@@ -108,6 +108,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A leading comment made a MongoDB statement unrunnable — and, worse, invisible
+  to the write guard.** `shell::parse` trimmed whitespace and a trailing `;` and
+  then required the text to start with `db.`; it never skipped comments. So
+  `// note` above a statement was rejected with "MongoDB statements must start
+  with `db.`" — the failure a new query tab used to hit on its own seeded hint,
+  and the one anybody writing a note (or pressing Ctrl+/, which inserts `//`
+  there) still hit. Both forms, `//` and `/* … */`, are now skipped, by one
+  helper shared with `looks_like_mongo` so the two cannot disagree about where a
+  statement begins.
+
+  That sharing is the security-relevant half. `looks_like_mongo` is what routes
+  a statement to the Mongo classifier in `db::classify`, so a commented
+  `db.users.deleteMany({})` answered "not Mongo", fell through to the SQL
+  classifier — which has never heard of `deleteMany` — and slipped past
+  `is_unfiltered_write`, the whole-collection-delete guard the MCP connector
+  refuses at every tier. The identical statement without the comment was
+  refused. Both are refused now.
+
 - **A new MongoDB query tab failing on its very first run, because of the hint
   it seeded itself with.** The tab opened holding
   `// db.collection.find({}) — press Ctrl+Enter`, and `shell::parse` trims

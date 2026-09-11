@@ -109,6 +109,59 @@ mod tests {
         }
     }
 
+    /// A leading comment must not change the tier, and this is the enforcement
+    /// point where that mattered most.
+    ///
+    /// `looks_like_mongo` used to test the raw prefix, so a commented Mongo
+    /// statement answered "not Mongo" and fell through to the SQL classifier —
+    /// which has never heard of `deleteMany`. The whole-collection delete
+    /// therefore slipped past `is_unfiltered_write`, the one guard the MCP
+    /// connector refuses at every tier, while the identical statement without
+    /// the comment was refused. Both halves of the decision now skip trivia
+    /// through the same helper.
+    #[test]
+    fn a_leading_comment_does_not_change_the_tier() {
+        for (bare, noted) in [
+            (
+                "db.users.find({})",
+                "// read
+db.users.find({})",
+            ),
+            (
+                "db.users.updateOne({a: 1}, {$set: {b: 2}})",
+                "/* touch up */ db.users.updateOne({a: 1}, {$set: {b: 2}})",
+            ),
+            (
+                "db.users.drop()",
+                "// gone
+db.users.drop()",
+            ),
+        ] {
+            assert_eq!(
+                classify_statement(bare),
+                classify_statement(noted),
+                "{noted}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_leading_comment_does_not_hide_an_unfiltered_write() {
+        for sql in [
+            "db.users.deleteMany({})",
+            "// housekeeping
+db.users.deleteMany({})",
+            "/* housekeeping */ db.users.deleteMany({})",
+        ] {
+            assert!(is_unfiltered_write(sql), "{sql}");
+        }
+        // And the guard still lets a predicated write through, commented or not.
+        assert!(!is_unfiltered_write(
+            "// scoped
+db.users.deleteMany({a: 1})"
+        ));
+    }
+
     #[test]
     fn unparseable_mongo_falls_to_the_strictest_tier() {
         assert_eq!(classify_statement("db.users.explode()"), StmtClass::Ddl);
