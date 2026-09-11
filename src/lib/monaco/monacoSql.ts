@@ -52,24 +52,41 @@ interface EditorEntry {
   lensLabel?: () => { title: string; tooltip: string };
 }
 
-/** Per-model live data, keyed by `model.uri.toString()`. */
+/**
+ * Per-model live data, keyed by `model.uri.toString()`.
+ *
+ * Shared across every language that gets the "▶ Run" lens, not just `sql`: a
+ * model has exactly one owning editor, so the Mongo query editor registers
+ * here too (see `ensureRunLensProvider`) and only its `getCompletions` goes
+ * unread — its suggestions come from `monacoMongoQuery.ts`'s own registry,
+ * because they are structural rather than a flat word list.
+ */
 const registry = new Map<string, EditorEntry>();
 
-/** The Monaco instance the providers have been installed on (idempotency). */
+/** The Monaco instance the SQL completion provider has been installed on. */
 let installed: Monaco | null = null;
+
+/** The Monaco instance the shared lens command has been installed on. */
+let commandInstalled: Monaco | null = null;
+
+/** Languages the "▶ Run" lens provider has been installed for, per Monaco
+ *  instance — the provider is global *per language* (gotcha #9), so the guard
+ *  has to be keyed by language rather than by Monaco alone. */
+const lensInstalled = new Map<string, Monaco>();
 
 /** Shared CodeLens invalidation emitter — firing it refreshes every model's
  *  gutter, which is cheap and avoids one emitter per editor. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let lensEmitter: { fire: (e: unknown) => void; event: any } | null = null;
 
-/** Install the SQL providers once for this Monaco instance. */
-export function ensureSqlProviders(monaco: Monaco) {
-  if (installed === monaco) return;
-  installed = monaco;
+/** Install the shared lens emitter + `huginndb.runStatement` command once for
+ *  this Monaco instance. Both are global (not per language), so every lens
+ *  provider installed below routes through this one command. */
+function ensureRunCommand(monaco: Monaco) {
+  if (commandInstalled === monaco) return;
+  commandInstalled = monaco;
 
   if (!lensEmitter) lensEmitter = new monaco.Emitter<unknown>();
-  const emitter = lensEmitter;
 
   // Single shared command; the lens carries [modelUri, statementText] so the
   // dispatcher routes back to the owning editor's run handler.
@@ -79,6 +96,64 @@ export function ensureSqlProviders(monaco: Monaco) {
     const entry = typeof uri === "string" ? registry.get(uri) : undefined;
     if (entry && typeof text === "string") entry.runStatement(text);
   });
+}
+
+/**
+ * Install the per-statement "▶ Run" CodeLens provider for `languageId`.
+ *
+ * Split out of `ensureSqlProviders` because the query tab is not
+ * SQL-only: a MongoDB connection's editor runs on its own language id
+ * (`monacoMongoQuery.ts`), and a CodeLens provider registered for `"sql"`
+ * simply stops being consulted there — the lens would vanish silently rather
+ * than fail. The lenses themselves are language-agnostic: they come from the
+ * owning editor's `getLenses`, whatever splitter produced them.
+ */
+export function ensureRunLensProvider(monaco: Monaco, languageId: string) {
+  ensureRunCommand(monaco);
+  if (lensInstalled.get(languageId) === monaco) return;
+  lensInstalled.set(languageId, monaco);
+  const emitter = lensEmitter!;
+
+  monaco.languages.registerCodeLensProvider(languageId, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onDidChange: emitter.event as any,
+    provideCodeLenses: (model) => {
+      const entry = registry.get(model.uri.toString());
+      if (!entry) return { lenses: [], dispose: () => {} };
+      const uri = model.uri.toString();
+      const label = entry.lensLabel?.() ?? {
+        title: `▶ ${i18n.t("query.run")}`,
+        tooltip: i18n.t("query.runStatement"),
+      };
+      return {
+        lenses: entry.getLenses().map((stmt, idx) => ({
+          range: {
+            startLineNumber: stmt.startLine,
+            startColumn: 1,
+            endLineNumber: stmt.startLine,
+            endColumn: 1,
+          },
+          id: `run-stmt-${idx}-${stmt.startLine}`,
+          command: {
+            id: "huginndb.runStatement",
+            title: label.title,
+            tooltip: label.tooltip,
+            arguments: [uri, stmt.text],
+          },
+        })),
+        dispose: () => {},
+      };
+    },
+    resolveCodeLens: (_m, lens) => lens,
+  });
+}
+
+/** Install the SQL providers once for this Monaco instance. */
+export function ensureSqlProviders(monaco: Monaco) {
+  ensureRunCommand(monaco);
+  ensureRunLensProvider(monaco, "sql");
+  if (installed === monaco) return;
+  installed = monaco;
 
   monaco.languages.registerCompletionItemProvider("sql", {
     provideCompletionItems: (model, position) => {
@@ -112,39 +187,6 @@ export function ensureSqlProviders(monaco: Monaco) {
         })),
       };
     },
-  });
-
-  monaco.languages.registerCodeLensProvider("sql", {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    onDidChange: emitter.event as any,
-    provideCodeLenses: (model) => {
-      const entry = registry.get(model.uri.toString());
-      if (!entry) return { lenses: [], dispose: () => {} };
-      const uri = model.uri.toString();
-      const label = entry.lensLabel?.() ?? {
-        title: `▶ ${i18n.t("query.run")}`,
-        tooltip: i18n.t("query.runStatement"),
-      };
-      return {
-        lenses: entry.getLenses().map((stmt, idx) => ({
-          range: {
-            startLineNumber: stmt.startLine,
-            startColumn: 1,
-            endLineNumber: stmt.startLine,
-            endColumn: 1,
-          },
-          id: `run-stmt-${idx}-${stmt.startLine}`,
-          command: {
-            id: "huginndb.runStatement",
-            title: label.title,
-            tooltip: label.tooltip,
-            arguments: [uri, stmt.text],
-          },
-        })),
-        dispose: () => {},
-      };
-    },
-    resolveCodeLens: (_m, lens) => lens,
   });
 }
 

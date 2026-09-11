@@ -54,6 +54,7 @@ import type { Monaco } from "@monaco-editor/react";
 import { STAGE_CATALOG } from "@/lib/mongo/stages";
 import { ACCUMULATOR_CATALOG } from "@/lib/mongo/accumulators";
 import { completionPositionAt, siblingStringValue } from "@/lib/mongo/completionContext";
+import { BSON_CONSTRUCTORS } from "@/lib/mongo/shellCatalog";
 
 export const MONGO_PIPELINE_LANGUAGE = "mongodb-pipeline";
 
@@ -62,7 +63,7 @@ export const MONGO_PIPELINE_LANGUAGE = "mongodb-pipeline";
  *  accumulators (`$sum`, `$avg`, `$first`, …) are deliberately absent —
  *  they're never valid bare, so they live in `ACCUMULATOR_CATALOG` and get
  *  their own contextual, snippet-shaped branch below instead. */
-const EXPRESSION_OPERATORS = [
+export const EXPRESSION_OPERATORS = [
   "$abs", "$add", "$and", "$arrayElemAt", "$ceil",
   "$concat", "$concatArrays", "$cond", "$dateAdd", "$dateDiff",
   "$dateFromString", "$dateToString", "$dateTrunc", "$dayOfMonth", "$divide",
@@ -75,17 +76,11 @@ const EXPRESSION_OPERATORS = [
   "$toString", "$toUpper", "$toLower", "$trim", "$type", "$year",
 ];
 
-/** BSON constructors the Rust parser accepts — kept in sync with
- *  `parse_keyword_or_ctor` in `db/mongo/shell.rs`. */
-const CONSTRUCTORS = [
-  "ObjectId",
-  "ISODate",
-  "Date",
-  "NumberLong",
-  "NumberInt",
-  "NumberDecimal",
-  "NumberDouble",
-];
+/** BSON constructors the Rust parser accepts. The list itself lives in
+ *  `shellCatalog.ts` alongside the rest of the shell grammar's mirror of
+ *  `db/mongo/shell.rs`, so the pipeline editor and the query editor cannot
+ *  drift apart. */
+const CONSTRUCTORS = BSON_CONSTRUCTORS;
 
 /** Live data one editor instance offers the shared completion provider. */
 export interface MongoCompletionEntry {

@@ -20,6 +20,21 @@
  * The output positions use Monaco's convention: line and column are
  * **1-based**, so a CodeLens can be anchored straight on them without
  * a coordinate shim.
+ *
+ * ## Dialects
+ *
+ * MongoDB's query tab runs the same `;`-splitting over `mongosh` source, and
+ * its lexical contexts are *not* SQL's: the line comment is `//` (which is
+ * what a new Mongo tab seeds itself with, semicolon included), `--` means
+ * nothing, backticks are not identifier quotes, `\` escapes inside a string
+ * rather than a doubled quote, and `$` opens an operator name on nearly every
+ * line rather than a dollar-quoted body. Passing `"mongo"` swaps exactly
+ * those five rules. Everything else — the `;` boundary, the position
+ * bookkeeping, the empty-statement filter — is shared, because it is the same
+ * problem.
+ *
+ * This stays a **lexer**, not a parser (gotcha #33): it recognises the spans
+ * a `;` may not be read inside, and nothing about what the statements mean.
  */
 
 export interface SqlStatement {
@@ -35,6 +50,39 @@ export interface SqlStatement {
    *  off the front so an empty `";"` between statements is filtered out. */
   text: string;
 }
+
+/** Which lexical rules apply. See the "Dialects" note above. */
+export type SqlDialect = "sql" | "mongo";
+
+interface DialectRules {
+  /** Two-character line-comment opener. */
+  lineComment: string;
+  /** `` ` `` opens a quoted identifier (MySQL). */
+  backtickIdentifiers: boolean;
+  /** `$tag$ … $tag$` bodies (Postgres). */
+  dollarQuoting: boolean;
+  /** `''` inside a string is an escaped quote rather than a terminator. */
+  doubledQuoteEscape: boolean;
+  /** `\` escapes the next character inside a string. */
+  backslashEscape: boolean;
+}
+
+const DIALECTS: Record<SqlDialect, DialectRules> = {
+  sql: {
+    lineComment: "--",
+    backtickIdentifiers: true,
+    dollarQuoting: true,
+    doubledQuoteEscape: true,
+    backslashEscape: false,
+  },
+  mongo: {
+    lineComment: "//",
+    backtickIdentifiers: false,
+    dollarQuoting: false,
+    doubledQuoteEscape: false,
+    backslashEscape: true,
+  },
+};
 
 type Mode =
   | "default"
@@ -66,9 +114,13 @@ function readDollarTag(source: string, pos: number): string | null {
   return null;
 }
 
-export function splitSql(source: string): SqlStatement[] {
+export function splitSql(
+  source: string,
+  dialect: SqlDialect = "sql",
+): SqlStatement[] {
   const out: SqlStatement[] = [];
   if (!source) return out;
+  const rules = DIALECTS[dialect];
 
   // Cursor state. We track line / column alongside the absolute index
   // so we can build Monaco-friendly positions without a second pass.
@@ -111,8 +163,13 @@ export function splitSql(source: string): SqlStatement[] {
     // Mode-specific scanning. We deal with exit conditions here and
     // fall through to the default-mode branch otherwise.
     if (mode === "single-string") {
-      // `''` is an escape, not a terminator.
-      if (ch === "'" && next === "'") {
+      // A doubled quote escapes in SQL; a backslash escapes in Mongo.
+      if (rules.backslashEscape && ch === "\\") {
+        i++;
+        column += 2;
+        continue;
+      }
+      if (rules.doubledQuoteEscape && ch === "'" && next === "'") {
         i++;
         column += 2;
         continue;
@@ -123,7 +180,12 @@ export function splitSql(source: string): SqlStatement[] {
         continue;
       }
     } else if (mode === "double-string") {
-      if (ch === '"' && next === '"') {
+      if (rules.backslashEscape && ch === "\\") {
+        i++;
+        column += 2;
+        continue;
+      }
+      if (rules.doubledQuoteEscape && ch === '"' && next === '"') {
         i++;
         column += 2;
         continue;
@@ -183,7 +245,8 @@ export function splitSql(source: string): SqlStatement[] {
       // start. A `--` that begins a statement, or a `/* */` block, is
       // not "where the statement starts".
       const isWs = ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
-      const isLineCommentOpen = ch === "-" && next === "-";
+      const isLineCommentOpen =
+        ch === rules.lineComment[0] && next === rules.lineComment[1];
       const isBlockCommentOpen = ch === "/" && next === "*";
 
       if (stmtStart < 0 && !isWs && !isLineCommentOpen && !isBlockCommentOpen) {
@@ -210,9 +273,9 @@ export function splitSql(source: string): SqlStatement[] {
         mode = "single-string";
       } else if (ch === '"') {
         mode = "double-string";
-      } else if (ch === "`") {
+      } else if (rules.backtickIdentifiers && ch === "`") {
         mode = "back-string";
-      } else if (ch === "$") {
+      } else if (rules.dollarQuoting && ch === "$") {
         const tag = readDollarTag(source, i);
         if (tag) {
           mode = "dollar-string";
@@ -251,8 +314,12 @@ export function splitSql(source: string): SqlStatement[] {
  * the caret sits past the final one — a caret on the trailing blank line after
  * a query is still, to a user, "in" that query.
  */
-export function statementAt(source: string, line: number): SqlStatement | null {
-  const statements = splitSql(source);
+export function statementAt(
+  source: string,
+  line: number,
+  dialect: SqlDialect = "sql",
+): SqlStatement | null {
+  const statements = splitSql(source, dialect);
   if (statements.length === 0) return null;
   const hit = statements.find((s) => s.startLine <= line && line <= s.endLine);
   if (hit) return hit;

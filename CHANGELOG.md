@@ -69,6 +69,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The query tab's autocomplete on a MongoDB connection, which was SQL's.**
+  The editor asked Monaco for the `"sql"` language literally, with no driver
+  branch anywhere in the file except the status-bar label — so a Mongo tab got
+  SQL's Monarch grammar, SQL's comment configuration (`--`, which is why the
+  `//` the tab seeds itself with tokenised as an operator and Ctrl+/ inserted
+  a comment the backend does not skip), SQL's `;` splitter, and a flat
+  suggestion list with no trigger characters. Typing `db` produced an *empty*
+  widget: `"db"` is in no catalogue, so Monaco fuzzy-matched it against ~70
+  unrelated items and matched none.
+
+  A MongoDB connection now gets its own editor language, `mongodb-query`, with
+  a grammar that colours the shell (the `db` handle, method calls, BSON
+  constructors, and a `$`-prefixed string as a field reference rather than
+  text) and a completion provider that understands the chain rather than
+  offering a word list: `db.` offers **collections**, `db.<collection>.` the
+  **methods** the backend parser accepts — inserted as runnable snippets
+  (`find({})`, not a bare `find`) and marked when they write — a closed call's
+  `.` offers exactly the **four cursor modifiers** and nothing else, and inside
+  an argument list it offers **field names** plus the operators that fit the
+  call: query operators in a filter, update operators in an update document,
+  and the whole aggregation stage/accumulator/expression catalogue inside
+  `aggregate([…])`.
+
+  Two supporting changes fall out of it. The statement splitter grew a
+  **dialect**: under `mongo` the line comment is `//`, `--` is not a comment,
+  backticks are not identifier quotes, and `$` no longer opens a Postgres
+  dollar-quoted body — previously a `$gt` … `$lt` pair looked exactly like one
+  and swallowed every `;` between them, and the seeded comment's own `;` split
+  the buffer so the "▶ Run" lens anchored on the comment line. And the query
+  tab now warms the schema itself (`useEnsureSchemaLoaded`) instead of relying
+  on the user having expanded the connection in the explorer first, so a
+  freshly opened tab has its tables — or collections — from the start. Fields
+  stay lazy and are sampled at most once per collection per session.
+
+  The catalogue the suggestions come from is a hand-maintained mirror of
+  `src-tauri/src/db/mongo/shell.rs`, kept in one file (`lib/mongo/shellCatalog.ts`)
+  and shared with the aggregation editor's constructor list, so the two cannot
+  drift apart. Nothing in the frontend parses the statement: a cursor scanner
+  reports where the caret is, and the one parser stays in Rust.
+
 - **The dialog open/close animation, which had been silently broken since
   shadcn's default `Dialog` was adopted.** Every dialog centred itself with a
   `transform`, and the fade/zoom animation also writes to `transform` for the

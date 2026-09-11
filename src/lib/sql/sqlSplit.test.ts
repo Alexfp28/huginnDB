@@ -174,3 +174,66 @@ describe("statementAt", () => {
     expect(statementAt(source, 3)).toBeNull();
   });
 });
+
+/** Just the texts, under the MongoDB lexical rules. */
+const mongoTexts = (src: string) =>
+  splitSql(src, "mongo").map((s) => s.text.trim());
+
+describe("splitSql mongo dialect", () => {
+  it("splits consecutive shell statements", () => {
+    expect(mongoTexts("db.users.find({});\ndb.orders.find({});")).toEqual([
+      "db.users.find({});",
+      "db.orders.find({});",
+    ]);
+  });
+
+  it("treats `//` as a line comment, so a `;` inside one is not a boundary", () => {
+    // The exact buffer a new MongoDB query tab seeds itself with. Under the
+    // SQL rules the `;` in the comment split it, and the "▶ Run" lens for the
+    // real statement anchored on the comment line instead.
+    const seeded = "// db.collection.find({}) - press Ctrl+Enter;\ndb.users.find({});";
+    expect(mongoTexts(seeded)).toEqual(["db.users.find({});"]);
+  });
+
+  it("does not treat `--` as a comment", () => {
+    expect(mongoTexts("db.c.updateOne({}, { $inc: { n: --1 } });")).toEqual([
+      "db.c.updateOne({}, { $inc: { n: --1 } });",
+    ]);
+  });
+
+  it("does not read `$` as a dollar-quote opener", () => {
+    // `$gt` … `$lt` looks exactly like a Postgres `$tag$` pair to the SQL
+    // lexer, which swallowed everything between them — semicolons included.
+    expect(
+      mongoTexts("db.c.find({ a: { $gt: 1 } });\ndb.c.find({ b: { $lt: 2 } });"),
+    ).toEqual([
+      "db.c.find({ a: { $gt: 1 } });",
+      "db.c.find({ b: { $lt: 2 } });",
+    ]);
+  });
+
+  it("does not read a backtick as an identifier quote", () => {
+    expect(mongoTexts("db.c.find({ a: 1 });\ndb.c.find({ b: `2` });")).toHaveLength(2);
+  });
+
+  it("escapes with a backslash inside a string, not with a doubled quote", () => {
+    expect(mongoTexts('db.c.find({ a: "x\\";y" });')).toEqual([
+      'db.c.find({ a: "x\\";y" });',
+    ]);
+  });
+
+  it("still honours block comments", () => {
+    expect(mongoTexts("/* a; b */ db.c.find({});")).toEqual(["db.c.find({});"]);
+  });
+
+  it("leaves the SQL dialect untouched", () => {
+    // The same `//` is not a comment in SQL, and `--` still is.
+    expect(texts("SELECT 1 // 2;")).toEqual(["SELECT 1 // 2;"]);
+    expect(texts("-- a; b\nSELECT 1;")).toEqual(["SELECT 1;"]);
+  });
+
+  it("reaches statementAt through the same dialect", () => {
+    const source = "// lead-in; here\ndb.users.find({});";
+    expect(statementAt(source, 2, "mongo")?.text.trim()).toBe("db.users.find({});");
+  });
+});

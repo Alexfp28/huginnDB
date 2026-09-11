@@ -76,6 +76,52 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El autocompletado de la pestaña de query en una conexión MongoDB, que era
+  el de SQL.** El editor le pedía a Monaco el lenguaje `"sql"` de forma
+  literal, sin ninguna rama por driver en todo el archivo salvo la etiqueta de
+  la barra de estado — así que una pestaña de Mongo recibía la gramática
+  Monarch de SQL, su configuración de comentarios (`--`, que es la razón de que
+  el `//` con el que la propia pestaña se siembra se tokenizase como un
+  operador y de que Ctrl+/ insertara un comentario que el backend no ignora),
+  su splitter por `;` y una lista plana de sugerencias sin caracteres de
+  disparo. Escribir `db` abría un widget *vacío*: `"db"` no está en ningún
+  catálogo, así que Monaco lo filtraba difusamente contra unos 70 elementos sin
+  relación y no casaba ninguno.
+
+  Una conexión MongoDB tiene ahora su propio lenguaje de editor,
+  `mongodb-query`, con una gramática que colorea la shell (el handle `db`, las
+  llamadas a métodos, los constructores BSON y una cadena prefijada por `$`
+  como referencia a un campo en vez de como texto) y un provider de completado
+  que entiende la cadena en lugar de ofrecer un listado de palabras: `db.`
+  ofrece **colecciones**, `db.<colección>.` los **métodos** que acepta el
+  parser del backend — insertados como snippets ejecutables (`find({})`, no un
+  `find` pelado) y marcados cuando escriben —, el `.` tras una llamada cerrada
+  ofrece exactamente los **cuatro modificadores de cursor** y nada más, y
+  dentro de una lista de argumentos ofrece **nombres de campo** más los
+  operadores que encajan con la llamada: operadores de consulta en un filtro,
+  operadores de actualización en un documento de update, y todo el catálogo de
+  etapas/acumuladores/expresiones de agregación dentro de `aggregate([…])`.
+
+  De ahí salen dos cambios de apoyo. El splitter de sentencias ha ganado un
+  **dialecto**: con `mongo`, el comentario de línea es `//`, `--` no es un
+  comentario, las comillas invertidas no delimitan identificadores y `$` ya no
+  abre un cuerpo dollar-quoted de Postgres — antes un par `$gt` … `$lt` parecía
+  exactamente eso y se tragaba todos los `;` intermedios, y el propio `;` del
+  comentario sembrado partía mal el buffer, con lo que el lens «▶ Run» se
+  anclaba en la línea del comentario. Y la pestaña de query calienta ahora el
+  esquema por su cuenta (`useEnsureSchemaLoaded`) en vez de depender de que el
+  usuario haya expandido antes la conexión en el explorador, así que una
+  pestaña recién abierta tiene sus tablas — o sus colecciones — desde el
+  principio. Los campos siguen siendo perezosos y se muestrean como mucho una
+  vez por colección y sesión.
+
+  El catálogo del que salen las sugerencias es un espejo mantenido a mano de
+  `src-tauri/src/db/mongo/shell.rs`, recogido en un solo archivo
+  (`lib/mongo/shellCatalog.ts`) y compartido con la lista de constructores del
+  editor de agregación, para que los dos no puedan divergir. Nada del frontend
+  parsea la sentencia: un escáner de posición de cursor dice dónde está el
+  caret, y el único parser sigue estando en Rust.
+
 - **La animación de apertura/cierre de los diálogos, rota en silencio desde que
   se adoptó el `Dialog` por defecto de shadcn.** Cada diálogo se centraba con
   un `transform`, y la animación de fundido/zoom también escribe en

@@ -1,5 +1,5 @@
 /**
- * Tab body for ad-hoc SQL queries. Hosts a Monaco editor on top and a
+ * Tab body for ad-hoc queries. Hosts a Monaco editor on top and a
  * `DataGrid` of results below, separated by a vertical resize handle
  * (defaults to a 75/25 split, remembered via `autoSaveId` once dragged).
  *
@@ -14,6 +14,15 @@
  *    driver-aware: `RETURNING` on Postgres, `ON DUPLICATE KEY` on
  *    MySQL, etc.). Suggestions are ranked tables → columns → keywords
  *    via `sortText` prefixes; see `lib/sqlCompletions.ts`.
+ *
+ * **MongoDB is not SQL here.** The tab used to hand a Mongo connection the
+ * `"sql"` language literally — SQL grammar, `--` comments, a flat word list
+ * with no trigger characters — so `db.` offered nothing. A Mongo connection
+ * now gets its own language (`lib/monaco/monacoMongoQuery.ts`), its own
+ * structural completion (collections → methods → cursor modifiers → fields
+ * and operators) and its own splitter dialect (`//` comments, no `$`
+ * dollar-quoting). Everything else on this screen — the run paths, the
+ * history, the results panel — is shared, because none of it is dialectal.
  *
  * An info bar at the bottom of the editor panel mirrors VS Code's status
  * bar style, showing the keyboard shortcut hint, connected database name,
@@ -47,7 +56,11 @@ import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/tauri";
 import { useConnections } from "@/stores/session/connections";
-import { useSchema } from "@/stores/session/schema";
+import {
+  tableKey,
+  useEnsureSchemaLoaded,
+  useSchema,
+} from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import {
   usePreferences,
@@ -60,7 +73,7 @@ import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { runAiTask } from "@/lib/ai/runTask";
-import { statementAt } from "@/lib/sql/sqlSplit";
+import { statementAt, type SqlDialect } from "@/lib/sql/sqlSplit";
 import i18n from "@/lib/i18n";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
 import { DataGrid } from "@/components/grid/DataGrid";
@@ -91,6 +104,12 @@ import {
   registerSqlEditor,
   fireSqlLensChange,
 } from "@/lib/monaco/monacoSql";
+import {
+  MONGO_QUERY_LANGUAGE,
+  ensureMongoQueryProviders,
+  registerMongoQueryEditor,
+  type MongoQueryEntry,
+} from "@/lib/monaco/monacoMongoQuery";
 
 interface Props {
   tabId: string;
@@ -133,7 +152,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     [effectiveId],
   );
 
+  // The tab's own autocomplete needs the catalogue, and this is the one
+  // surface that never asked for it: suggestions used to appear only once the
+  // user had expanded the connection in the explorer. It matters most on
+  // MongoDB, where a freshly opened tab would otherwise know neither the
+  // collections nor their fields, but SQL tabs get the same warm start.
+  useEnsureSchemaLoaded(effectiveId);
   const schemaState = useSchema((s) => s.byConnection[effectiveId]);
+  const loadColumns = useSchema((s) => s.loadColumns);
 
   const history = useMemo(
     () => allHistory.filter((e) => e.connectionId === parentId),
@@ -213,6 +239,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   /** Disposer returned by `registerSqlEditor`; removes this editor's entry
    *  from the shared provider registry on unmount. */
   const sqlEditorDisposeRef = useRef<(() => void) | null>(null);
+  /** Same, for the MongoDB shell provider's own registry. Two registries
+   *  rather than one because they answer different questions about the same
+   *  model: `monacoSql`'s holds the lenses and the run handler (shared by
+   *  every language that gets a "▶ Run"), this one the structural
+   *  collection/field data only the Mongo provider reads. */
+  const mongoEditorDisposeRef = useRef<(() => void) | null>(null);
   /** Disposer for the customizable-shortcuts redispatch registered in
    *  `handleMount` (see `registerEditorActionRedispatch`). */
   const editorShortcutsDisposeRef = useRef<(() => void) | null>(null);
@@ -220,6 +252,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     return () => {
       sqlEditorDisposeRef.current?.();
       sqlEditorDisposeRef.current = null;
+      mongoEditorDisposeRef.current?.();
+      mongoEditorDisposeRef.current = null;
       editorShortcutsDisposeRef.current?.();
       editorShortcutsDisposeRef.current = null;
     };
@@ -234,9 +268,22 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     (s) => s.profiles.find((p) => p.id === parentId)?.driver,
   );
 
+  /** MongoDB gets its own editor language, its own completion provider and
+   *  its own splitter dialect — the tab used to hand it `"sql"` literally,
+   *  with no driver branch anywhere but the status-bar label. */
+  const isMongo = driver === "mongodb";
+  const dialect: SqlDialect = isMongo ? "mongo" : "sql";
+  /** `handleMount` registers its editor actions once, in a closure that
+   *  outlives every re-render — same long-lived-closure reason as
+   *  `runQueryRef` below. */
+  const dialectRef = useRef(dialect);
+  useEffect(() => {
+    dialectRef.current = dialect;
+  }, [dialect]);
+
   /** Parsed statements of the current buffer. Drives both the per-statement
    *  CodeLens count and the "Run all" affordance. */
-  const statements = useMemo(() => splitSql(sql), [sql]);
+  const statements = useMemo(() => splitSql(sql, dialect), [sql, dialect]);
   const multiStatement = statements.length > 1;
 
   /** Databases available on the parent connection. Fetched once per parent
@@ -294,6 +341,60 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       keywords: keywordsFor(driver),
     });
   }, [schemaState, driver]);
+
+  // ---------------------------------------------------------------------
+  // Live completion data for the MongoDB shell provider
+  //
+  // Nothing here is a new fetch path, and it is the same trio the aggregation
+  // editor already uses: `tables` (collections) comes from the eager
+  // `useEnsureSchemaLoaded` above, and `columns` (first-level field names,
+  // `infer_columns`'s 100-document sample) is the same lazy, session-cached
+  // slice the explorer populates on expand. A collection is sampled at most
+  // once per session (gotcha #57) — `useSchema` tracks no in-flight state of
+  // its own, so `pendingFieldsRef` is what stops one `loadColumns` per
+  // keystroke while the first is still in the air.
+  // ---------------------------------------------------------------------
+
+  const collections = useMemo(
+    () => schemaState?.tables.map((tbl) => tbl.name) ?? [],
+    [schemaState],
+  );
+
+  const pendingFieldsRef = useRef<Set<string>>(new Set());
+
+  const requestFields = useCallback(
+    (name: string) => {
+      const key = tableKey(undefined, name);
+      if (schemaState?.columns[key] || schemaState?.columnErrors[key]) return;
+      if (pendingFieldsRef.current.has(name)) return;
+      pendingFieldsRef.current.add(name);
+      void loadColumns(effectiveId, undefined, name).finally(() => {
+        pendingFieldsRef.current.delete(name);
+      });
+    },
+    [effectiveId, loadColumns, schemaState],
+  );
+
+  const getFields = useCallback(
+    (name: string): string[] | undefined =>
+      schemaState?.columns[tableKey(undefined, name)]?.map((c) => c.name),
+    [schemaState],
+  );
+
+  /** Live handle the (global, per-language) Mongo provider reads through —
+   *  refs for the same reason `completionsRef` exists below. */
+  const mongoCompletionRef = useRef<MongoQueryEntry>({
+    getCollections: () => [],
+    getFields: () => undefined,
+    requestFields: () => {},
+  });
+  useEffect(() => {
+    mongoCompletionRef.current = {
+      getCollections: () => collections,
+      getFields,
+      requestFields,
+    };
+  }, [collections, getFields, requestFields]);
 
   /**
    * Run a fragment of SQL. Defaults to the entire editor buffer when no
@@ -515,8 +616,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               : null;
           const statement =
             selected ??
-            statementAt(current.getValue(), ed.getPosition()?.lineNumber ?? 1)
-              ?.text;
+            statementAt(
+              current.getValue(),
+              ed.getPosition()?.lineNumber ?? 1,
+              dialectRef.current,
+            )?.text;
           if (!statement?.trim()) return;
           void runAiTask({
             task: entry.task,
@@ -527,7 +631,15 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       });
     }
 
+    // Both language families are installed unconditionally. They are global
+    // per Monaco instance and idempotent, so the cost is one registration
+    // apiece for the whole app — and doing it here rather than behind a
+    // `driver === "mongodb"` branch sidesteps the ordering problem that
+    // branch would create: `driver` is read from the profile list, which can
+    // still be empty on the render that mounts the editor, and `onMount`
+    // never runs a second time.
     ensureSqlProviders(monaco);
+    ensureMongoQueryProviders(monaco);
     const uri = model?.uri.toString();
     if (uri) {
       sqlEditorDisposeRef.current?.();
@@ -535,6 +647,15 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         getCompletions: () => completionsRef.current,
         getLenses: () => lensesRef.current,
         runStatement: (text) => void runQueryRef.current(text),
+      });
+      // The Mongo provider only ever sees models whose language is
+      // `mongodb-query`, so registering this for a SQL tab costs a map entry
+      // and is never read.
+      mongoEditorDisposeRef.current?.();
+      mongoEditorDisposeRef.current = registerMongoQueryEditor(uri, {
+        getCollections: () => mongoCompletionRef.current.getCollections(),
+        getFields: (name) => mongoCompletionRef.current.getFields(name),
+        requestFields: (name) => mongoCompletionRef.current.requestFields(name),
       });
     }
   }
@@ -658,7 +779,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             <div className="flex-1" data-kb-scope="editor">
               <Editor
                 height="100%"
-                language="sql"
+                // `@monaco-editor/react` resolves a changed `language` with
+                // `setModelLanguage` on the *same* model, so the URI — and
+                // with it both registry entries above — survives the switch.
+                language={isMongo ? MONGO_QUERY_LANGUAGE : "sql"}
                 // `theme.mode` (app theme) used to be the only signal;
                 // now Editor prefs own the Monaco theme so users can
                 // pick One Dark Pro / GitHub / Monokai / Solarized
