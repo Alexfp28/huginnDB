@@ -72,6 +72,15 @@ input[type="password"]::-ms-clear {
     --border: light-dark(hsl(214 60% 90%), hsl(217 33% 17%));
     --input: light-dark(hsl(214 60% 90%), hsl(217 33% 17%));
     --ring: light-dark(hsl(217 91% 53%), hsl(217 91% 53%));
+    /* The modal scrim. Was `bg-black/60` hard-coded in `ui/dialog.tsx` and
+       `shell/OverlayPalette.tsx` — the one place the dialog stack escaped the
+       theme system, so a light theme got a blackout and a warm theme a cold
+       one. Per-theme via the theme store (themes.ts); this default only
+       applies to custom themes persisted before the token existed. The alpha
+       is NOT here: it lives in the utility and differs by mode
+       (`bg-scrim/35 dark:bg-scrim/70`), because one alpha cannot both dim a
+       white page and darken an already-dark one. */
+    --scrim: light-dark(hsl(222 47% 11%), hsl(229 84% 5%));
     /* 10px. The brand language is built on rounded corners, but this is a
        dense desktop tool: `lg` (10px) covers panels/dialogs/buttons-at-rest,
        `md` (8px) inputs and chips, `sm` (6px) micro-tags. Controls that the

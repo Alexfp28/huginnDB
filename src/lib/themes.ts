@@ -77,6 +77,24 @@ export interface ThemeColors {
   border: string;
   input: string;
   ring: string;
+  /**
+   * The modal scrim — the wash painted between the app and an open dialog.
+   *
+   * It is a token because it was `bg-black/60`, a *literal* black, in the two
+   * places the dialog stack is built (`ui/dialog.tsx`, `shell/OverlayPalette`)
+   * — the one point where that stack escaped the theme system, which is why a
+   * light theme got a blackout instead of a dim and why a warm theme got a
+   * cold one. Each theme states the darkest neutral it already owns: its own
+   * `background` on a dark surface, its own `foreground` on a light one.
+   *
+   * Stated as an opaque hex like every other token (`applyTheme` runs them all
+   * through `hexToHslColor`, so an `rgba()` here would not survive); the alpha
+   * lives in the utility, and differs by mode because one value cannot serve
+   * both — see `bg-scrim/35 dark:bg-scrim/70` in `ui/dialog.tsx`. Deliberately
+   * kept out of `COLOR_KEYS`, like `pk`/`fk`/`numeric`: it is a system surface,
+   * not a colour anyone should be editing in Appearance.
+   */
+  scrim: string;
 }
 
 /**
@@ -218,6 +236,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#1e293b",
       input: "#1e293b",
       ring: "#2563eb",
+      scrim: "#020617",
     },
     light: {
       background: "#ffffff",
@@ -249,6 +268,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#d6e4f5",
       input: "#d6e4f5",
       ring: "#2563eb",
+      scrim: "#0f172a",
     },
   },
   {
@@ -288,6 +308,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#d9d5c1",
       input: "#d9d5c1",
       ring: "#c96442",
+      scrim: "#3d3929",
     },
     dark: {
       background: "#1f1e1b",
@@ -319,6 +340,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#3a3730",
       input: "#3a3730",
       ring: "#d97757",
+      scrim: "#1f1e1b",
     },
   },
   {
@@ -366,6 +388,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#1b2a20",
       input: "#1b2a20",
       ring: "#39ff14",
+      scrim: "#05080a",
     },
     light: {
       background: "#f3fff8",
@@ -397,6 +420,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#cdeedb",
       input: "#cdeedb",
       ring: "#12a150",
+      scrim: "#04170d",
     },
   },
   {
@@ -440,6 +464,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#f0e2c0",
       input: "#f0e2c0",
       ring: "#00b8a9",
+      scrim: "#22333b",
     },
     dark: {
       background: "#0b2027",
@@ -471,6 +496,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#1d4a50",
       input: "#1d4a50",
       ring: "#1fd8c4",
+      scrim: "#0b2027",
     },
   },
   {
@@ -512,6 +538,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#ffffff",
       input: "#ffffff",
       ring: "#ffeb3b",
+      scrim: "#000000",
     },
     light: {
       background: "#ffffff",
@@ -543,6 +570,7 @@ export const BUILT_IN_THEMES: ThemeFamily[] = [
       border: "#000000",
       input: "#000000",
       ring: "#7a5d00",
+      scrim: "#000000",
     },
   },
 ];
@@ -617,6 +645,7 @@ const VAR_NAMES: Record<keyof ThemeColors, string> = {
   border: "--border",
   input: "--input",
   ring: "--ring",
+  scrim: "--scrim",
 };
 
 /**

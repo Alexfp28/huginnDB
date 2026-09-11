@@ -8,6 +8,36 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Dos tokens de tema que el rediseño de los diálogos necesita, adelantados.**
+  `--scrim` es el velo que se pinta entre la app y un diálogo abierto. Era
+  `bg-black/60` — un negro *literal*, escrito a mano en los dos únicos sitios
+  donde se construye la pila modal (`ui/dialog.tsx`,
+  `shell/OverlayPalette.tsx`) — y por tanto el único punto donde esa pila se
+  escapaba por completo del sistema de temas: un tema claro recibía un apagón en
+  vez de una atenuación, y los presets cálidos uno frío. Cada uno de los diez
+  bloques de color integrados declara ahora el neutro más oscuro que ya tiene
+  (su propio `background` si la superficie es oscura, su `foreground` si es
+  clara). Se deja fuera de `COLOR_KEYS` a propósito, como `pk`/`fk`/`numeric`:
+  es una superficie del sistema, no un color que nadie deba editar en
+  Apariencia. El alfa **no** está en el token — `applyTheme` pasa todos los
+  valores por `hexToHslColor`, así que un `rgba()` no sobreviviría —, vive en la
+  utilidad y cambia según el modo, porque un solo alfa no puede a la vez atenuar
+  una página blanca y oscurecer una ya oscura.
+
+  `shadow-island` es la elevación de la isla del workspace, promovida desde la
+  cadena escrita a mano que vivía dentro de `IslandShell.tsx` (que pasa a ser su
+  primer consumidor en lugar de su dueño). Es deliberadamente más plana que
+  `elevation-3` y mucho más ligera que `elevation-4`, porque una isla se apoya
+  *sobre* la trinchera en vez de flotar sobre ella — que es justo lo que un
+  diálogo a pantalla completa tendrá que tomar prestado para leerse como esa
+  isla levantada, y no como una tarjeta ajena puesta encima.
+
+  Todavía no cambia nada visualmente: esta es la capa de tokens del rediseño de
+  diálogos y chips de pestaña, separada para que el cambio que los gasta se
+  pueda revisar por su cuenta.
+
 ## [1.22.0] — 2026-09-10
 
 ### Añadido

@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Two theme tokens the dialog work needs, landing ahead of it.** `--scrim` is
+  the wash painted between the app and an open dialog. It was `bg-black/60` — a
+  *literal* black, hard-coded in the only two places the modal stack is built
+  (`ui/dialog.tsx`, `shell/OverlayPalette.tsx`) — and so the one point where
+  that stack escaped the theme system entirely: a light theme got a blackout
+  rather than a dim, and the warm presets got a cold one. Each of the ten
+  built-in colour blocks now states the darkest neutral it already owns (its own
+  `background` on a dark surface, its own `foreground` on a light one). It is
+  deliberately kept out of `COLOR_KEYS`, like `pk`/`fk`/`numeric`: a system
+  surface, not a colour to edit in Appearance. The alpha is **not** in the token
+  — `applyTheme` runs every value through `hexToHslColor`, so an `rgba()` would
+  not survive — it lives in the utility and differs by mode, because one alpha
+  cannot both dim a white page and darken an already-dark one.
+
+  `shadow-island` is the workspace island's lift, promoted from the
+  hand-written string that lived inline in `IslandShell.tsx` (now its first
+  consumer rather than its owner). It is deliberately flatter than
+  `elevation-3` and far lighter than `elevation-4`, because an island sits *on*
+  the trench rather than floating over it — which is exactly what a full-screen
+  dialog will need to borrow to read as that island lifted out, instead of as a
+  foreign card dropped on top.
+
+  Nothing renders differently yet: this is the token layer for the dialog and
+  tab-chip redesign, split out so the change that spends it is reviewable on its
+  own.
+
 ## [1.22.0] — 2026-09-10
 
 ### Added

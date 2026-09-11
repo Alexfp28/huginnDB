@@ -62,6 +62,9 @@ export default {
         border: colorToken("--border"),
         input: colorToken("--input"),
         ring: colorToken("--ring"),
+        // The modal scrim. Opaque token, alpha from the utility
+        // (`bg-scrim/35 dark:bg-scrim/70`) — see themes.ts.
+        scrim: colorToken("--scrim"),
         background: colorToken("--background"),
         foreground: colorToken("--foreground"),
         primary: {
@@ -161,6 +164,14 @@ export default {
         // spends the accent blue (primary buttons, the active connection card).
         // Deliberately short-range: the brief rules out neon halos.
         brand: "0 2px 12px color-mix(in srgb, var(--brand) 35%, transparent)",
+        // The workspace island's lift, promoted from the hand-written
+        // string that used to live inline in `shell/IslandShell.tsx`.
+        // Deliberately flatter than `elevation-3` and far lighter than
+        // `elevation-4`: an island sits ON the trench, it does not float
+        // over it. `workbench`-tier dialogs borrow it so a full-screen
+        // dialog reads as the island lifted out, not as a foreign card.
+        island:
+          "0 1px 2px color-mix(in srgb, var(--foreground) 4%, transparent), 0 6px 20px color-mix(in srgb, var(--foreground) 5%, transparent)",
         "brand-ring": "0 0 0 1px color-mix(in srgb, var(--brand) 35%, transparent), 0 2px 12px color-mix(in srgb, var(--brand) 28%, transparent)",
       },
       transitionDuration: {

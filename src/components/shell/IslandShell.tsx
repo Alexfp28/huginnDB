@@ -36,8 +36,10 @@ export function IslandShell({ connectionId }: IslandShellProps) {
   return (
     <div
       className={cn(
-        "flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[var(--radius)] border border-border bg-background",
-        "shadow-[0_1px_2px_color-mix(in_srgb,var(--foreground)_4%,transparent),0_6px_20px_color-mix(in_srgb,var(--foreground)_5%,transparent)]",
+        // `shadow-island` is this exact recipe, now a token: the dialog's
+        // `workbench` tier borrows it so a full-screen dialog reads as this
+        // island lifted out of the trench rather than a foreign card.
+        "flex min-h-0 min-w-0 flex-1 overflow-hidden rounded-[var(--radius)] border border-border bg-background shadow-island",
       )}
     >
       <div className="min-w-0 flex-1">
