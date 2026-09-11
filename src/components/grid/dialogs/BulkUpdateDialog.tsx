@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { Plus, X } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -233,7 +234,7 @@ export function BulkUpdateDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       {/* `3xl`, like the advanced filter: the match rows are the same three
           controls, and a MongoDB field there is now a dotted path. */}
-      <DialogContent className="max-w-3xl">
+      <DialogContent tier="panel" className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {isMongo
@@ -245,7 +246,7 @@ export function BulkUpdateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <DialogBody className="space-y-3">
           <div>
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               {t("tableData.bulkUpdate.matchLabel")}
@@ -390,7 +391,7 @@ export function BulkUpdateDialog({
           {applyError && (
             <p className="text-xs text-destructive">{applyError}</p>
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>

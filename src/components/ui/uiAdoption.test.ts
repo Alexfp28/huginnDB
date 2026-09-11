@@ -402,9 +402,6 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/connection/dialogs/ExportProfilesDialog.tsx": 1,
     "src/components/connection/dialogs/ImportEnvironmentDialog.tsx": 1,
     "src/components/connection/dialogs/ImportProfilesDialog.tsx": 1,
-    "src/components/grid/dialogs/AdvancedFilterDialog.tsx": 1,
-    "src/components/grid/dialogs/BulkUpdateDialog.tsx": 1,
-    "src/components/grid/dialogs/InsertDocumentDialog.tsx": 1,
     "src/components/grid/SideEditorPanel.tsx": 1,
     "src/components/grid/TableDataTab.tsx": 1,
     "src/components/indexes/dialogs/IndexEditorDialog.tsx": 1,
@@ -421,12 +418,12 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${28} in ${28} files`, () => {
+  it(`is down to ${25} in ${25} files`, () => {
     const measured = census(count);
     expect(delta(measured, BUDGET)).toEqual({});
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(28);
+    expect(total(BUDGET)).toBeLessThanOrEqual(25);
   });
 });

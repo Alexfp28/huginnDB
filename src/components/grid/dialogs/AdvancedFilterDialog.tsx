@@ -38,6 +38,7 @@ import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -150,7 +151,7 @@ export function AdvancedFilterDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       {/* `3xl`, not `2xl`: three controls and a remove button share the row,
           and a MongoDB field is now a dotted path rather than a column name. */}
-      <DialogContent className="max-w-3xl">
+      <DialogContent tier="panel" className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{t("tableData.filter.title")}</DialogTitle>
           <DialogDescription>
@@ -158,7 +159,12 @@ export function AdvancedFilterDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-80 space-y-2 overflow-y-auto">
+        {/* The scroll boundary used to sit on the condition list alone
+            (`max-h-80`), independent of the dialog's own height. It now sits
+            on `DialogBody` instead — the `panel` tier's own scroller — so a
+            long list and the "add condition" button scroll together instead
+            of the button living outside the frame the list scrolls in. */}
+        <DialogBody className="space-y-2">
           {rows.length === 0 ? (
             <p className="py-4 text-center text-xs text-muted-foreground">
               {t("tableData.filter.empty")}
@@ -177,22 +183,22 @@ export function AdvancedFilterDialog({
               />
             ))
           )}
-        </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1 self-start px-2 text-xs"
-          // A field list that came back empty (a collection whose sample held
-          // nothing) still leaves a condition writable when the path can be
-          // typed, which is exactly the MongoDB case.
-          disabled={fields.length === 0 && !customFields}
-          onClick={addRow}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t("tableData.filter.addRow")}
-        </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 px-2 text-xs"
+            // A field list that came back empty (a collection whose sample held
+            // nothing) still leaves a condition writable when the path can be
+            // typed, which is exactly the MongoDB case.
+            disabled={fields.length === 0 && !customFields}
+            onClick={addRow}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("tableData.filter.addRow")}
+          </Button>
+        </DialogBody>
 
         <DialogFooter className="items-center">
           <Button

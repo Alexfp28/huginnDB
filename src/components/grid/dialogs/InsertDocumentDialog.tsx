@@ -39,6 +39,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -100,7 +101,7 @@ export function InsertDocumentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent tier="panel" className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {t("dataGrid.insertDocument.title", { collection })}
@@ -110,27 +111,33 @@ export function InsertDocumentDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="overflow-hidden rounded-md border border-border">
-          <PipelineEditor
-            value={source}
-            onChange={setSource}
-            // Ctrl+Enter commits, matching every other editor in the app.
-            onRun={submit}
-            height={280}
-            lineNumbers
-            completion={completion}
-          />
-        </div>
-
-        {/* Above the footer, not in a toast: a rejected document is almost
-            always a parse error naming a position, and it has to be readable
-            next to the text it is about. The dialog stays open with the source
-            intact so it can be fixed in place. */}
-        {error && (
-          <div className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs text-destructive">
-            {t("dataGrid.insertDocument.failed", { message: error })}
+        <DialogBody>
+          {/* `height={280}` is explicit, not `flex-1`: Monaco sizes itself in
+              pixels, and a flex-stretched box inside the `panel` tier's
+              scrolling body would hand it a height that isn't settled until
+              layout, which Monaco does not react to on its own. */}
+          <div className="overflow-hidden rounded-md border border-border">
+            <PipelineEditor
+              value={source}
+              onChange={setSource}
+              // Ctrl+Enter commits, matching every other editor in the app.
+              onRun={submit}
+              height={280}
+              lineNumbers
+              completion={completion}
+            />
           </div>
-        )}
+
+          {/* Above the footer, not in a toast: a rejected document is almost
+              always a parse error naming a position, and it has to be readable
+              next to the text it is about. The dialog stays open with the source
+              intact so it can be fixed in place. */}
+          {error && (
+            <div className="mt-3 max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-xs text-destructive">
+              {t("dataGrid.insertDocument.failed", { message: error })}
+            </div>
+          )}
+        </DialogBody>
         <DialogActions
           onCancel={() => onOpenChange(false)}
           cancelLabel={t("common.cancel")}
