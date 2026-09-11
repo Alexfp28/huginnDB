@@ -324,6 +324,54 @@ describe("G — the patterns that now have a primitive", () => {
   });
 });
 
+describe("K — a DataGrid is given a box with a definite height", () => {
+  /**
+   * `DataGrid`'s own root is `relative flex h-full flex-col`, so its height is
+   * `100%` of whatever it is dropped into. Dropped straight onto a flex line
+   * that already holds something else — a header, a batch summary, a
+   * result-tab strip — that `100%` resolves against the *whole* column and the
+   * grid hangs below its container by exactly the height of its siblings. The
+   * ancestor clips the overhang, so the grid's own `overflow-auto` scrolls to
+   * an end the user cannot see: the last rows are unreachable, with no
+   * scrollbar left to say so.
+   *
+   * Invisible in a screenshot of the top of a table, and it has already
+   * shipped twice — the query tab's results (reported as "the last records get
+   * cut off") and the view editor's data preview, whose header made it true
+   * from the day it was written. Nothing type-checks it and no jsdom test can
+   * see it, because it is pure layout. So it is a source contract: every call
+   * site hands the grid a box that is `flex-1` (a definite share of the line)
+   * and `overflow-hidden` (which also zeroes the flex item's automatic
+   * minimum, so it may actually shrink to that share).
+   *
+   * The check walks back to the nearest still-open `<div className="…">`
+   * rather than demanding the grid be its immediate child: `TableDataTab`
+   * puts a `{result ? (` between the two, which is fine — what matters is
+   * that the box enclosing the grid is the one with the definite height.
+   * Files are reported without a line number because the source has had its
+   * comments stripped, so the numbers would not be the ones in the editor.
+   */
+  it("every <DataGrid> sits in a flex-1 overflow-hidden box", () => {
+    const offenders: string[] = [];
+    for (const file of ALL) {
+      const src = code(file);
+      for (const match of src.matchAll(/<DataGrid[\s/>]/g)) {
+        const before = src.slice(0, match.index);
+        const opened = before.lastIndexOf('<div className="');
+        const enclosing = opened < 0 ? "" : before.slice(opened);
+        const cls = /^<div className="([^"]*)"/.exec(enclosing)?.[1] ?? "";
+        const stillOpen = opened >= 0 && !enclosing.includes("</div>");
+        const ok =
+          stillOpen &&
+          /(?:^| )flex-1(?: |$)/.test(cls) &&
+          cls.includes("overflow-hidden");
+        if (!ok) offenders.push(file);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
 /**
  * Rules considered and rejected, so the next session does not re-litigate them:
  *

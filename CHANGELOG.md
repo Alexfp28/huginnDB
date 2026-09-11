@@ -108,6 +108,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The results grid cut off its last rows, with no way to scroll to them.**
+  `DataGrid`'s root is `h-full`, so its height is `100%` of whatever it is
+  dropped into. The query tab's results area and the view editor's data preview
+  dropped it straight onto a flex line that already held a header — the batch
+  summary and the result-tab strip in one case, the preview title in the other —
+  so that `100%` resolved against the *whole* panel and the grid hung below its
+  container by exactly the height of its siblings. The panel clipped the
+  overhang, so the grid's own scroller reached an end the user could not see:
+  the final rows were unreachable and no scrollbar said so. Both now hand the
+  grid the same `flex-1 overflow-hidden` box `TableDataTab` always did.
+  Measured on the reported case, the last row sat 48px past the visible edge.
+
+  A source contract (`uiContracts.test.ts`, rule K) now requires every
+  `<DataGrid>` call site to sit in such a box. This is pure layout — nothing
+  type-checks it and jsdom cannot see it — and it had already shipped twice,
+  including in the view preview, where the header made it true from the day it
+  was written.
+
 - **A leading comment made a MongoDB statement unrunnable — and, worse, invisible
   to the write guard.** `shell::parse` trimmed whitespace and a trailing `;` and
   then required the text to start with `db.`; it never skipped comments. So

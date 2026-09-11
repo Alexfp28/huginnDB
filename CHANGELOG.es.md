@@ -118,6 +118,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El grid de resultados recortaba sus últimas filas, sin forma de llegar a
+  ellas.** La raíz de `DataGrid` es `h-full`, así que su altura es el `100%` de
+  aquello donde se le meta. El área de resultados de la pestaña de query y la
+  vista previa del editor de vistas lo colocaban directamente en una línea flex
+  que ya tenía cabecera — el resumen del lote y la tira de pestañas de resultado
+  en un caso, el título de la previsualización en el otro —, así que ese `100%`
+  se resolvía contra el panel *entero* y el grid colgaba por debajo de su
+  contenedor exactamente la altura de sus hermanos. El panel recortaba lo que
+  sobresalía, de modo que el scroll del propio grid llegaba a un final que el
+  usuario no podía ver: las últimas filas eran inalcanzables y ninguna barra de
+  scroll lo decía. Ambos le dan ahora al grid la misma caja
+  `flex-1 overflow-hidden` que `TableDataTab` le ha dado siempre. Medido sobre
+  el caso reportado, la última fila quedaba 48 px por debajo del borde visible.
+
+  Un contrato de código (`uiContracts.test.ts`, regla K) exige ahora que todo
+  punto de uso de `<DataGrid>` viva dentro de una caja así. Esto es puro layout
+  — no lo comprueba el compilador y jsdom no puede verlo — y ya se había
+  publicado dos veces, incluida la vista previa de vistas, donde era cierto
+  desde el día en que se escribió.
+
 - **Un comentario al principio dejaba una sentencia MongoDB inejecutable — y, peor,
   invisible para la protección de escrituras.** `shell::parse` recortaba espacios
   y un `;` final y después exigía que el texto empezara por `db.`; nunca se

@@ -969,22 +969,32 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             />
           )}
           {error ? (
-            <div className="overflow-auto bg-destructive/10 p-3 font-mono text-xs text-destructive">
+            <div className="min-h-0 flex-1 overflow-auto bg-destructive/10 p-3 font-mono text-xs text-destructive">
               {error}
             </div>
           ) : active && active.result.columns.length === 0 ? (
             <DmlResult result={active.result} />
           ) : active ? (
-            // Keyed, so switching panels remounts the grid rather than feeding
-            // a new result into one holding the previous one's sort, selection
-            // and column widths.
-            <DataGrid
-              key={active.key}
-              result={active.result}
-              tabId={tabId}
-              globalFilter={filter}
-              onGlobalFilterChange={setFilter}
-            />
+            // `DataGrid` sizes itself with `h-full`, so it needs a box with a
+            // definite height — given one, its own inner `overflow-auto`
+            // scrolls; given the raw flex line, `height: 100%` resolves
+            // against the *whole* panel and the grid hangs below it by
+            // however tall the summary and the tab strip are, clipping the
+            // last rows with no way to scroll to them. `TableDataTab` already
+            // wraps it exactly like this; this one did not, which only showed
+            // once there was anything above the grid.
+            <div className="min-h-0 flex-1 overflow-hidden">
+              {/* Keyed, so switching panels remounts the grid rather than
+                  feeding a new result into one holding the previous one's
+                  sort, selection and column widths. */}
+              <DataGrid
+                key={active.key}
+                result={active.result}
+                tabId={tabId}
+                globalFilter={filter}
+                onGlobalFilterChange={setFilter}
+              />
+            </div>
           ) : (
             <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
               {batchSummary ? null : t("query.noResults")}

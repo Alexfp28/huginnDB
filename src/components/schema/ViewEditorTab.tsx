@@ -383,16 +383,22 @@ export function ViewEditorTab({
                 {t("view.previewTitle")}
               </div>
               {dataPreviewError ? (
-                <div className="overflow-auto bg-destructive/10 p-3 font-mono text-xs text-destructive">
+                <div className="min-h-0 flex-1 overflow-auto bg-destructive/10 p-3 font-mono text-xs text-destructive">
                   {dataPreviewError}
                 </div>
               ) : dataPreview ? (
-                <DataGrid
-                  result={dataPreview}
-                  tabId={`${tabId}-preview`}
-                  globalFilter={dataFilter}
-                  onGlobalFilterChange={setDataFilter}
-                />
+                // Same definite-height box the query tab and `TableDataTab`
+                // give it: `DataGrid` is `h-full`, and the preview header
+                // above is exactly the offset by which it would otherwise
+                // overhang the panel and clip its own last rows.
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <DataGrid
+                    result={dataPreview}
+                    tabId={`${tabId}-preview`}
+                    globalFilter={dataFilter}
+                    onGlobalFilterChange={setDataFilter}
+                  />
+                </div>
               ) : (
                 <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
                   {t("view.previewEmptyQuery")}
