@@ -390,6 +390,12 @@ pub struct CountResult {
 /// failing statement `error` carries the driver message and the batch stops
 /// there — later statements never run, mirroring how a paste of `;`-delimited
 /// queries would abort at the first failure in a `psql`/`mysql` session.
+///
+/// `results` carries whatever the statement *returned*. It is a `Vec` rather
+/// than an `Option` because one T-SQL statement can legitimately produce
+/// several result sets, and the batch runner used to keep the first non-empty
+/// one and discard the rest — "a panel per thing that returns rows" has to
+/// mean all of them to be true. The SQL and MongoDB drivers push zero or one.
 #[derive(Debug, Serialize)]
 pub struct StmtOutcome {
     pub index: usize,
@@ -397,17 +403,24 @@ pub struct StmtOutcome {
     pub rows_affected: u64,
     pub is_select: bool,
     pub error: Option<String>,
+    /// Result sets this statement produced, in the order the driver returned
+    /// them. Empty for a write, for a failure, and for a read whose rows were
+    /// all shed by [`MAX_BATCH_RESULT_ROWS`].
+    pub results: Vec<QueryResult>,
 }
 
 /// Result of running a batch of statements via [`execute_batch`].
 ///
-/// `last_result` holds the full result set of the *last* SELECT in the batch
-/// (the grid shows it); write statements only contribute their affected-row
-/// count to `total_affected` and an entry in `statements`.
+/// Every statement's own result sets travel in its [`StmtOutcome`]. There is
+/// deliberately no `last_result` alongside them any more: it used to be how
+/// the single grid got its rows, and once each statement carries its own it
+/// would be a second, full copy of the largest payload in the batch crossing
+/// the IPC boundary for nothing. The one consumer that read it is the query
+/// tab, rewritten in the same change; `ImportSqlDialog` and the MCP write path
+/// only ever read `statements`/`total_affected`.
 #[derive(Debug, Serialize)]
 pub struct BatchResult {
     pub statements: Vec<StmtOutcome>,
-    pub last_result: Option<QueryResult>,
     pub total_affected: u64,
 }
 
@@ -697,7 +710,8 @@ pub(crate) async fn execute_with_state(
 /// connection). Execution stops at the first failing statement — its error is
 /// recorded in the corresponding [`StmtOutcome`] and later statements are
 /// skipped, matching how a `;`-delimited paste aborts in a CLI client. The
-/// last SELECT's full result set is returned in `last_result` for the grid.
+/// Every statement that returns rows carries its own result sets, so a script
+/// of several SELECTs produces a panel each instead of only the last one.
 ///
 /// This is also the path that fixes multi-statement Ctrl+Enter: a single
 /// `sqlx::query` over a `;`-joined buffer goes through the *prepared* protocol,
@@ -732,8 +746,11 @@ pub(crate) async fn execute_batch_inner(
     }
 
     let mut outcomes: Vec<StmtOutcome> = Vec::with_capacity(statements.len());
-    let mut last_result: Option<QueryResult> = None;
     let mut total_affected: u64 = 0;
+    // Rows already retained across the whole batch — see
+    // `MAX_BATCH_RESULT_ROWS` for why the budget is shared rather than
+    // per statement.
+    let mut rows_kept: usize = 0;
 
     // Drive every statement over a single borrowed connection `$conn`,
     // decoding SELECT result sets with the driver-specific `$decode`. Pushes
@@ -750,24 +767,27 @@ pub(crate) async fn execute_batch_inner(
                 if is_select {
                     match fetch_capped(&mut *$conn, sql, MAX_ADHOC_QUERY_ROWS).await {
                         Ok((rows, truncated)) => {
-                            let (columns, data) = $decode(&rows);
+                            let (columns, mut data) = $decode(&rows);
+                            // `rows_affected` counts what the statement
+                            // produced, before the batch budget sheds any of
+                            // it — the summary would otherwise report a
+                            // SELECT that returned nothing.
                             let ra = data.len() as u64;
                             total_affected += ra;
                             log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
-                            last_result = Some(
-                                QueryResult::rows(
-                                    columns,
-                                    data,
-                                    start.elapsed().as_millis() as u64,
-                                )
-                                .with_truncated(truncated),
-                            );
+                            let over_budget = shed_to_batch_budget(&mut data, &mut rows_kept);
                             outcomes.push(StmtOutcome {
                                 index,
                                 preview: stmt_preview(sql),
                                 rows_affected: ra,
                                 is_select: true,
                                 error: None,
+                                results: vec![QueryResult::rows(
+                                    columns,
+                                    data,
+                                    start.elapsed().as_millis() as u64,
+                                )
+                                .with_truncated(truncated || over_budget)],
                             });
                         }
                         Err(e) => {
@@ -787,6 +807,7 @@ pub(crate) async fn execute_batch_inner(
                                 rows_affected: 0,
                                 is_select: true,
                                 error: Some(msg),
+                                results: Vec::new(),
                             });
                             break;
                         }
@@ -811,6 +832,7 @@ pub(crate) async fn execute_batch_inner(
                                 rows_affected: ra,
                                 is_select: false,
                                 error: None,
+                                results: Vec::new(),
                             });
                         }
                         Err(e) => {
@@ -830,6 +852,7 @@ pub(crate) async fn execute_batch_inner(
                                 rows_affected: 0,
                                 is_select: false,
                                 error: Some(msg),
+                                results: Vec::new(),
                             });
                             break;
                         }
@@ -852,20 +875,25 @@ pub(crate) async fn execute_batch_inner(
                 }
                 let is_select = is_read_only(sql);
                 let start = Instant::now();
-                let outcome: AppResult<(u64, Option<QueryResult>)> = if is_select {
+                let outcome: AppResult<(u64, Vec<QueryResult>)> = if is_select {
                     $client
                         .simple_query_sets_capped(sql, MAX_ADHOC_QUERY_ROWS)
                         .await
                         .map(|(sets, truncated)| {
-                            let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
-                            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
-                            let ra = data.len() as u64;
-                            // No `row_types`: SQL, so the catalog column type is
-                            // the hint the editor needs, and per-cell BSON type
-                            // trees are MongoDB's alone (gotcha #29).
-                            (
-                                ra,
-                                Some(
+                            // Every non-empty set, not just the first. A single
+                            // T-SQL statement can return several, and keeping
+                            // one of them was a silent discard back when there
+                            // was only ever one grid to put it in.
+                            let mut results = Vec::new();
+                            let mut ra = 0u64;
+                            for rows in sets.into_iter().filter(|s| !s.is_empty()) {
+                                let (cols, mut data) = crate::db::mssql::schema::decode_rows(&rows);
+                                ra += data.len() as u64;
+                                let over_budget = shed_to_batch_budget(&mut data, &mut rows_kept);
+                                // No `row_types`: SQL, so the catalog column type is
+                                // the hint the editor needs, and per-cell BSON type
+                                // trees are MongoDB's alone (gotcha #29).
+                                results.push(
                                     QueryResult::rows(
                                         cols.into_iter()
                                             .map(|(name, data_type)| ColumnMeta { name, data_type })
@@ -873,19 +901,17 @@ pub(crate) async fn execute_batch_inner(
                                         data,
                                         start.elapsed().as_millis() as u64,
                                     )
-                                    .with_truncated(truncated),
-                                ),
-                            )
+                                    .with_truncated(truncated || over_budget),
+                                );
+                            }
+                            (ra, results)
                         })
                 } else {
-                    $client.simple_execute(sql).await.map(|ra| (ra, None))
+                    $client.simple_execute(sql).await.map(|ra| (ra, Vec::new()))
                 };
                 match outcome {
-                    Ok((ra, result)) => {
+                    Ok((ra, results)) => {
                         total_affected += ra;
-                        if result.is_some() {
-                            last_result = result;
-                        }
                         log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
                         outcomes.push(StmtOutcome {
                             index,
@@ -893,6 +919,7 @@ pub(crate) async fn execute_batch_inner(
                             rows_affected: ra,
                             is_select,
                             error: None,
+                            results,
                         });
                     }
                     Err(e) => {
@@ -904,6 +931,7 @@ pub(crate) async fn execute_batch_inner(
                             rows_affected: 0,
                             is_select,
                             error: Some(msg),
+                            results: Vec::new(),
                         });
                         break;
                     }
@@ -963,7 +991,6 @@ pub(crate) async fn execute_batch_inner(
 
     Ok(BatchResult {
         statements: outcomes,
-        last_result,
         total_affected,
     })
 }
@@ -1014,6 +1041,44 @@ pub const MAX_IN_VALUES: usize = 1000;
 /// — they're discarded, not merely deferred, so backend memory stays bounded
 /// regardless of how many rows the query actually matches.
 pub const MAX_ADHOC_QUERY_ROWS: usize = 50_000;
+
+/// Upper bound on how many rows **one batch run** keeps in total, across every
+/// statement in it.
+///
+/// [`MAX_ADHOC_QUERY_ROWS`] bounds a single statement, and that was the whole
+/// story while a batch returned one result set: the last SELECT's, and nothing
+/// else. Now that every statement carries its own, the per-statement cap alone
+/// would mean a ten-SELECT script is ten times the ceiling — 500 000 rows over
+/// IPC, held in the frontend, with the same out-of-memory ending the
+/// per-statement cap exists to prevent.
+///
+/// So the budget is shared rather than multiplied: a batch keeps the same
+/// 50 000 rows one statement may, handed out in statement order. A statement
+/// that runs into the remaining budget keeps the rows that fit and is marked
+/// [`QueryResult::truncated`], exactly as it would be for overrunning the
+/// per-statement cap — the flag means "rows past what you see were discarded"
+/// either way, and the UI already says so. What it does *not* touch is
+/// [`StmtOutcome::rows_affected`], which keeps counting what the statement
+/// actually produced: shedding rows from the grid must not make the summary
+/// report a SELECT that returned nothing.
+pub const MAX_BATCH_RESULT_ROWS: usize = MAX_ADHOC_QUERY_ROWS;
+
+/// Trim `rows` to whatever of a batch's [`MAX_BATCH_RESULT_ROWS`] budget is
+/// left, advancing `kept` by what survived. Returns `true` when rows were
+/// shed, which every caller folds into [`QueryResult::truncated`].
+///
+/// Three drivers do this and all three must agree, which is the whole reason
+/// it is a function: the budget is only a bound if nobody forgets to charge
+/// their rows against it.
+pub(crate) fn shed_to_batch_budget<T>(rows: &mut Vec<T>, kept: &mut usize) -> bool {
+    let keep = MAX_BATCH_RESULT_ROWS.saturating_sub(*kept);
+    let over = rows.len() > keep;
+    if over {
+        rows.truncate(keep);
+    }
+    *kept += rows.len();
+    over
+}
 
 /// Stream `sql` and keep only the first `cap` rows, still draining (and
 /// discarding) anything past that so the connection is left at a clean
@@ -2976,5 +3041,136 @@ mod filter_tests {
 
         assert_eq!(q.filter.needle(), None);
         assert!(q.filter.is_unfiltered());
+    }
+}
+
+/// The batch runner's shape: the row budget every driver charges against, and
+/// the DTO the frontend builds its result panels from.
+///
+/// `execute_batch_inner` itself needs a live pool, so what is testable without
+/// one is exactly what these cover — which is also where the interesting bugs
+/// are: a budget one driver forgets to charge, and a field serde drops at the
+/// IPC boundary (gotcha #14) because nobody declared it on both sides.
+#[cfg(test)]
+mod batch_tests {
+    use super::*;
+
+    fn rows(n: usize) -> Vec<u8> {
+        vec![0u8; n]
+    }
+
+    #[test]
+    fn a_batch_within_budget_keeps_every_row() {
+        let mut kept = 0usize;
+        let mut first = rows(10);
+        let mut second = rows(20);
+        assert!(!shed_to_batch_budget(&mut first, &mut kept));
+        assert!(!shed_to_batch_budget(&mut second, &mut kept));
+        assert_eq!((first.len(), second.len(), kept), (10, 20, 30));
+    }
+
+    #[test]
+    fn the_statement_that_crosses_the_budget_keeps_what_fits() {
+        // The point of a *shared* budget: the second statement is not refused,
+        // it is served with what is left. Its own cap is untouched.
+        let mut kept = MAX_BATCH_RESULT_ROWS - 5;
+        let mut data = rows(20);
+        assert!(shed_to_batch_budget(&mut data, &mut kept));
+        assert_eq!(data.len(), 5);
+        assert_eq!(kept, MAX_BATCH_RESULT_ROWS);
+    }
+
+    #[test]
+    fn a_statement_after_the_budget_is_spent_keeps_nothing_and_says_so() {
+        let mut kept = MAX_BATCH_RESULT_ROWS;
+        let mut data = rows(20);
+        assert!(shed_to_batch_budget(&mut data, &mut kept));
+        assert!(data.is_empty());
+        // `saturating_sub`, not a subtraction: overshooting the budget must not
+        // panic in release *or* wrap into an enormous allowance in debug.
+        assert_eq!(kept, MAX_BATCH_RESULT_ROWS);
+    }
+
+    #[test]
+    fn an_exactly_full_statement_is_not_marked_truncated() {
+        let mut kept = 0usize;
+        let mut data = rows(MAX_BATCH_RESULT_ROWS);
+        assert!(!shed_to_batch_budget(&mut data, &mut kept));
+        assert_eq!(data.len(), MAX_BATCH_RESULT_ROWS);
+    }
+
+    #[test]
+    fn the_batch_budget_is_not_a_multiple_of_the_statement_cap() {
+        // If these ever diverge upward, N statements are N times the ceiling
+        // the per-statement cap exists to hold — which is the bug the shared
+        // budget was introduced to prevent.
+        assert!(MAX_BATCH_RESULT_ROWS <= MAX_ADHOC_QUERY_ROWS);
+    }
+
+    #[test]
+    fn a_statement_outcome_serialises_its_result_sets() {
+        let outcome = StmtOutcome {
+            index: 0,
+            preview: "SELECT 1".into(),
+            rows_affected: 1,
+            is_select: true,
+            error: None,
+            results: vec![QueryResult::rows(
+                vec![ColumnMeta {
+                    name: "n".into(),
+                    data_type: "int".into(),
+                }],
+                vec![vec![Value::from(1)]],
+                3,
+            )],
+        };
+        let json = serde_json::to_value(&outcome).unwrap();
+        // `results`, not `result`: the field the frontend destructures, and
+        // the reason it is a list is SQL Server, whose one statement can
+        // return several sets.
+        assert_eq!(json["results"].as_array().unwrap().len(), 1);
+        assert_eq!(json["results"][0]["rows"][0][0], 1);
+        assert_eq!(json["rows_affected"], 1);
+    }
+
+    #[test]
+    fn a_write_and_a_failure_both_serialise_an_empty_result_list() {
+        for outcome in [
+            StmtOutcome {
+                index: 1,
+                preview: "UPDATE t SET a = 1".into(),
+                rows_affected: 7,
+                is_select: false,
+                error: None,
+                results: Vec::new(),
+            },
+            StmtOutcome {
+                index: 2,
+                preview: "SELECT boom".into(),
+                rows_affected: 0,
+                is_select: true,
+                error: Some("no such column: boom".into()),
+                results: Vec::new(),
+            },
+        ] {
+            let json = serde_json::to_value(&outcome).unwrap();
+            // An empty array rather than a missing key: the UI decides "does
+            // this statement get a panel?" by asking the list its length.
+            assert_eq!(json["results"].as_array().unwrap().len(), 0);
+        }
+    }
+
+    #[test]
+    fn a_batch_result_carries_only_the_statements_and_the_tally() {
+        let batch = BatchResult {
+            statements: Vec::new(),
+            total_affected: 0,
+        };
+        let json = serde_json::to_value(&batch).unwrap();
+        let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
+        // `last_result` is gone on purpose: with a result set on every
+        // statement it was a second full copy of the largest payload in the
+        // batch, crossing IPC for a consumer that no longer exists.
+        assert_eq!(keys, vec!["statements", "total_affected"]);
     }
 }

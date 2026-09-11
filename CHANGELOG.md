@@ -8,6 +8,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **A results panel per statement that returns rows, instead of only the
+  last.** Running a script of several `SELECT`s (or several `.find` /
+  `.aggregate` on MongoDB) showed exactly one grid: the backend built a
+  complete result set for every one of them and each overwrote the previous in
+  a single `last_result` field. Every statement now carries its own, and a
+  strip above the grid picks which is on screen — `#1 · 120 rows`,
+  `#2 · 8 rows` — while statements that return nothing keep reporting in the
+  batch summary line, where a write's affected-row count and the statement
+  that stopped the batch belong. A run that fails halfway keeps every panel it
+  produced before the failure.
+
+  **SQL Server gains result sets it was already fetching and discarding.** One
+  T-SQL statement can legitimately return several, and the batch runner kept
+  the first non-empty one — a reasonable thing to do when there was one grid to
+  put it in, and a silent loss once there is a panel per result. A statement's
+  result sets are therefore a list rather than a single result, labelled
+  `#2.1` / `#2.2` when there is more than one.
+
+  **The row cap is now a budget shared by the whole batch.** `MAX_ADHOC_QUERY_ROWS`
+  (50 000) bounds one statement, which was the entire story while a batch
+  returned one result set; keeping every statement's would have made a
+  ten-`SELECT` script ten times that ceiling, over IPC and in the DOM, which is
+  exactly the out-of-memory the cap exists to prevent. A batch now keeps the
+  same 50 000 rows one statement may, handed out in statement order: a
+  statement that runs into what is left keeps the rows that fit and is marked
+  truncated, the same flag and the same wording as overrunning the
+  per-statement cap. Its reported row count is untouched — shedding rows from
+  the grid must not make the summary claim a `SELECT` returned nothing.
+
+  Only the selected panel's grid is mounted. That is a deliberate trade rather
+  than an optimisation deferred: `gridSelection` is keyed by tab id and the
+  docked cell editor takes the tab id as its owner, so two live grids in one
+  tab would overwrite each other's selection count and fight over the editor.
+
+  `BatchResult.last_result` is gone. With a result set on every statement it
+  was a second, full copy of the largest payload in the batch crossing the IPC
+  boundary for a consumer that no longer exists — the SQL import dialog and the
+  MCP write path only ever read `statements` and `total_affected`.
+
 - **Two theme tokens the dialog work needs, landing ahead of it.** `--scrim` is
   the wash painted between the app and an open dialog. It was `bg-black/60` — a
   *literal* black, hard-coded in the only two places the modal stack is built

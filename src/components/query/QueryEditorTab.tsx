@@ -1,7 +1,16 @@
 /**
- * Tab body for ad-hoc queries. Hosts a Monaco editor on top and a
- * `DataGrid` of results below, separated by a vertical resize handle
- * (defaults to a 75/25 split, remembered via `autoSaveId` once dragged).
+ * Tab body for ad-hoc queries. Hosts a Monaco editor on top and the results
+ * area below, separated by a vertical resize handle (defaults to a 75/25
+ * split, remembered via `autoSaveId` once dragged).
+ *
+ * The results area holds **one panel per result set**, not one grid. A script
+ * of several SELECTs used to show only the last: the backend built a full
+ * `QueryResult` for each and `last_result` overwrote the previous one. Each
+ * statement now carries its own, and a `Segmented` strip picks which is on
+ * screen — one grid mounted at a time, which is what keeps `tabId` a usable
+ * key for `gridSelection` and the docked cell editor. Statements that return
+ * nothing (writes, and the one that failed) appear in the summary line above
+ * rather than as empty panels.
  *
  * Editor features:
  *  - `Ctrl+Enter` runs the entire buffer. Bound through Monaco's command
@@ -86,6 +95,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
+import { Segmented } from "@/components/ui/segmented";
+import {
+  panelsFromBatch,
+  type ResultPanel,
+} from "@/lib/query/resultPanels";
 import { splitSql } from "@/lib/sql/sqlSplit";
 import {
   databaseOfViewId,
@@ -174,7 +188,18 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     return selectedDb || p.database || t("query.defaultDatabase");
   }, [profiles, parentId, selectedDb, t]);
 
-  const [result, setResult] = useState<QueryResult | null>(null);
+  /**
+   * Every result set the last run produced, in statement order — one panel
+   * each. A single-statement run yields one entry (or none, for a write with
+   * nothing to show beyond its affected-row count, which `DmlResult` renders);
+   * a batch yields one per statement that returned, which is the whole point:
+   * the backend has always built a full `QueryResult` per SELECT and the tab
+   * used to keep only the last one.
+   */
+  const [panels, setPanels] = useState<ResultPanel[]>([]);
+  /** Key of the panel on screen. Only that one's grid is mounted — see
+   *  `ResultTabs` for why rendering all of them would be the wrong trade. */
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [batchSummary, setBatchSummary] = useState<BatchResult | null>(null);
   const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -412,7 +437,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       queryTimerRef.current?.start();
       try {
         const r = await api.executeQuery(effectiveId, toRun);
-        setResult(r);
+        setPanels([{ key: "0", statement: 1, set: null, result: r }]);
+        setActiveKey("0");
         addHistory({
           sql: toRun,
           connectionId: parentId,
@@ -458,7 +484,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         statements.map((s) => s.text),
       );
       setBatchSummary(r);
-      setResult(r.last_result);
+      const next = panelsFromBatch(r.statements);
+      setPanels(next);
+      setActiveKey(next[0]?.key ?? null);
       const failed = r.statements.find((s) => s.error);
       addHistory({
         sql: statements.map((s) => s.text).join(";\n"),
@@ -475,6 +503,21 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       setRunning(false);
     }
   }, [running, statements, effectiveId, parentId, addHistory]);
+
+  /** The panel on screen. Falls back to the first one so a run that replaces
+   *  the panel list never leaves the area blank while `activeKey` is stale. */
+  const active = useMemo(
+    () => panels.find((p) => p.key === activeKey) ?? panels[0] ?? null,
+    [panels, activeKey],
+  );
+
+  /** Switching result panels clears the grid's client-side filter: it is
+   *  typed against one result's columns, and carrying it over to another
+   *  reads as an empty result rather than as a filter still being applied. */
+  const selectPanel = useCallback((key: string) => {
+    setActiveKey(key);
+    setFilter("");
+  }, []);
 
   /**
    * Ref pointing at the latest `runQuery`. Monaco's `addCommand` runs
@@ -915,17 +958,29 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       {/* Results panel */}
       <Panel defaultSize={25} minSize={10}>
         <div className="flex h-full flex-col">
-          {/* Batch summary: one line per statement, last SELECT shown below. */}
+          {/* Batch summary: one line per statement — including the writes and
+              the failure, which have no panel of their own. */}
           {batchSummary && <BatchSummary summary={batchSummary} />}
+          {panels.length > 1 && (
+            <ResultTabs
+              panels={panels}
+              activeKey={active?.key ?? null}
+              onSelect={selectPanel}
+            />
+          )}
           {error ? (
             <div className="overflow-auto bg-destructive/10 p-3 font-mono text-xs text-destructive">
               {error}
             </div>
-          ) : result && result.columns.length === 0 ? (
-            <DmlResult result={result} />
-          ) : result ? (
+          ) : active && active.result.columns.length === 0 ? (
+            <DmlResult result={active.result} />
+          ) : active ? (
+            // Keyed, so switching panels remounts the grid rather than feeding
+            // a new result into one holding the previous one's sort, selection
+            // and column widths.
             <DataGrid
-              result={result}
+              key={active.key}
+              result={active.result}
               tabId={tabId}
               globalFilter={filter}
               onGlobalFilterChange={setFilter}
@@ -945,6 +1000,56 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         connectionId={parentId}
       />
     </PanelGroup>
+  );
+}
+
+/**
+ * The strip that picks which result set the grid below shows.
+ *
+ * Only the selected panel's `DataGrid` is mounted, and that is a deliberate
+ * trade rather than an optimisation left for later. N grids in one tab would
+ * mean N times the DOM for a payload already bounded by a shared 50 000-row
+ * budget — and, less visibly, a collision: `stores/grid/gridSelection.ts` is
+ * keyed by tab id and `CellEditor` takes `ownerId={tabId}`, so two live grids
+ * in one tab would overwrite each other's "N selected" and fight over the
+ * docked editor. With one mounted grid the tab id stays the honest key it was.
+ *
+ * Built on `Segmented` rather than hand-rolled buttons: a single-choice strip
+ * with roving tabindex and arrow-key movement is exactly what that primitive
+ * is, and `uiAdoption.test.ts` counts every raw `<button>` that re-decides it.
+ */
+function ResultTabs({
+  panels,
+  activeKey,
+  onSelect,
+}: {
+  panels: ResultPanel[];
+  activeKey: string | null;
+  onSelect: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+  const options = panels.map((p) => ({
+    value: p.key,
+    label: t("query.resultTab", {
+      label: p.set === null ? `#${p.statement}` : `#${p.statement}.${p.set}`,
+      rows: p.result.rows.length,
+    }),
+    // The OS tooltip is `Segmented`'s own affordance for a narrow segment;
+    // it says what the panel holds when the label has room only for a count.
+    title: p.result.truncated
+      ? t("query.resultTabTruncatedTitle", { rows: p.result.rows.length })
+      : t("query.resultTabTitle", { index: p.statement }),
+  }));
+  return (
+    <Segmented
+      variant="underline"
+      size="sm"
+      className="shrink-0 overflow-x-auto"
+      aria-label={t("query.resultTabs")}
+      value={activeKey ?? panels[0]?.key ?? ""}
+      onValueChange={onSelect}
+      options={options}
+    />
   );
 }
 
@@ -1000,6 +1105,11 @@ const QueryTimer = forwardRef<QueryTimerHandle, { running: boolean }>(
  * statement with a status glyph, a monospace preview and its affected-row
  * count; a header line tallies the whole batch (or flags where it stopped).
  * Deliberately understated — the grid below holds the actual data.
+ *
+ * It stays a summary rather than becoming the result selector `ResultTabs`
+ * is, because the two answer different questions and only one of them is
+ * about the rows: this is where a write's affected count and the statement
+ * that stopped the batch are reported, and neither has a panel to be selected.
  */
 function BatchSummary({ summary }: { summary: BatchResult }) {
   const { t } = useTranslation();

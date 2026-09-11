@@ -10,6 +10,48 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Un panel de resultados por cada sentencia que devuelve filas, en vez de
+  solo la última.** Ejecutar un script con varios `SELECT` (o varios `.find` /
+  `.aggregate` en MongoDB) mostraba exactamente un grid: el backend construía
+  un conjunto de resultados completo para cada uno y cada uno sobrescribía al
+  anterior en un único campo `last_result`. Ahora cada sentencia lleva el suyo,
+  y una tira encima del grid elige cuál se ve — `#1 · 120 filas`,
+  `#2 · 8 filas` — mientras que las sentencias que no devuelven nada siguen
+  reportándose en la línea de resumen del lote, que es donde corresponden el
+  recuento de filas afectadas de una escritura y la sentencia que detuvo el
+  lote. Una ejecución que falla a mitad conserva todos los paneles que produjo
+  antes del fallo.
+
+  **SQL Server gana los conjuntos de resultados que ya traía y tiraba.** Una
+  sola sentencia T-SQL puede devolver varios legítimamente, y el ejecutor de
+  lotes se quedaba con el primero no vacío — algo razonable cuando solo había
+  un grid donde ponerlo, y una pérdida silenciosa en cuanto hay un panel por
+  resultado. Por eso los resultados de una sentencia son una lista y no un
+  resultado único, etiquetados `#2.1` / `#2.2` cuando hay más de uno.
+
+  **El tope de filas pasa a ser un presupuesto compartido por todo el lote.**
+  `MAX_ADHOC_QUERY_ROWS` (50 000) acota una sentencia, que era toda la historia
+  mientras un lote devolvía un único conjunto de resultados; conservar el de
+  cada sentencia habría convertido un script de diez `SELECT` en diez veces ese
+  techo, por IPC y en el DOM — justo el desbordamiento de memoria que el tope
+  existe para evitar. Un lote conserva ahora las mismas 50 000 filas que puede
+  conservar una sentencia, repartidas en orden de sentencia: la que se topa con
+  lo que queda conserva las filas que caben y se marca como truncada, con la
+  misma bandera y el mismo texto que al superar el tope por sentencia. Su
+  recuento de filas no se toca: descartar filas del grid no puede hacer que el
+  resumen diga que un `SELECT` no devolvió nada.
+
+  Solo se monta el grid del panel seleccionado. Es una decisión deliberada y no
+  una optimización pendiente: `gridSelection` se indexa por id de pestaña y el
+  editor de celda acoplado toma ese mismo id como dueño, así que dos grids
+  vivos en una pestaña se pisarían el recuento de selección y se pelearían por
+  el editor.
+
+  `BatchResult.last_result` desaparece. Con un conjunto de resultados en cada
+  sentencia era una segunda copia completa del mayor payload del lote cruzando
+  el borde IPC para un consumidor que ya no existe — el diálogo de importar SQL
+  y la ruta de escritura de MCP solo leen `statements` y `total_affected`.
+
 - **Dos tokens de tema que el rediseño de los diálogos necesita, adelantados.**
   `--scrim` es el velo que se pinta entre la app y un diálogo abierto. Era
   `bg-black/60` — un negro *literal*, escrito a mano en los dos únicos sitios

@@ -2082,6 +2082,10 @@
     "batchOk": "{{count}} statements · {{rows}} rows affected",
     "batchFailed": "Stopped at statement {{index}} of {{total}}",
     "rowsAffected": "{{rows}} rows affected · {{ms}} ms",
+    "resultTab": "{{label}} · {{rows}} rows",
+    "resultTabs": "Result sets",
+    "resultTabTitle": "Result of statement {{index}}",
+    "resultTabTruncatedTitle": "First {{rows}} rows — the batch's row budget was reached",
     "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n",
     "mongoNewTabPlaceholder": "// db.collection.find({}) — press Ctrl+Enter\n"
   },

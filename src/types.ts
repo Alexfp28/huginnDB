@@ -611,13 +611,20 @@ export interface StmtOutcome {
   is_select: boolean;
   /** Driver error message; when set, the batch stopped at this statement. */
   error: string | null;
+  /**
+   * Result sets this statement produced, in driver order — one results panel
+   * each. Empty for a write, for a failure, and for a read whose rows were all
+   * shed by the batch's shared row budget (`MAX_BATCH_RESULT_ROWS`).
+   *
+   * A list rather than an optional single result because one T-SQL statement
+   * can legitimately return several sets; the other drivers push zero or one.
+   */
+  results: QueryResult[];
 }
 
 /** Result of running a batch of statements via `execute_batch`. */
 export interface BatchResult {
   statements: StmtOutcome[];
-  /** Full result set of the last SELECT in the batch, for the grid. */
-  last_result: QueryResult | null;
   total_affected: number;
 }
 

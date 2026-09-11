@@ -8,8 +8,8 @@
 //! affected-document count in `rows_affected` and carry no rows.
 
 use crate::commands::query::{
-    BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, QueryResult, RowValue, SortSpec,
-    StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
+    shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp,
+    QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
@@ -312,8 +312,10 @@ pub async fn execute_batch(
     connection_id: &str,
 ) -> AppResult<BatchResult> {
     let mut outcomes = Vec::new();
-    let mut last_result = None;
     let mut total_affected = 0u64;
+    // Shared across the whole batch, not per statement — see
+    // `MAX_BATCH_RESULT_ROWS`.
+    let mut rows_kept: usize = 0;
 
     for (index, raw) in statements.iter().enumerate() {
         let stmt = raw.trim();
@@ -323,27 +325,40 @@ pub async fn execute_batch(
         let is_read = shell::parse(stmt).map(|c| c.op.is_read()).unwrap_or(false);
         let start = Instant::now();
         match execute(conn, stmt).await {
-            Ok(result) => {
-                total_affected += result.rows_affected;
+            Ok(mut result) => {
+                let affected = result.rows_affected;
+                total_affected += affected;
                 log_sql_sink(
                     sink,
                     connection_id,
                     "mongodb",
                     stmt,
                     start,
-                    Some(result.rows_affected),
+                    Some(affected),
                     None,
                 );
+                let mut results = Vec::new();
+                if is_read {
+                    if shed_to_batch_budget(&mut result.rows, &mut rows_kept) {
+                        // `row_types` is cell-aligned to `rows` and must stay
+                        // that way (gotcha #29): shedding rows without
+                        // shedding their type trees would hand the document
+                        // view a type for a row that is not there.
+                        if let Some(types) = result.row_types.as_mut() {
+                            types.truncate(result.rows.len());
+                        }
+                        result.truncated = true;
+                    }
+                    results.push(result);
+                }
                 outcomes.push(StmtOutcome {
                     index,
                     preview: stmt_preview(stmt),
-                    rows_affected: result.rows_affected,
+                    rows_affected: affected,
                     is_select: is_read,
                     error: None,
+                    results,
                 });
-                if is_read {
-                    last_result = Some(result);
-                }
             }
             Err(e) => {
                 log_sql_sink(
@@ -361,6 +376,7 @@ pub async fn execute_batch(
                     rows_affected: 0,
                     is_select: is_read,
                     error: Some(e.to_string()),
+                    results: Vec::new(),
                 });
                 break;
             }
@@ -369,7 +385,6 @@ pub async fn execute_batch(
 
     Ok(BatchResult {
         statements: outcomes,
-        last_result,
         total_affected,
     })
 }
