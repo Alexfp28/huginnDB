@@ -122,7 +122,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent tier="workbench" className="flex h-[85vh] max-w-6xl flex-col gap-0">
+      <DialogContent tier="workbench" className="flex h-[85vh] max-w-6xl flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Sparkles className="h-4 w-4 text-primary" />

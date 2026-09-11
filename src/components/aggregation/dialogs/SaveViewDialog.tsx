@@ -85,7 +85,7 @@ export function SaveViewDialog({
           </div>
         </DialogBody>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
           </Button>
           <Button onClick={() => onSubmit(trimmed)} disabled={!trimmed || saving}>

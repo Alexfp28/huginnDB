@@ -130,7 +130,7 @@ export function DocsDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
         tier="workbench"
-        className="flex h-auto max-w-4xl flex-col gap-0"
+        className="flex h-auto max-w-4xl flex-col"
       >
         <DialogHeader>
           <div className="flex items-center gap-2">

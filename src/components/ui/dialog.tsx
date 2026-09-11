@@ -44,30 +44,27 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
  * moment someone wraps the body in a fragment, silently, as a wrong
  * anatomy rather than a build error.
  *
- * `padded` is transitional and reproduces today's single anatomy —
- * `max-w-md rounded-lg p-6 shadow-elevation-4`, the classes every existing
- * `DialogContent` call site already resolves to — byte for byte, which is
- * what makes introducing the other three tiers a visual-change-zero commit:
- * no call site passes `tier` yet, so every one of them keeps rendering
- * exactly as it did. It is tracked as a census in `uiAdoption.test.ts`;
- * once every call site has migrated to a real tier and that census reaches
- * `{}`, delete this variant and flip `defaultVariants.tier` to `"panel"`.
+ * There used to be a fourth, transitional `padded` variant here — byte
+ * identical to the single pre-tier anatomy every `DialogContent` call site
+ * resolved to, so introducing the other three tiers could be a
+ * visual-change-zero commit before any call site had to be touched. Its
+ * `uiAdoption.test.ts` census (call sites still on it) reached `{}` once
+ * every domain migration landed, which is the signal that variant existed
+ * to produce — so it and the census are both gone, and `panel` (the most
+ * common real tier) is the default now.
  */
 const dialogContentVariants = cva(
   "pointer-events-auto grid w-full border [&>*]:min-w-0 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98]",
   {
     variants: {
       tier: {
-        // Byte-identical to the pre-tier `DialogContent`. See the docblock
-        // above for why this exists and how it is retired.
-        padded: "max-w-md gap-4 rounded-lg bg-card p-6 shadow-elevation-4",
         // The ~11 one-line confirms/prompts: small, no stacked description
         // slot, no header rail. 8px — the tab chip's radius, the app's
         // existing "small surface" reference — not the island's 10px.
         prompt: "max-w-[400px] rounded-md bg-card p-0 shadow-elevation-3",
-        // The ~18 forms — the eventual default once `padded` is gone. 10px,
-        // the island's own radius, which is what anchors this as related
-        // chrome rather than another web-card floating on top of it.
+        // The ~18 forms — the default. 10px, the island's own radius, which
+        // is what anchors this as related chrome rather than another
+        // web-card floating on top of it.
         panel: "max-w-md rounded-lg bg-card p-0 shadow-elevation-3",
         // Settings / Connection / OriginEditorOverlay / Docs /
         // CellEditor-fullscreen: a `p-2` inset onto the app's own trench
@@ -79,7 +76,7 @@ const dialogContentVariants = cva(
           "h-full w-full max-w-none overflow-hidden rounded-lg border-border bg-background p-0 shadow-island",
       },
     },
-    defaultVariants: { tier: "padded" },
+    defaultVariants: { tier: "panel" },
   },
 );
 
@@ -91,14 +88,14 @@ type DialogTier = NonNullable<
  * Private — not exported. `DialogHeader`/`DialogBody`/`DialogFooter` read
  * it to pick their own chrome; nothing else should need a dialog's tier.
  */
-const DialogTierContext = React.createContext<DialogTier>("padded");
+const DialogTierContext = React.createContext<DialogTier>("panel");
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> &
     VariantProps<typeof dialogContentVariants>
 >(({ className, children, tier, ...props }, ref) => {
-  const resolvedTier: DialogTier = tier ?? "padded";
+  const resolvedTier: DialogTier = tier ?? "panel";
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -131,11 +128,11 @@ const DialogContent = React.forwardRef<
               //
               // `max-w-md`, not shadcn's `max-w-lg`: of the 31 call sites
               // that used to override this, 15 passed `max-w-md` and only
-              // 3 wanted the `lg` default — corrected here as the `padded`
-              // and `panel` tiers' own width. The remaining widths are all
-              // one-offs (`2xl`, `4xl`, `6xl`, viewport-relative) that read
-              // fine as explicit overrides; `tailwind-merge` lets those
-              // win, `className` being last.
+              // 3 wanted the `lg` default — corrected here as `panel`'s own
+              // width. The remaining widths are all one-offs (`2xl`, `4xl`,
+              // `6xl`, viewport-relative) that read fine as explicit
+              // overrides; `tailwind-merge` lets those win, `className`
+              // being last.
               dialogContentVariants({ tier: resolvedTier }),
               className,
             )}
@@ -172,7 +169,6 @@ const DialogHeader = React.forwardRef<
       ref={ref}
       className={cn(
         "flex text-left",
-        tier === "padded" && "flex-col space-y-1.5",
         tier === "prompt" && "flex-row items-center gap-3 p-4 pb-2 pr-10",
         (tier === "panel" || tier === "workbench") &&
           "flex-col space-y-1.5 border-b border-border px-5 py-3 pr-10",

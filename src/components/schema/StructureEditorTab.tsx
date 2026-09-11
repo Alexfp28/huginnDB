@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -556,13 +557,17 @@ export function StructureEditorTab({
 
       {/* SQLite rebuild confirmation */}
       <Dialog open={confirmRebuild} onOpenChange={setConfirmRebuild}>
-        <DialogContent>
+        <DialogContent tier="prompt">
           <DialogHeader>
-            <DialogTitle>{t("structure.rebuildTitle")}</DialogTitle>
+            <DialogTitle className="text-sm">
+              {t("structure.rebuildTitle")}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            {t("structure.rebuildBody")}
-          </p>
+          <DialogBody>
+            <p className="text-xs text-muted-foreground">
+              {t("structure.rebuildBody")}
+            </p>
+          </DialogBody>
           <DialogFooter>
             <Button
               variant="ghost"

@@ -104,7 +104,7 @@ export function ExportPipelineDialog({
         </DialogBody>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {t("common.close")}
           </Button>
           <Button onClick={copy} disabled={!snippet}>

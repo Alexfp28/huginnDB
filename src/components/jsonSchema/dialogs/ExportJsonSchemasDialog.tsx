@@ -129,7 +129,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
         </DialogBody>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
           <Button

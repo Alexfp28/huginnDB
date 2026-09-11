@@ -18,9 +18,14 @@ import { DialogFooter } from "@/components/ui/dialog";
  * `cancelLabel` is required rather than defaulting to `t("common.cancel")`,
  * which is what keeps this directory free of i18n — see `README.md`.
  * `ConfirmDialog` supplies that default for the destructive case.
+ *
+ * Buttons are always `sm`. This used to be a `size` prop defaulting to
+ * `"md"` — half the app's footers passed `sm` and half took the default,
+ * a divergence nobody had settled — but what one prop can decide, nobody
+ * downstream can un-decide by accident, so it is gone rather than merely
+ * redefaulted.
  */
 export function DialogActions({
-  size = "md",
   onCancel,
   cancelLabel,
   confirmLabel,
@@ -32,13 +37,6 @@ export function DialogActions({
   confirmDisabled = false,
   children,
 }: {
-  /**
-   * Half the app's dialog footers use `sm` buttons and half the default `md`.
-   * That divergence is carried here rather than settled: picking one would
-   * resize the buttons in fourteen dialogs from inside a refactor, which is a
-   * visual decision that deserves its own change.
-   */
-  size?: "md" | "sm";
   onCancel: () => void;
   cancelLabel: string;
   confirmLabel: React.ReactNode;
@@ -63,7 +61,7 @@ export function DialogActions({
       {children}
       <Button
         variant="ghost"
-        size={size}
+        size="sm"
         disabled={confirming}
         onClick={onCancel}
       >
@@ -71,7 +69,7 @@ export function DialogActions({
       </Button>
       <Button
         variant={confirmVariant}
-        size={size}
+        size="sm"
         autoFocus={confirmAutoFocus}
         loading={confirming}
         loadingLabel={confirmingLabel}

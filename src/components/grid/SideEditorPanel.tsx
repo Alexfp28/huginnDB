@@ -39,6 +39,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -388,13 +389,17 @@ export function SideEditorPanel() {
           }
         }}
       >
-        <DialogContent className="max-w-sm">
+        <DialogContent tier="prompt">
           <DialogHeader>
-            <DialogTitle>{t("cellEditor.discardChangesTitle")}</DialogTitle>
+            <DialogTitle className="text-sm">
+              {t("cellEditor.discardChangesTitle")}
+            </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            {t("cellEditor.discardChangesConfirm")}
-          </p>
+          <DialogBody>
+            <p className="text-xs text-muted-foreground">
+              {t("cellEditor.discardChangesConfirm")}
+            </p>
+          </DialogBody>
           <DialogFooter>
             <Button
               variant="ghost"

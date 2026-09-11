@@ -26,6 +26,7 @@
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -76,13 +77,17 @@ export function ConfirmDialog({
       open={open}
       onOpenChange={(next) => !confirming && onOpenChange(next)}
     >
-      <DialogContent>
+      <DialogContent tier="prompt">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="text-sm">{title}</DialogTitle>
         </DialogHeader>
-        <DialogDescription className="text-xs">{description}</DialogDescription>
-        {error && <div className="text-xs text-destructive">{error}</div>}
-        {children}
+        <DialogBody className="space-y-2">
+          <DialogDescription className="text-xs">
+            {description}
+          </DialogDescription>
+          {error && <div className="text-xs text-destructive">{error}</div>}
+          {children}
+        </DialogBody>
         <DialogActions
           onCancel={() => onOpenChange(false)}
           cancelLabel={cancelLabel ?? t("common.cancel")}

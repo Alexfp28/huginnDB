@@ -107,10 +107,10 @@ describe("DialogTierContext wiring", () => {
     expect(screen.getByTestId("footer").className).not.toContain("border-t");
   });
 
-  it("padded (the default) keeps today's header/footer classes, unchanged", () => {
+  it("defaults to panel when no tier is given", () => {
     render(
       <Dialog open>
-        <DialogContent aria-label="padded dialog">
+        <DialogContent aria-label="default dialog">
           <DialogHeader data-testid="header">
             <DialogTitle>Title</DialogTitle>
           </DialogHeader>
@@ -118,11 +118,7 @@ describe("DialogTierContext wiring", () => {
         </DialogContent>
       </Dialog>,
     );
-    expect(screen.getByTestId("header").className).toBe(
-      "flex text-left flex-col space-y-1.5",
-    );
-    expect(screen.getByTestId("footer").className).toBe(
-      "flex flex-wrap justify-end gap-2",
-    );
+    expect(screen.getByTestId("header").className).toContain("border-b");
+    expect(screen.getByTestId("footer").className).toContain("border-t");
   });
 });

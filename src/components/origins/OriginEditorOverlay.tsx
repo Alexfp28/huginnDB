@@ -238,7 +238,7 @@ export function OriginEditorOverlay() {
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent
         tier="workbench"
-        className="flex h-[92vh] max-w-[min(1400px,95vw)] flex-col gap-0"
+        className="flex h-[92vh] max-w-[min(1400px,95vw)] flex-col"
       >
         {loading && !doc ? (
           <div className="flex flex-1 items-center justify-center">

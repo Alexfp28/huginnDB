@@ -368,7 +368,7 @@ export function EnvironmentEditorDialog() {
               {t("environments.clearLocalOverride")}
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={close}>
+          <Button variant="ghost" size="sm" onClick={close}>
             {t("common.cancel")}
           </Button>
           <Button

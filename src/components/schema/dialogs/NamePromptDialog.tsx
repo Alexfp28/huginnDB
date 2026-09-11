@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next";
 
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -76,24 +77,30 @@ export function NamePromptDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent tier="prompt">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          <DialogTitle className="text-sm">{title}</DialogTitle>
         </DialogHeader>
-        <Input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={placeholder}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") submit();
-          }}
-        />
-        {children}
-        {error && (
-          <div className="text-xs text-destructive">{formatError(error)}</div>
-        )}
+        <DialogBody className="space-y-2">
+          <DialogDescription className="text-xs">
+            {description}
+          </DialogDescription>
+          <Input
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={placeholder}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submit();
+            }}
+          />
+          {children}
+          {error && (
+            <div className="text-xs text-destructive">
+              {formatError(error)}
+            </div>
+          )}
+        </DialogBody>
         <DialogActions
           onCancel={onClose}
           cancelLabel={t("common.cancel")}

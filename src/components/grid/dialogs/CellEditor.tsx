@@ -364,7 +364,7 @@ export function CellEditor({
       <DialogContent
         tier={fullscreen ? "workbench" : "panel"}
         className={cn(
-          "flex flex-col gap-0 overflow-hidden",
+          "flex flex-col overflow-hidden",
           fullscreen ? "rounded-none border-0" : "h-[80vh] max-w-5xl",
         )}
       >
@@ -448,7 +448,7 @@ export function CellEditor({
               {t("common.save")}
             </span>
           )}
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             {readonly ? t("common.close") : t("cellEditor.discard")}
           </Button>
           {canSave && (

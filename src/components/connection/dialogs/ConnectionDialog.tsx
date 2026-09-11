@@ -581,7 +581,7 @@ export function ConnectionDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent tier="workbench" className="flex h-[85vh] max-w-6xl flex-col gap-0">
+        <DialogContent tier="workbench" className="flex h-[85vh] max-w-6xl flex-col">
           <DialogHeader>
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="flex items-center gap-2 text-base">

@@ -167,7 +167,6 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
             </div>
             {error && <p className="text-2xs text-destructive">{error}</p>}
             <DialogActions
-              size="sm"
               onCancel={handleClose}
               cancelLabel={t("common.cancel")}
               confirmLabel={t("common.continue")}
@@ -203,7 +202,6 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
             </div>
             {error && <p className="text-2xs text-destructive">{error}</p>}
             <DialogActions
-              size="sm"
               onCancel={handleClose}
               cancelLabel={t("common.cancel")}
               confirmLabel={t("common.continue")}
@@ -225,7 +223,6 @@ export function ImportEnvironmentDialog({ open, onOpenChange }: Props) {
               error={error}
             />
             <DialogActions
-              size="sm"
               onCancel={handleClose}
               cancelLabel={t("common.cancel")}
               confirmLabel={t("transfer.importEnvironment.importButton", {

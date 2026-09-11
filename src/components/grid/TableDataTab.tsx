@@ -76,6 +76,7 @@ import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDi
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -1581,9 +1582,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         open={!!pendingDelete}
         onOpenChange={(open) => !open && setPendingDelete(null)}
       >
-        <DialogContent>
+        <DialogContent tier="prompt">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-sm">
               {(pendingDelete?.pkValueRows.length ?? 0) > 1
                 ? t("tableData.deleteRowsTitle", {
                     count: pendingDelete?.pkValueRows.length,
@@ -1591,38 +1592,40 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                 : t("tableData.deleteRowTitle")}
             </DialogTitle>
           </DialogHeader>
-          {(pendingDelete?.pkValueRows.length ?? 0) > 1 ? (
-            <p className="text-xs text-muted-foreground">
-              {t("tableData.deleteRowsBodyLead", {
-                count: pendingDelete?.pkValueRows.length,
-              })}{" "}
-              <span className="font-mono">
-                {schema ? `${schema}.` : ""}
-                {table}
-              </span>
-              {t("tableData.deleteBodyTrail")}
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              {t("tableData.deleteRowBodyLead")}{" "}
-              <span className="font-mono">
-                {schema ? `${schema}.` : ""}
-                {table}
-              </span>{" "}
-              {t("tableData.deleteBodyWhere")}{" "}
-              <span className="font-mono">
-                {pkColumns
-                  .map(
-                    (c, i) =>
-                      `${c.name} = ${String(
-                        pendingDelete?.pkValueRows[0]?.[i] ?? "",
-                      )}`,
-                  )
-                  .join(" AND ")}
-              </span>
-              {t("tableData.deleteBodyTrail")}
-            </p>
-          )}
+          <DialogBody>
+            {(pendingDelete?.pkValueRows.length ?? 0) > 1 ? (
+              <p className="text-xs text-muted-foreground">
+                {t("tableData.deleteRowsBodyLead", {
+                  count: pendingDelete?.pkValueRows.length,
+                })}{" "}
+                <span className="font-mono">
+                  {schema ? `${schema}.` : ""}
+                  {table}
+                </span>
+                {t("tableData.deleteBodyTrail")}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {t("tableData.deleteRowBodyLead")}{" "}
+                <span className="font-mono">
+                  {schema ? `${schema}.` : ""}
+                  {table}
+                </span>{" "}
+                {t("tableData.deleteBodyWhere")}{" "}
+                <span className="font-mono">
+                  {pkColumns
+                    .map(
+                      (c, i) =>
+                        `${c.name} = ${String(
+                          pendingDelete?.pkValueRows[0]?.[i] ?? "",
+                        )}`,
+                    )
+                    .join(" AND ")}
+                </span>
+                {t("tableData.deleteBodyTrail")}
+              </p>
+            )}
+          </DialogBody>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setPendingDelete(null)}>
               {t("common.cancel")}

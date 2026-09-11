@@ -263,14 +263,29 @@ describe("J — the modal plane is declared once", () => {
    * `DialogOverlay`, so this half of the guard is real from the day it was
    * written.
    *
-   * The other half — no `className` on `DialogContent`/`DialogHeader`/
-   * `DialogFooter`/`DialogBody` starting with a padding, gap, radius or
-   * top/bottom border utility — is not added yet: several call sites still
-   * hand-copy a header rail or a footer border (the seven-rails-five-
-   * spellings gotcha the tier system exists to fix), and this file's own
-   * rule is "empty allowlist or it doesn't belong here". That half lands
-   * once the domain migrations finish and `uiAdoption.test.ts`'s `padded`
-   * census reaches `{}`.
+   * The design doc for the tier system also wants a second half here: no
+   * `className` on `DialogContent`/`DialogHeader`/`DialogFooter`/
+   * `DialogBody` starting with a padding, gap, radius or top/bottom border
+   * utility, on the theory that the tier already owns all of that.
+   *
+   * Written and measured (see git history), that literal rule turned out
+   * to have real, legitimate counterexamples rather than a shrinking list
+   * of leftovers — which is exactly this file's own criterion for *not*
+   * writing a rule: `SaveViewDialog`'s `DialogBody` needs its own `gap-3`
+   * between two form fields (`DialogBody` never fixes a gap of its own, so
+   * this never duplicates tier chrome); `CellEditor`'s header needs its own
+   * `gap-2` between an icon and a title (internal flex layout, not the
+   * rail); `CellEditor`'s fullscreen mode needs `rounded-none` on
+   * `DialogContent` to *override* `workbench`'s `rounded-lg`, not restate
+   * it; and `WhatsNewDialog`'s banner needs `DialogBody`'s `p-0` precisely
+   * because its brand banner is the one documented place that doesn't fit
+   * the tier's rhythm. A blanket prefix ban cannot tell "duplicates the
+   * tier's own rail" (the actual seven-rails-five-spellings problem, which
+   * only ever applied to `DialogHeader`'s and `DialogFooter`'s own
+   * `border-b`/`border-t`/rail-padding) apart from "content the consumer
+   * legitimately owns" without an allowlist — so it stays undone here
+   * rather than merged as a contract this file's own rule says shouldn't
+   * exist.
    */
   it("no DialogPrimitive.Overlay outside ui/dialog.tsx", () => {
     expect(

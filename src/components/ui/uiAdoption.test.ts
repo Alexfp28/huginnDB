@@ -348,62 +348,10 @@ describe("the OS tooltip outside ui/", () => {
   });
 });
 
-describe("DialogContent still on the transitional `padded` tier", () => {
-  /**
-   * `dialogContentVariants` in `ui/dialog.tsx` gained three real tiers
-   * (`prompt`/`panel`/`workbench`) alongside `padded`, the one that
-   * reproduces the old single anatomy byte for byte — `defaultVariants`
-   * still resolves to it, so a call site that has not been touched yet
-   * keeps rendering exactly as before. This is that migration's worklist:
-   * every `<DialogContent>` that does not yet pass a `tier` prop.
-   *
-   * Two of these are shared shells rather than per-domain dialogs —
-   * `common/ConfirmDialog.tsx` (16 consumers) and
-   * `schema/dialogs/NamePromptDialog.tsx` — and fixing their one call site
-   * each (to `tier="prompt"`) is what carries every one of their consumers
-   * along for free, without those consumer files ever appearing here.
-   *
-   * Counted per call site the same way rule H counts `title=`: a tag is
-   * flagged only when its own attribute list, brace-depth aware so a
-   * `className={cn(...)}` spanning the tag doesn't fool the boundary scan,
-   * has no `tier=`.
-   */
-  const openTag = (src: string, from: number) => {
-    let depth = 0;
-    for (let i = from; i < src.length; i++) {
-      const c = src[i];
-      if (c === "{") depth++;
-      else if (c === "}") depth--;
-      else if (c === ">" && depth === 0) return i;
-    }
-    return -1;
-  };
-
-  const count = (src: string) => {
-    let n = 0;
-    for (const m of src.matchAll(/<DialogContent\b/g)) {
-      const end = openTag(src, m.index + m[0].length);
-      if (end === -1) continue;
-      const attrs = src.slice(m.index + m[0].length, end);
-      if (!/\btier=/.test(attrs)) n++;
-    }
-    return n;
-  };
-
-  const BUDGET: Record<string, number> = {
-    "src/components/common/ConfirmDialog.tsx": 1,
-    "src/components/grid/SideEditorPanel.tsx": 1,
-    "src/components/grid/TableDataTab.tsx": 1,
-    "src/components/schema/dialogs/NamePromptDialog.tsx": 1,
-    "src/components/schema/StructureEditorTab.tsx": 1,
-  };
-
-  it(`is down to ${5} in ${5} files`, () => {
-    const measured = census(count);
-    expect(delta(measured, BUDGET)).toEqual({});
-  });
-
-  it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(5);
-  });
-});
+// The `DialogContent still on the transitional padded tier` census that
+// used to live here is gone: every call site migrated to a real tier
+// across the domain-by-domain refactors, the budget reached `{}`, and
+// `ui/dialog.tsx` deleted the `padded` variant in the same commit — see
+// that file's history for the sequence. `uiContracts.test.ts`'s "the modal
+// plane is declared once" rule now carries the full contract this budget
+// was a placeholder for.

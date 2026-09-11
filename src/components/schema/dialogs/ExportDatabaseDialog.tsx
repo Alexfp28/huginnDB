@@ -249,7 +249,7 @@ export function ExportDatabaseDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent
         tier="panel"
-        className="flex h-[70vh] max-w-3xl flex-col gap-0 overflow-hidden"
+        className="flex h-[70vh] max-w-3xl flex-col overflow-hidden"
       >
         <DialogHeader>
           <DialogTitle>{t("schema.exportDatabaseDialog.title")}</DialogTitle>

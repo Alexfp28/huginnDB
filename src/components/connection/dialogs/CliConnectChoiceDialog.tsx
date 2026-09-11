@@ -71,7 +71,7 @@ export function CliConnectChoiceDialog({
             />
           </div>
         </DialogBody>
-        <DialogFooter className="gap-2 sm:gap-2">
+        <DialogFooter>
           <Button variant="ghost" onClick={onCancel}>
             {t("cliConnect.cancel")}
           </Button>

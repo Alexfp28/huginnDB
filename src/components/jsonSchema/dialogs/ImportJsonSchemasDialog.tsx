@@ -235,7 +235,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
           ) : (
             <>
               <Button
-                variant="outline"
+                variant="ghost"
                 onClick={() => {
                   reset();
                   onOpenChange(false);
