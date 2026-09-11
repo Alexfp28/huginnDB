@@ -23,6 +23,7 @@ import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -148,7 +149,7 @@ export function InferSchemaDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent tier="panel" className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("jsonSchemas.infer.title")}</DialogTitle>
           <DialogDescription>
@@ -156,6 +157,7 @@ export function InferSchemaDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <DialogBody>
         {!parsed.ok ? (
           <p className="text-sm text-destructive">
             {t("jsonSchemas.infer.notJson")}
@@ -233,6 +235,7 @@ export function InferSchemaDialog({
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         )}
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

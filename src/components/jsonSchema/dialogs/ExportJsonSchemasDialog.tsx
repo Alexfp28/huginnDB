@@ -24,6 +24,7 @@ import { isExportCancelled } from "@/lib/db/driver";
 import { useMultiSelect } from "@/lib/useMultiSelect";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -76,7 +77,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent tier="panel" className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("transfer.exportJsonSchemas.title")}</DialogTitle>
           <DialogDescription>
@@ -84,7 +85,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2">
+        <DialogBody className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">
               {t("jsonSchemas.library.bindingCount", { count: selected.size })}
@@ -125,7 +126,7 @@ export function ExportJsonSchemasDialog({ open, preselect, onClose }: Props) {
               onCheckedChange={setIncludeBindings}
             />
           </div>
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

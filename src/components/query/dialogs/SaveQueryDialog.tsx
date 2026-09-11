@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -80,14 +81,14 @@ export function SaveQueryDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>
             {existing ? t("saveQuery.titleUpdate") : t("saveQuery.titleSave")}
           </DialogTitle>
           <DialogDescription>{t("saveQuery.description")}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
+        <DialogBody className="grid gap-3">
           <div className="grid gap-1">
             <Label>{t("saveQuery.name")}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -110,7 +111,7 @@ export function SaveQueryDialog({
               placeholder={t("saveQuery.tagsPlaceholder")}
             />
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}

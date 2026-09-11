@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { pickJsonFile } from "@/lib/dialogs";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -122,7 +123,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
         onOpenChange(next);
       }}
     >
-      <DialogContent className="max-w-lg">
+      <DialogContent tier="panel" className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("transfer.importJsonSchemas.title")}</DialogTitle>
           <DialogDescription>
@@ -137,6 +138,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
           </DialogDescription>
         </DialogHeader>
 
+        <DialogBody className="space-y-3">
         {step === "pick" && (
           <div className="space-y-3">
             <p className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-2xs text-primary">
@@ -218,6 +220,7 @@ export function ImportJsonSchemasDialog({ open, onOpenChange }: Props) {
             </p>
           </div>
         )}
+        </DialogBody>
 
         <DialogFooter>
           {step === "done" ? (

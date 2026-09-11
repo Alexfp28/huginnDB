@@ -17,6 +17,7 @@ import { notify } from "@/lib/notify";
 import { Check, Copy } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -67,7 +68,7 @@ export function ExportPipelineDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent tier="panel" className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t("aggregation.export.title")}</DialogTitle>
           <DialogDescription>
@@ -75,27 +76,32 @@ export function ExportPipelineDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Segmented
-          value={format}
-          onValueChange={setFormat}
-          size="sm"
-          aria-label={t("aggregation.export.title")}
-          options={[
-            { value: "shell", label: t("aggregation.export.shell") },
-            { value: "json", label: t("aggregation.export.json") },
-            { value: "createView", label: t("aggregation.export.createView") },
-          ]}
-        />
+        <DialogBody className="space-y-3">
+          <Segmented
+            value={format}
+            onValueChange={setFormat}
+            size="sm"
+            aria-label={t("aggregation.export.title")}
+            options={[
+              { value: "shell", label: t("aggregation.export.shell") },
+              { value: "json", label: t("aggregation.export.json") },
+              {
+                value: "createView",
+                label: t("aggregation.export.createView"),
+              },
+            ]}
+          />
 
-        {error ? (
-          <div className="rounded-md bg-destructive/10 p-3 font-mono text-2xs text-destructive">
-            {error}
-          </div>
-        ) : (
-          <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-2xs leading-relaxed">
-            {snippet || t("aggregation.export.pending")}
-          </pre>
-        )}
+          {error ? (
+            <div className="rounded-md bg-destructive/10 p-3 font-mono text-2xs text-destructive">
+              {error}
+            </div>
+          ) : (
+            <pre className="max-h-80 overflow-auto rounded-md border border-border bg-muted/40 p-3 font-mono text-2xs leading-relaxed">
+              {snippet || t("aggregation.export.pending")}
+            </pre>
+          )}
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

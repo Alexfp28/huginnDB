@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -54,7 +55,7 @@ export function SaveViewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>
             {isUpdate
@@ -65,7 +66,7 @@ export function SaveViewDialog({
             {t("aggregation.saveView.description")}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
+        <DialogBody className="grid gap-3">
           <div className="grid gap-1">
             <Label>{t("aggregation.saveView.name")}</Label>
             <Input
@@ -82,7 +83,7 @@ export function SaveViewDialog({
             <Label>{t("aggregation.saveView.source")}</Label>
             <Input value={source} readOnly disabled className="font-mono text-xs" />
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t("common.cancel")}
