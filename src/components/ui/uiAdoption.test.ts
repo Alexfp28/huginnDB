@@ -396,13 +396,10 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/common/ConfirmDialog.tsx": 1,
     "src/components/grid/SideEditorPanel.tsx": 1,
     "src/components/grid/TableDataTab.tsx": 1,
-    "src/components/indexes/dialogs/IndexEditorDialog.tsx": 1,
     "src/components/jsonSchema/dialogs/ExportJsonSchemasDialog.tsx": 1,
     "src/components/jsonSchema/dialogs/ImportJsonSchemasDialog.tsx": 1,
     "src/components/jsonSchema/dialogs/InferSchemaDialog.tsx": 1,
     "src/components/query/dialogs/SaveQueryDialog.tsx": 1,
-    "src/components/schema/dialogs/DatabaseVisibilityDialog.tsx": 1,
-    "src/components/schema/dialogs/ImportSqlDialog.tsx": 1,
     "src/components/schema/dialogs/NamePromptDialog.tsx": 1,
     "src/components/schema/StructureEditorTab.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
@@ -410,12 +407,12 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${17} in ${17} files`, () => {
+  it(`is down to ${14} in ${14} files`, () => {
     const measured = census(count);
     expect(delta(measured, BUDGET)).toEqual({});
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(17);
+    expect(total(BUDGET)).toBeLessThanOrEqual(14);
   });
 });

@@ -29,6 +29,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -167,7 +168,7 @@ export function IndexEditorDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col">
+      <DialogContent tier="panel" className="flex max-h-[85vh] max-w-2xl flex-col">
         <DialogHeader>
           <DialogTitle>
             {editing
@@ -181,7 +182,11 @@ export function IndexEditorDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+        {/* The scroll boundary used to sit on this div alone (`flex-1
+            overflow-y-auto`), independent of the `panel` tier's own body
+            scroller. It now sits on `DialogBody` instead, which already
+            supplies `min-h-0 overflow-y-auto` for this tier. */}
+        <DialogBody className="space-y-4">
           {/* Keys ------------------------------------------------------- */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -376,7 +381,7 @@ export function IndexEditorDialog({
               {error}
             </div>
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

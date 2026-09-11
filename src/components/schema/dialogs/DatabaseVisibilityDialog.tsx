@@ -28,6 +28,7 @@ import { useTranslation } from "react-i18next";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -133,13 +134,14 @@ export function DatabaseVisibilityDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>{t("schema.selectDatabases.title")}</DialogTitle>
           <DialogDescription>
             {t("schema.selectDatabases.description")}
           </DialogDescription>
         </DialogHeader>
+        <DialogBody className="space-y-3">
         <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs text-muted-foreground">
@@ -216,6 +218,7 @@ export function DatabaseVisibilityDialog({
           ))}
         </div>
         {error && <div className="text-xs text-destructive">{error}</div>}
+        </DialogBody>
         <DialogActions
           onCancel={onClose}
           cancelLabel={t("common.cancel")}

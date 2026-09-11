@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -100,7 +101,7 @@ export function ImportSqlDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>{t("schema.importSql.title")}</DialogTitle>
           <DialogDescription>
@@ -108,30 +109,32 @@ export function ImportSqlDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {scope.kind === "multi" && (
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              {t("schema.importSqlDialog.targetDatabase")}
-            </label>
-            <Select value={target} onValueChange={setTarget}>
-              <SelectTrigger className="h-8 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={AS_IS} className="text-xs">
-                  {t("schema.importSqlDialog.targetAsIs")}
-                </SelectItem>
-                {scope.databases.map((name) => (
-                  <SelectItem key={name} value={name} className="text-xs">
-                    {name}
+        <DialogBody className="space-y-3">
+          {scope.kind === "multi" && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                {t("schema.importSqlDialog.targetDatabase")}
+              </label>
+              <Select value={target} onValueChange={setTarget}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={AS_IS} className="text-xs">
+                    {t("schema.importSqlDialog.targetAsIs")}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+                  {scope.databases.map((name) => (
+                    <SelectItem key={name} value={name} className="text-xs">
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-        {error && <p className="text-xs text-destructive">{error}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </DialogBody>
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>
