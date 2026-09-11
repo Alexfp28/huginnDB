@@ -119,11 +119,11 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
     }
   }
 
-  function onDrop(index: MongoIndexInfo) {
+  async function onDrop(index: MongoIndexInfo) {
     if (
-      !confirmDestructive(
+      !(await confirmDestructive(
         t("indexes.confirmDrop", { name: index.name, collection }),
-      )
+      ))
     ) {
       return;
     }
@@ -153,7 +153,9 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
     // confirmation rather than the irreversible one.
     if (
       editing &&
-      !confirmDestructive(t("indexes.confirmReplace", { name: editing.name }))
+      !(await confirmDestructive(
+        t("indexes.confirmReplace", { name: editing.name }),
+      ))
     ) {
       return;
     }

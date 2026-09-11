@@ -30,6 +30,7 @@ import { ConnectionErrorBoundary } from "@/components/connection/ConnectionError
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
 import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { NotificationHosts } from "@/components/shell/NotificationHosts";
+import { ConfirmHost } from "@/components/common/ConfirmHost";
 import { useBridge } from "@/lib/bridges/useBridge";
 import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { TableDataTab } from "@/components/grid/TableDataTab";
@@ -161,6 +162,12 @@ export function DetachedTabWindow() {
         {/* A detached tab raises its own notifications and keeps its own
             history — the per-window scoping notifications already have. */}
         <NotificationHosts />
+        {/* Required here, not optional: `TableDataTab`/`DocumentListView`
+            (both reachable via `TabBody` above) call `confirmDestructive`,
+            which now awaits this dialog instead of blocking on
+            `window.confirm` — a window with no `ConfirmHost` would leave
+            that promise unsettled forever. */}
+        <ConfirmHost />
       </div>
     </TooltipProvider>
   );

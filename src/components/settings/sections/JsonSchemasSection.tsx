@@ -246,7 +246,7 @@ export function JsonSchemasSection() {
       count > 0
         ? t("jsonSchemas.deleteConfirmBound", { name: selected.name, count })
         : t("jsonSchemas.deleteConfirm", { name: selected.name });
-    if (!confirmIrreversible(message)) return;
+    if (!(await confirmIrreversible(message))) return;
     const dropped = await deleteSchema(selected.id);
     notify.success(
       dropped > 0

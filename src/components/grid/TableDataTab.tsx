@@ -967,9 +967,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     const picked = await pickJsonFile(t("schema.importCollection.pickTitle"));
     if (!picked) return;
     if (
-      !confirmDestructive(
+      !(await confirmDestructive(
         t("schema.importCollection.confirm", { collection: table }),
-      )
+      ))
     ) {
       return;
     }

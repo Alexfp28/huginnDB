@@ -2,10 +2,18 @@
  * Gate a destructive action behind the user's `ui.confirmDestructive`
  * preference.
  *
- * When the preference is enabled (the default) this defers to the native
- * `window.confirm` dialog and returns its result. When the user has turned
- * confirmations off, it returns `true` immediately so the caller proceeds
- * without prompting.
+ * When the preference is enabled (the default) this awaits the app's own
+ * `ConfirmHost` dialog (via `useConfirmRequest`) and resolves with the
+ * user's answer. When the user has turned confirmations off, it resolves
+ * `true` immediately so the caller proceeds without prompting.
+ *
+ * Async now, where this used to block on `window.confirm` synchronously —
+ * every call site already `await`s it (or checked its old boolean return
+ * the same turn), so the shape at each call site barely changed. What did
+ * change: nothing else on screen was blocked while the native dialog was
+ * up, so a call site that reads state after the `await` must re-read it
+ * rather than trust what a closure captured before — see
+ * `DocumentListView.tsx`'s `deleteField` for the one place that mattered.
  *
  * Read from the store imperatively (not via a hook) so it can be called from
  * event handlers and non-component code paths alike.
@@ -16,11 +24,14 @@
  */
 
 import { usePreferences } from "@/stores/preferences/preferences";
+import { useConfirmRequest } from "@/stores/dialogs/confirmRequest";
 
-export function confirmDestructive(message: string): boolean {
+export async function confirmDestructive(message: string): Promise<boolean> {
   const enabled = usePreferences.getState().prefs.ui.confirmDestructive;
   if (!enabled) return true;
-  return window.confirm(message);
+  return useConfirmRequest
+    .getState()
+    .request({ tone: "destructive", message });
 }
 
 /**
@@ -41,6 +52,8 @@ export function confirmDestructive(message: string): boolean {
  * If in doubt about which helper an action wants, ask: *could the user get this
  * back?* If the answer is no, it belongs here.
  */
-export function confirmIrreversible(message: string): boolean {
-  return window.confirm(message);
+export async function confirmIrreversible(message: string): Promise<boolean> {
+  return useConfirmRequest
+    .getState()
+    .request({ tone: "irreversible", message });
 }

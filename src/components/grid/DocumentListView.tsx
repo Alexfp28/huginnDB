@@ -728,6 +728,17 @@ const DocumentCard = memo(function DocumentCard({
   const [draft, setDraft] = useState<DraftState | null>(null);
   /** Guards against a blur-commit racing the Enter-commit of the same edit. */
   const committingRef = useRef(false);
+  /**
+   * `deleteField` awaits a confirm dialog before it acts, which is a real
+   * gap now that confirming is a Promise instead of a blocking
+   * `window.confirm` — the row this card renders can refresh underneath it
+   * while the user is still deciding. Reading `rowValues` (the prop) after
+   * that await would use whatever this render closed over, not what the
+   * row holds by the time the action actually runs; the ref is always the
+   * latest, updated every render exactly like `callbacksRef` above.
+   */
+  const rowValuesRef = useRef(rowValues);
+  rowValuesRef.current = rowValues;
 
   const isExpanded = useCallback(
     (key: string) => (toggled.has(key) ? !expandNested : expandNested),
@@ -861,14 +872,16 @@ const DocumentCard = memo(function DocumentCard({
     const onFieldDelete = callbacksRef.current.onFieldDelete;
     if (!onFieldDelete) return;
     if (
-      !confirmDestructive(
+      !(await confirmDestructive(
         t("dataGrid.list.confirmDeleteField", { field: pathKey(f.path) }),
-      )
+      ))
     ) {
       return;
     }
     try {
-      await onFieldDelete(rowValues, f.path);
+      // Re-read after the await, not the `rowValues` this render closed
+      // over — see `rowValuesRef`'s docblock above.
+      await onFieldDelete(rowValuesRef.current, f.path);
     } catch (e) {
       notify.error(String(e));
     }

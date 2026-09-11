@@ -124,12 +124,11 @@ export function SavedQueriesPanel({
                   icon={Trash2}
                   label={t("saved.delete")}
                   onClick={() => {
-                    if (
-                      confirmIrreversible(
-                        t("saved.deleteConfirm", { name: q.name }),
-                      )
-                    )
-                      remove(q.id);
+                    void confirmIrreversible(
+                      t("saved.deleteConfirm", { name: q.name }),
+                    ).then((ok) => {
+                      if (ok) remove(q.id);
+                    });
                   }}
                 />
               </div>

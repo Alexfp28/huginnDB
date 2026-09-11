@@ -529,7 +529,11 @@ function DatabaseRoot({
   // frontend state (its schema slice + any open tabs) and refresh the parent
   // tree so the row disappears; the backend already closed the child pool.
   const dropThisDatabase = async () => {
-    if (!confirmDestructive(t("schema.dropDatabase.confirm", { name: dbName })))
+    if (
+      !(await confirmDestructive(
+        t("schema.dropDatabase.confirm", { name: dbName }),
+      ))
+    )
       return;
     try {
       await api.dropDatabase(parentId, dbName);

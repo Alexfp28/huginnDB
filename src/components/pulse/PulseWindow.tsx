@@ -46,6 +46,7 @@ import { ConnectionErrorBoundary } from "@/components/connection/ConnectionError
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
 import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { NotificationHosts } from "@/components/shell/NotificationHosts";
+import { ConfirmHost } from "@/components/common/ConfirmHost";
 import { useBridge } from "@/lib/bridges/useBridge";
 import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -964,6 +965,7 @@ export function PulseWindow() {
           )}
         </div>
         <NotificationHosts />
+        <ConfirmHost />
       </div>
     </TooltipProvider>
   );

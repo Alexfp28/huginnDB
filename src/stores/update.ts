@@ -273,7 +273,7 @@ export const useUpdateStore = create<UpdateState>()(
           // "don't nag me about deletes" preference was meant to switch off.
           if (
             sidecarRunning &&
-            !confirmIrreversible(i18n.t("update.mcpSidecarWarning"))
+            !(await confirmIrreversible(i18n.t("update.mcpSidecarWarning")))
           ) {
             set({ status: "readyToRestart" });
             return; // the user can retry later

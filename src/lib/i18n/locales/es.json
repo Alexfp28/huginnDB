@@ -23,7 +23,9 @@
     "add": "Añadir",
     "import": "Importar",
     "export": "Exportar",
-    "clear": "Limpiar"
+    "clear": "Limpiar",
+    "confirmTitle": "Confirmar",
+    "confirm": "Confirmar"
   },
   "sandbox": {
     "badge": "CANARY",

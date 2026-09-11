@@ -96,14 +96,11 @@ export function VanishedEnvironmentNotice({
           disabled={busy}
           className="flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
           onClick={() => {
-            if (
-              !confirmIrreversible(
-                t("origins.vanishedEnvironments.retireConfirm", { name }),
-              )
-            ) {
-              return;
-            }
-            void run(() => retireEnvironment(environmentId));
+            void confirmIrreversible(
+              t("origins.vanishedEnvironments.retireConfirm", { name }),
+            ).then((ok) => {
+              if (ok) void run(() => retireEnvironment(environmentId));
+            });
           }}
         >
           <Trash2 className="h-3 w-3" />

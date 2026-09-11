@@ -63,6 +63,7 @@ import { OriginEditorOverlay } from "@/components/origins/OriginEditorOverlay";
 import { OriginRepublishDialog } from "@/components/origins/dialogs/OriginRepublishDialog";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
+import { ConfirmHost } from "@/components/common/ConfirmHost";
 import { startAiStreamBridge } from "@/lib/bridges/ai-stream-bridge";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
 import {
@@ -539,6 +540,8 @@ export default function App() {
         <OriginRepublishDialog />
         <EnvironmentEditorDialog />
         <EnvironmentDeleteConfirmDialog />
+        {/* Replaces `window.confirm` — see `lib/confirmDestructive.ts`. */}
+        <ConfirmHost />
         <div className="flex-1 overflow-hidden">
           <AppShell />
         </div>

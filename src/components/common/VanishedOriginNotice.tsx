@@ -118,16 +118,13 @@ export function VanishedOriginNotice({
           disabled={busy}
           className="flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
           onClick={() => {
-            if (
-              !confirmIrreversible(
-                t("origins.vanished.retireConfirm", {
-                  name: name ?? profileId,
-                }),
-              )
-            ) {
-              return;
-            }
-            void run(() => retire(profileId));
+            void confirmIrreversible(
+              t("origins.vanished.retireConfirm", {
+                name: name ?? profileId,
+              }),
+            ).then((ok) => {
+              if (ok) void run(() => retire(profileId));
+            });
           }}
         >
           <Trash2 className="h-3 w-3" />
