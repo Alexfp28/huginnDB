@@ -37,11 +37,15 @@
  *    that is a dependency this does not need.
  *
  * `fixed` escapes the scroller's clip because clipping only follows the
- * containing-block chain, and a fixed element's containing block is its nearest
- * *transformed* ancestor: `DialogContent` (`-translate-x-1/2 -translate-y-1/2`),
- * which sits **above** the scroller and does not clip. It also stays a DOM
- * descendant of the dialog's content, so pointer events, the click-outside
- * listener and the dialog's focus management all keep working.
+ * containing-block chain, and a fixed element's containing block is its
+ * nearest *transformed* ancestor — or, absent one, the viewport itself.
+ * `DialogContent` no longer carries a transform (centring moved to the
+ * flex layer that wraps it, in `ui/dialog.tsx`, so `tailwindcss-animate`'s
+ * `enter` keyframe can own `transform` for the open/close animation), so
+ * this panel's containing block is the viewport — which sits **above** the
+ * scroller just the same and does not clip. It also stays a DOM descendant
+ * of the dialog's content, so pointer events, the click-outside listener
+ * and the dialog's focus management all keep working.
  *
  * **The offsets are measured, not left to the static position.** Leaving
  * `top`/`left` as `auto` puts a fixed box at its static position — where it

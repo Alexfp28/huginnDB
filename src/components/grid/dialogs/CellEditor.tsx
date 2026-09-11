@@ -365,7 +365,7 @@ export function CellEditor({
         className={cn(
           "flex flex-col gap-0 overflow-hidden p-0",
           fullscreen
-            ? "left-0 top-0 h-screen w-screen max-w-none translate-x-0 translate-y-0 rounded-none border-0"
+            ? "h-full w-full max-w-none rounded-none border-0"
             : "h-[80vh] max-w-5xl",
         )}
       >
