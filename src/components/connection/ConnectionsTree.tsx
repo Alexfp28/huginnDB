@@ -80,6 +80,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -824,7 +825,7 @@ function ConnectionVisibilityDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>
             {t("connectionsTree.selectConnections.title")}
@@ -833,61 +834,63 @@ function ConnectionVisibilityDialog({
             {t("connectionsTree.selectConnections.description")}
           </DialogDescription>
         </DialogHeader>
-        <div className="mb-1.5 flex items-center gap-1.5">
-          <SearchField
-            size="xs"
-            value={filter}
-            onValueChange={setFilter}
-            placeholder={t(
-              "connectionsTree.selectConnections.filterPlaceholder",
-            )}
-            className="flex-1"
-            inputClassName="text-xs"
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 px-2 text-2xs"
-            disabled={filtered.length === 0}
-            onClick={toggleAllFiltered}
-          >
-            {allFilteredSelected
-              ? t("connectionsTree.selectConnections.deselectAll")
-              : t("connectionsTree.selectConnections.selectAll")}
-          </Button>
-        </div>
-        <div className="flex items-center justify-between pb-1">
-          <span className="text-xs text-muted-foreground">
-            {t("connectionsTree.selectConnections.count", {
-              selected: sel.size,
-              total: profiles.length,
-            })}
-          </span>
-        </div>
-        <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
-          {filtered.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-muted-foreground">
-              {t("connectionsTree.selectConnections.noMatches", {
-                query: filter,
+        <DialogBody>
+          <div className="mb-1.5 flex items-center gap-1.5">
+            <SearchField
+              size="xs"
+              value={filter}
+              onValueChange={setFilter}
+              placeholder={t(
+                "connectionsTree.selectConnections.filterPlaceholder",
+              )}
+              className="flex-1"
+              inputClassName="text-xs"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 px-2 text-2xs"
+              disabled={filtered.length === 0}
+              onClick={toggleAllFiltered}
+            >
+              {allFilteredSelected
+                ? t("connectionsTree.selectConnections.deselectAll")
+                : t("connectionsTree.selectConnections.selectAll")}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between pb-1">
+            <span className="text-xs text-muted-foreground">
+              {t("connectionsTree.selectConnections.count", {
+                selected: sel.size,
+                total: profiles.length,
               })}
-            </p>
-          ) : (
-            filtered.map((p) => (
-              <label
-                key={p.id}
-                className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
-              >
-                <Checkbox
-                  checked={sel.has(p.id)}
-                  onChange={() => toggle(p.id)}
-                />
-                <span className="flex-1 truncate text-xs">{p.name}</span>
-                <DriverBadge driver={p.driver} />
-              </label>
-            ))
-          )}
-        </div>
+            </span>
+          </div>
+          <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">
+                {t("connectionsTree.selectConnections.noMatches", {
+                  query: filter,
+                })}
+              </p>
+            ) : (
+              filtered.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-muted/50"
+                >
+                  <Checkbox
+                    checked={sel.has(p.id)}
+                    onChange={() => toggle(p.id)}
+                  />
+                  <span className="flex-1 truncate text-xs">{p.name}</span>
+                  <DriverBadge driver={p.driver} />
+                </label>
+              ))
+            )}
+          </div>
+        </DialogBody>
         <DialogActions
           onCancel={onClose}
           cancelLabel={t("common.cancel")}

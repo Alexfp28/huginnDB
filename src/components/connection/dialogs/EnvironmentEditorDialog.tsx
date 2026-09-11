@@ -24,6 +24,7 @@ import { notify } from "@/lib/notify";
 import { ImagePlus, X } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogHeader,
@@ -167,7 +168,7 @@ export function EnvironmentEditorDialog() {
 
   return (
     <Dialog open={!!editing} onOpenChange={(open) => !open && close()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent tier="panel" className="max-w-sm">
         <DialogHeader>
           <DialogTitle>
             {editing?.id
@@ -175,181 +176,186 @@ export function EnvironmentEditorDialog() {
               : t("environments.createTitle")}
           </DialogTitle>
         </DialogHeader>
-        {isMirrored && (
-          <p className="rounded-md border border-border bg-muted/40 px-2.5 py-2 text-2xs text-muted-foreground">
-            {t("environments.mirroredCosmeticsHint")}
-          </p>
-        )}
-        {/* Live avatar preview — reflects name/image/colour as they're picked,
-            same rendering `EnvironmentRail`/`EnvironmentSwitcher` use. It is
-            also the drop target for an image file: dropping on the thing that
-            shows the result is the affordance users try first, and the button
-            below covers the case where they don't. */}
-        <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "relative shrink-0 rounded-[13px] outline-offset-2 transition-colors",
-              dragOver && "outline-dashed outline-2 outline-brand",
-            )}
-            onDragOver={(e) => {
-              // Both handlers must preventDefault or the webview navigates to
-              // the dropped file instead of handing it to us.
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              // `dragleave` also fires when the pointer crosses into a child
-              // (the avatar itself, the clear button), which would flicker the
-              // outline off and on for the whole hover.
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+        <DialogBody className="space-y-4">
+          {isMirrored && (
+            <p className="rounded-md border border-border bg-muted/40 px-2.5 py-2 text-2xs text-muted-foreground">
+              {t("environments.mirroredCosmeticsHint")}
+            </p>
+          )}
+          {/* Live avatar preview — reflects name/image/colour as they're picked,
+              same rendering `EnvironmentRail`/`EnvironmentSwitcher` use. It is
+              also the drop target for an image file: dropping on the thing that
+              shows the result is the affordance users try first, and the button
+              below covers the case where they don't. */}
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                "relative shrink-0 rounded-[13px] outline-offset-2 transition-colors",
+                dragOver && "outline-dashed outline-2 outline-brand",
+              )}
+              onDragOver={(e) => {
+                // Both handlers must preventDefault or the webview navigates to
+                // the dropped file instead of handing it to us.
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                // `dragleave` also fires when the pointer crosses into a child
+                // (the avatar itself, the clear button), which would flicker the
+                // outline off and on for the whole hover.
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setDragOver(false);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
                 setDragOver(false);
-              }
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-              void dropImage(e.dataTransfer.files[0]);
-            }}
-          >
-            <EnvironmentAvatar
-              name={editing?.name.trim() || defaultName}
-              color={editing?.color ?? null}
-              icon={editing?.icon ?? null}
-              size={48}
-            />
-            {hasImage && (
+                void dropImage(e.dataTransfer.files[0]);
+              }}
+            >
+              <EnvironmentAvatar
+                name={editing?.name.trim() || defaultName}
+                color={editing?.color ?? null}
+                icon={editing?.icon ?? null}
+                size={48}
+              />
+              {hasImage && (
+                <button
+                  type="button"
+                  title={t("environments.imageRemove")}
+                  aria-label={t("environments.imageRemove")}
+                  // Clearing writes `null`, not the previous lucide key: the icon
+                  // picker is gone, so "no image" is the only other state.
+                  onClick={() => patchDraft({ icon: null })}
+                  className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-elevation-1 hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <Input
+                autoFocus
+                value={editing?.name ?? ""}
+                placeholder={defaultName}
+                onChange={(e) => patchDraft({ name: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void submitEditor();
+                }}
+              />
               <button
                 type="button"
-                title={t("environments.imageRemove")}
-                aria-label={t("environments.imageRemove")}
-                // Clearing writes `null`, not the previous lucide key: the icon
-                // picker is gone, so "no image" is the only other state.
-                onClick={() => patchDraft({ icon: null })}
-                className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-background p-0.5 text-muted-foreground shadow-elevation-1 hover:text-foreground"
+                onClick={() => void chooseImage()}
+                className="flex items-center gap-1.5 self-start rounded-sm px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <X className="h-3 w-3" />
+                <ImagePlus className="h-3.5 w-3.5" />
+                {hasImage
+                  ? t("environments.imageReplace")
+                  : t("environments.imageUpload")}
               </button>
-            )}
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <Input
-              autoFocus
-              value={editing?.name ?? ""}
-              placeholder={defaultName}
-              onChange={(e) => patchDraft({ name: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void submitEditor();
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => void chooseImage()}
-              className="flex items-center gap-1.5 self-start rounded-sm px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ImagePlus className="h-3.5 w-3.5" />
-              {hasImage
-                ? t("environments.imageReplace")
-                : t("environments.imageUpload")}
-            </button>
-          </div>
-        </div>
-
-        {/* Colour — click the selected swatch again to clear it. */}
-        <div>
-          <div className="mb-1.5 text-xs text-muted-foreground">
-            {t("environments.color")}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {ENV_COLORS.map((c) => {
-              const on = editing?.color === c;
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={c}
-                  aria-pressed={on}
-                  className={cn(
-                    "h-5 w-5 rounded-full ring-offset-2 ring-offset-background",
-                    on && "ring-2 ring-foreground",
-                  )}
-                  style={{ backgroundColor: c }}
-                  onClick={() => patchDraft({ color: on ? null : c })}
-                />
-              );
-            })}
-            <button
-              type="button"
-              className={cn(
-                "ml-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent",
-                !editing?.color && "text-foreground",
-              )}
-              onClick={() => patchDraft({ color: null })}
-            >
-              {t("environments.none")}
-            </button>
-          </div>
-        </div>
-
-        {/* Theme override — always optional; "Default" keeps whatever theme
-            the user has set in Settings > Appearance. */}
-        <div>
-          <div className="mb-1.5 text-xs text-muted-foreground">
-            {t("environments.theme")}
-          </div>
-          <Select
-            value={editing?.themeId ?? NO_THEME_OVERRIDE}
-            onValueChange={(v) =>
-              patchDraft({ themeId: v === NO_THEME_OVERRIDE ? null : v })
-            }
-          >
-            <SelectTrigger className="h-8 text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_THEME_OVERRIDE}>
-                {t("environments.themeDefault")}
-              </SelectItem>
-              {themeChoices.map((theme) => (
-                <SelectItem key={theme.id} value={theme.id}>
-                  {theme.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Creating only. A new environment starts empty, which is rarely
-            what you want when you're spinning one up alongside the work you
-            already have open — these carry it over. Editing an existing
-            environment must never touch its session, so the block is absent
-            there rather than disabled. */}
-        {editing && !editing.id && active && (
-          <div className="space-y-1.5 rounded-md border border-border p-2.5">
-            <div className="text-xs text-muted-foreground">
-              {t("environments.replicateFrom", {
-                name: environmentLabel(active, defaultName),
-              })}
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={replicate.connections}
-                onChange={(e) =>
-                  setReplicate({ ...replicate, connections: e.target.checked })
-                }
-              />
-              {t("environments.replicateConnections")}
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={replicate.layout}
-                onChange={(e) =>
-                  setReplicate({ ...replicate, layout: e.target.checked })
-                }
-              />
-              {t("environments.replicateLayout")}
-            </label>
           </div>
-        )}
+
+          {/* Colour — click the selected swatch again to clear it. */}
+          <div>
+            <div className="mb-1.5 text-xs text-muted-foreground">
+              {t("environments.color")}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {ENV_COLORS.map((c) => {
+                const on = editing?.color === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={c}
+                    aria-pressed={on}
+                    className={cn(
+                      "h-5 w-5 rounded-full ring-offset-2 ring-offset-background",
+                      on && "ring-2 ring-foreground",
+                    )}
+                    style={{ backgroundColor: c }}
+                    onClick={() => patchDraft({ color: on ? null : c })}
+                  />
+                );
+              })}
+              <button
+                type="button"
+                className={cn(
+                  "ml-1 rounded-sm px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent",
+                  !editing?.color && "text-foreground",
+                )}
+                onClick={() => patchDraft({ color: null })}
+              >
+                {t("environments.none")}
+              </button>
+            </div>
+          </div>
+
+          {/* Theme override — always optional; "Default" keeps whatever theme
+              the user has set in Settings > Appearance. */}
+          <div>
+            <div className="mb-1.5 text-xs text-muted-foreground">
+              {t("environments.theme")}
+            </div>
+            <Select
+              value={editing?.themeId ?? NO_THEME_OVERRIDE}
+              onValueChange={(v) =>
+                patchDraft({ themeId: v === NO_THEME_OVERRIDE ? null : v })
+              }
+            >
+              <SelectTrigger className="h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_THEME_OVERRIDE}>
+                  {t("environments.themeDefault")}
+                </SelectItem>
+                {themeChoices.map((theme) => (
+                  <SelectItem key={theme.id} value={theme.id}>
+                    {theme.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Creating only. A new environment starts empty, which is rarely
+              what you want when you're spinning one up alongside the work you
+              already have open — these carry it over. Editing an existing
+              environment must never touch its session, so the block is absent
+              there rather than disabled. */}
+          {editing && !editing.id && active && (
+            <div className="space-y-1.5 rounded-md border border-border p-2.5">
+              <div className="text-xs text-muted-foreground">
+                {t("environments.replicateFrom", {
+                  name: environmentLabel(active, defaultName),
+                })}
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={replicate.connections}
+                  onChange={(e) =>
+                    setReplicate({
+                      ...replicate,
+                      connections: e.target.checked,
+                    })
+                  }
+                />
+                {t("environments.replicateConnections")}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={replicate.layout}
+                  onChange={(e) =>
+                    setReplicate({ ...replicate, layout: e.target.checked })
+                  }
+                />
+                {t("environments.replicateLayout")}
+              </label>
+            </div>
+          )}
+        </DialogBody>
 
         <DialogFooter>
           {isMirrored && (

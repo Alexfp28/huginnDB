@@ -21,6 +21,7 @@ import { PasswordInput } from "@/components/common/PasswordInput";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -74,7 +75,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
         if (!v) handleClose();
       }}
     >
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Upload className="h-4 w-4" />
@@ -82,6 +83,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
 
+        <DialogBody className="space-y-4">
         {progress && (
           <ProgressBar
             done={progress.done}
@@ -97,7 +99,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
         {/* Step: pick */}
         {/* ---------------------------------------------------------------- */}
         {step === "pick" && (
-          <div className="space-y-4 py-2">
+          <div className="space-y-4">
             <p className="text-xs text-muted-foreground">
               {t("transfer.import.pickDescription")}
             </p>
@@ -127,7 +129,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
         {/* Step: passphrase */}
         {/* ---------------------------------------------------------------- */}
         {step === "passphrase" && (
-          <div className="space-y-4 py-2">
+          <div className="space-y-4">
             <div className="flex items-start gap-2 rounded-md bg-muted px-3 py-2 text-2xs text-muted-foreground">
               <KeyRound className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {t("transfer.import.passphraseRequired")}
@@ -166,7 +168,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
         {/* Step: conflicts */}
         {/* ---------------------------------------------------------------- */}
         {step === "conflicts" && analysis && (
-          <div className="space-y-4 py-2">
+          <div className="space-y-4">
             <ConflictResolutionStep
               conflicts={analysis.conflicts}
               resolutions={resolutions}
@@ -191,7 +193,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
         {/* Step: done */}
         {/* ---------------------------------------------------------------- */}
         {step === "done" && result && (
-          <div className="space-y-4 py-2">
+          <div className="space-y-4">
             <div className="flex items-center gap-2 text-sm font-medium text-success">
               <CheckCircle2 className="h-4 w-4" />
               {t("transfer.import.done")}
@@ -232,6 +234,7 @@ export function ImportProfilesDialog({ open, onOpenChange }: Props) {
             </DialogFooter>
           </div>
         )}
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

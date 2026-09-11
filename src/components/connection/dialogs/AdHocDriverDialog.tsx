@@ -9,6 +9,7 @@
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -43,29 +44,31 @@ export function AdHocDriverDialog({
   const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent tier="panel" className="max-w-sm">
         <DialogHeader>
           <DialogTitle>{t("adhocDriver.title")}</DialogTitle>
           <DialogDescription>
             {t("adhocDriver.description", { name: connectionName })}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-2">
-          {DRIVERS.map((d) => (
-            <Button
-              key={d.id}
-              variant="outline"
-              className="justify-start gap-2"
-              onClick={() => onPick(d.id)}
-            >
-              <DriverBadge driver={d.id} />
-              {d.label}
-            </Button>
-          ))}
-        </div>
-        <p className="text-2xs text-muted-foreground">
-          {t("adhocDriver.note")}
-        </p>
+        <DialogBody className="space-y-3">
+          <div className="flex flex-col gap-2">
+            {DRIVERS.map((d) => (
+              <Button
+                key={d.id}
+                variant="outline"
+                className="justify-start gap-2"
+                onClick={() => onPick(d.id)}
+              >
+                <DriverBadge driver={d.id} />
+                {d.label}
+              </Button>
+            ))}
+          </div>
+          <p className="text-2xs text-muted-foreground">
+            {t("adhocDriver.note")}
+          </p>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

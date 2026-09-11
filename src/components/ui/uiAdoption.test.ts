@@ -394,14 +394,6 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/aggregation/dialogs/ExportPipelineDialog.tsx": 1,
     "src/components/aggregation/dialogs/SaveViewDialog.tsx": 1,
     "src/components/common/ConfirmDialog.tsx": 1,
-    "src/components/connection/ConnectionsTree.tsx": 1,
-    "src/components/connection/dialogs/AdHocDriverDialog.tsx": 1,
-    "src/components/connection/dialogs/CliConnectChoiceDialog.tsx": 1,
-    "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 1,
-    "src/components/connection/dialogs/ExportEnvironmentDialog.tsx": 1,
-    "src/components/connection/dialogs/ExportProfilesDialog.tsx": 1,
-    "src/components/connection/dialogs/ImportEnvironmentDialog.tsx": 1,
-    "src/components/connection/dialogs/ImportProfilesDialog.tsx": 1,
     "src/components/grid/SideEditorPanel.tsx": 1,
     "src/components/grid/TableDataTab.tsx": 1,
     "src/components/indexes/dialogs/IndexEditorDialog.tsx": 1,
@@ -418,12 +410,12 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${25} in ${25} files`, () => {
+  it(`is down to ${17} in ${17} files`, () => {
     const measured = census(count);
     expect(delta(measured, BUDGET)).toEqual({});
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(25);
+    expect(total(BUDGET)).toBeLessThanOrEqual(17);
   });
 });

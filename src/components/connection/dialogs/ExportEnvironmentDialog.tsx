@@ -34,6 +34,7 @@ import {
 } from "@/components/common/PassphraseFields";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -117,7 +118,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Download className="h-4 w-4" />
@@ -125,7 +126,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <DialogBody className="space-y-4">
           <p className="text-xs text-muted-foreground">
             {t("transfer.exportEnvironment.description")}
           </p>
@@ -213,7 +214,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
               idPrefix="export-env"
             />
           )}
-        </div>
+        </DialogBody>
 
         <DialogFooter>
           <Button

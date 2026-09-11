@@ -12,6 +12,7 @@
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -48,26 +49,28 @@ export function CliConnectChoiceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onCancel()}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>{t("cliConnect.title")}</DialogTitle>
           <DialogDescription>
             {t("cliConnect.description", { name: connectionName })}
           </DialogDescription>
         </DialogHeader>
-        <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
-          <Label
-            htmlFor="cli-connect-dont-ask"
-            className="text-xs font-normal text-muted-foreground"
-          >
-            {t("cliConnect.dontAskAgain")}
-          </Label>
-          <Switch
-            id="cli-connect-dont-ask"
-            checked={dontAskAgain}
-            onCheckedChange={onDontAskAgainChange}
-          />
-        </div>
+        <DialogBody>
+          <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/30 px-3 py-2.5">
+            <Label
+              htmlFor="cli-connect-dont-ask"
+              className="text-xs font-normal text-muted-foreground"
+            >
+              {t("cliConnect.dontAskAgain")}
+            </Label>
+            <Switch
+              id="cli-connect-dont-ask"
+              checked={dontAskAgain}
+              onCheckedChange={onDontAskAgainChange}
+            />
+          </div>
+        </DialogBody>
         <DialogFooter className="gap-2 sm:gap-2">
           <Button variant="ghost" onClick={onCancel}>
             {t("cliConnect.cancel")}
