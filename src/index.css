@@ -387,7 +387,7 @@ input[type="password"]::-ms-clear {
  * `.dv-dockview` carries the theme className, so setting vars there
  * overrides the shared defaults. */
 .inner-dock .dv-dockview {
-  --dv-tabs-and-actions-container-height: 38px;
+  --dv-tabs-and-actions-container-height: 45px;
   --dv-tab-font-size: 12px;
   --dv-tab-border-radius: calc(var(--radius) - 2px);
   --dv-tab-margin: 7px 3px 0 3px;
