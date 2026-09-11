@@ -14,6 +14,7 @@ import { notify } from "@/lib/notify";
 import { Bug, Lightbulb, KeyRound } from "lucide-react";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -169,13 +170,13 @@ export function FeedbackDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent>
+      <DialogContent tier="panel">
         <DialogHeader>
           <DialogTitle>{t("feedback.title")}</DialogTitle>
           <DialogDescription>{t("feedback.description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
+        <DialogBody className="flex flex-col gap-3">
           {/* Kind toggle */}
           <Segmented
             value={kind}
@@ -273,7 +274,7 @@ export function FeedbackDialog() {
               {hasPat ? t("feedback.hintApi") : t("feedback.hintBrowser")}
             </p>
           </div>
-        </div>
+        </DialogBody>
 
         <DialogFooter className="sm:justify-between">
           <Button

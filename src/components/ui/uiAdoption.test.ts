@@ -396,17 +396,14 @@ describe("DialogContent still on the transitional `padded` tier", () => {
     "src/components/grid/TableDataTab.tsx": 1,
     "src/components/schema/dialogs/NamePromptDialog.tsx": 1,
     "src/components/schema/StructureEditorTab.tsx": 1,
-    "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
-    "src/components/shell/dialogs/FeedbackDialog.tsx": 1,
-    "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${8} in ${8} files`, () => {
+  it(`is down to ${5} in ${5} files`, () => {
     const measured = census(count);
     expect(delta(measured, BUDGET)).toEqual({});
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(8);
+    expect(total(BUDGET)).toBeLessThanOrEqual(5);
   });
 });

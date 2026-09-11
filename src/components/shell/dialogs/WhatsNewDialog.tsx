@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogFooter,
   DialogTitle,
@@ -98,79 +99,87 @@ export function WhatsNewDialog() {
       }}
     >
       {note && (
-        <DialogContent className="max-w-xl gap-0 overflow-hidden p-0">
-          {/* Brand banner: the sticker mark over the halftone wash, same
-              language as the splash screen and About's identity card.
-              `bg-card/60` over the dialog's own `bg-card` is what keeps the
-              dot lattice from reading flat against it. Padding is `pr-8` on
-              the title row so the version pill never crowds the dialog's
-              own close button, sitting at a fixed `top-3 right-3`. */}
-          <div className="relative border-b border-border bg-card/60 px-7 pb-6 pt-7">
-            <span
-              aria-hidden
-              className="halftone-centered pointer-events-none absolute inset-0 opacity-60 [--halftone-pitch:12px]"
-            />
-            <span
-              aria-hidden
-              className="pointer-events-none absolute -top-10 left-0 h-40 w-40 rounded-full bg-brand/25 blur-[70px]"
-            />
-            <div className="relative flex items-center gap-3 pr-8">
-              <img
-                src="/image/huginn-mark-256.png"
-                alt=""
-                width={256}
-                height={256}
-                className="h-12 w-12 shrink-0 select-none drop-shadow-[0_4px_16px_color-mix(in_srgb,var(--brand)_35%,transparent)]"
-                draggable={false}
+        <DialogContent tier="panel" className="max-w-xl overflow-hidden">
+          {/* No `DialogHeader` here: the brand banner below carries the
+              title and description itself, at its own `px-7` rhythm rather
+              than the tier's `px-5` — the one place in the redesign that
+              wants a hunk the tier doesn't model (a celebratory banner, not
+              a plain rail), so it is the body's own first child instead of
+              a `banner` prop invented for a single consumer. */}
+          <DialogBody className="p-0">
+            {/* Brand banner: the sticker mark over the halftone wash, same
+                language as the splash screen and About's identity card.
+                `bg-card/60` over the dialog's own `bg-card` is what keeps the
+                dot lattice from reading flat against it. Padding is `pr-8` on
+                the title row so the version pill never crowds the dialog's
+                own close button, sitting at a fixed `top-3 right-3`. */}
+            <div className="relative border-b border-border bg-card/60 px-7 pb-6 pt-7">
+              <span
+                aria-hidden
+                className="halftone-centered pointer-events-none absolute inset-0 opacity-60 [--halftone-pitch:12px]"
               />
-              <div className="min-w-0">
-                <span
-                  className={cn(
-                    MICRO_HEADING,
-                    "inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-brand",
-                  )}
-                >
-                  {t("whatsNew.versionLabel", { version: note.version })}
-                </span>
-                <DialogTitle className="mt-1 text-xl">
-                  {t("whatsNew.title")}
-                </DialogTitle>
-              </div>
-            </div>
-            {/* The hero line: one sentence that says what the release is
-                about, not a summary of every highlight — the list below
-                does that job, each with its own "Read more". */}
-            <DialogDescription className="relative mt-4 pr-8 text-[13px] font-medium leading-snug text-foreground/90">
-              {t(note.taglineKey)}
-            </DialogDescription>
-          </div>
-
-          <div className="px-7 py-4">
-            <ul className="-mx-1 max-h-[50vh] space-y-1 overflow-y-auto px-1">
-              {note.highlights.map((h, i) => {
-                const Icon = h.icon;
-                return (
-                  <li
-                    key={h.titleKey}
-                    className="flex items-start gap-3 rounded-md p-2 opacity-0 [animation-fill-mode:forwards] animate-pop-in transition-colors hover:bg-accent"
-                    style={{ animationDelay: `${i * 45}ms` }}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -top-10 left-0 h-40 w-40 rounded-full bg-brand/25 blur-[70px]"
+              />
+              <div className="relative flex items-center gap-3 pr-8">
+                <img
+                  src="/image/huginn-mark-256.png"
+                  alt=""
+                  width={256}
+                  height={256}
+                  className="h-12 w-12 shrink-0 select-none drop-shadow-[0_4px_16px_color-mix(in_srgb,var(--brand)_35%,transparent)]"
+                  draggable={false}
+                />
+                <div className="min-w-0">
+                  <span
+                    className={cn(
+                      MICRO_HEADING,
+                      "inline-flex items-center rounded-full bg-brand/10 px-2 py-0.5 text-brand",
+                    )}
                   >
-                    <span className="brand-sticker mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-foreground">
-                        {t(h.titleKey)}
-                      </div>
-                      <HighlightBody text={t(h.bodyKey)} />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                    {t("whatsNew.versionLabel", { version: note.version })}
+                  </span>
+                  <DialogTitle className="mt-1 text-xl">
+                    {t("whatsNew.title")}
+                  </DialogTitle>
+                </div>
+              </div>
+              {/* The hero line: one sentence that says what the release is
+                  about, not a summary of every highlight — the list below
+                  does that job, each with its own "Read more". */}
+              <DialogDescription className="relative mt-4 pr-8 text-[13px] font-medium leading-snug text-foreground/90">
+                {t(note.taglineKey)}
+              </DialogDescription>
+            </div>
 
-          <DialogFooter className="items-center border-t border-border px-7 py-4 sm:justify-between">
+            <div className="px-7 py-4">
+              <ul className="-mx-1 max-h-[50vh] space-y-1 overflow-y-auto px-1">
+                {note.highlights.map((h, i) => {
+                  const Icon = h.icon;
+                  return (
+                    <li
+                      key={h.titleKey}
+                      className="flex items-start gap-3 rounded-md p-2 opacity-0 [animation-fill-mode:forwards] animate-pop-in transition-colors hover:bg-accent"
+                      style={{ animationDelay: `${i * 45}ms` }}
+                    >
+                      <span className="brand-sticker mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-foreground">
+                          {t(h.titleKey)}
+                        </div>
+                        <HighlightBody text={t(h.bodyKey)} />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </DialogBody>
+
+          <DialogFooter className="items-center px-7 py-4 sm:justify-between">
             <button
               type="button"
               onClick={() => void api.openUrl(CHANGELOG_URL)}

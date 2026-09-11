@@ -26,6 +26,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -122,6 +123,7 @@ export function CaptureShortcutDialog({
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogContent
+        tier="panel"
         className="max-w-md"
         // While armed the window listener already swallowed the keystroke; this
         // stops Radix from also acting on Escape and closing the dialog.
@@ -136,6 +138,7 @@ export function CaptureShortcutDialog({
           </DialogDescription>
         </DialogHeader>
 
+        <DialogBody className="space-y-3">
         {/* The display *is* the re-record button; while armed it is already
             recording, so there is nothing to click. */}
         <button
@@ -174,13 +177,12 @@ export function CaptureShortcutDialog({
           )}
         </button>
 
-        {/* Its own grid item rather than a footer button: the footer is for
+        {/* Its own row rather than a footer button: the footer is for
             committing, and four buttons of Spanish-length labels do not fit in
-            a `max-w-md` row. `self-start` because grid items stretch. */}
+            a `max-w-md` row. */}
         <Button
           variant="ghost"
           size="sm"
-          className="self-start"
           disabled={armed || chords.length === 0}
           onClick={() => {
             appending.current = true;
@@ -198,6 +200,7 @@ export function CaptureShortcutDialog({
               : t("settings.shortcuts.conflict", { action: label(clashes[0].actionId) })}
           </p>
         )}
+        </DialogBody>
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onCancel}>
