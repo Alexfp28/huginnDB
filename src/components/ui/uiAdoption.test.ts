@@ -225,10 +225,8 @@ describe("raw <button> outside ui/", () => {
     "src/components/query/Console.tsx": 1,
     "src/components/query/QueryEditorTab.tsx": 1,
     "src/components/schema/IndexesSectionHeader.tsx": 1,
-    "src/components/schema/MultiDbExplorer.tsx": 1,
     "src/components/schema/SchemaTableSection.tsx": 1,
     "src/components/schema/SecurityTab.tsx": 1,
-    "src/components/schema/SingleDbExplorer.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
     "src/components/settings/dialogs/SettingsDialog.tsx": 1,
     "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
@@ -240,7 +238,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${136} in ${74} files`, () => {
+  it(`is down to ${134} in ${72} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -248,7 +246,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(136);
+    expect(total(BUDGET)).toBeLessThanOrEqual(134);
   });
 });
 

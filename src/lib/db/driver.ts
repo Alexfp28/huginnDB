@@ -80,10 +80,47 @@ export function supportsRenameTable(driver: Driver | undefined): boolean {
   return driver !== "sqlserver";
 }
 
-/** Server-level `CREATE DATABASE` / `DROP DATABASE`. SQLite's file *is* the
- *  database and MongoDB creates them implicitly on first write. */
+/** Creating a database. SQLite's file *is* the database, so there is nothing
+ *  to create that the connection dialog does not already do.
+ *
+ *  MongoDB is in, but only alongside `requiresInitialCollection` below: it has
+ *  no `CREATE DATABASE` wire command because an *empty* database is not a
+ *  thing the server stores, so creating one means creating its first
+ *  collection. Excluding Mongo outright — which is what this did until 1.23.1
+ *  — left a server with no databases at all with no way out of the app. */
 export function supportsCreateDatabase(driver: Driver | undefined): boolean {
-  return driver === "postgres" || driver === "mysql" || driver === "sqlserver";
+  return (
+    driver === "postgres" ||
+    driver === "mysql" ||
+    driver === "sqlserver" ||
+    driver === "mongodb"
+  );
+}
+
+/** Whether creating a database also requires naming its first collection.
+ *
+ *  MongoDB only, and not a UI nicety: `create_database`'s MongoDB arm refuses
+ *  the call without one, because the alternative is reporting success for a
+ *  database the server will not list. */
+export function requiresInitialCollection(driver: Driver | undefined): boolean {
+  return driver === "mongodb";
+}
+
+/** Dropping a database. Everything but SQLite, where deleting the file is the
+ *  operation and the app is the wrong place to do it.
+ *
+ *  **Separate from `supportsCreateDatabase` on purpose.** The two used to be
+ *  one predicate, and the tree's "Drop database…" entry read the create one —
+ *  so MongoDB, which cannot create an empty database, was also denied the
+ *  ability to drop a full one, even though `dropDatabase` is a single command
+ *  it has always supported. One predicate cannot answer two questions. */
+export function supportsDropDatabase(driver: Driver | undefined): boolean {
+  return (
+    driver === "postgres" ||
+    driver === "mysql" ||
+    driver === "sqlserver" ||
+    driver === "mongodb"
+  );
 }
 
 /** Whether the server hosts more than one database, so a database picker and

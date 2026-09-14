@@ -27,42 +27,25 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
-  Download,
-  Eye,
-  FolderPlus,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  SquareTerminal,
-  Table2,
-  Trash2,
-  Upload,
+  DatabaseZap,
+  ListFilter,
 } from "lucide-react";
 import { notify } from "@/lib/notify";
 
+import { DatabaseNodeMenu } from "@/components/schema/DatabaseNodeMenu";
 import { SingleDbExplorer } from "@/components/schema/SingleDbExplorer";
-import { CreateCollectionDialog } from "@/components/schema/dialogs/CreateCollectionDialog";
-import { ExportDatabaseDialog } from "@/components/schema/dialogs/ExportDatabaseDialog";
-import { ImportSqlDialog } from "@/components/schema/dialogs/ImportSqlDialog";
-import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { confirmDestructive } from "@/lib/confirmDestructive";
+import { CreateDatabaseDialog } from "@/components/schema/dialogs/CreateDatabaseDialog";
+import { DatabaseVisibilityDialog } from "@/components/schema/dialogs/DatabaseVisibilityDialog";
+import { Button } from "@/components/ui/button";
+import { TreeRow } from "@/components/ui/tree-row";
+import { confirmIrreversible } from "@/lib/confirmDestructive";
 import { useVisibleDatabases } from "@/lib/connection/useVisibleDatabases";
 import { databaseViewId } from "@/lib/connectionLabel";
 import { scopeIncludesDatabase } from "@/lib/schema/filterScope";
 import {
   supportsCreateDatabase,
-  supportsDdlEditing,
-  supportsSqlDump,
+  supportsDropDatabase,
 } from "@/lib/db/driver";
-import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
-import { openQueryTab } from "@/lib/tabs/openQueryTab";
-import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
 import { api } from "@/lib/tauri";
 import { cn, formatBytes } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
@@ -100,6 +83,7 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
   );
   const driver = profile?.driver;
   const canCreateDatabase = supportsCreateDatabase(driver);
+  const canDropDatabase = supportsDropDatabase(driver);
   // DataGrip-style visible-databases subset. `null`/empty = show all. Resolved
   // across both layers (this environment's override, then the profile) rather
   // than read off the profile: the profile is global, so reading it directly is
@@ -138,6 +122,13 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
   const requestSearchFocus = useTreeSearch((s) => s.requestFocus);
 
   useEnsureSchemaLoaded(parentId);
+
+  // Both dialogs the empty state offers. Mounted from here rather than reached
+  // through the connection's context menu because the whole point of the empty
+  // state is that the tree gives the user nothing to right-click on: the row
+  // that would carry that menu is the one that does not exist.
+  const [createDbOpen, setCreateDbOpen] = useState(false);
+  const [dbPickerOpen, setDbPickerOpen] = useState(false);
 
   const filterActive = patterns.length > 0;
 
@@ -265,13 +256,56 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
             {t("schema.noMatches")}
           </div>
         )}
+        {/* The tree with nothing in it. Until 1.23.1 this rendered literally
+            nothing — no row, no sentence — which reads as a connection that
+            failed rather than a server that is empty, and left the only way to
+            create the first database (the connection row's context menu) as
+            something the user had to already know about. The two reasons a
+            server shows no databases need different answers, so they are told
+            apart rather than sharing one vague line. */}
+        {!filterActive && dbRows.length === 0 && (
+          <div className="space-y-2 px-3 py-3">
+            <div className="text-xs text-muted-foreground">
+              {t(
+                cs.databases.length === 0
+                  ? "schema.noDatabases.empty"
+                  : "schema.noDatabases.allHidden",
+                { total: cs.databases.length },
+              )}
+            </div>
+            {cs.databases.length === 0
+              ? canCreateDatabase && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    onClick={() => setCreateDbOpen(true)}
+                  >
+                    <DatabaseZap className="mr-1.5 h-3.5 w-3.5" />
+                    {t("schema.createDatabase.title")}
+                  </Button>
+                )
+              : /* Hidden, not absent: the fix is the visibility picker, and
+                   offering "new database" here would answer a question the
+                   user did not ask. */
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setDbPickerOpen(true)}
+                >
+                  <ListFilter className="mr-1.5 h-3.5 w-3.5" />
+                  {t("schema.selectDatabases.title")}
+                </Button>}
+          </div>
+        )}
         {dbRows.map(({ db, count, cold, nameMatch }) => (
           <DatabaseRoot
             key={`${parentId}::${db.name}`}
             parentId={parentId}
             dbName={db.name}
             driver={driver}
-            canDrop={canCreateDatabase}
+            canDrop={canDropDatabase}
             expanded={cs.expanded.has(`db:${db.name}`)}
             onToggle={() => toggleNode(parentId, `db:${db.name}`)}
             onScopeHere={() => {
@@ -303,6 +337,27 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
           />
         ))}
       </div>
+      {createDbOpen && (
+        <CreateDatabaseDialog
+          connectionId={parentId}
+          onClose={() => setCreateDbOpen(false)}
+          onDone={(name) => {
+            setCreateDbOpen(false);
+            // The new row appearing in the tree is the confirmation here — the
+            // subtree is by definition expanded, since the user is looking at
+            // its empty state — so this refreshes and stays quiet.
+            void useSchema.getState().refresh(parentId);
+            notify.success(t("schema.createDatabase.created", { name }));
+          }}
+        />
+      )}
+      {dbPickerOpen && (
+        <DatabaseVisibilityDialog
+          profileId={parentId}
+          databases={cs.databases.map((db) => db.name)}
+          onClose={() => setDbPickerOpen(false)}
+        />
+      )}
     </div>
   );
 });
@@ -332,7 +387,7 @@ function DatabaseRoot({
   dbName: string;
   /** Parent connection's driver — gates the Mongo-only "New collection" entry. */
   driver: Driver | undefined;
-  /** Whether `DROP DATABASE` is offered (Postgres/MySQL only). */
+  /** Whether dropping the database is offered — every driver but SQLite. */
   canDrop: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -383,11 +438,6 @@ function DatabaseRoot({
   // right-clicked stops looking hovered as soon as the pointer moves onto
   // the open menu, so this drives the same ring explicitly instead.
   const [menuOpen, setMenuOpen] = useState(false);
-  /** The `<parent>::db::<db>` view id the create-collection dialog targets;
-   *  non-null while the dialog is open (#61). */
-  const [createCollectionId, setCreateCollectionId] = useState<string | null>(
-    null,
-  );
 
   // Resolve this database's synthetic `<parentId>::db::<db>` child id,
   // opening the pool the first time any action here needs it — every
@@ -449,88 +499,24 @@ function DatabaseRoot({
     ]);
   };
 
-  // "New query here": open a query tab scoped to *this* database.
-  const openQueryHere = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    openQueryTab(id);
-  };
-
-  // "New table"/"New view" here: same lazy-open-then-navigate pattern as
-  // `openQueryHere`. These used to only be reachable from an existing
-  // table's own context menu (see the schema-header menu's doc comment in
-  // `SingleDbExplorer`), which meant a freshly-created, still-empty
-  // database had no way to grow its first table from the tree at all.
-  const createTableHere = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    useTabs.getState().open({
-      kind: "structure",
-      structureMode: "new",
-      title: t("schema.context.newTable"),
-      connectionId: id,
-    });
-  };
-  const createViewHere = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    useTabs.getState().open({
-      kind: "view",
-      viewMode: "new",
-      title: t("schema.context.newView"),
-      connectionId: id,
-    });
-  };
-
-  // "Security": same lazy-open-then-navigate pattern as `openQueryHere`,
-  // scoped to this database's synthetic connection id.
-  const openSecurityHere = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    openSecurityTab(id, t("security.title"));
-  };
-
-  // Export / import: same lazy-open-then-use pattern as `openQueryHere`,
-  // scoped to this database's synthetic connection id. Both dialogs need
-  // that id up front (scope `"single"`, locked to this one database), so
-  // resolve it before opening either.
-  const [exportTargetId, setExportTargetId] = useState<string | null>(null);
-  const [importTargetId, setImportTargetId] = useState<string | null>(null);
-  const [importStatements, setImportStatements] = useState<string[] | null>(
-    null,
-  );
-
-  const exportThisDatabase = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    setExportTargetId(id);
-  };
-
-  const importSqlHere = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    const statements = await pickAndSplitSqlFile(t);
-    if (!statements) return;
-    setImportTargetId(id);
-    setImportStatements(statements);
-  };
-
-  // "New collection" (MongoDB): lazily resolve this database's synthetic view
-  // id (same pattern as the handlers above) and open the create dialog scoped
-  // to it. `create_collection` needs a pool bound to this specific database.
-  const createCollectionHere = async () => {
-    const id = await resolveChildId();
-    if (!id) return;
-    setCreateCollectionId(id);
-  };
-
-  // Drop this database (Postgres/MySQL). Irreversible, so it's gated behind
-  // the typed-confirmation prompt. On success we tear down the child pool's
-  // frontend state (its schema slice + any open tabs) and refresh the parent
-  // tree so the row disappears; the backend already closed the child pool.
+  // Drop this database. On success we tear down the child pool's frontend
+  // state (its schema slice + any open tabs) and refresh the parent tree so
+  // the row disappears; the backend already closed the child pool.
+  //
+  // `confirmIrreversible`, not `confirmDestructive`: this used to read the
+  // `ui.confirmDestructive` preference, which meant a user who had turned
+  // confirmations off — a reasonable thing to do when the prompt is about
+  // deleting a row you can re-insert — dropped a whole database on a single
+  // menu click with nothing in between. A database is the definition of the
+  // thing that helper's doc comment says belongs here.
+  //
+  // The multi-DB aftermath: the row goes away and the user carries on with
+  // the rest of the tree. `SingleDbExplorer`'s version of this has to close
+  // the connection instead, which is why `onDrop` is the menu's prop rather
+  // than its own business.
   const dropThisDatabase = async () => {
     if (
-      !(await confirmDestructive(
+      !(await confirmIrreversible(
         t("schema.dropDatabase.confirm", { name: dbName }),
       ))
     )
@@ -570,13 +556,21 @@ function DatabaseRoot({
 
   return (
     <div>
-      <ContextMenu onOpenChange={setMenuOpen}>
-        <ContextMenuTrigger asChild>
-          <button
+      <DatabaseNodeMenu
+        dbName={dbName}
+        driver={driver}
+        canDrop={canDrop}
+        resolveTargetId={resolveChildId}
+        onRefresh={refreshThisDatabase}
+        onScopeHere={onScopeHere}
+        onDrop={dropThisDatabase}
+        onOpenChange={setMenuOpen}
+      >
+        <TreeRow
+            menuOpen={menuOpen}
             className={cn(
-              "flex w-full items-center gap-1 px-2 py-1.5 transition-opacity hover:bg-accent",
+              "transition-opacity",
               dimmed && "opacity-50 hover:opacity-100",
-              menuOpen && "ring-1 ring-inset ring-ring",
             )}
             // Expanding a database used to *also* narrow the filter to it and
             // collapse its siblings, invisibly. Now it only expands: the scope
@@ -636,118 +630,8 @@ function DatabaseRoot({
                 {matchCount ?? "—"}
               </span>
             )}
-          </button>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuAction
-            icon={RefreshCw}
-            label={t("schema.refresh")}
-            onSelect={() => void refreshThisDatabase()}
-          />
-          <ContextMenuSeparator />
-          <ContextMenuAction
-            icon={Table2}
-            label={t("schema.context.newTable")}
-            onSelect={() => void createTableHere()}
-          />
-          {supportsDdlEditing(driver) && (
-            <ContextMenuAction
-              icon={Eye}
-              label={t("schema.context.newView")}
-              onSelect={() => void createViewHere()}
-            />
-          )}
-          <ContextMenuAction
-            icon={SquareTerminal}
-            label={t("schema.context.newQueryHere")}
-            onSelect={() => void openQueryHere()}
-          />
-          <ContextMenuAction
-            icon={Search}
-            label={t("connectionsTree.filter.scopeHere")}
-            onSelect={onScopeHere}
-          />
-          {driver === "mongodb" && (
-            <ContextMenuAction
-              icon={FolderPlus}
-              label={t("schema.createCollection.title")}
-              onSelect={() => void createCollectionHere()}
-            />
-          )}
-          {/* Whole-database .sql export/import needs a per-driver literal
-              encoder: MongoDB databases use the per-collection JSON
-              export/import instead (#65), and SQL Server has none yet. */}
-          {supportsSqlDump(driver) && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuAction
-                icon={Download}
-                label={t("schema.exportDatabase.title")}
-                onSelect={() => void exportThisDatabase()}
-              />
-              <ContextMenuAction
-                icon={Upload}
-                label={t("schema.importSql.title")}
-                onSelect={() => void importSqlHere()}
-              />
-            </>
-          )}
-          <ContextMenuSeparator />
-          <ContextMenuAction
-            icon={ShieldCheck}
-            label={t("security.title")}
-            onSelect={() => void openSecurityHere()}
-          />
-          {canDrop && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuAction
-                icon={Trash2}
-                destructive
-                label={t("schema.context.dropDatabase")}
-                onSelect={() => void dropThisDatabase()}
-              />
-            </>
-          )}
-        </ContextMenuContent>
-      </ContextMenu>
-      {createCollectionId && (
-        <CreateCollectionDialog
-          connectionId={createCollectionId}
-          onClose={() => setCreateCollectionId(null)}
-          onDone={(name) => {
-            const id = createCollectionId;
-            setCreateCollectionId(null);
-            if (id) void useSchema.getState().refresh(id);
-            notify.success(t("schema.createCollection.created", { name }));
-          }}
-        />
-      )}
-      {exportTargetId && (
-        <ExportDatabaseDialog
-          scope={{
-            kind: "single",
-            connectionId: exportTargetId,
-            databaseName: dbName,
-          }}
-          onClose={() => setExportTargetId(null)}
-        />
-      )}
-      {importTargetId && importStatements && (
-        <ImportSqlDialog
-          scope={{ kind: "single", connectionId: importTargetId }}
-          statements={importStatements}
-          onClose={() => {
-            setImportTargetId(null);
-            setImportStatements(null);
-          }}
-          onImported={(id) => {
-            setImportTargetId(null);
-            setImportStatements(null);
-            void useSchema.getState().refresh(id);
-          }}
-        />
-      )}
+        </TreeRow>
+      </DatabaseNodeMenu>
       {effectiveExpanded && (
         <div className="ml-3 border-l border-border/35 pl-0.5">
           {error && (

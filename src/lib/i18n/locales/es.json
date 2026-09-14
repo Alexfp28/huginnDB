@@ -387,6 +387,10 @@
     "filterPlaceholder": "Filtrar tablas… (users; orders)",
     "filterScopedTo": "Buscando solo en {{db}}",
     "noMatches": "Ninguna tabla coincide con el filtro.",
+    "noDatabases": {
+      "empty": "Este servidor todavía no tiene ninguna base de datos.",
+      "allHidden": "Las {{total}} bases de datos de este servidor están ocultas por el filtro de bases visibles."
+    },
     "context": {
       "open": "Abrir en pestaña",
       "newQueryHere": "Nueva query aquí",
@@ -452,10 +456,14 @@
     "createDatabase": {
       "title": "Nueva base de datos",
       "description": "Crea una nueva base de datos en este servidor.",
+      "descriptionMongo": "En MongoDB no existen las bases de datos vacías: el servidor la crea al escribir su primera colección, así que nombra las dos y se crearán juntas.",
       "namePlaceholder": "Nombre de la base de datos",
+      "collectionLabel": "Primera colección",
+      "collectionPlaceholder": "Nombre de la colección",
       "submit": "Crear",
       "creating": "Creando…",
       "failed": "No se pudo crear la base de datos: {{message}}",
+      "created": "Base de datos \"{{name}}\" creada",
       "createdSingleDb": "Base de datos \"{{name}}\" creada. Esta conexión está limitada a una sola base de datos — abre una conexión nueva (o una en modo multi-base) para explorarla."
     },
     "createCollection": {
@@ -485,7 +493,9 @@
     },
     "dropDatabase": {
       "confirm": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor. No se puede deshacer.",
+      "confirmBound": "¿Eliminar la base de datos \"{{name}}\"? Esto borra de forma permanente la base de datos y todos sus datos en el servidor, y no se puede deshacer. Esta conexión está ligada a esa base, así que se cerrará — la conexión guardada se conserva, pero apuntará a una base que ya no existe hasta que la edites.",
       "done": "Base de datos {{name}} eliminada",
+      "doneBound": "Base de datos {{name}} eliminada y conexión cerrada. La conexión guardada sigue apuntando a ella — edítala para apuntar a otra base.",
       "failed": "No se ha podido eliminar la base de datos {{name}}"
     },
     "exportDatabase": {

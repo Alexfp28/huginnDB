@@ -176,6 +176,23 @@ impl MsSqlPool {
         self.inner.idle.lock().await.clear();
     }
 
+    /// Drop every *idle* session while keeping the pool usable.
+    ///
+    /// The narrow case this exists for: `DROP DATABASE` against the database
+    /// this pool is bound to. SQL Server refuses while any session is still in
+    /// that database, and the caller's own idle sessions are the likeliest
+    /// holders — so the drop runs on one checked-out session that has already
+    /// moved itself to `master`, and this closes the rest.
+    ///
+    /// Unlike [`Self::close`] the semaphore stays open, so the pool reopens
+    /// sessions on demand afterwards. That matters because the drop can fail
+    /// (another client is in the database, the login lacks the permission) and
+    /// a pool left permanently closed would turn a refused statement into a
+    /// dead connection.
+    pub async fn close_idle(&self) {
+        self.inner.idle.lock().await.clear();
+    }
+
     // --- one-shot conveniences -------------------------------------------
     //
     // Acquire, run, release. The command layer's `match &pool` arms are

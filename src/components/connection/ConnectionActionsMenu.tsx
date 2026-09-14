@@ -13,10 +13,18 @@
  * consumer, `ConnectionsTree`, was reaching across into `schema/` for it).
  *
  * What's offered is driver- and mode-aware, and the distinctions are the same
- * ones the two explorers already encoded: `CREATE DATABASE` is Postgres/MySQL
- * only, create-collection is MongoDB's stand-in for it, whole-database `.sql`
- * export/import needs exactly one target database (so never in multi-DB mode),
- * and the visible-databases subset only means anything when there are several.
+ * ones the two explorers already encoded: creating a database is every driver
+ * but SQLite (MongoDB asks for a first collection alongside the name, since it
+ * has no empty database), whole-database `.sql` export/import needs exactly
+ * one target database, and the visible-databases subset only means anything
+ * when there are several.
+ *
+ * **What is deliberately not here: anything that acts on one database.**
+ * Creating a collection in it and dropping it both lived here for a while, for
+ * want of anywhere better — single-DB mode had no database node to hang them
+ * on. It has one now (`SingleDbExplorer`), so they are on it, and this menu is
+ * back to being about the connection: creating a database is an action *on the
+ * server*, dropping one is an action on a database.
  *
  * Connect/disconnect are delegated: the tree owns what those do to focus and to
  * its expansion overrides, and duplicating that here would let the two drift.
@@ -28,7 +36,6 @@ import {
   AppWindow,
   DatabaseZap,
   Download,
-  FolderPlus,
   ListFilter,
   Plug,
   PlugZap,
@@ -46,7 +53,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { CreateCollectionDialog } from "@/components/schema/dialogs/CreateCollectionDialog";
 import { CreateDatabaseDialog } from "@/components/schema/dialogs/CreateDatabaseDialog";
 import { DatabaseVisibilityDialog } from "@/components/schema/dialogs/DatabaseVisibilityDialog";
 import {
@@ -58,11 +64,7 @@ import {
   type ImportScope,
 } from "@/components/schema/dialogs/ImportSqlDialog";
 import { isServerWide } from "@/lib/connectionLabel";
-import {
-  supportsCreateCollection,
-  supportsCreateDatabase,
-  supportsSqlDump,
-} from "@/lib/db/driver";
+import { supportsCreateDatabase, supportsSqlDump } from "@/lib/db/driver";
 import { profileIntent } from "@/lib/cli/startupArgs";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
@@ -94,7 +96,6 @@ export function ConnectionActionsMenu({
   const refresh = useSchema((s) => s.refresh);
   const refreshTree = useSchema((s) => s.refreshTree);
   const [createDbOpen, setCreateDbOpen] = useState(false);
-  const [createCollectionOpen, setCreateCollectionOpen] = useState(false);
   const [dbPickerOpen, setDbPickerOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importStatements, setImportStatements] = useState<string[] | null>(
@@ -144,7 +145,6 @@ export function ConnectionActionsMenu({
   const driver = profile?.driver;
   const isMultiDb = isServerWide(profile);
   const canCreateDatabase = supportsCreateDatabase(driver);
-  const canCreateCollection = supportsCreateCollection(driver) && !isMultiDb;
   // Whole-database `.sql` export/import used to require single-DB mode
   // (nothing to pick a database *from* otherwise); the export/import
   // dialogs now handle multi-DB themselves — a database picker for export,
@@ -187,13 +187,6 @@ export function ConnectionActionsMenu({
                   icon={DatabaseZap}
                   label={t("schema.createDatabase.title")}
                   onSelect={() => setCreateDbOpen(true)}
-                />
-              )}
-              {canCreateCollection && (
-                <ContextMenuAction
-                  icon={FolderPlus}
-                  label={t("schema.createCollection.title")}
-                  onSelect={() => setCreateCollectionOpen(true)}
                 />
               )}
               {isMultiDb && (
@@ -297,17 +290,6 @@ export function ConnectionActionsMenu({
             // on the new node appearing in the tree as its own confirmation.
             // Driven from a connection row, the subtree may well be collapsed.
             notify.success(t("schema.createDatabase.createdSingleDb", { name }));
-          }}
-        />
-      )}
-      {createCollectionOpen && (
-        <CreateCollectionDialog
-          connectionId={connectionId}
-          onClose={() => setCreateCollectionOpen(false)}
-          onDone={(name) => {
-            setCreateCollectionOpen(false);
-            refresh(connectionId);
-            notify.success(t("schema.createCollection.created", { name }));
           }}
         />
       )}

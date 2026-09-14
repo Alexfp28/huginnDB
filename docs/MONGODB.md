@@ -44,6 +44,17 @@ Collection sizes and index sizes/usage come from `$collStats` and `$indexStats`
 and are **best-effort**: a role without the privilege leaves the column out
 entirely rather than showing zeros that would read as "unused".
 
+**Creating a database asks for its first collection.** MongoDB has no empty
+database — the server materialises the namespace when the first collection is
+written, and forgets it again when the last one is dropped — so "New database"
+on a cluster-level connection takes two names and creates both. That is also
+why a cluster with no databases at all is not a broken tree: the explorer says
+so and offers the dialog, rather than rendering nothing.
+
+**Dropping a database is offered like anywhere else**, from the database node's
+context menu, and asks for confirmation regardless of the "confirm destructive
+actions" preference. It runs `dropDatabase` against that database only.
+
 ## The query editor speaks `mongosh`, in a bounded dialect
 
 The editor takes shell syntax, not SQL:

@@ -245,18 +245,29 @@ pub async fn get_database_sizes_inner(
 
 /// Create a new database/catalog on the server behind `connection_id`.
 ///
-/// Postgres and MySQL only — this is a server-level DDL statement, so it
-/// runs regardless of which database the pool happens to be connected to.
-/// SQLite has no such concept (the file *is* the database) and MongoDB
-/// creates databases implicitly on first write with no `CREATE DATABASE`
-/// wire command, so both are rejected here; the frontend hides the entry
-/// point for them entirely (see the multi-DB explorer toolbar), this is
-/// just defense in depth against a stale/hand-crafted call.
+/// Server-level DDL, so it runs regardless of which database the pool happens
+/// to be connected to. SQLite is the one driver rejected outright: the file
+/// *is* the database, so there is nothing to create without also choosing a
+/// path, which is what the connection dialog is for.
+///
+/// **MongoDB needs `initial_collection` and the SQL drivers refuse it.** A
+/// MongoDB database does not exist as an empty thing — the server materialises
+/// it when its first collection is written and forgets it again when the last
+/// one is dropped — so "create a database" there means "create a database and
+/// its first collection", exactly as Compass asks for both. That asymmetry is
+/// why this takes an `Option` rather than being split into two commands: the
+/// *intent* is one intent, and splitting it would move the per-driver branch
+/// into the frontend, where `lib/tauri.ts` would then have to know which of
+/// the two to call. Passing one to a SQL driver is an error rather than a
+/// silently ignored argument, because a caller that sent it believed something
+/// about what it was about to do.
 ///
 /// `name` goes through the same [`crate::db::ddl::validate_ident`] allowlist
 /// used by the structure editor (gotcha #16) — `CREATE DATABASE` cannot bind
 /// the name as a parameter, so validating before quoting is the only
-/// injection defense available.
+/// injection defense available. MongoDB adds
+/// [`crate::db::mongo::schema::validate_database_name`] on top, which is about
+/// namespace legality rather than quoting (see its doc comment).
 #[tauri::command]
 pub async fn create_database(
     app: tauri::AppHandle,
@@ -264,10 +275,16 @@ pub async fn create_database(
     state: State<'_, AppState>,
     connection_id: String,
     name: String,
+    initial_collection: Option<String>,
 ) -> AppResult<()> {
     crate::db::ddl::validate_ident("database", &name)?;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
+    if initial_collection.is_some() && !matches!(pool, DbPool::Mongo(_)) {
+        return Err(AppError::InvalidInput(
+            "an initial collection only applies to MongoDB".into(),
+        ));
+    }
     match pool {
         DbPool::Postgres(p) => {
             let sql = format!("CREATE DATABASE {}", Dialect::Postgres.quote_ident(&name));
@@ -282,10 +299,35 @@ pub async fn create_database(
                 "SQLite has no separate databases — each file is one database".into(),
             ));
         }
-        DbPool::Mongo(_) => {
-            return Err(AppError::InvalidInput(
-                "MongoDB creates databases implicitly on first write".into(),
-            ));
+        DbPool::Mongo(conn) => {
+            let collection = initial_collection.ok_or_else(|| {
+                AppError::InvalidInput(
+                    "MongoDB needs a first collection to create a database with — an empty \
+                     database does not exist on the server"
+                        .into(),
+                )
+            })?;
+            crate::db::mongo::schema::validate_database_name(&name)?;
+            let collection = crate::db::mongo::schema::validate_collection(&collection)?;
+            // Checked rather than left to the server, which has no error for
+            // this: `create_collection` against an existing database succeeds
+            // and quietly adds a collection to it, so "create database" would
+            // report success having created no database at all.
+            if conn
+                .client
+                .list_database_names()
+                .await?
+                .iter()
+                .any(|existing| existing == &name)
+            {
+                return Err(AppError::InvalidInput(format!(
+                    "the database {name} already exists"
+                )));
+            }
+            conn.client
+                .database(&name)
+                .create_collection(collection)
+                .await?;
         }
         DbPool::MsSql(p) => {
             let sql = format!("CREATE DATABASE {}", Dialect::MsSql.quote_ident(&name));
@@ -297,8 +339,15 @@ pub async fn create_database(
 
 /// Drop a database/catalog on the server behind `connection_id`.
 ///
-/// The mirror of [`create_database`]: Postgres and MySQL only, server-level
-/// DDL, `name` validated through the same `validate_ident` allowlist because
+/// The mirror of [`create_database`], and mirrored deliberately: every driver
+/// that can create a database can drop one. MongoDB was the exception until
+/// 1.23.1 — not because `dropDatabase` is unavailable there (it is one command
+/// and always has been) but because the UI gate for dropping was wired to
+/// *`supportsCreateDatabase`*, so Mongo's inability to create an **empty**
+/// database was read as an inability to delete a full one. One predicate
+/// answering two questions; the frontend now asks each separately.
+///
+/// `name` is validated through the same `validate_ident` allowlist because
 /// `DROP DATABASE` can't bind its identifier as a parameter.
 ///
 /// `connection_id` is the *parent* connection. Before issuing the drop we
@@ -307,9 +356,37 @@ pub async fn create_database(
 /// Postgres refuses to drop a database that still has sessions attached, and
 /// our own child pool is the most likely holder. `Pool::close().await` waits
 /// for those connections to actually go away rather than relying on the lazy
-/// drop of the `ActivePool`. Dropping the database the parent pool itself is
-/// connected to still fails server-side (as it must) and that error surfaces
-/// to the caller unchanged.
+/// drop of the `ActivePool`.
+///
+/// # Dropping the database the connection itself is bound to
+///
+/// A profile with a `database` set has its pool *inside* the database the user
+/// is asking to delete, and the four engines disagree about what that means:
+///
+/// - **MySQL and MongoDB** allow it. The session is left with no default
+///   database, which is correct, since it no longer has one.
+/// - **Postgres** refuses categorically — a session cannot drop the database it
+///   is connected to, and it also refuses while *any* session is attached, so
+///   issuing the statement from elsewhere is not enough on its own. Both halves
+///   are handled here: the pool is closed first (the app's own sessions are the
+///   ones in the way), then the statement runs over a single short-lived
+///   connection to the `postgres` maintenance database, built by cloning the
+///   pool's own [`sqlx::postgres::PgConnectOptions`]. Cloning them rather than
+///   rebuilding a URL is what keeps this honest — same host and port (the SSH
+///   tunnel's local listener included), same credentials, same TLS mode, and no
+///   second trip to the keychain.
+/// - **SQL Server** refuses while the database is in use, which the pool's own
+///   idle sessions are enough to trigger. The checked-out session moves itself
+///   to `master` and [`MsSqlPool::close_idle`] drops the rest.
+///
+/// **This leaves the connection unusable, on purpose.** In the Postgres case
+/// its pool is closed outright; in the others the pool survives but its default
+/// database is gone. The caller is expected to disconnect afterwards — the
+/// frontend does, whether the drop succeeded or failed, because a pool closed
+/// by a *failed* attempt is just as dead as one closed by a successful one.
+/// Nothing is removed from the connection registry here: the `ActivePool` also
+/// owns the SSH tunnel, and tearing it down before the maintenance connection
+/// is made would pull the listener out from under it.
 #[tauri::command]
 pub async fn drop_database(
     app: tauri::AppHandle,
@@ -328,17 +405,60 @@ pub async fn drop_database(
         match &active.pool {
             DbPool::Postgres(p) => p.close().await,
             DbPool::Mysql(p) => p.close().await,
+            // MongoDB and SQL Server have no pool to drain here: the Mongo
+            // handle is a cloned `Client` whose own pool outlives this entry,
+            // and neither server refuses a drop over an idle session the way
+            // Postgres does. Dropping the registry entry is the whole job.
             _ => {}
         }
     }
+    // Whether this connection's *own* pool sits inside the database being
+    // dropped. Read from the profile rather than asked of the server: it is
+    // the same fact (`profile.database` is what the pool was opened with), it
+    // costs no round trip, and on a pool we are about to close a failed extra
+    // query would be a worse way to find out.
+    let bound_to_target = state
+        .profiles
+        .read()
+        .iter()
+        .find(|p| p.id == connection_id)
+        .is_some_and(|p| p.database == name);
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     match pool {
         DbPool::Postgres(p) => {
             let sql = format!("DROP DATABASE {}", Dialect::Postgres.quote_ident(&name));
-            sqlx::query(&sql).execute(&p).await?;
+            if bound_to_target {
+                // Capture the options *before* closing: they are what the
+                // maintenance connection is built from, tunnel endpoint and
+                // all.
+                let options = (*p.connect_options()).clone();
+                p.close().await;
+                // `postgres` is the maintenance database every server has, and
+                // is itself droppable — so when it is the target, fall back to
+                // `template1`, the other database `initdb` always creates.
+                let maintenance = if name == "postgres" {
+                    "template1"
+                } else {
+                    "postgres"
+                };
+                let mut conn = <sqlx::postgres::PgConnection as sqlx::Connection>::connect_with(
+                    &options.database(maintenance),
+                )
+                .await?;
+                let result = sqlx::query(&sql).execute(&mut conn).await;
+                // Closed explicitly rather than by drop: a lingering session on
+                // the maintenance database is exactly the kind of thing that
+                // makes the *next* drop fail for no visible reason.
+                let _ = sqlx::Connection::close(conn).await;
+                result?;
+            } else {
+                sqlx::query(&sql).execute(&p).await?;
+            }
         }
         DbPool::Mysql(p) => {
+            // MySQL drops the session's own default database without
+            // complaint, so both cases are the same statement.
             let sql = format!("DROP DATABASE {}", Dialect::Mysql.quote_ident(&name));
             sqlx::query(&sql).execute(&p).await?;
         }
@@ -347,14 +467,36 @@ pub async fn drop_database(
                 "SQLite has no separate databases — delete the file instead".into(),
             ));
         }
-        DbPool::Mongo(_) => {
-            return Err(AppError::InvalidInput(
-                "Dropping a MongoDB database isn't supported here".into(),
-            ));
+        DbPool::Mongo(conn) => {
+            crate::db::mongo::schema::validate_database_name(&name)?;
+            // `dropDatabase` against a name that does not exist is a no-op
+            // reported as success, so this check is what makes a typo visible
+            // instead of being confirmed back to the user as a deletion.
+            if !conn
+                .client
+                .list_database_names()
+                .await?
+                .iter()
+                .any(|existing| existing == &name)
+            {
+                return Err(AppError::InvalidInput(format!(
+                    "no database named {name} on this server"
+                )));
+            }
+            conn.client.database(&name).drop().await?;
         }
         DbPool::MsSql(p) => {
             let sql = format!("DROP DATABASE {}", Dialect::MsSql.quote_ident(&name));
-            p.acquire().await?.simple_execute(&sql).await?;
+            let mut client = p.acquire().await?;
+            if bound_to_target {
+                // Two statements, deliberately not batched into one `USE …;
+                // DROP …`: if the `USE` fails (no access to `master`) the drop
+                // must not be attempted from inside the doomed database, and a
+                // batch would report one error for the pair.
+                client.simple_execute("USE [master]").await?;
+                p.close_idle().await;
+            }
+            client.simple_execute(&sql).await?;
         }
     }
     Ok(())
@@ -386,17 +528,11 @@ pub async fn create_collection(
     connection_id: String,
     name: String,
 ) -> AppResult<()> {
-    let trimmed = name.trim();
-    if trimmed.is_empty() {
-        return Err(AppError::InvalidInput(
-            "collection name cannot be empty".into(),
-        ));
-    }
-    if trimmed.starts_with("system.") {
-        return Err(AppError::InvalidInput(
-            "collection names starting with 'system.' are reserved by MongoDB".into(),
-        ));
-    }
+    // `validate_collection` rather than the three checks this used to inline:
+    // it is the same rule every other collection-level write already goes
+    // through (`create_index`, `rename_collection`, …), and a second copy here
+    // was one edit away from disagreeing with them about what MongoDB accepts.
+    let trimmed = crate::db::mongo::schema::validate_collection(&name)?;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     match &pool {

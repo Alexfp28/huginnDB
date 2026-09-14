@@ -50,6 +50,18 @@ Los tamaños de colección y el tamaño/uso de los índices vienen de `$collStat
 `$indexStats` y son de **mejor esfuerzo**: si tu rol no tiene el privilegio, la
 columna desaparece en lugar de mostrar ceros que se leerían como «sin uso».
 
+**Crear una base de datos pide también su primera colección.** En MongoDB no
+existe la base de datos vacía — el servidor materializa el espacio de nombres
+al escribir la primera colección y lo olvida cuando se borra la última —, así
+que «Nueva base de datos» en una conexión a nivel de clúster pide dos nombres y
+crea ambos. Por eso mismo un clúster sin ninguna base de datos no es un árbol
+roto: el explorador lo dice y ofrece el diálogo, en vez de no pintar nada.
+
+**Eliminar una base de datos se ofrece igual que en el resto de motores**, desde
+el menú contextual del nodo de la base, y pide confirmación al margen de la
+preferencia «confirmar acciones destructivas». Ejecuta `dropDatabase` contra esa
+base y solo esa.
+
 ## El editor de consultas habla `mongosh`, en un dialecto acotado
 
 El editor acepta sintaxis de shell, no SQL:

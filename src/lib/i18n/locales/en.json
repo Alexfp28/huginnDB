@@ -387,6 +387,10 @@
     "filterPlaceholder": "Filter tables… (users; orders)",
     "filterScopedTo": "Searching in {{db}} only",
     "noMatches": "No tables match the filter.",
+    "noDatabases": {
+      "empty": "This server has no databases yet.",
+      "allHidden": "All {{total}} databases on this server are hidden by the visible-databases filter."
+    },
     "context": {
       "open": "Open in tab",
       "newQueryHere": "New query here",
@@ -452,10 +456,14 @@
     "createDatabase": {
       "title": "New database",
       "description": "Create a new database on this server.",
+      "descriptionMongo": "MongoDB has no empty databases — the server creates one when its first collection is written, so name both and they are created together.",
       "namePlaceholder": "Database name",
+      "collectionLabel": "First collection",
+      "collectionPlaceholder": "Collection name",
       "submit": "Create",
       "creating": "Creating…",
       "failed": "Could not create database: {{message}}",
+      "created": "Database \"{{name}}\" created",
       "createdSingleDb": "Database \"{{name}}\" created. This connection is scoped to a single database — open a new connection (or a multi-database one) to browse into it."
     },
     "createCollection": {
@@ -485,7 +493,9 @@
     },
     "dropDatabase": {
       "confirm": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server. This cannot be undone.",
+      "confirmBound": "Drop database \"{{name}}\"? This permanently deletes the database and all of its data on the server, and it cannot be undone. This connection is bound to that database, so it will be closed — the saved connection is kept, but will point at a database that no longer exists until you edit it.",
       "done": "Dropped the database {{name}}",
+      "doneBound": "Dropped the database {{name}} and closed the connection. The saved connection still points at it — edit it to target another database.",
       "failed": "Could not drop the database {{name}}"
     },
     "exportDatabase": {

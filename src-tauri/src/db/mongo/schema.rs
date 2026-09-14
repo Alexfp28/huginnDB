@@ -159,12 +159,16 @@ pub async fn list_collections(conn: &MongoConn) -> AppResult<Vec<TableInfo>> {
     Ok(out)
 }
 
-/// Reject a collection name no user operation may target.
+/// Reject a collection name no user operation may target, and return the
+/// trimmed name callers should actually use.
 ///
 /// Lives here rather than in [`super::indexes`] (its first caller) because
-/// every collection-level write needs the same two checks and a second copy
-/// would be one edit away from disagreeing with this one.
-pub(super) fn validate_collection(collection: &str) -> AppResult<&str> {
+/// every collection-level write needs the same checks and a second copy would
+/// be one edit away from disagreeing with this one. `pub` rather than
+/// `pub(super)` since 1.23.1: `commands::schema` creates collections too —
+/// directly (`create_collection`) and as the second half of creating a MongoDB
+/// database — and had grown its own inline copy of the first two checks.
+pub fn validate_collection(collection: &str) -> AppResult<&str> {
     let name = collection.trim();
     if name.is_empty() {
         return Err(AppError::InvalidInput("no collection given".into()));
@@ -172,6 +176,15 @@ pub(super) fn validate_collection(collection: &str) -> AppResult<&str> {
     if name.starts_with("system.") {
         return Err(AppError::InvalidInput(
             "`system.` is reserved for MongoDB's own collections".into(),
+        ));
+    }
+    // `$` is legal only inside MongoDB's internal namespaces, which the check
+    // above already refuses, and a NUL truncates the name on the wire rather
+    // than being rejected — so a name containing either would create something
+    // other than what the user asked for.
+    if name.contains('$') || name.contains('\0') {
+        return Err(AppError::InvalidInput(
+            "a collection name cannot contain '$' or a NUL byte".into(),
         ));
     }
     Ok(name)
@@ -862,5 +875,98 @@ mod tests {
             relation_kind_from_spec(&doc! { "name": "orders", "type": "somethingNew" }),
             RelationKind::Collection
         );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Name validation
+// ---------------------------------------------------------------------------
+
+/// Characters MongoDB refuses in a database name.
+///
+/// The server's own rule is platform-dependent — `/\. "$*<>:|?` are rejected
+/// everywhere, while a space is only rejected on Windows — and a name that is
+/// legal on the server but not on every client is a trap rather than a
+/// feature, so the strictest set is applied on all platforms. This is the same
+/// list Compass enforces client-side.
+const MONGO_DB_ILLEGAL: &[char] = &['/', '\\', '.', '"', '$', '*', '<', '>', ':', '|', '?', ' '];
+
+/// MongoDB's hard limit on a database name, in bytes.
+///
+/// 64 including the terminating null, so 63 usable. Counted in bytes, not
+/// characters: the limit is on the encoded name, and a non-ASCII name reaches
+/// it sooner than its length suggests.
+const MONGO_DB_MAX_BYTES: usize = 63;
+
+/// Validate a database name before it reaches the driver.
+///
+/// Unlike the SQL drivers this is **not** about escaping — a MongoDB database
+/// name is never interpolated into a statement, so there is no quoting to
+/// break out of. It exists so the failure is a sentence the user can act on
+/// rather than whatever the server says about a namespace it could not parse,
+/// and so a name that would be legal today and unusable from a Windows client
+/// tomorrow is refused up front.
+pub fn validate_database_name(name: &str) -> AppResult<()> {
+    if name.is_empty() {
+        return Err(AppError::InvalidInput("database name is empty".into()));
+    }
+    if name.len() > MONGO_DB_MAX_BYTES {
+        return Err(AppError::InvalidInput(format!(
+            "database name is too long ({} bytes; MongoDB allows {MONGO_DB_MAX_BYTES})",
+            name.len()
+        )));
+    }
+    if let Some(bad) = name
+        .chars()
+        .find(|c| MONGO_DB_ILLEGAL.contains(c) || c.is_control())
+    {
+        return Err(AppError::InvalidInput(format!(
+            "database name contains a character MongoDB does not allow: {bad:?}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod name_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_ordinary_database_names() {
+        for name in ["imespyme", "Dev_Tencer", "reports-2026", "café"] {
+            assert!(validate_database_name(name).is_ok(), "rejected {name:?}");
+        }
+    }
+
+    #[test]
+    fn rejects_illegal_database_names() {
+        // Empty, every character from the illegal set, and a control byte.
+        assert!(validate_database_name("").is_err());
+        for bad in [
+            "a/b", "a\\b", "a.b", "a\"b", "a$b", "a*b", "a<b", "a>b", "a:b", "a|b", "a?b", "a b",
+        ] {
+            assert!(validate_database_name(bad).is_err(), "accepted {bad:?}");
+        }
+        assert!(validate_database_name("a\nb").is_err());
+    }
+
+    #[test]
+    fn database_name_limit_counts_bytes_not_chars() {
+        assert!(validate_database_name(&"a".repeat(MONGO_DB_MAX_BYTES)).is_ok());
+        assert!(validate_database_name(&"a".repeat(MONGO_DB_MAX_BYTES + 1)).is_err());
+        // 32 two-byte characters is 64 bytes — over the limit at half the length.
+        assert!(validate_database_name(&"é".repeat(32)).is_err());
+    }
+
+    #[test]
+    fn rejects_reserved_collection_names() {
+        assert!(validate_collection("").is_err());
+        assert!(validate_collection("   ").is_err());
+        assert!(validate_collection("system.profile").is_err());
+        assert!(validate_collection("a$b").is_err());
+        assert!(validate_collection("a\0b").is_err());
+        // A dot is legal in a collection name (it is how folders are faked),
+        // and the trimmed name is what comes back.
+        assert_eq!(validate_collection("  logs.2026 ").unwrap(), "logs.2026");
     }
 }
