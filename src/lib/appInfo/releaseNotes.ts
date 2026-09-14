@@ -88,6 +88,38 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.24.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_24_0.tagline",
+    highlights: [
+      {
+        icon: Share2,
+        titleKey: "whatsNew.releases.1_24_0.items.originScope.title",
+        bodyKey: "whatsNew.releases.1_24_0.items.originScope.body",
+      },
+      {
+        icon: Database,
+        titleKey: "whatsNew.releases.1_24_0.items.mongoDatabases.title",
+        bodyKey: "whatsNew.releases.1_24_0.items.mongoDatabases.body",
+      },
+      {
+        icon: FolderTree,
+        titleKey: "whatsNew.releases.1_24_0.items.databaseNode.title",
+        bodyKey: "whatsNew.releases.1_24_0.items.databaseNode.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_24_0.items.dropGuard.title",
+        bodyKey: "whatsNew.releases.1_24_0.items.dropGuard.body",
+      },
+      {
+        icon: ListTree,
+        titleKey: "whatsNew.releases.1_24_0.items.emptyServer.title",
+        bodyKey: "whatsNew.releases.1_24_0.items.emptyServer.body",
+      },
+    ],
+  },
+  {
     version: "1.23.0",
     major: true,
     taglineKey: "whatsNew.releases.1_23_0.tagline",

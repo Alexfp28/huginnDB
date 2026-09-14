@@ -184,7 +184,7 @@ four look like styling problems while having nothing to do with styling.
 
 ### Open
 
-**Adoption debt.** 136 raw `<button>` elements across 74 files and 68 native
+**Adoption debt.** 134 raw `<button>` elements across 72 files and 68 native
 `title=` attributes across 40, both counted and ratcheted by
 `src/components/ui/uiAdoption.test.ts`. The budgets can only shrink, so this
 entry needs no separate tracking — read the maps. **They are not all
@@ -361,6 +361,31 @@ checked at the same time and already model their targets correctly
 sweep every origin. The classes stay in the taxonomy because they
 describe how those two bugs happened and what the next one will look like, not
 because there is a backlog behind them.
+
+**A class 1 and a class 4, found and closed: the schema tree's rows, and the
+database node it never had.** Two findings from one pass over the tree, and
+only one of them was a styling problem.
+
+The class 1 member is the row itself. Four call sites had hand-written the same
+`<button>` — full width, the same padding, the same `hover:bg-accent`, and the
+same focus ring driven by "is my context menu open on me". `ui/tree-row.tsx`
+owns that chrome now and each row keeps the part that actually differs, which
+takes the raw-button budget from 136 to 134.
+
+The class 4 member is the one that was reachable, and it is a gap rather than a
+rendering bug: a profile with a `database` set showed no database node at all —
+its top node is a *schema* — so "Drop database…", which lives on a database
+node, existed **nowhere**, while "New database" sat in the connection's menu.
+You could create a database from a connection and then have no way to delete it
+from anywhere in the app. The same want-of-anywhere-else had put "New
+collection" on the connection too. Closed by the node rather than one more entry
+on the connection: `DatabaseNodeMenu` is rendered by both explorers, merged into
+the top node on MySQL and MongoDB and drawn above `public`/`dbo` on Postgres and
+SQL Server. Its neighbour is the same gap one step earlier — a server with no
+databases rendered literally nothing, no row and no sentence, which reads as a
+connection that failed rather than a server that is empty. The tree now tells
+the two reasons it can be empty apart: nothing on the server offers "New
+database", everything hidden by the visible-databases subset offers the picker.
 
 Have a different priority? Open a
 [feature request](.github/ISSUE_TEMPLATE/feature_request.md).

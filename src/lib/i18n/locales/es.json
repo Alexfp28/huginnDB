@@ -2203,6 +2203,31 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_24_0": {
+        "tagline": "Un origen compartido deja de ser todo o nada —marcas las partes que quieres— y una base de datos MongoDB por fin se puede eliminar, desde un nodo de base de datos que los árboles de conexión única nunca tuvieron.",
+        "items": {
+          "originScope": {
+            "title": "Elige qué te traes de un origen compartido",
+            "body": "Un fichero publicado lleva tres cosas independientes —las conexiones, los entornos que las agrupan y la biblioteca de esquemas JSON con sus vínculos a columnas— y Ajustes → Orígenes permite ahora suscribirse a cada una por separado, por origen. Un solo documento, sin un segundo fichero de solo conexiones que se desincroniza del primero."
+          },
+          "mongoDatabases": {
+            "title": "Las bases de datos MongoDB se pueden crear y eliminar",
+            "body": "«Eliminar base de datos…» dependía de soportar CREATE DATABASE, así que MongoDB —que no tiene ese comando porque el servidor no guarda una base de datos vacía— tampoco podía borrar una llena. Al crearla se pide también la primera colección, el mismo par que pide Compass."
+          },
+          "databaseNode": {
+            "title": "Una conexión a una sola base de datos tiene su nodo",
+            "body": "Un perfil con base de datos fijada no mostraba ningún nodo de base de datos, así que «Eliminar base de datos…» no existía en ninguna parte mientras «Nueva base de datos» vivía en el menú de la conexión. Ahora ambos modos pintan el mismo menú: MySQL y MongoDB funden el esquema en él; Postgres y SQL Server ganan el nivel por encima de public/dbo."
+          },
+          "dropGuard": {
+            "title": "Eliminar una base de datos hace la pregunta correcta",
+            "body": "Leía ui.confirmDestructive —razonable para una fila que puedes volver a insertar, nunca pensado para «elimina una base de datos con un clic de menú»—. Ahora usa confirmIrreversible, y los cuatro motores, que no se ponen de acuerdo sobre eliminar la base de datos a la que estás conectado, están contemplados los cuatro."
+          },
+          "emptyServer": {
+            "title": "Un servidor sin bases de datos lo dice",
+            "body": "No pintaba literalmente nada —ni fila, ni frase—, lo que se lee como una conexión que ha fallado y no como un servidor vacío. El árbol distingue ahora los dos motivos: un servidor sin nada ofrece «Nueva base de datos»; un árbol oculto por el subconjunto de bases de datos visibles ofrece el selector."
+          }
+        }
+      },
       "1_23_0": {
         "tagline": "Un script con varias sentencias muestra ahora todos los grids que produjo, las pestañas de consulta de MongoDB tienen un editor que entiende de verdad la shell, y los diálogos de la app dejan de tomar prestados los del sistema operativo.",
         "items": {

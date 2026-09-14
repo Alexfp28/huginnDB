@@ -2203,6 +2203,31 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_24_0": {
+        "tagline": "A shared origin no longer hands you all or nothing — tick the parts you want — and a MongoDB database can finally be dropped, from a database node that single-connection trees never had.",
+        "items": {
+          "originScope": {
+            "title": "Pick what you pull from a shared origin",
+            "body": "A published file carries three independent things — connections, the environments that group them, and the JSON Schema library with its column bindings — and Settings → Origins now subscribes to each separately, per origin. One document, no more connections-only second file drifting out of step with the first."
+          },
+          "mongoDatabases": {
+            "title": "MongoDB databases can be created and dropped",
+            "body": "\"Drop database…\" was gated on CREATE DATABASE support, so MongoDB — which has no such command because the server does not store an empty database — could not delete a full one either. Creating asks for the first collection too, the same pair Compass asks for."
+          },
+          "databaseNode": {
+            "title": "A single-database connection has a database node",
+            "body": "A profile with a database set showed no database node at all, so \"Drop database…\" existed nowhere while \"New database\" sat in the connection's menu. Both modes now render the same menu: MySQL and MongoDB merge the schema into it, Postgres and SQL Server grow the level above public/dbo."
+          },
+          "dropGuard": {
+            "title": "Dropping a database asks the right question",
+            "body": "It had been reading ui.confirmDestructive — reasonable for a row you can re-insert, never meant to mean \"drop a database on one menu click\". It uses confirmIrreversible now, and all four engines that disagree about dropping the database you are connected to are handled rather than three left to fail."
+          },
+          "emptyServer": {
+            "title": "A server with no databases says so",
+            "body": "It rendered literally nothing — no row, no sentence — which reads as a connection that failed rather than a server that is empty. The tree now tells the two reasons apart: a server with nothing in it offers \"New database\", a tree hidden by the visible-databases subset offers the picker."
+          }
+        }
+      },
       "1_23_0": {
         "tagline": "A script of several statements now shows every grid it produced, MongoDB query tabs get an editor that actually knows the shell, and the app's dialogs stop borrowing the operating system's.",
         "items": {
