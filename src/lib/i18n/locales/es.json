@@ -1500,7 +1500,7 @@
       "fullGuide": "Guía completa de Pulse…"
     },
     "about": {
-      "tagline": "Gestor de bases de datos de escritorio minimalista para PostgreSQL, MySQL y SQLite.",
+      "tagline": "Explora y gestiona PostgreSQL, MySQL, SQLite, MongoDB y SQL Server desde una sola aplicación.",
       "prefsLocation": "Ubicación del fichero de preferencias",
       "tabStateHint": "Un fichero hermano {{file}} guarda las pestañas abiertas y la expansión del árbol de esquema de cada conexión.",
       "patchNotes": "Novedades",
