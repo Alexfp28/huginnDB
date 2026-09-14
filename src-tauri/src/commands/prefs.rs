@@ -827,6 +827,12 @@ pub async fn import_environment(
                         // machine permission to write to a share.
                         role: Default::default(),
                         maintainer: None,
+                        // The full scope, like any other freshly registered
+                        // origin: an environment bundle names an origin its
+                        // connections depend on, so narrowing the import's
+                        // registration to exclude connections would produce an
+                        // environment that can never resolve its own members.
+                        scope: Default::default(),
                     });
                 }
 

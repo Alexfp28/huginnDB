@@ -1519,6 +1519,55 @@ export interface Origin {
   /** `meta.maintainer` as of the last read of the file — who curates it.
    *  Display only; coordination, never permission. */
   maintainer?: string | null;
+  /**
+   * Which slices of the published document this machine pulls (#171). Absent
+   * on an origin registered before the field existed, which deserialises
+   * server-side as all three enabled — see `OriginScope`.
+   *
+   * Read it through `originScope()` rather than directly, so the absent case
+   * has exactly one answer.
+   */
+  scope?: OriginScope;
+}
+
+/**
+ * Which parts of an origin's document this machine consumes. Mirrors
+ * `OriginScope` in `src-tauri/src/tab_state.rs`.
+ *
+ * A local decision about somebody else's file: the publisher decides what to
+ * publish, never what anyone else takes. One file on the share, N
+ * subscriptions to it — which is what keeps a team from maintaining a second,
+ * connections-only copy that nothing keeps in step with the first.
+ *
+ * **Every field defaults to `true`**, unlike every other per-resource opt-in in
+ * this app. It describes what an origin was already pulling, not a permission,
+ * and a closed default would narrow every registered origin on update and make
+ * the next sync report the user's whole configuration as vanished.
+ */
+export interface OriginScope {
+  /** Land the file's connections into the global profile pool. */
+  connections: boolean;
+  /** Mirror the file's environments as local ones. */
+  environments: boolean;
+  /** Merge the file's JSON Schemas and their column bindings. */
+  schemas: boolean;
+}
+
+/** What a file would contribute, read without registering or pulling it —
+ *  `peekOriginFile`. Counts only: this renders under a path the user may have
+ *  typed by mistake. */
+export interface OriginPeek {
+  /** `meta.kind`: `"environment"`, `"profiles"`, or `""` for a file predating
+   *  the discriminant. Anything but `"environment"` can only ever contribute
+   *  connections. */
+  kind: string;
+  /** Whether a passphrase is needed — and only if connections are pulled. */
+  encrypted: boolean;
+  maintainer?: string | null;
+  connections: number;
+  environments: number;
+  schemas: number;
+  bindings: number;
 }
 
 /**
@@ -1770,6 +1819,16 @@ export interface OriginSyncReport {
   /** Landed with `enabled: false` because they name a connection this machine
    *  does not have. */
   bindingsDisabled?: number;
+  /**
+   * Which slices this pull actually read (#171). Absent from a report produced
+   * before the field existed.
+   *
+   * Every count above is zero for two different reasons — the file publishes
+   * none, or this machine does not pull them — and a summary that conflates
+   * them tells somebody who deliberately switched environments off that they
+   * got "0 environments", which reads as a bug.
+   */
+  pulled?: OriginScope;
 }
 
 /** What `listEnvironments` returns — the list and the active id together, so a

@@ -431,6 +431,7 @@ pub fn run() {
             commands::origins::add_origin,
             commands::origins::update_origin,
             commands::origins::remove_origin,
+            commands::origins::peek_origin_file,
             commands::origins::sync_origin,
             commands::origins::set_secret_override,
             commands::origins::clear_secret_override,

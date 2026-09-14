@@ -8,6 +8,160 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Cada equipo elige qué se trae de un origen compartido.** Un fichero
+  publicado lleva tres cosas independientes — las conexiones, los entornos que
+  las agrupan y la biblioteca de esquemas JSON con sus vínculos a columnas — y
+  Ajustes → Orígenes permite ahora suscribirse a cada una por separado, por
+  origen, al registrarlo y después desde «Editar registro».
+
+  Esta es la respuesta a un reparto que aparece en todos los equipos que usan
+  orígenes: hay quien quiere que le den la configuración entera y quien ya tiene
+  sus entornos montados a su gusto y solo quiere los servidores. Hasta ahora la
+  única forma de servir a ambos era que quien mantiene el fichero publicase un
+  *segundo* fichero solo con conexiones — que nada mantenía al día respecto al
+  primero, así que los dos acababan divergiendo. Ahora ambos grupos registran el
+  mismo fichero y marcan casillas distintas, lo que hace esa divergencia
+  imposible en lugar de simplemente desaconsejada: hay un solo documento, y
+  quien publica publica siempre el superconjunto.
+
+  Partir el propio documento se valoró y se descartó. Habría mantenido los dos
+  ficheros y habría añadido una referencia cruzada que se puede romper, un
+  segundo dominio de concurrencia sin transacción sobre el par, y una pregunta
+  de propiedad que `ConnectionProfile.origin_id` — un solo campo, y todo el
+  modelo de propiedad — no puede responder.
+
+  El formulario muestra lo que lleva el fichero antes de elegir, así que
+  suscribirse a «entornos» no es adivinar si publica alguno; un bundle de
+  conexiones normal solo ofrece la primera casilla, porque es lo único que puede
+  aportar. Hay dos combinaciones que se permiten y se explican en vez de
+  prohibirse, porque cada una es correcta para alguien: los entornos sin sus
+  conexiones se replican vacíos, y los esquemas JSON sin sus conexiones llegan
+  con todos sus vínculos desactivados.
+
+  **Desmarcar una casilla no borra nada.** Lo que una suscripción más amplia ya
+  trajo sigue vinculado al origen y de solo lectura, y simplemente deja de
+  actualizarse. Liberarlo como entradas locales normales sigue siendo un paso
+  aparte y deliberado — y sin vuelta atrás, porque una conexión desvinculada es
+  tuya a partir de entonces y el origen no la vuelve a adoptar.
+
+  Un origen registrado antes de que esto existiera se sigue trayendo las tres
+  cosas, y ese valor por defecto no es una comodidad sino una pieza clave: este
+  indicador describe lo que el origen ya hacía, no un permiso, así que un valor
+  por defecto cerrado habría estrechado todos los orígenes registrados al
+  actualizar y habría hecho que la siguiente sincronización informase de que ha
+  desaparecido la configuración entera del usuario. Ver
+  [`adr/gotcha-083`](adr/gotcha-083-origin-consumption-scope-defaults-open.md)
+  (en inglés).
+
+### Corregido
+
+- **Las bases de datos de MongoDB se pueden eliminar, y un servidor sin bases de
+  datos ya no es un panel vacío.** Dos mitades del mismo error, ambas en la raíz
+  de una conexión a nivel de clúster.
+
+  La entrada «Eliminar base de datos…» del árbol dependía de
+  `supportsCreateDatabase`, así que MongoDB — que no tiene comando
+  `CREATE DATABASE` porque el servidor no guarda bases de datos *vacías* — se
+  quedaba también sin poder borrar una llena, aunque `dropDatabase` es un solo
+  comando que siempre ha soportado. Un único predicado respondía a dos
+  preguntas; ahora son `supportsCreateDatabase` y `supportsDropDatabase`, y la
+  rama MongoDB del backend ejecuta el borrado en lugar de devolver «no está
+  soportado aquí». Antes comprueba que la base existe: `dropDatabase` contra un
+  nombre inexistente responde éxito, lo que habría confirmado una errata al
+  usuario como si fuera un borrado.
+
+  Eliminar una base de datos, además, ha dejado de leer la preferencia
+  `ui.confirmDestructive`. Desactivarla es razonable cuando el aviso va de
+  borrar una fila que puedes volver a insertar; nunca quiso decir «tira una base
+  de datos entera con un clic de menú y sin nada por medio», y
+  `confirmIrreversible` — que existe justo para esto y que `DROP TABLE` ya
+  usaba — es lo que debería haber estado llamando.
+
+- **Crear una base de datos funciona en MongoDB, que es lo que le faltaba al
+  árbol vacío.** Como en el servidor no existe la base de datos vacía, «Nueva
+  base de datos» pide ahí también la primera colección y crea ambas, el mismo
+  par que pide Compass. `create_database` recibe un `initial_collection`
+  opcional en vez de partirse en dos comandos — la intención es una sola, y
+  partirlo habría llevado la bifurcación por driver al frontend — y los drivers
+  SQL lo rechazan en lugar de ignorarlo.
+
+- **Una conexión single-DB tiene nodo de base de datos, y ahí es donde viven
+  las acciones de la base.** La otra mitad de la misma asimetría, y la que de
+  verdad se tocaba a diario: un perfil con `database` fijada no mostraba ningún
+  nodo de base de datos — su nodo superior es un *esquema* —, así que «Eliminar
+  base de datos…», que vive en un nodo de base de datos, no existía en ninguna
+  parte, mientras que «Nueva base de datos» sí estaba en el menú de la
+  conexión. Podías crear una base desde una conexión y luego no tener forma de
+  borrarla desde ningún sitio de la app.
+
+  El arreglo es el nodo, no una entrada más en la conexión: quien quiere borrar
+  una base de datos va a la base de datos. Lo que eso significa en cada motor
+  es la parte que merece decirse, porque el nodo superior del árbol solo *a
+  veces* es la base. MySQL y MongoDB reportan un único esquema con el nombre de
+  la propia base, así que los dos se funden en un solo nodo — sin nivel de más
+  ni nada anidado dentro de sí mismo — y ese nodo lleva el menú de base de
+  datos. Postgres y SQL Server reportan `public`/`dbo` dentro de una base que
+  el árbol nunca había dibujado, así que el nodo de base aparece por encima,
+  que es su sitio. SQLite no recibe ninguno: su fichero *es* la base.
+
+  Los dos modos renderizan ahora el mismo menú desde el mismo componente
+  (`DatabaseNodeMenu`), incluida «Nueva colección», que estaba en la conexión
+  por la misma razón de no-había-otro-sitio. Los dos modos se diferencian solo
+  en lo que tienen que resolver antes — multi-DB abre un pool sintético por
+  base, single-DB ya está ligada — y en las consecuencias de un borrado, que
+  es por lo que eso siguió siendo una prop.
+
+  **Los cuatro motores no se ponen de acuerdo sobre borrar la base a la que
+  estás conectado, y se tratan los cuatro en vez de dejar tres fallando.**
+  MySQL y MongoDB simplemente lo permiten. PostgreSQL lo rechaza siempre — una
+  sesión no puede borrar su propia base, y el servidor rechaza también mientras
+  haya *cualquier* sesión conectada, así que emitir la sentencia desde otro
+  sitio no basta por sí solo: primero se cierra el pool y la sentencia viaja por
+  una conexión efímera a la base de mantenimiento `postgres`, construida
+  clonando las `PgConnectOptions` del propio pool (mismo host y puerto,
+  incluido el listener local del túnel SSH, mismas credenciales y mismo modo
+  TLS, y sin una segunda visita al llavero). SQL Server lo rechaza mientras la
+  base esté en uso, y para eso bastan las propias sesiones ociosas del pool:
+  la sesión en uso se muda a `master` y el resto se cierran, mediante un nuevo
+  `MsSqlPool::close_idle` que deja el pool en condiciones de reabrir — porque
+  un borrado rechazado no debe dejar además una conexión muerta.
+
+  La conexión se cierra después tanto si el borrado ha funcionado como si no:
+  a esas alturas su pool está cerrado o su base por defecto ha desaparecido de
+  todos modos, y dejarla marcada como activa haría que cualquier comando
+  posterior fallara con algo mucho menos legible que el error que el usuario
+  acaba de leer. El perfil guardado no se toca a propósito — apunta a una base
+  que ya no existe, cosa que el aviso dice claramente, y borrar configuración
+  guardada y una entrada del llavero es una decisión mayor que la que el
+  usuario ha tomado.
+
+- **Una conexión cuyo servidor no tiene bases de datos ahora lo dice.** No
+  pintaba literalmente nada: ni fila, ni frase, lo que se lee como una conexión
+  que ha fallado y no como un servidor vacío, y dejaba la creación de la primera
+  base como algo que el usuario tenía que saber de antemano que estaba escondido
+  en el menú contextual de la conexión. El árbol distingue ahora los dos motivos
+  por los que puede estar vacío — un servidor sin bases de datos, que ofrece
+  «Nueva base de datos», y todas las bases ocultas por el subconjunto visible,
+  que ofrece el selector.
+
+### Cambiado
+
+- **Las filas del árbol de esquema son ahora un único primitivo.** Cuatro
+  sitios habían escrito a mano el mismo `<button>`: ancho completo, el mismo
+  padding, el mismo `hover:bg-accent` y el mismo anillo de foco gobernado por
+  «¿está mi menú contextual abierto sobre mí?». `ui/tree-row.tsx` se queda con
+  ese envoltorio y cada fila conserva su contenido, que es la parte que de
+  verdad cambia. Dos entradas salen del presupuesto de botones crudos de
+  `uiAdoption.test.ts` (136 → 134).
+
+- `commands::schema::create_collection` valida a través del mismo
+  `validate_collection` que ya usaban el resto de escrituras a nivel de
+  colección de MongoDB, en vez de su propia copia en línea de dos de sus tres
+  comprobaciones. El validador compartido ha ganado además la comprobación de
+  `$`/NUL, que no tenía ninguno de los dos.
+
 ## [1.23.0] — 2026-09-11
 
 ### Añadido

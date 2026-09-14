@@ -204,8 +204,44 @@ else registers it as an **origin** and pulls from it.
   The one exception is the machine that publishes that origin: it can correct
   the connection in place (a wrong password, most often) and republish it from
   the origin document editor — no duplicate, same id.
-- Origins are registered per environment, and HuginnDB only ever *reads* them.
+- The registry is global — one registration per file, visible from every
+  environment — and HuginnDB only ever *reads* an origin unless you explicitly
+  mark it as one this machine publishes.
 - When the curator stops publishing a connection you already pulled, it isn't
   deleted behind your back. It is flagged, and you decide: **Keep as mine**
   (it becomes a local, editable connection) or **Delete** (which also removes
   its stored password from your keychain).
+
+### Choosing what to pull
+
+A published file can carry three independent things: the **connections**, the
+**environments** that group them, and the **JSON Schema** library with its
+column bindings. You subscribe to each one separately, per origin, when you
+register it and at any time afterwards under **Edit registration**.
+
+That is the answer to the common split in a team: some people want the whole
+configuration handed to them, and others already have their environments set up
+the way they like and only want the servers. Both register *the same file* and
+tick different boxes — which is the point, because the alternative is the
+curator maintaining a second, connections-only copy that nothing keeps in step
+with the first.
+
+The form previews what the file actually holds before you choose, so a
+subscription to "environments" isn't a guess about whether it publishes any. A
+plain connection bundle offers only the first box, because that is all it can
+ever contribute.
+
+Two combinations are allowed but worth understanding, and the form says so:
+
+- **Environments without connections** mirror with a membership list naming
+  servers this machine does not have, so they look empty.
+- **JSON Schemas without connections** land their bindings disabled, because a
+  binding that names an unknown connection is disabled by design (see
+  [`JSON_SCHEMAS.md`](JSON_SCHEMAS.md)).
+
+**Unticking a box does not delete anything.** What a wider subscription already
+brought in stays exactly where it is, still linked to the origin and still
+read-only, and simply stops being refreshed. Releasing those into ordinary
+local entries is a separate, deliberate step — one that cannot be undone, since
+a connection you have detached is yours from then on and the origin will not
+adopt it back.

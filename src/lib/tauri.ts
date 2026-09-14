@@ -81,8 +81,10 @@ import type {
   OriginDraft,
   OriginDraftBase,
   OriginDraftEnvironment,
+  OriginPeek,
   OriginPublishImpact,
   OriginRole,
+  OriginScope,
   OriginSaveOutcome,
   OriginWritableProbe,
   OriginSyncReport,
@@ -367,11 +369,28 @@ export const api = {
   getDatabaseSizes: (connectionId: string) =>
     invoke<DatabaseSize[]>("get_database_sizes", { connectionId }),
 
-  createDatabase: (connectionId: string, name: string) =>
-    invoke<void>("create_database", { connectionId, name }),
+  /**
+   * Create a database on the server behind `connectionId`.
+   *
+   * `initialCollection` is MongoDB's and only MongoDB's: the server has no
+   * empty database to create, so the first collection *is* the creation. The
+   * backend rejects it for the SQL drivers rather than ignoring it — see
+   * `create_database`'s doc comment for why it is one command taking an
+   * option rather than two commands.
+   */
+  createDatabase: (
+    connectionId: string,
+    name: string,
+    initialCollection?: string,
+  ) =>
+    invoke<void>("create_database", {
+      connectionId,
+      name,
+      initialCollection: initialCollection ?? null,
+    }),
 
   /** Drop a database on the server behind `connectionId` (the parent
-   *  connection). Postgres/MySQL only; the backend closes the synthetic
+   *  connection). Every driver but SQLite; the backend closes the synthetic
    *  per-database pool first. */
   dropDatabase: (connectionId: string, name: string) =>
     invoke<void>("drop_database", { connectionId, name }),
@@ -1003,11 +1022,13 @@ export const api = {
   listOrigins: () => invoke<Origin[]>("list_origins"),
 
   /** Register a shared origin. `passphrase` only for an encrypted file; it goes
-   *  to the OS keychain, never to `tab_state.json`. */
+   *  to the OS keychain, never to `tab_state.json`. `scope` omitted means all
+   *  three slices, the sensible default for a file nobody has read yet. */
   addOrigin: (args: {
     name: string;
     path: string;
     passphrase?: string | null;
+    scope?: OriginScope | null;
   }) => invoke<Origin>("add_origin", args),
 
   /** Rename / repoint an origin. `passphrase` is tri-state: omit to keep the
@@ -1021,10 +1042,21 @@ export const api = {
      *  machine write the file at all — confirm it, never do it as a side
      *  effect of a rename. */
     role?: OriginRole | null;
+    /** Omit to leave it alone. Narrowing is non-destructive: what a wider
+     *  scope already landed stays put and simply stops being refreshed —
+     *  detaching it into local state is a separate, irreversible act. */
+    scope?: OriginScope | null;
   }) => invoke<Origin>("update_origin", args),
 
   /** Unregister an origin. The connections it imported are left in place. */
   removeOrigin: (id: string) => invoke<void>("remove_origin", { id }),
+
+  /** What a file would contribute, without registering or pulling it — so the
+   *  scope checkboxes are a choice rather than a guess. Rejects on an
+   *  unreachable or unparseable path, which is the normal state while a UNC
+   *  path is still being typed. */
+  peekOriginFile: (path: string) =>
+    invoke<OriginPeek>("peek_origin_file", { path }),
 
   /** Pull an origin. Rejects (touching nothing) when the file can't be read or
    *  parsed; never deletes — disappearances come back in `vanished`. */

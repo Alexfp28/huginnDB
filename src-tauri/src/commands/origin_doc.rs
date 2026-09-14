@@ -324,6 +324,11 @@ pub fn create_origin_document(
         // confirmation, because creating the file *is* the confirmation.
         role: OriginRole::Publisher,
         maintainer,
+        // A publisher consumes their own document, in full: keeping the
+        // profile ids stable across the round trip is what stops them ending
+        // up with two copies of every server (`origin_doc`'s module doc), and
+        // that only holds if the slices carrying them are actually pulled.
+        scope: Default::default(),
     };
     let created = origin.clone();
     tab_state::mutate(&state.tab_state, |ts| {

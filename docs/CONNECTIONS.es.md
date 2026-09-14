@@ -212,8 +212,45 @@ sincronizada — y el resto lo registra como **origen** y tira de ahí.
   local normal. La única excepción es la máquina que publica ese origen: puede
   corregir la conexión en el sitio (una contraseña mal puesta, sobre todo) y
   volver a publicarla desde el editor del documento — sin duplicados, mismo id.
-- Los orígenes se registran por entorno, y HuginnDB solo los *lee*.
+- El registro es global — un registro por fichero, visible desde todos los
+  entornos — y HuginnDB solo *lee* un origen salvo que lo marques
+  explícitamente como uno que publica esta máquina.
 - Cuando quien lo mantiene deja de publicar una conexión que ya te habías
   traído, no se borra a tus espaldas. Se marca y decides tú: **Conservar como
   mía** (pasa a ser una conexión local y editable) o **Eliminar** (que quita
   también su contraseña de tu llavero).
+
+### Elegir qué traerse
+
+Un fichero publicado puede llevar tres cosas independientes: las **conexiones**,
+los **entornos** que las agrupan y la biblioteca de **esquemas JSON** con sus
+vínculos a columnas. Te suscribes a cada una por separado, por origen, al
+registrarlo y en cualquier momento después desde **Editar registro**.
+
+Esa es la respuesta al reparto habitual dentro de un equipo: hay quien quiere
+que le den la configuración entera y quien ya tiene sus entornos montados a su
+gusto y solo quiere los servidores. Ambos registran *el mismo fichero* y marcan
+casillas distintas — y ahí está la gracia, porque la alternativa es que quien lo
+mantiene lleve una segunda copia solo con conexiones que nada mantiene al día
+respecto a la primera.
+
+El formulario muestra lo que lleva el fichero antes de que elijas, así que
+suscribirse a «entornos» no es adivinar si publica alguno. Un bundle de
+conexiones normal solo ofrece la primera casilla, porque es lo único que puede
+aportar.
+
+Hay dos combinaciones permitidas que conviene entender, y el formulario lo
+advierte:
+
+- **Entornos sin conexiones** se replican con una lista de miembros que nombra
+  servidores que este equipo no tiene, así que se ven vacíos.
+- **Esquemas JSON sin conexiones** llegan con sus vínculos desactivados, porque
+  un vínculo que nombra una conexión desconocida se desactiva por diseño (ver
+  [`JSON_SCHEMAS.es.md`](JSON_SCHEMAS.es.md)).
+
+**Desmarcar una casilla no borra nada.** Lo que una suscripción más amplia ya
+trajo se queda donde está, sigue vinculado al origen y sigue siendo de solo
+lectura, y simplemente deja de actualizarse. Liberarlo como entradas locales
+normales es un paso aparte y deliberado — y sin vuelta atrás, porque una
+conexión que has desvinculado es tuya a partir de entonces y el origen no la
+vuelve a adoptar.

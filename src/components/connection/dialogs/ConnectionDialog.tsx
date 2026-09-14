@@ -70,6 +70,7 @@ import { api } from "@/lib/tauri";
 import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteConnectionsDialog";
 import { MongoUriFoldDialog } from "@/components/connection/dialogs/MongoUriFoldDialog";
 import { isFromOrigin } from "@/lib/connection/origin";
+import { originScope } from "@/lib/origins/scope";
 import { SecretOverrideNotice } from "@/components/connection/SecretOverrideNotice";
 import { notify } from "@/lib/notify";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
@@ -293,6 +294,21 @@ export function ConnectionDialog({
    * independent local copy.
    */
   const canEditInPlace = fromOrigin && originIsPublished;
+  /**
+   * Whether the origin behind this profile has stopped pulling connections
+   * (#171), in which case this entry is still the file's — tagged, read-only,
+   * not deletable — but will never be refreshed again.
+   *
+   * Said out loud because the state is otherwise unreadable: "you cannot edit
+   * this, it comes from a shared file" is an explanation the user can act on,
+   * and it silently becomes false the moment the slice is switched off. The
+   * way out is unchanged (duplicate it, or release it from Settings), so this
+   * adds a sentence rather than a new control.
+   */
+  const originStoppedPulling = useOrigins((s) => {
+    const origin = stored?.origin_id ? s.byId[stored.origin_id] : null;
+    return origin ? !originScope(origin).connections : false;
+  });
   const openOriginEditor = useOriginEditor((state) => state.open);
   const askToRepublish = useOriginRepublish((state) => state.open);
 
@@ -693,6 +709,11 @@ export function ConnectionDialog({
                               origin: originName,
                             })
                           : t("connectionDialog.fromOrigin")}
+                      {originStoppedPulling && (
+                        <p className="mt-1">
+                          {t("connectionDialog.fromOriginNotPulled")}
+                        </p>
+                      )}
                       {/* Only for an origin this machine publishes: pointing a
                         consumer at an editor that will open read-only is worse
                         than saying nothing. `canEditInPlace` already covers

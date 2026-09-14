@@ -300,6 +300,71 @@ pub struct Origin {
     /// other is the content hash the editor compares on save.
     #[serde(default)]
     pub maintainer: Option<String>,
+    /// Which slices of the published document this machine actually pulls.
+    ///
+    /// The answer to "some of us want the whole configuration, some of us
+    /// already have our own environments and only want the servers". One file
+    /// on the share, N subscriptions to it — rather than the publisher
+    /// maintaining a second, connections-only file that nothing keeps in step
+    /// with the first. See [`OriginScope`] for why every field defaults to
+    /// `true`.
+    #[serde(default)]
+    pub scope: OriginScope,
+}
+
+/// Which parts of an origin's document this machine consumes.
+///
+/// A *local* decision about somebody else's file, which is why it lives here
+/// beside [`Origin::role`] and not in the document: the publisher decides what
+/// to publish, never what anyone else takes. The three slices match the three
+/// independent sections of an `EnvironmentExportFile` — `profiles`,
+/// `environments`, `json_schemas` — and nothing here filters *within* a slice.
+///
+/// **Every field defaults to `true`, deliberately against the house rule.**
+/// Every other per-resource opt-in in this codebase defaults to off (a profile
+/// is not MCP-exposed, not Pulse-sampled, not AI-reachable until the user says
+/// so — gotcha #58), because those are permissions and a closed default is the
+/// safe one. This is not a permission: it describes what an origin *was already
+/// pulling* before the field existed. A closed default would make installing an
+/// update silently narrow every registered origin to nothing, and the next sync
+/// would then see zero incoming bundles against N locally mirrored
+/// environments and report the user's whole configuration as vanished. The
+/// safe default for a permission and the safe default for a description of
+/// existing behaviour point in opposite directions.
+///
+/// Note the **per-field** `default`: a `#[serde(default)]` on the struct alone
+/// would only cover the field being absent as a whole. A partially-written
+/// object (`{"connections": false}` — what the frontend sends the moment the
+/// shape grows a fourth slice and an older build reads it back) would fill the
+/// rest with `bool::default()`, which is `false`, and quietly reintroduce
+/// exactly the failure the paragraph above describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OriginScope {
+    /// Land the file's `profiles` into the global connection pool.
+    #[serde(default = "enabled")]
+    pub connections: bool,
+    /// Mirror the file's `environments` as local environments.
+    #[serde(default = "enabled")]
+    pub environments: bool,
+    /// Merge the file's JSON Schemas and their column bindings.
+    #[serde(default = "enabled")]
+    pub schemas: bool,
+}
+
+/// The default for every [`OriginScope`] field; see that type's doc.
+fn enabled() -> bool {
+    true
+}
+
+impl Default for OriginScope {
+    fn default() -> Self {
+        Self {
+            connections: enabled(),
+            environments: enabled(),
+            schemas: enabled(),
+        }
+    }
 }
 
 /// What this machine is allowed to do with an origin's file.

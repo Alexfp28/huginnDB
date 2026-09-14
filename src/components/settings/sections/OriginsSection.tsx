@@ -14,8 +14,11 @@ import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import {
   Check,
+  Database,
   Eye,
+  FileJson,
   FilePlus2,
+  Layers,
   FolderOpen,
   FolderSync,
   PencilLine,
@@ -25,6 +28,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { pickJsonFile, pickJsonSavePath } from "@/lib/dialogs";
@@ -40,6 +44,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import type { Origin, OriginRole } from "@/types";
+import { FULL_SCOPE, isFullScope, originScope } from "@/lib/origins/scope";
+import { OriginScopeFields } from "@/components/origins/OriginScopeFields";
 import { formatDateTime } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -72,7 +78,12 @@ export function OriginsSection() {
   const loadOrigins = useOrigins((s) => s.load);
   const openEditor = useOriginEditor((s) => s.open);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: "", path: "", passphrase: "" });
+  const [draft, setDraft] = useState({
+    name: "",
+    path: "",
+    passphrase: "",
+    scope: FULL_SCOPE,
+  });
   const [busy, setBusy] = useState(false);
   // `updateOrigin` shipped in 1.18 with **zero** call sites: an origin could be
   // registered and removed but never renamed or repointed, so a moved share
@@ -84,6 +95,7 @@ export function OriginsSection() {
     path: "",
     passphrase: "",
     role: "consumer" as OriginRole,
+    scope: FULL_SCOPE,
   });
   // Turning on write access is confirmed separately from saving the rest of the
   // registration, because it is the one field that changes what the app is
@@ -179,6 +191,10 @@ export function OriginsSection() {
       // secret the user already stored.
       passphrase: "",
       role: o.role ?? "consumer",
+      // Through the helper, never `o.scope` directly: an origin registered
+      // before the field existed pulls everything, and reading the absent case
+      // as "nothing" would show a state the backend does not implement.
+      scope: originScope(o),
     });
   }
 
@@ -191,6 +207,7 @@ export function OriginsSection() {
         path: edit.path.trim(),
         passphrase: edit.passphrase ? edit.passphrase : null,
         role: edit.role,
+        scope: edit.scope,
       });
       setEditing(null);
       await loadOrigins();
@@ -222,8 +239,9 @@ export function OriginsSection() {
         path: draft.path.trim(),
         // Empty means "not encrypted" — nothing is written to the keychain.
         passphrase: draft.passphrase || null,
+        scope: draft.scope,
       });
-      setDraft({ name: "", path: "", passphrase: "" });
+      setDraft({ name: "", path: "", passphrase: "", scope: FULL_SCOPE });
       setAdding(false);
       await loadOrigins();
       // Pull immediately: registering an origin and seeing nothing happen reads
@@ -297,6 +315,27 @@ export function OriginsSection() {
                     )}
                     {t(`origins.role.${o.role ?? "consumer"}`)}
                   </span>
+                  {/* Only when it is not the default. A badge on every row
+                      would be noise for the majority who pull everything, and
+                      the point of this one is that a narrowed origin looks
+                      different from a broken one when a slice turns up
+                      missing. */}
+                  {!isFullScope(originScope(o)) && (
+                    <SimpleTooltip label={t("origins.scope.badgeTitle")}>
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
+                        {originScope(o).connections && (
+                          <Database className="h-3 w-3" />
+                        )}
+                        {originScope(o).environments && (
+                          <Layers className="h-3 w-3" />
+                        )}
+                        {originScope(o).schemas && (
+                          <FileJson className="h-3 w-3" />
+                        )}
+                        {t("origins.scope.badge")}
+                      </span>
+                    </SimpleTooltip>
+                  )}
                   {o.maintainer && (
                     <span className="shrink-0 truncate text-3xs text-muted-foreground">
                       {t("origins.curatedBy", { who: o.maintainer })}
@@ -444,6 +483,11 @@ export function OriginsSection() {
           <p className="text-2xs text-muted-foreground">
             {t("origins.passphraseHint")}
           </p>
+          <OriginScopeFields
+            value={draft.scope}
+            onChange={(scope) => setDraft((d) => ({ ...d, scope }))}
+            path={draft.path}
+          />
           <div className="flex justify-end gap-2">
             <Button
               size="sm"
@@ -502,6 +546,18 @@ export function OriginsSection() {
           />
           <p className="text-2xs text-muted-foreground">
             {t("origins.passphraseKeepHint")}
+          </p>
+          <OriginScopeFields
+            value={edit.scope}
+            onChange={(scope) => setEdit((d) => ({ ...d, scope }))}
+            path={edit.path}
+          />
+          {/* Narrowing a scope is non-destructive and the form has to say so,
+              because the obvious reading of unticking a box is that what it
+              brought in goes away. It stays, tagged and read-only, and simply
+              stops being refreshed — detaching it is a separate act. */}
+          <p className="text-3xs text-muted-foreground">
+            {t("origins.scope.narrowingKeeps")}
           </p>
           <label className="flex items-start gap-2 text-2xs">
             <Checkbox

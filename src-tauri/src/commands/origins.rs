@@ -43,7 +43,7 @@
 use crate::error::{AppError, AppResult};
 use crate::keychain;
 use crate::state::{ActiveConnections, AppState, ConnectionProfile, Driver, SecretOverride};
-use crate::tab_state::{self, Environment, LaunchState, Origin};
+use crate::tab_state::{self, Environment, LaunchState, Origin, OriginScope};
 use crate::transfer::{
     EnvironmentExportFile, ExportMetadata, ExportedEnvironmentBundle, ExportedProfile,
     KIND_ENVIRONMENT,
@@ -97,6 +97,12 @@ pub fn list_origins(state: State<'_, AppState>) -> AppResult<Vec<Origin>> {
 ///
 /// `passphrase` is stored in the keychain when the file is encrypted; pass
 /// `None` for a plaintext export. It is never written to `tab_state.json`.
+///
+/// `scope` says which slices of the document to pull; `None` means all three,
+/// which is both the historical behaviour and the sensible default for
+/// somebody who has just pointed at a file and does not yet know what is in
+/// it. Narrowing it later is `update_origin`, and narrowing it never deletes
+/// what an earlier, wider scope already landed.
 #[tauri::command]
 pub fn add_origin(
     app: AppHandle,
@@ -104,6 +110,7 @@ pub fn add_origin(
     name: String,
     path: String,
     passphrase: Option<String>,
+    scope: Option<OriginScope>,
 ) -> AppResult<Origin> {
     if path.trim().is_empty() {
         return Err(AppError::InvalidInput("origin path is empty".into()));
@@ -119,6 +126,7 @@ pub fn add_origin(
         // a file must never be what grants write access to it.
         role: tab_state::OriginRole::Consumer,
         maintainer: None,
+        scope: scope.unwrap_or_default(),
     };
 
     // Keychain first: a failure here must not leave a registered origin whose
@@ -149,6 +157,20 @@ pub fn add_origin(
 /// [`tab_state::OriginRole::Publisher`] is what lets this machine write the
 /// file at all (`commands::origin_doc`), so it is a deliberate, reversible act
 /// the UI confirms — never a side effect of a rename.
+///
+/// `scope` likewise. Narrowing one is **non-destructive on purpose**: what a
+/// wider scope already landed stays exactly where it is, still tagged with
+/// this origin, and simply stops being refreshed. Detaching those profiles and
+/// environments into local ones is a separate, explicit act, because it cannot
+/// be undone in either direction — [`merge_into`] skips a profile whose
+/// `origin_id` no longer names this origin (it is the user's by then, not the
+/// file's), and `sync_environment_bundles` would mirror a *second* copy of an
+/// environment whose `origin_source_id` was cleared. A checkbox must not be
+/// able to reach either outcome.
+// A Tauri command's parameters *are* its wire shape — the frontend passes them
+// by name — so the count here is the IPC contract, not a signature that wants a
+// struct. Same reason `save_origin_document` next door carries the allow.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn update_origin(
     app: AppHandle,
@@ -158,6 +180,7 @@ pub fn update_origin(
     path: String,
     passphrase: Option<String>,
     role: Option<tab_state::OriginRole>,
+    scope: Option<OriginScope>,
 ) -> AppResult<Origin> {
     if path.trim().is_empty() {
         return Err(AppError::InvalidInput("origin path is empty".into()));
@@ -178,6 +201,9 @@ pub fn update_origin(
         origin.path = path;
         if let Some(role) = role {
             origin.role = role;
+        }
+        if let Some(scope) = scope {
+            origin.scope = scope;
         }
         Ok(origin.clone())
     })?;
@@ -225,6 +251,89 @@ pub fn remove_origin(app: AppHandle, state: State<'_, AppState>, id: String) -> 
 /// set of a curated connection be changed too, and the next sync would silently
 /// revert those while keeping the password — the worst of both, and impossible
 /// to explain from the UI.
+/// What a file at `path` would contribute, without registering or pulling it.
+///
+/// Takes a **path, not an origin id**: its first caller is the "add origin"
+/// form, where there is no origin yet and the user is about to decide which
+/// slices to subscribe to. Offering those checkboxes without saying what is in
+/// the file makes the choice a guess — and the interesting case ("this file
+/// only carries connections anyway") is invisible until after the first sync.
+///
+/// Reads and parses; touches no local state, no keychain, and no registry.
+/// Every failure is an `Err` the form renders inline rather than a panic-worthy
+/// condition: an unreachable share while the user is still typing a UNC path is
+/// the normal case, not an exceptional one.
+#[tauri::command]
+pub fn peek_origin_file(path: String) -> AppResult<OriginPeek> {
+    if path.trim().is_empty() {
+        return Err(AppError::InvalidInput("origin path is empty".into()));
+    }
+    let data = std::fs::read_to_string(&path)
+        .map_err(|e| AppError::InvalidInput(format!("cannot read {path:?}: {e}")))?;
+
+    // Same two-step parse `sync_origin_inner` does, and for the same reason:
+    // `serde_json` drops unknown fields, so reading an environment-kind file as
+    // the plain profile shape succeeds while silently discarding its whole
+    // `environments` array. The peek has to agree with the sync about what the
+    // file contains or it is worse than no preview at all.
+    #[derive(serde::Deserialize)]
+    struct MetaPeek {
+        meta: ExportMetadata,
+    }
+    let meta_peek: MetaPeek = serde_json::from_str(&data)
+        .map_err(|e| AppError::InvalidInput(format!("{path:?} is not a HuginnDB export: {e}")))?;
+
+    if meta_peek.meta.kind == KIND_ENVIRONMENT {
+        let export: EnvironmentExportFile = serde_json::from_str(&data).map_err(|e| {
+            AppError::InvalidInput(format!("{path:?} is not a valid environment export: {e}"))
+        })?;
+        Ok(OriginPeek {
+            kind: meta_peek.meta.kind,
+            encrypted: meta_peek.meta.encrypted,
+            maintainer: meta_peek.meta.maintainer,
+            connections: export.profiles.len(),
+            environments: export.environments.len(),
+            schemas: export.json_schemas.schemas.len(),
+            bindings: export.json_schemas.bindings.len(),
+        })
+    } else {
+        let export: crate::transfer::ExportFile = serde_json::from_str(&data).map_err(|e| {
+            AppError::InvalidInput(format!("{path:?} is not a HuginnDB export: {e}"))
+        })?;
+        Ok(OriginPeek {
+            kind: meta_peek.meta.kind,
+            encrypted: meta_peek.meta.encrypted,
+            maintainer: meta_peek.meta.maintainer,
+            connections: export.profiles.len(),
+            environments: 0,
+            schemas: 0,
+            bindings: 0,
+        })
+    }
+}
+
+/// What [`peek_origin_file`] found. Counts only — no names, no hosts, and
+/// certainly no ciphertext: this renders under a path the user may have typed
+/// by mistake, and a preview of somebody else's file should not be a way to
+/// read it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OriginPeek {
+    /// `meta.kind` verbatim — `"environment"`, `"profiles"`, or `""` for a file
+    /// written before the discriminant existed. A `"profiles"` file can only
+    /// ever contribute connections, which is what lets the form grey out the
+    /// other two checkboxes instead of offering a subscription to nothing.
+    pub kind: String,
+    /// Whether the file carries encrypted secrets, i.e. whether a passphrase is
+    /// needed — and only needed at all if connections are pulled.
+    pub encrypted: bool,
+    pub maintainer: Option<String>,
+    pub connections: usize,
+    pub environments: usize,
+    pub schemas: usize,
+    pub bindings: usize,
+}
+
 #[tauri::command]
 pub fn set_secret_override(
     app: AppHandle,
@@ -451,12 +560,23 @@ fn sync_origin_inner(
         ))
     })?;
 
-    let passphrase = keychain::get_password(&passphrase_account(id))?;
-    if meta_peek.meta.encrypted && passphrase.is_none() {
-        return Err(AppError::InvalidInput(
-            "this origin is encrypted but no passphrase is stored for it".into(),
-        ));
-    }
+    // Both the lookup and the refusal are gated on the connections slice.
+    // `meta.encrypted` describes the `profiles` section and nothing else — it
+    // is recomputed in `build_origin_file` from the secret slots actually
+    // written — so an origin narrowed to environments or schemas has no use
+    // for a passphrase, and demanding one would block a pull that never needs
+    // to decrypt anything.
+    let passphrase = if origin.scope.connections {
+        let stored = keychain::get_password(&passphrase_account(id))?;
+        if meta_peek.meta.encrypted && stored.is_none() {
+            return Err(AppError::InvalidInput(
+                "this origin is encrypted but no passphrase is stored for it".into(),
+            ));
+        }
+        stored
+    } else {
+        None
+    };
 
     let is_environment_kind = meta_peek.meta.kind == KIND_ENVIRONMENT;
     let (incoming_profiles, environment_bundles, json_schemas): (
@@ -489,20 +609,29 @@ fn sync_origin_inner(
     // Carried in and back out so the expensive keychain landing can recognise
     // ciphertext it has already dealt with; see `already_landed`.
     let mut landed = origin.landed_secrets.clone();
-    let mut report = merge_profiles_bundle(
-        connections,
-        profiles_lock,
-        id,
-        passphrase.as_deref(),
-        &incoming_profiles,
-        &mut landed,
-    )?;
+    let mut report = if origin.scope.connections {
+        merge_profiles_bundle(
+            connections,
+            profiles_lock,
+            id,
+            passphrase.as_deref(),
+            &incoming_profiles,
+            &mut landed,
+        )?
+    } else {
+        // Not an empty merge — no merge. Nothing this origin previously landed
+        // is touched, `landed_secrets` is carried through untouched below, and
+        // every count in the report stays zero because nothing was read, which
+        // is what `pulled` exists to distinguish from "read, found nothing".
+        OriginSyncReport::default()
+    };
+    report.pulled = origin.scope;
     report.synced_at = chrono::Utc::now().to_rfc3339();
 
     // After the profiles, never before: a binding is disabled when it names a
     // connection this machine does not have, and the connections this very pull
     // just landed have to count as had.
-    if !json_schemas.is_empty() {
+    if origin.scope.schemas && !json_schemas.is_empty() {
         let known: std::collections::HashSet<String> =
             profiles_lock.read().iter().map(|p| p.id.clone()).collect();
         let mut lib = schemas_lock.write();
@@ -530,7 +659,16 @@ fn sync_origin_inner(
         // reported vanished, not silently skipped. Gating on the file's kind
         // rather than on `environment_bundles` being non-empty is what makes
         // that degenerate case behave the same as an ordinary disappearance.
-        if is_environment_kind {
+        // The scope is checked alongside the file's kind, not inside
+        // `sync_environment_bundles`: that function's whole contract is
+        // "reconcile these bundles against what this origin owns", and a
+        // narrowed scope means there is nothing to reconcile *against* — the
+        // mirrored environments are still this origin's, they are simply not
+        // being refreshed. Letting it run with the scope off would hand it an
+        // authoritative-looking empty list and report the user's environments
+        // as vanished, which is the exact failure the default in
+        // `OriginScope`'s doc is written to prevent.
+        if is_environment_kind && origin.scope.environments {
             let (added, updated, vanished, suspicious) =
                 sync_environment_bundles(ts, id, &environment_bundles);
             report.environments_added = added;
@@ -1049,6 +1187,16 @@ pub struct OriginSyncReport {
     /// does not have (`docs/JSON_SCHEMAS.md`).
     #[serde(default)]
     pub bindings_disabled: usize,
+    /// Which slices this pull actually read, i.e. the origin's
+    /// [`OriginScope`] at the moment it ran.
+    ///
+    /// Reported because every count above is zero for two completely different
+    /// reasons — "the file publishes no environments" and "this machine does
+    /// not pull environments" — and a summary that cannot tell them apart says
+    /// "0 environments" to somebody who deliberately switched them off, which
+    /// reads as the feature being broken.
+    #[serde(default)]
+    pub pulled: OriginScope,
 }
 
 impl OriginSyncReport {
@@ -1681,5 +1829,144 @@ mod tests {
             &["p1::user".to_string()],
             |_| true
         ));
+    }
+
+    // --- The consumption scope (#171) ------------------------------------
+    //
+    // These pin the one thing about `OriginScope` that is not obvious from
+    // reading it: its default is `true` everywhere, against the house rule for
+    // per-resource opt-ins, and the tests below are why. The first two are the
+    // load-bearing pair — break either and installing an update silently
+    // narrows every origin already registered on every machine in the team.
+
+    #[test]
+    fn an_origin_written_before_the_scope_existed_pulls_everything() {
+        // Exactly what a 1.23 `tab_state.json` holds: no `scope` key at all.
+        let json = r#"{
+            "id": "o1",
+            "name": "Team",
+            "path": "\\share\team.json",
+            "lastSyncedAt": null,
+            "landedSecrets": {},
+            "role": "consumer"
+        }"#;
+        let origin: Origin = serde_json::from_str(json).expect("parses");
+        assert_eq!(
+            origin.scope,
+            OriginScope::default(),
+            "an absent scope means the origin kept doing what it did before"
+        );
+        assert!(origin.scope.connections);
+        assert!(origin.scope.environments);
+        assert!(origin.scope.schemas);
+    }
+
+    #[test]
+    fn a_partially_written_scope_fills_the_rest_in_as_enabled() {
+        // The trap this guards: `#[serde(default)]` on the *struct* would fill
+        // the missing fields with `bool::default()` — `false` — so a payload
+        // naming only the slice that changed would silently switch the other
+        // two off. Every field carries its own `default = "enabled"` instead.
+        let origin: Origin =
+            serde_json::from_str(r#"{ "id": "o1", "scope": { "connections": false } }"#)
+                .expect("parses");
+        assert!(!origin.scope.connections, "the stated field is honoured");
+        assert!(origin.scope.environments, "an unstated field is not off");
+        assert!(origin.scope.schemas, "an unstated field is not off");
+    }
+
+    #[test]
+    fn a_narrowed_scope_survives_a_round_trip() {
+        // The other direction of gotcha #14: the scope has to come back off
+        // disk, or a user's choice silently reverts on the next launch.
+        let origin = Origin {
+            id: "o1".into(),
+            scope: OriginScope {
+                connections: true,
+                environments: false,
+                schemas: false,
+            },
+            ..Default::default()
+        };
+        let round_tripped: Origin =
+            serde_json::from_str(&serde_json::to_string(&origin).expect("serialises"))
+                .expect("parses");
+        assert_eq!(round_tripped.scope, origin.scope);
+    }
+
+    #[test]
+    fn a_team_sized_environment_set_would_be_reported_vanished_wholesale() {
+        // Not a test of the scope — a test of what the scope's default is
+        // protecting. `sync_environment_bundles` is authoritative about the
+        // list it is handed, and a machine mirroring fewer than
+        // `SUSPICION_FLOOR` environments has no ratio check to save it, so
+        // handing it an empty list reports every one of them as gone. That is
+        // precisely what a closed default would do on the first sync after an
+        // update, which is why `sync_origin_inner` gates the *call* rather than
+        // passing an empty slice.
+        let mut state = tab_state::PersistedTabState::default();
+        state.environments.push(Environment {
+            id: "local-1".into(),
+            name: "Producción".into(),
+            origin_id: Some("o1".into()),
+            origin_source_id: Some("src-1".into()),
+            ..Default::default()
+        });
+
+        let (_, _, vanished, suspicious) = sync_environment_bundles(&mut state, "o1", &[]);
+
+        assert!(!suspicious, "one environment is below the suspicion floor");
+        assert_eq!(
+            vanished,
+            vec!["local-1".to_string()],
+            "an empty list reads as an authoritative disappearance"
+        );
+    }
+
+    #[test]
+    fn a_peek_counts_every_slice_of_an_environment_file() {
+        // Writes to the OS temp dir, never the config dir: gotcha #52 is the
+        // record of a test suite that reached into real state and destroyed a
+        // developer's saved connections.
+        let path =
+            std::env::temp_dir().join(format!("huginndb-peek-{}.json", uuid::Uuid::new_v4()));
+        let file = crate::transfer::EnvironmentExportFile {
+            // Spelled out rather than `..Default::default()`: `ExportMetadata`
+            // has no `Default` on purpose — it is a wire header, and a version
+            // or a kind that can be defaulted into existence is how a file ends
+            // up claiming to be something it is not.
+            meta: ExportMetadata {
+                version: 1,
+                app: "huginndb".into(),
+                exported_at: "2026-09-14T10:00:00Z".into(),
+                encrypted: false,
+                kind: KIND_ENVIRONMENT.into(),
+                maintainer: None,
+                revision: Some(1),
+                note: None,
+            },
+            environments: vec![bundle("src-1", "Producción", vec!["c1".into()])],
+            profiles: vec![published(testkit::profile("c1"))],
+            json_schemas: Default::default(),
+        };
+        std::fs::write(&path, serde_json::to_string(&file).expect("serialises")).expect("writes");
+
+        let peek = peek_origin_file(path.to_string_lossy().into_owned()).expect("peeks");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(peek.kind, KIND_ENVIRONMENT);
+        assert_eq!(peek.connections, 1);
+        assert_eq!(peek.environments, 1);
+        assert_eq!(peek.schemas, 0);
+        assert!(!peek.encrypted);
+    }
+
+    #[test]
+    fn a_peek_at_an_unreachable_path_is_an_error_not_a_panic() {
+        // The normal case while the user is still typing a UNC path.
+        let missing =
+            std::env::temp_dir().join(format!("huginndb-absent-{}", uuid::Uuid::new_v4()));
+        assert!(peek_origin_file(missing.to_string_lossy().into_owned()).is_err());
+        assert!(peek_origin_file("   ".into()).is_err());
     }
 }

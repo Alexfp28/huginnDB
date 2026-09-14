@@ -6,6 +6,153 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Each machine chooses what it pulls from a shared origin.** A published file
+  carries three independent things — the connections, the environments that
+  group them, and the JSON Schema library with its column bindings — and
+  Settings → Origins now subscribes to each one separately, per origin, when
+  you register it and afterwards under "Edit registration".
+
+  This is the answer to a split that shows up in every team using origins: some
+  people want the whole configuration handed to them, others already have their
+  environments arranged the way they like and only want the servers. Until now
+  the only way to serve both was for the curator to publish a *second*,
+  connections-only file — which nothing kept in step with the first, so the two
+  drifted apart. Both groups now register the same file and tick different
+  boxes, which makes that divergence impossible rather than merely discouraged:
+  there is one document, and the publisher always publishes the superset.
+
+  Splitting the document itself was considered and rejected. It would have kept
+  the two files and added a cross-file reference that can break, a second
+  concurrency domain with no transaction over the pair, and an ownership
+  question `ConnectionProfile.origin_id` — a single field, and the whole
+  ownership model — cannot answer.
+
+  The form previews what the file actually holds before you choose, so a
+  subscription to "environments" is not a guess about whether it publishes any;
+  a plain connection bundle offers only the first box, since that is all it can
+  contribute. Two combinations are allowed and explained rather than forbidden,
+  because each is correct for somebody: environments without their connections
+  mirror as empty, and JSON Schemas without their connections land every binding
+  disabled.
+
+  **Unticking a box never deletes anything.** What a wider subscription already
+  brought in stays linked to the origin and read-only, and simply stops being
+  refreshed. Releasing those into ordinary local entries remains a separate,
+  deliberate step — and an irreversible one, since a detached connection is
+  yours from then on and the origin will not adopt it back.
+
+  An origin registered before this existed keeps pulling all three, and that
+  default is load-bearing rather than convenient: this flag describes what an
+  origin was already doing, not a permission, so a closed default would have
+  narrowed every registered origin on update and made the next sync report the
+  user's entire configuration as vanished. See
+  [`adr/gotcha-083`](adr/gotcha-083-origin-consumption-scope-defaults-open.md).
+
+### Fixed
+
+- **MongoDB databases can be dropped, and a server with no databases is no
+  longer an empty panel.** Two halves of the same mistake, both at the root of
+  a cluster-level connection.
+
+  The tree's "Drop database…" entry was gated on `supportsCreateDatabase`, so
+  MongoDB — which has no `CREATE DATABASE` wire command, because the server
+  does not store an *empty* database — was also denied the ability to delete a
+  full one, even though `dropDatabase` is a single command it has always
+  supported. One predicate was answering two questions; they are now
+  `supportsCreateDatabase` and `supportsDropDatabase`, and the backend's
+  MongoDB arm runs the drop instead of returning "isn't supported here". It
+  checks the database exists first: `dropDatabase` against a name that is not
+  there reports success, which would have confirmed a typo back to the user as
+  a deletion.
+
+  Dropping a database also stopped reading the `ui.confirmDestructive`
+  preference. Turning that off is a reasonable thing to do when the prompt is
+  about deleting a row you can re-insert; it was never meant to mean "drop a
+  database on one menu click with nothing in between", and `confirmIrreversible`
+  — which exists for exactly this and which `DROP TABLE` already used — is what
+  this should have been calling.
+
+- **Creating a database works on MongoDB, which is what the empty tree needed.**
+  Since an empty MongoDB database does not exist on the server, "New database"
+  there asks for the first collection too and creates both, the same pair
+  Compass asks for. `create_database` takes one optional `initial_collection`
+  rather than splitting into two commands — the intent is one intent, and
+  splitting it would have moved the per-driver branch into the frontend — and
+  the SQL drivers reject it rather than ignoring it.
+
+- **A single-DB connection has a database node, and it is where the database's
+  own actions live.** The other half of the same asymmetry, and the one that
+  was actually reachable: a profile with a `database` set showed no database
+  node at all — its top node is a *schema* — so "Drop database…", which lives
+  on a database node, existed nowhere, while "New database" sat in the
+  connection's menu. You could create a database from a connection and then
+  have no way to delete it from anywhere in the app.
+
+  The fix is the node rather than one more entry on the connection: a user who
+  wants to delete a database goes to the database. What that means per driver
+  is the part worth stating, because the tree's top node only *sometimes* is
+  the database. MySQL and MongoDB report a single schema named after the
+  database itself, so the two merge into one node — no extra level, nothing
+  nested under itself — and that node carries the database menu. Postgres and
+  SQL Server report `public`/`dbo` inside a database the tree had never drawn,
+  so the database node appears above them, where it belongs. SQLite gets
+  neither: its file *is* the database.
+
+  Both modes now render the same menu from the same component
+  (`DatabaseNodeMenu`), including "New collection", which had been on the
+  connection for the same want-of-anywhere-else reason. The two modes differ
+  only in what they have to resolve first — multi-DB opens a synthetic
+  per-database pool, single-DB is already bound — and in the aftermath of a
+  drop, which is why that stayed a prop.
+
+  **The four engines disagree about dropping the database you are connected
+  to, and all four are handled rather than three being left to fail.** MySQL
+  and MongoDB simply allow it. PostgreSQL refuses categorically — a session
+  cannot drop its own database, and the server also refuses while *any* session
+  is attached, so issuing the statement from elsewhere is not enough on its
+  own: the pool is closed first and the statement runs over one short-lived
+  connection to the `postgres` maintenance database, built by cloning the
+  pool's own `PgConnectOptions` (same host and port, SSH tunnel's local
+  listener included, same credentials and TLS mode, and no second trip to the
+  keychain). SQL Server refuses while the database is in use, which the pool's
+  own idle sessions are enough to trigger, so the checked-out session moves
+  itself to `master` and the rest are closed — via a new `MsSqlPool::close_idle`
+  that leaves the pool able to reopen, because a refused drop must not also
+  leave a dead connection behind.
+
+  The connection is disconnected afterwards whether the drop succeeded or
+  failed: by then its pool is closed or its default database is gone either
+  way, and a connection left marked active would fail every later command with
+  something far less legible than the error the user just read. The saved
+  profile is deliberately untouched — it points at a database that no longer
+  exists, which the toast says out loud, and deleting saved configuration and a
+  keychain entry is a bigger decision than the one the user made.
+
+- **A connection whose server has no databases now says so.** It rendered
+  literally nothing: no row, no sentence, which reads as a connection that
+  failed rather than a server that is empty, and left creating the first
+  database as something the user had to already know was hidden in the
+  connection row's context menu. The tree now distinguishes the two reasons it
+  can be empty — a server with no databases, which offers "New database", and
+  every database hidden by the visible-databases subset, which offers the
+  picker instead.
+
+### Changed
+
+- **The schema tree's rows are one primitive now.** Four call sites had
+  hand-written the same `<button>` — full width, the same padding, the same
+  `hover:bg-accent`, and the same focus ring driven by "is my context menu open
+  on me". `ui/tree-row.tsx` owns that chrome and each row keeps its own
+  content, which is the part that actually differs. Two entries leave
+  `uiAdoption.test.ts`'s raw-button budget (136 → 134).
+
+- `commands::schema::create_collection` validates through the same
+  `validate_collection` every other MongoDB collection-level write already
+  used, instead of its own inlined copy of two of its three checks. The shared
+  one also gained the `$`/NUL check, which none of them had.
+
 ## [1.23.0] — 2026-09-11
 
 ### Added
