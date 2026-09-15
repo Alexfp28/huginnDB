@@ -40,24 +40,18 @@ in a roadmap and now don't:
 | Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
 | **HuginnDB Pulse** — live server health/performance monitoring | 1.20.0 | Vital signs, top time-consuming statements (with `EXPLAIN`), storage, sessions and index usage for **MySQL and MongoDB**, docked next to the workspace or expanded into its own window; an opt-in per-connection history sampler (`pulse.db`) answers "was this slow yesterday too"; reachable over MCP through seven read-only tools. Postgres/SQLite/SQL Server show an explicit "not supported yet" state. See `docs/PULSE.md`. |
 | **AI panel** — an in-app, local-first assistant | 1.22.0 | Docked beside Pulse, off by default. Two independently declared axes (where inference runs, whether rows may enter the context) gate everything; four assisted actions run on one model call each, agent mode drives the read-only tool catalogue and is gated on a measured tool-capable endpoint, and no write tool exists at all. Conversations are memory-only. See `docs/AI.md` for what exists, `docs/AI_ROADMAP.md` for the design rationale and the questions deferred past v1, and gotchas #71–#74 for the invariants. |
+| Bulk row insert | Unreleased | "Paste rows as JSON…", behind the grid's Insert button, on all four SQL drivers: an object is one row, an array is many, and the backend turns either into one multi-row `INSERT` per bind-ceiling chunk inside a single transaction. Bulk *delete* had shipped in 1.0.2 and MongoDB had been covered since its document dialog accepted an array; this is the SQL half. Keys are validated against the catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted. See `CLAUDE.md` gotcha #84. |
 
 ## Open (priority order)
 
-1. **Bulk row insert** in the data browser. Bulk delete shipped in 1.0.2;
-   inserting several rows at once (paste-from-clipboard or a multi-row draft)
-   is still a one-row-at-a-time affair on the SQL drivers. **MongoDB is
-   covered**: the free-form document dialog accepts an array and inserts it
-   with `insert_many`, which falls out of the shell parser already accepting
-   one. What remains is the SQL side, where a multi-row draft has no
-   equivalent.
-2. **Schema diff & export** — DDL extraction and a side-by-side compare
+1. **Schema diff & export** — DDL extraction and a side-by-side compare
    between two schemas or two points in time. No backend or UI work started.
-3. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in
+2. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in
    `CONTRIBUTING.md`. Microsoft SQL Server shipped (see above); what is left
    there is its DDL surface — the structure editor, table/view rename and
    `.sql` export/import — which needs a T-SQL builder in `db/ddl.rs`,
    `db/view_ddl.rs` and `db/dump.rs`.
-4. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
+3. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
    Supabase project's Postgres endpoint already connects today through the
    existing PostgreSQL driver (it's plain Postgres on the wire), so this
    isn't a new driver — it's ergonomics and pooler-awareness on top of the
@@ -72,10 +66,10 @@ in a roadmap and now don't:
    plain Postgres. No design work started; needs scoping (Supabase-only vs.
    a generic "cloud Postgres" abstraction covering Neon/PlanetScale too)
    before implementation begins.
-5. **Tighter CSP** for the webview. Currently `csp: null` (`tauri.conf.json`)
+4. **Tighter CSP** for the webview. Currently `csp: null` (`tauri.conf.json`)
    because Monaco loads its workers as blobs — see `CLAUDE.md`'s architecture
    invariants for why the relaxation is considered narrow today.
-6. **Automated tests, wider coverage.** Backend unit tests already cover a
+5. **Automated tests, wider coverage.** Backend unit tests already cover a
    meaningful slice (`tab_state` migrations, `db::ddl`/`view_ddl` builders,
    `db::sql`, the Mongo shell parser/value coercion/aggregation/indexes,
    `mcp::mod`, `bridge`, prefs, store, SQL Server's pool/schema/values — see

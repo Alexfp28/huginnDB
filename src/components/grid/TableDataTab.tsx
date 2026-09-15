@@ -32,6 +32,7 @@ import {
   ReplaceAll,
   Rows3,
   Table2,
+  Braces,
   FilePlus2,
   Upload,
   ZoomIn,
@@ -73,6 +74,7 @@ import {
 import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
+import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -962,6 +964,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    *  dialogs below — it writes to this tab's collection and nothing else
    *  needs to open it. */
   const [insertDocOpen, setInsertDocOpen] = useState(false);
+  /** Bulk row insert from pasted JSON (the SQL drivers). Tab-scoped for the
+   *  same reason as its Mongo twin above. */
+  const [insertRowsOpen, setInsertRowsOpen] = useState(false);
 
   const importCollectionJsonForTab = useCallback(async () => {
     const picked = await pickJsonFile(t("schema.importCollection.pickTitle"));
@@ -1243,7 +1248,17 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               onSelect: () => void importCollectionJsonForTab(),
             },
           ]
-        : [],
+        : [
+            // Until this existed the array was empty on SQL, which is also
+            // what kept the Insert button's chevron from rendering at all
+            // there — the split control has been waiting for a second way in.
+            {
+              id: "insert-rows-json",
+              label: t("dataGrid.insertRows.action"),
+              icon: Braces,
+              onSelect: () => setInsertRowsOpen(true),
+            },
+          ],
     [isMongo, t, importCollectionJsonForTab],
   );
 
@@ -1676,6 +1691,19 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           onOpenChange={setInsertDocOpen}
           connectionId={connectionId}
           collection={table}
+          onInserted={() => void reloadAll()}
+        />
+      )}
+
+      {!isMongo && (
+        // Same reasoning as the Mongo dialog above: mounted rather than
+        // conditionally created, because it owns a Monaco instance.
+        <InsertRowsDialog
+          open={insertRowsOpen}
+          onOpenChange={setInsertRowsOpen}
+          connectionId={connectionId}
+          schema={schema}
+          table={table}
           onInserted={() => void reloadAll()}
         />
       )}

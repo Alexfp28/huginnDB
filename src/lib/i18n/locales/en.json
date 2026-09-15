@@ -603,6 +603,14 @@
     "fitColumns": "Fit all columns to their content",
     "fitColumnsToWidth": "Fit all columns to the visible width",
     "insertMore": "Other ways to add data",
+      "insertRows": {
+        "action": "Paste rows as JSON…",
+        "title": "Paste rows into {{table}}",
+        "hint": "One JSON object is one row; paste an array to insert several at once. Every row must name the same columns — an omitted column takes the database default, and null writes a SQL NULL. All of it goes in as a single transaction.",
+        "confirm": "Insert",
+        "inserting": "Inserting…",
+        "failed": "Could not insert: {{message}}"
+      },
     "insertDocument": {
       "action": "New document…",
       "title": "New document in {{collection}}",

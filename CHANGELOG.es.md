@@ -10,6 +10,64 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **"Pegar filas como JSON…" — inserción masiva de filas en los cuatro drivers
+  SQL.** Detrás del botón Insertar del grid, junto a la fila-borrador en línea.
+  Un objeto JSON es una fila; pega un array y se convierte en un único `INSERT`
+  multi-fila dentro de una única transacción. Esto cierra el punto abierto más
+  antiguo de `ROADMAP.md`: el borrado masivo llegó en la 1.0.2, y MongoDB está
+  cubierto desde que su diálogo de documentos acepta arrays, pero en SQL "aquí
+  tienes cuarenta filas" no tenía otra salida que escribir la sentencia a mano
+  en el editor de queries.
+
+  El diálogo de MongoDB del que esto toma la forma existe por una razón que no
+  se traslada — una colección no tiene esquema, así que un campo que la muestra
+  del grid no vio no se podía teclear en absoluto — y el propio docstring de
+  `insert_documents` lo dice. Ese argumento va de *forma*, y sigue siendo
+  cierto. Lo que le faltaba a SQL es el **volumen**, que es otra cosa.
+
+  Cuatro decisiones merecen contarse, porque cada una tenía una alternativa de
+  apariencia razonable:
+
+  - **Una clave pegada no es un nombre de columna hasta que lo dice el
+    catálogo.** Las claves se casan contra las columnas reales de la tabla y lo
+    que llega al SQL es la grafía del *catálogo*, así que nada tecleado por el
+    usuario se entrecomilla nunca como identificador. Una clave desconocida se
+    rechaza por su nombre, listando las columnas reales. El casado ignora
+    mayúsculas, así que un pegado de una herramienta que las pone en alta
+    funciona sin más.
+  - **Una fila cuyo juego de columnas difiere de la primera se rechaza**,
+    nombrando la fila y las dos caras de la diferencia. Unir las columnas y
+    ligar `NULL` en los huecos parece más amable y es incorrecto: pisa el
+    `DEFAULT` de la columna, lo que en una `NOT NULL DEFAULT now()` convierte un
+    insert válido en una violación de restricción. Agrupar las filas por su
+    firma de claves es defendible, y aun así no se eligió de entrada: la causa
+    habitual de un juego de claves distinto es una errata en un nombre, y
+    agrupar convierte esa errata en una columna que toma su valor por defecto
+    sin decir nada.
+  - **Un `true` de JSON se guarda como `1` en una columna booleana y como la
+    palabra en una de texto.** Esa decisión mira el tipo de la columna y no el
+    driver, lo que suena al revés hasta que se ve que `1`/`0` lo aceptan los
+    cuatro motores en sus entradas booleanas — el caso que una regla por driver
+    no habría podido resolver es el de la columna de texto.
+  - **Un pegado demasiado ancho para el tope de parámetros del motor se trocea,
+    y los trozos comparten una transacción.** 500 filas × 20 columnas son cinco
+    sentencias en SQL Server (que se niega pasados los 2100 parámetros) y una en
+    los demás, y en cualquier caso entra el pegado entero o no entra nada. La
+    Consola muestra una sola entrada, porque una transacción es una unidad de
+    trabajo.
+
+  Las columnas omitidas toman su valor por defecto en la base de datos y `null`
+  escribe un `NULL` de SQL, igual que ha hecho siempre el insert de una fila. El
+  resultado informa de cuántas filas entraron, no de los ids generados: los
+  cuatro motores no se ponen de acuerdo ni en qué son los ids de un insert
+  multi-fila — MySQL informa solo del primero, SQL Server solo del último — y un
+  recuento es la única respuesta honesta.
+
+  No se expone por MCP. El conector ya tiene un `insert_row` estructurado que le
+  sirve mejor a un modelo que un blob de texto, y cada herramienta de escritura
+  nueva cuesta tres pasos de cableado que el compilador no comprueba. Ver
+  [`adr/gotcha-084`](adr/gotcha-084-json-row-insert-catalogue-gated-and-transactional.md).
+
 - **"Consultar esta tabla…" sobre una tabla o vista del árbol de esquema.**
   Abre un editor de query ya acotado a la conexión *y* la base de datos de esa
   relación, sembrado con `SELECT * FROM <tabla> LIMIT 100;`.

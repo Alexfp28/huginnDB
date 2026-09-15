@@ -2254,7 +2254,15 @@ pub async fn insert_row(
 ///
 /// MongoDB only, and refused elsewhere rather than approximated. A SQL table
 /// has a column set the server will enforce, so there is nothing for free-form
-/// document text to express there that `insert_row` cannot.
+/// document text to express there that [`insert_row`] cannot.
+///
+/// That argument is about *shape*, and it still holds — but it was never an
+/// argument against pasting rows into a SQL table, which is a different want
+/// and now has [`crate::commands::insert::insert_rows`]. What that command
+/// adds is **bulk**: [`insert_row`] is one row per call, so an array of forty
+/// had no path at all. It parses strict JSON rather than the mongosh grammar
+/// this one accepts, and validates every key against the catalogue, both of
+/// which are exactly the things a table's column set makes possible.
 ///
 /// Audited through the same sink as every other write, so the insert appears
 /// in the Console next to the statements around it.

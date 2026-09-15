@@ -8,6 +8,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **"Paste rows as JSON…" — bulk row insert on all four SQL drivers.** Behind
+  the grid's Insert button, next to the inline draft row. One JSON object is
+  one row; paste an array and it becomes a single multi-row `INSERT` inside a
+  single transaction. This closes `ROADMAP.md`'s longest-standing open item:
+  bulk *delete* shipped in 1.0.2, and MongoDB has been covered since its
+  document dialog started accepting an array, but on SQL "here are forty rows"
+  had no path short of hand-writing the statement in the query editor.
+
+  The MongoDB dialog this borrows its shape from exists for a reason that
+  genuinely does not carry over — a collection is schemaless, so a field the
+  grid's sample missed could not be typed at all — and `insert_documents`'
+  own docstring says as much. That argument is about *shape*, and it still
+  holds. What SQL was missing is **bulk**, which is a different want.
+
+  Four things are worth stating because each had a plausible-looking
+  alternative:
+
+  - **A pasted key is not a column name until the catalogue says so.** Keys
+    are matched against the table's real columns and the *catalogue's*
+    spelling is what reaches the SQL, so nothing user-typed is ever quoted as
+    an identifier. An unknown key is refused by name, with the real columns
+    listed. Matching is case-insensitive, so a paste from a tool that
+    upper-cases its keys just works.
+  - **A row whose column set differs from the first is refused**, naming the
+    row and both sides of the difference. Unioning the columns and binding
+    `NULL` for the gaps looks friendlier and is wrong: it overwrites the
+    column's `DEFAULT`, which for a `NOT NULL DEFAULT now()` column turns a
+    valid insert into a constraint violation. Grouping rows by their key
+    signature is defensible, and was still not chosen first — the usual cause
+    of a differing key set is a typo in a key name, and grouping turns that
+    typo into a column silently taking its default.
+  - **A JSON `true` is stored as `1` in a boolean column and as the word in a
+    text one.** That decision reads the column's type rather than the driver,
+    which sounds backwards until you notice that `1`/`0` is accepted by all
+    four engines' boolean inputs anyway — the case a per-driver rule could not
+    have handled is the text column.
+  - **A paste too wide for the engine's bind-parameter ceiling is chunked, and
+    the chunks share one transaction.** 500 rows × 20 columns is five
+    statements on SQL Server (which refuses past 2100 parameters) and one
+    everywhere else, and either way the whole paste lands or none of it does.
+    The Console shows one entry, because one transaction is one unit of work.
+
+  Omitted columns take their database default and `null` writes a SQL `NULL`,
+  matching what the single-row insert has always done. The result reports how
+  many rows went in rather than their generated ids: the four engines disagree
+  about what a multi-row insert's ids even are — MySQL reports only the first,
+  SQL Server only the last — and a count is the one honest answer.
+
+  Not exposed over MCP. The connector already has a structured `insert_row`
+  that serves a model better than a text blob would, and every new write tool
+  costs three wiring steps the compiler does not check. See
+  [`adr/gotcha-084`](adr/gotcha-084-json-row-insert-catalogue-gated-and-transactional.md).
+
 - **"Query this table…" on a table or view in the schema tree.** It opens a
   query editor already scoped to that relation's connection *and* database,
   seeded with `SELECT * FROM <table> LIMIT 100;`.

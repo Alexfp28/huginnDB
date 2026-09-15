@@ -12,6 +12,7 @@ pub mod bulk;
 pub mod connection;
 pub mod dump;
 pub mod feedback;
+pub mod insert;
 pub mod json_schemas;
 pub mod mcp;
 pub mod mongo;
