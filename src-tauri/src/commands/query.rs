@@ -13,6 +13,7 @@
 //! * [`insert_row`]      — INSERT one row from a list of column/value pairs.
 //!   Used by both the "insert" and "duplicate" flows in the grid.
 
+use crate::commands::insert::{build_insert_statement, InsertClauses, InsertColumn};
 use crate::commands::schema::list_columns_inner;
 use crate::db::mysql;
 use crate::db::sql::{is_read_only, Dialect};
@@ -2366,25 +2367,6 @@ pub(crate) async fn insert_row_inner(
     let is_mysql = dialect == Dialect::Mysql;
 
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
-    let cols: Vec<String> = values
-        .iter()
-        .map(|v| dialect.quote_ident(&v.column))
-        .collect();
-    let placeholders: Vec<String> = values
-        .iter()
-        .enumerate()
-        .map(|(i, rv)| {
-            let ph = dialect.placeholder(i + 1);
-            if dialect == Dialect::MsSql {
-                // Binary columns need the hex-string conversion; every other
-                // type coerces correctly from text (see `db::mssql`).
-                crate::db::mssql::binary_convert(rv.column_type.as_deref(), &ph)
-            } else {
-                ph
-            }
-        })
-        .collect();
-    let binds: Vec<Option<String>> = values.iter().map(|v| v.value.clone()).collect();
 
     // The frontend supplies `column_type` from whatever schema-cache/query-result
     // metadata it has on hand at commit time; if that's stale or hasn't loaded
@@ -2408,31 +2390,38 @@ pub(crate) async fn insert_row_inner(
             std::collections::HashSet::new()
         };
 
-    // See `db::mysql::bit_cast` for why a BIT column cannot take the plain
-    // textual bind every other column does.
-    let (mysql_placeholders, mysql_binds): (Vec<String>, Vec<Option<String>>) = if is_mysql {
-        values
-            .iter()
-            .map(|rv| {
-                let is_bit = rv.column_type.as_deref().is_some_and(mysql::is_bit_type)
-                    || catalog_bit_columns.contains(&rv.column);
-                if is_bit {
-                    let normalized = rv.value.as_deref().map(mysql::normalize_bit_value);
-                    (mysql::bit_cast("?"), normalized)
-                } else {
-                    ("?".to_string(), rv.value.clone())
-                }
-            })
-            .unzip()
-    } else {
-        (placeholders.clone(), binds.clone())
-    };
-
-    let base_sql = format!(
-        "INSERT INTO {qt} ({}) VALUES ({})",
-        cols.join(", "),
-        placeholders.join(", ")
+    // The statement itself is built by `commands::insert`'s shared builder, the
+    // same one the bulk JSON path uses, so the two cannot drift on identifier
+    // quoting, placeholder numbering, MySQL's `BIT` cast or SQL Server's binary
+    // `CONVERT`. This is one row, so it hands it a one-element slice.
+    //
+    // The type each column carries stays *hint-first* here, unlike the bulk
+    // path's catalogue-only typing: the frontend's `RowValue::column_type` is
+    // what lets the hot cell-commit path skip a catalogue round trip, and
+    // `catalog_bit_columns` above is the fallback for when it is missing. A
+    // column the catalogue reported as `BIT` is spelled as such so the builder's
+    // own `is_bit_type` test sees it.
+    let insert_columns: Vec<InsertColumn> = values
+        .iter()
+        .map(|rv| InsertColumn {
+            name: rv.column.clone(),
+            data_type: rv.column_type.clone().or_else(|| {
+                catalog_bit_columns
+                    .contains(&rv.column)
+                    .then(|| "BIT".to_string())
+            }),
+        })
+        .collect();
+    let one_row = [values.iter().map(|v| v.value.clone()).collect::<Vec<_>>()];
+    let plain = build_insert_statement(
+        dialect,
+        &qt,
+        &insert_columns,
+        &one_row,
+        InsertClauses::default(),
     );
+    let binds = plain.binds;
+    let base_sql = plain.sql;
 
     // Each driver arm yields (final SQL string, Result<(rows_affected, returned_pk), _>).
     // Postgres optionally tacks on RETURNING to recover the generated PK;
@@ -2441,7 +2430,19 @@ pub(crate) async fn insert_row_inner(
     let (sql_used, outcome): (String, AppResult<(Option<u64>, Value)>) = match pool {
         DbPool::Postgres(p) => {
             let sql = match &pk_column {
-                Some(pk) => format!("{base_sql} RETURNING {}", Dialect::Postgres.quote_ident(pk)),
+                Some(pk) => {
+                    build_insert_statement(
+                        dialect,
+                        &qt,
+                        &insert_columns,
+                        &one_row,
+                        InsertClauses {
+                            returning: Some(&dialect.quote_ident(pk)),
+                            ..Default::default()
+                        },
+                    )
+                    .sql
+                }
                 None => base_sql,
             };
             let mut q = sqlx::query(&sql);
@@ -2465,13 +2466,11 @@ pub(crate) async fn insert_row_inner(
             (sql, outcome)
         }
         DbPool::Mysql(p) => {
-            let mysql_sql = format!(
-                "INSERT INTO {qt} ({}) VALUES ({})",
-                cols.join(", "),
-                mysql_placeholders.join(", ")
-            );
-            let mut q = sqlx::query(&mysql_sql);
-            for b in &mysql_binds {
+            // No separate statement any more: the builder emitted this
+            // dialect's `CAST(? AS UNSIGNED)` and normalised the matching bind
+            // when it built `base_sql`.
+            let mut q = sqlx::query(&base_sql);
+            for b in &binds {
                 q = q.bind(b);
             }
             let outcome = q
@@ -2487,7 +2486,7 @@ pub(crate) async fn insert_row_inner(
                     (Some(r.rows_affected()), returned)
                 })
                 .map_err(AppError::from);
-            (mysql_sql, outcome)
+            (base_sql, outcome)
         }
         DbPool::Sqlite(p) => {
             let mut q = sqlx::query(&base_sql);
@@ -2519,12 +2518,17 @@ pub(crate) async fn insert_row_inner(
             // to `SCOPE_IDENTITY()` — which only knows about IDENTITY columns,
             // but a trigger-bearing table is exactly where that is the
             // conventional answer anyway.
-            let output_sql = format!(
-                "INSERT INTO {qt} ({}) OUTPUT INSERTED.{} VALUES ({})",
-                cols.join(", "),
-                Dialect::MsSql.quote_ident(pk),
-                placeholders.join(", ")
-            );
+            let output_sql = build_insert_statement(
+                dialect,
+                &qt,
+                &insert_columns,
+                &one_row,
+                InsertClauses {
+                    output_inserted: Some(&dialect.quote_ident(pk)),
+                    ..Default::default()
+                },
+            )
+            .sql;
             match p.query_all(&output_sql, &binds).await {
                 Ok(rows) => {
                     let returned = rows

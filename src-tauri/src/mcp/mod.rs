@@ -2939,6 +2939,131 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// End-to-end exercise of both insert paths against a real (file-backed)
+    /// SQLite database, through the same `_inner` cores the GUI and the bridge
+    /// call.
+    ///
+    /// Its reason to exist is the refactor that folded `insert_row_inner` onto
+    /// `commands::insert`'s shared statement builder: the builder itself is
+    /// covered by pure tests, but nothing exercised the single-row path end to
+    /// end, so "the statement still reads the same" was the only evidence that
+    /// it still *worked*. The two paths are asserted side by side because the
+    /// whole point of sharing the builder is that they agree.
+    ///
+    /// Its own temp file, deliberately not the one the tests above use: they
+    /// run concurrently in one process and would fight over it.
+    #[tokio::test]
+    async fn sqlite_insert_paths_end_to_end() {
+        use crate::commands::insert::insert_rows_inner;
+        use crate::commands::query::{insert_row_inner, RowValue};
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+        let path = std::env::temp_dir().join("huginndb_mcp_insert_paths_test.db");
+        let _ = std::fs::remove_file(&path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE widget (id INTEGER PRIMARY KEY, name TEXT NOT NULL, \
+             qty INTEGER, note TEXT DEFAULT 'unset')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let state = AppState::new();
+        state.connections.write().insert(
+            "test-conn".to_string(),
+            ActivePool::bare(DbPool::Sqlite(pool)),
+        );
+
+        let rv = |column: &str, value: &str| RowValue {
+            column: column.to_string(),
+            value: Some(value.to_string()),
+            column_type: None,
+        };
+
+        // Single row, through the path the grid's draft row uses. SQLite
+        // reports the generated rowid.
+        let returned = insert_row_inner(
+            &NoopSink,
+            &state,
+            "test-conn".to_string(),
+            None,
+            "widget".to_string(),
+            Some("id".to_string()),
+            vec![rv("name", "alpha"), rv("qty", "1")],
+        )
+        .await
+        .unwrap();
+        assert_eq!(returned, serde_json::json!(1));
+
+        // Many rows, through the pasted-JSON path, into the same table.
+        let summary = insert_rows_inner(
+            &NoopSink,
+            &state,
+            "test-conn".to_string(),
+            None,
+            "widget".to_string(),
+            r#"[{"name":"beta","qty":2},{"name":"gamma","qty":null}]"#.to_string(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(summary.inserted, 2);
+        assert_eq!(summary.statements, 1);
+        assert_eq!(summary.columns, vec!["name".to_string(), "qty".to_string()]);
+
+        let page = query::fetch_table_data_inner(
+            &NoopSink,
+            &state,
+            query::TableQuery {
+                connection_id: "test-conn".to_string(),
+                schema: None,
+                table: "widget".to_string(),
+                limit: 10,
+                offset: 0,
+                order: Vec::new(),
+                filter: Default::default(),
+                with_count: true,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(page.total, Some(3));
+        // A column nobody named takes its database default rather than NULL —
+        // the semantics that make refusing a heterogeneous paste the right call.
+        let note_idx = page.columns.iter().position(|c| c.name == "note").unwrap();
+        assert!(page
+            .rows
+            .iter()
+            .all(|r| r[note_idx] == serde_json::json!("unset")));
+        // ...while an explicit JSON null really is a SQL NULL.
+        let qty_idx = page.columns.iter().position(|c| c.name == "qty").unwrap();
+        assert!(page.rows.iter().any(|r| r[qty_idx].is_null()));
+
+        // A key the table does not have is refused by name, and nothing lands.
+        let err = insert_rows_inner(
+            &NoopSink,
+            &state,
+            "test-conn".to_string(),
+            None,
+            "widget".to_string(),
+            r#"{"name":"delta","nmae":"typo"}"#.to_string(),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("nmae"), "{err}");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// End-to-end exercise of the whole view lifecycle against a real
     /// (file-backed) SQLite database, through the same `_inner` cores the MCP
     /// tools call.
