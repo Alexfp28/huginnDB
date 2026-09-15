@@ -30,7 +30,6 @@ import {
 } from "@/stores/preferences/preferences";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
-import { useUi } from "@/stores/session/ui";
 import { usePendingChord } from "@/stores/session/pendingChord";
 import { formatForDisplay } from "@/lib/keybindings";
 import { StatusConnections } from "@/components/connection/StatusConnections";
@@ -148,16 +147,15 @@ function HistoryMenu({ count }: { count: number }) {
   const entries = useQueryHistory((s) => s.entries);
   const clear = useQueryHistory((s) => s.clear);
   const active = useConnections((s) => s.active);
-  const setSelected = useUi((s) => s.setSelectedConnectionId);
 
   function openEntry(connectionId: string, sql: string) {
     if (active.has(connectionId)) {
-      // Open a fresh query tab prefilled with the SQL on its connection.
-      // `resolveTarget: false` on purpose: this reopens a past query on the
-      // connection it actually ran against, not on whichever database happens
-      // to be in front of the user now.
+      // Open a fresh query tab prefilled with the SQL on its connection, which
+      // `focusFollowsTab` then makes the focused one. `resolveTarget: false` on
+      // purpose: this reopens a past query on the connection it actually ran
+      // against, not on whichever database happens to be in front of the user
+      // now.
       openQueryTab(connectionId, { sql, resolveTarget: false });
-      setSelected(connectionId);
     } else {
       // The connection isn't live — fall back to copying the SQL.
       void copyToClipboard(sql);

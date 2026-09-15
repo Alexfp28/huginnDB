@@ -10,6 +10,50 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Con dos conexiones vivas, el botón "+" abría la pestaña de query contra la
+  que no era.** La app tenía dos punteros de "actual" independientes y nada los
+  unía: `useUi.selectedConnectionId` — a qué apunta el workspace, y de donde
+  sacan su destino el `+` de la barra de pestañas, el atajo `newQuery` y la
+  entrada de nueva query de la paleta — y `useTabs.activeId`, la pestaña
+  enfocada, que lleva su propio `connectionId`.
+
+  El primero solo lo escribían los flujos de *conexión*: conectar, reconectar,
+  el selector de la barra de estado, el selector de workspace y la restauración
+  de entorno. Abrir una pestaña escribía solo el segundo. Así que con una
+  conexión MySQL y otra MongoDB vivas a la vez, clicar una tabla de MySQL en el
+  árbol y pulsar `+` abría el editor contra MongoDB: el árbol no tocaba la
+  selección en absoluto, así que se quedaba donde la hubiera dejado la última
+  *conexión*. `queryTargetFor` no podía arreglarlo por diseño: solo afina
+  *dentro* de la conexión que le pasan (padre → su hijo `::db::`) y descarta
+  deliberadamente una pestaña enfocada que sea de otra.
+
+  Clicar una **pestaña ya abierta** de la otra conexión acababa exactamente
+  igual. Esa mitad no se reportó nunca, porque es en el árbol donde se nota —
+  pero es la misma regla que faltaba, y es la razón de que el arreglo no sea
+  una tercera llamada a `setSelectedConnectionId` en el árbol. La paleta de
+  comandos y el conmutador de Ctrl+Tab ya llevaban una cada uno, escrita a
+  mano, que es la forma que tiene una regla de pedir vivir en un solo sitio. El
+  foco ahora *es* la conexión de la pestaña enfocada, derivado una vez en
+  `src/stores/session/focusFollowsTab.ts`, y las cuatro llamadas ad-hoc que lo
+  aproximaban han desaparecido.
+
+  En consecuencia el workspace sigue a la pestaña en todo lo que ya leía ese
+  valor: el título de la ventana del sistema, el objetivo del panel de Pulse, el
+  panel de IA, el panel de Consultas guardadas y el subrayado del propio árbol.
+  El estado de arranque persistido también: ahora restaura la conexión de la
+  última pestaña enfocada en vez de la última conectada, que es la misma
+  respuesta en toda sesión que terminó con una pestaña abierta y una mejor en
+  las que no.
+
+  Hay dos restricciones que cargan con el peso y están escritas junto al
+  código. El id de la pestaña se pasa por `parentConnectionId` antes de
+  guardarse, porque `selectedConnectionId` tiene que nombrar un perfil real:
+  `useConnections.active` solo contiene ids de primer nivel, y una selección
+  `<padre>::db::<db>` se limpia un render después y se sustituye por un pool
+  arbitrario. Y la suscripción cuelga del store, no del
+  `onDidActivePanelChange` de dockview, que ya desemboca en `useTabs.setActive`;
+  una segunda vía dockview↔store es justo lo que la gotcha #010 prohíbe.
+
 - **Las opciones "Copiar fila como ▸ INSERT/UPDATE" y "Copiar con columna" del
   grid se comían las barras invertidas en MySQL.** `sqlLiteral`
   (`src/lib/grid/copyFormats.ts`) entrecomillaba un valor de cadena doblando

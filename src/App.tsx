@@ -43,6 +43,7 @@ import { useJsonSchemaTransfer } from "@/stores/dialogs/jsonSchemaTransfer";
 import { disconnectAll } from "@/lib/connection/connectFlow";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useTreeSearch } from "@/stores/session/treeSearch";
+import { startFocusFollowsTab } from "@/stores/session/focusFollowsTab";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useTranslation } from "react-i18next";
 import { setLanguage } from "@/lib/i18n";
@@ -117,6 +118,16 @@ export default function App() {
   useEffect(() => {
     refreshConnections();
   }, [refreshConnections]);
+
+  // Keep the workspace's focused connection following the focused tab. One
+  // subscription for the window's lifetime; see
+  // `stores/session/focusFollowsTab.ts` for why this is derived in one place
+  // rather than being another `setSelectedConnectionId` call per navigation.
+  //
+  // Safe to start before the launch restore: `restoreSession` sets the
+  // persisted focus *last*, after the tabs are in `useTabs`, so its explicit
+  // choice still wins over whatever the last restored tab would have implied.
+  useEffect(() => startFocusFollowsTab(), []);
 
   // Launch restore: load the environment list in EVERY window — it's a
   // read-only call, and a secondary "New window" needs it too so its own

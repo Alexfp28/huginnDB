@@ -8,6 +8,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **With two connections live, the "+" button opened a query tab against the
+  wrong one.** The app carried two independent "current" pointers and nothing
+  connected them: `useUi.selectedConnectionId` — what the workspace points at,
+  and what the tab strip's `+`, the `newQuery` keybinding and the command
+  palette's new-query entry all resolve their target from — and
+  `useTabs.activeId`, the focused tab, which carries its own `connectionId`.
+
+  Only the *connection* flows ever wrote the first one: connect, reconnect, the
+  status-bar picker, the workspace picker, environment restore. Opening a tab
+  wrote only the second. So with a MySQL and a MongoDB connection both live,
+  clicking a MySQL table in the schema tree and pressing `+` opened the editor
+  against MongoDB — the tree never touched the selection at all, so it stayed
+  wherever the last *connect* had left it. `queryTargetFor` could not rescue
+  this by design: it only ever refines *within* the connection it is handed
+  (parent → its `::db::` child) and deliberately discards a focused tab
+  belonging to somebody else.
+
+  Clicking an **already open tab** of the other connection had exactly the same
+  ending. That half was never reported, because the tree is where people
+  notice it — but it is the same missing rule, and it is why the fix is not a
+  third `setSelectedConnectionId` call in the schema tree. The command palette
+  and the Ctrl+Tab switcher each already carried one, hand-written, which is
+  the shape of a rule that wants to live in one place. Focus now *is* the
+  focused tab's connection, derived once in
+  `src/stores/session/focusFollowsTab.ts`, and the four ad-hoc calls that were
+  approximating it are gone.
+
+  The workspace consequently follows the tab everywhere it already read that
+  value: the OS window title, the Pulse panel's target, the AI panel, the Saved
+  Queries panel and the tree's own hairline highlight. The persisted launch
+  state follows too — it now restores the connection of the last focused tab
+  rather than the last one connected, which is the same answer in every session
+  that ended with a tab open and a better one in the sessions that didn't.
+
+  Two constraints are load-bearing and written next to the code. The tab's id
+  is folded through `parentConnectionId` before it is stored, because
+  `selectedConnectionId` must name a real profile — `useConnections.active`
+  only holds top-level ids, and a `<parent>::db::<db>` selection is cleared one
+  render later and replaced with an arbitrary pool. And the subscription hangs
+  off the store rather than dockview's `onDidActivePanelChange`, which already
+  flows into `useTabs.setActive`; a second dockview↔store path is the thing
+  gotcha #010 exists to forbid.
+
 - **The grid's "Copy row as ▸ INSERT/UPDATE" and "Copy with column" snippets
   silently dropped backslashes on MySQL.** `sqlLiteral`
   (`src/lib/grid/copyFormats.ts`) quoted a string value by doubling embedded
