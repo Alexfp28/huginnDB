@@ -20,6 +20,14 @@ import type { Driver, TableInfo } from "@/types";
 
 export interface TableActions {
   openTab: ReturnType<typeof useTabs.getState>["open"];
+  /**
+   * Open a query editor scoped to this relation, seeded with a bounded
+   * `SELECT`. Routed through the bundle rather than letting the row import
+   * `openQueryTab` itself, for the same reason `openTab` is: in multi-DB mode
+   * the explorer wraps it to fire `onTableOpen` (which sets the database
+   * accent), and a direct import would silently skip that.
+   */
+  onOpenQuery: (table: TableInfo) => void;
   refresh: () => void;
   onRename: (table: TableInfo) => void;
   onDrop: (table: TableInfo) => void;

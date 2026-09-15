@@ -8,7 +8,146 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **"Pegar filas como JSON…" — inserción masiva de filas en los cuatro drivers
+  SQL.** Detrás del botón Insertar del grid, junto a la fila-borrador en línea.
+  Un objeto JSON es una fila; pega un array y se convierte en un único `INSERT`
+  multi-fila dentro de una única transacción. Esto cierra el punto abierto más
+  antiguo de `ROADMAP.md`: el borrado masivo llegó en la 1.0.2, y MongoDB está
+  cubierto desde que su diálogo de documentos acepta arrays, pero en SQL "aquí
+  tienes cuarenta filas" no tenía otra salida que escribir la sentencia a mano
+  en el editor de queries.
+
+  El diálogo de MongoDB del que esto toma la forma existe por una razón que no
+  se traslada — una colección no tiene esquema, así que un campo que la muestra
+  del grid no vio no se podía teclear en absoluto — y el propio docstring de
+  `insert_documents` lo dice. Ese argumento va de *forma*, y sigue siendo
+  cierto. Lo que le faltaba a SQL es el **volumen**, que es otra cosa.
+
+  Cuatro decisiones merecen contarse, porque cada una tenía una alternativa de
+  apariencia razonable:
+
+  - **Una clave pegada no es un nombre de columna hasta que lo dice el
+    catálogo.** Las claves se casan contra las columnas reales de la tabla y lo
+    que llega al SQL es la grafía del *catálogo*, así que nada tecleado por el
+    usuario se entrecomilla nunca como identificador. Una clave desconocida se
+    rechaza por su nombre, listando las columnas reales. El casado ignora
+    mayúsculas, así que un pegado de una herramienta que las pone en alta
+    funciona sin más.
+  - **Una fila cuyo juego de columnas difiere de la primera se rechaza**,
+    nombrando la fila y las dos caras de la diferencia. Unir las columnas y
+    ligar `NULL` en los huecos parece más amable y es incorrecto: pisa el
+    `DEFAULT` de la columna, lo que en una `NOT NULL DEFAULT now()` convierte un
+    insert válido en una violación de restricción. Agrupar las filas por su
+    firma de claves es defendible, y aun así no se eligió de entrada: la causa
+    habitual de un juego de claves distinto es una errata en un nombre, y
+    agrupar convierte esa errata en una columna que toma su valor por defecto
+    sin decir nada.
+  - **Un `true` de JSON se guarda como `1` en una columna booleana y como la
+    palabra en una de texto.** Esa decisión mira el tipo de la columna y no el
+    driver, lo que suena al revés hasta que se ve que `1`/`0` lo aceptan los
+    cuatro motores en sus entradas booleanas — el caso que una regla por driver
+    no habría podido resolver es el de la columna de texto.
+  - **Un pegado demasiado ancho para el tope de parámetros del motor se trocea,
+    y los trozos comparten una transacción.** 500 filas × 20 columnas son cinco
+    sentencias en SQL Server (que se niega pasados los 2100 parámetros) y una en
+    los demás, y en cualquier caso entra el pegado entero o no entra nada. La
+    Consola muestra una sola entrada, porque una transacción es una unidad de
+    trabajo.
+
+  Las columnas omitidas toman su valor por defecto en la base de datos y `null`
+  escribe un `NULL` de SQL, igual que ha hecho siempre el insert de una fila. El
+  resultado informa de cuántas filas entraron, no de los ids generados: los
+  cuatro motores no se ponen de acuerdo ni en qué son los ids de un insert
+  multi-fila — MySQL informa solo del primero, SQL Server solo del último — y un
+  recuento es la única respuesta honesta.
+
+  No se expone por MCP. El conector ya tiene un `insert_row` estructurado que le
+  sirve mejor a un modelo que un blob de texto, y cada herramienta de escritura
+  nueva cuesta tres pasos de cableado que el compilador no comprueba. Ver
+  [`adr/gotcha-084`](adr/gotcha-084-json-row-insert-catalogue-gated-and-transactional.md).
+
+- **"Consultar esta tabla…" sobre una tabla o vista del árbol de esquema.**
+  Abre un editor de query ya acotado a la conexión *y* la base de datos de esa
+  relación, sembrado con `SELECT * FROM <tabla> LIMIT 100;`.
+
+  La entrada existía uno y dos niveles más arriba — el nodo de base de datos y
+  el de esquema tienen "Nueva query aquí" desde hace tiempo — y se paraba justo
+  en el nivel donde la gente hace clic derecho de verdad, que es la tabla que
+  está mirando. Sacar una consulta sobre una tabla concreta obligaba a abrir un
+  editor en blanco y reescribir un nombre que el árbol ya tenía delante.
+
+  Dos detalles son la razón de que esto no sea simplemente
+  `openQueryTab(connectionId)`:
+
+  - Pasa `resolveTarget: false`. En una conexión a servidor completo el
+    `connectionId` de la fila ya es el hijo `<padre>::db::<db>` con el que se
+    montó ese subárbol, y el valor por defecto se lo daría a `queryTargetFor`,
+    que reapunta la pestaña a la base de datos en la que esté la pestaña
+    *enfocada*. "Consultar esta tabla" significa la base de datos de esta tabla.
+  - Va por el bundle de acciones del explorador en vez de importar
+    `openQueryTab` directamente, así que dispara el mismo `onTableOpen` que
+    dispara abrir una pestaña de datos y el acento de base de datos del árbol
+    multi-DB se mueve con ella.
+
+  `selectSnippet` ha ganado un límite de filas opcional para la semilla, lo que
+  además cierra una asimetría que arrastraba desde que se escribió: la rama de
+  MongoDB siempre emitía `.limit(100)` y la de SQL no emitía cota ninguna. Era
+  defendible mientras el único consumidor era "Copiar sentencia SELECT", donde
+  el usuario lee el texto antes de ejecutarlo — no lo es para un texto que la
+  app te pone en un editor para que lo ejecutes. SQL Server recibe
+  `SELECT TOP 100 *`, porque T-SQL no tiene `LIMIT` y la forma
+  `OFFSET … FETCH NEXT` que usa la ruta de paginación ejecutada exige además un
+  `ORDER BY` que aquí no hay de dónde sacar. "Copiar sentencia SELECT" no
+  cambia: sigue copiando la sentencia pelada, porque un fragmento que pegas y
+  retocas no quiere que le adivinen una cota.
+
 ### Corregido
+
+- **Con dos conexiones vivas, el botón "+" abría la pestaña de query contra la
+  que no era.** La app tenía dos punteros de "actual" independientes y nada los
+  unía: `useUi.selectedConnectionId` — a qué apunta el workspace, y de donde
+  sacan su destino el `+` de la barra de pestañas, el atajo `newQuery` y la
+  entrada de nueva query de la paleta — y `useTabs.activeId`, la pestaña
+  enfocada, que lleva su propio `connectionId`.
+
+  El primero solo lo escribían los flujos de *conexión*: conectar, reconectar,
+  el selector de la barra de estado, el selector de workspace y la restauración
+  de entorno. Abrir una pestaña escribía solo el segundo. Así que con una
+  conexión MySQL y otra MongoDB vivas a la vez, clicar una tabla de MySQL en el
+  árbol y pulsar `+` abría el editor contra MongoDB: el árbol no tocaba la
+  selección en absoluto, así que se quedaba donde la hubiera dejado la última
+  *conexión*. `queryTargetFor` no podía arreglarlo por diseño: solo afina
+  *dentro* de la conexión que le pasan (padre → su hijo `::db::`) y descarta
+  deliberadamente una pestaña enfocada que sea de otra.
+
+  Clicar una **pestaña ya abierta** de la otra conexión acababa exactamente
+  igual. Esa mitad no se reportó nunca, porque es en el árbol donde se nota —
+  pero es la misma regla que faltaba, y es la razón de que el arreglo no sea
+  una tercera llamada a `setSelectedConnectionId` en el árbol. La paleta de
+  comandos y el conmutador de Ctrl+Tab ya llevaban una cada uno, escrita a
+  mano, que es la forma que tiene una regla de pedir vivir en un solo sitio. El
+  foco ahora *es* la conexión de la pestaña enfocada, derivado una vez en
+  `src/stores/session/focusFollowsTab.ts`, y las cuatro llamadas ad-hoc que lo
+  aproximaban han desaparecido.
+
+  En consecuencia el workspace sigue a la pestaña en todo lo que ya leía ese
+  valor: el título de la ventana del sistema, el objetivo del panel de Pulse, el
+  panel de IA, el panel de Consultas guardadas y el subrayado del propio árbol.
+  El estado de arranque persistido también: ahora restaura la conexión de la
+  última pestaña enfocada en vez de la última conectada, que es la misma
+  respuesta en toda sesión que terminó con una pestaña abierta y una mejor en
+  las que no.
+
+  Hay dos restricciones que cargan con el peso y están escritas junto al
+  código. El id de la pestaña se pasa por `parentConnectionId` antes de
+  guardarse, porque `selectedConnectionId` tiene que nombrar un perfil real:
+  `useConnections.active` solo contiene ids de primer nivel, y una selección
+  `<padre>::db::<db>` se limpia un render después y se sustituye por un pool
+  arbitrario. Y la suscripción cuelga del store, no del
+  `onDidActivePanelChange` de dockview, que ya desemboca en `useTabs.setActive`;
+  una segunda vía dockview↔store es justo lo que la gotcha #010 prohíbe.
 
 - **Las opciones "Copiar fila como ▸ INSERT/UPDATE" y "Copiar con columna" del
   grid se comían las barras invertidas en MySQL.** `sqlLiteral`

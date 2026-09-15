@@ -859,6 +859,21 @@ export interface BulkUpdatePreview {
 }
 
 /**
+ * Response from `insert_rows`. Mirrors `InsertRowsSummary` in
+ * `src-tauri/src/commands/insert.rs`.
+ *
+ * No generated ids: the four engines cannot agree on what a multi-row insert's
+ * ids even are — MySQL reports only the first, SQL Server only the last — so a
+ * count is the one honest answer. `statements` is 1 unless the paste had to be
+ * chunked to stay under the engine's bind-parameter ceiling.
+ */
+export interface InsertRowsSummary {
+  inserted: number;
+  statements: number;
+  columns: string[];
+}
+
+/**
  * User preferences. Mirrors `Preferences` in `src-tauri/src/prefs.rs`.
  *
  * Persisted to `prefs.json` in the platform config dir. The frontend store

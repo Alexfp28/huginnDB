@@ -132,6 +132,82 @@ pub async fn execute_params(pool: &DbPool, sql: &str, binds: &[Option<String>]) 
     }
 }
 
+/// Run an ordered list of parameterised writes as one transaction, returning
+/// the rows each one affected.
+///
+/// The counterpart of [`execute_all`] for statements that carry binds, and the
+/// reason it cannot be a loop over [`execute_params`]: every batch has to land
+/// on the **same connection inside the same transaction**, or a chunked
+/// multi-row insert becomes atomic per chunk instead of per paste — which is
+/// the one property the caller asked for.
+///
+/// `in_tx_expect_at_most_one` cannot be reused for this despite the shape: it
+/// takes one statement, and it *rolls back* whenever more than one row is
+/// affected, which is the exact opposite of what a bulk insert wants.
+///
+/// The three `sqlx` pools lean on `Transaction`'s rollback-on-drop, so a `?`
+/// mid-list unwinds without an explicit branch. SQL Server takes a visibly
+/// different arm for the reason gotcha #31 gives — `tiberius` has no
+/// transaction handle, so the boundaries are statements on a held session —
+/// and it acquires **once**: `execute_params` takes a connection per call, so
+/// building the loop out of it would scatter the chunks across sessions and
+/// silently lose the transaction this function exists to provide.
+///
+/// One caveat the caller inherits: on MySQL the atomicity is only as real as
+/// the table's storage engine. InnoDB honours it; MyISAM commits per statement
+/// and there is nothing this function can do about that.
+pub async fn execute_params_in_tx(
+    pool: &DbPool,
+    batches: &[(String, Vec<Option<String>>)],
+) -> AppResult<Vec<u64>> {
+    if batches.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    macro_rules! sqlx_tx_all {
+        ($p:expr) => {{
+            let mut tx = $p.begin().await?;
+            let mut affected = Vec::with_capacity(batches.len());
+            for (sql, binds) in batches {
+                affected.push(
+                    bind_all!(sql.as_str(), binds, $p)
+                        .execute(&mut *tx)
+                        .await?
+                        .rows_affected(),
+                );
+            }
+            tx.commit().await?;
+            Ok(affected)
+        }};
+    }
+
+    match pool {
+        DbPool::Postgres(p) => sqlx_tx_all!(p),
+        DbPool::Mysql(p) => sqlx_tx_all!(p),
+        DbPool::Sqlite(p) => sqlx_tx_all!(p),
+        DbPool::MsSql(p) => {
+            let mut c = p.acquire().await?;
+            c.simple_execute("BEGIN TRANSACTION").await?;
+            let mut affected = Vec::with_capacity(batches.len());
+            for (sql, binds) in batches {
+                match c.execute(sql, binds).await {
+                    Ok(n) => affected.push(n),
+                    Err(e) => {
+                        // Best-effort unwind: if the rollback also fails the
+                        // session is already poisoned and `classify` will not
+                        // return it to the pool.
+                        let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
+                        return Err(e);
+                    }
+                }
+            }
+            c.simple_execute("COMMIT TRANSACTION").await?;
+            Ok(affected)
+        }
+        DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
+    }
+}
+
 /// Run one parameterised write inside a transaction, refusing to commit if it
 /// touched more than one row.
 ///
@@ -314,5 +390,94 @@ pub async fn scalar_i64(
             .map_err(AppError::from),
         DbPool::MsSql(p) => p.scalar(sql, binds).await,
         DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    /// A file-backed pool rather than `sqlite::memory:`, for the reason
+    /// `mcp::tests` gives: an in-memory database is per-connection, so the
+    /// schema would not be shared across the pool.
+    async fn sqlite_pool(name: &str) -> DbPool {
+        let path = std::env::temp_dir().join(format!("huginndb_exec_tx_{name}.db"));
+        let _ = std::fs::remove_file(&path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY, name TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        DbPool::Sqlite(pool)
+    }
+
+    async fn count(pool: &DbPool) -> i64 {
+        scalar_i64(pool, "SELECT COUNT(*) FROM t", &[])
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn every_batch_lands_and_the_affected_counts_come_back_in_order() {
+        let pool = sqlite_pool("all").await;
+        let batches = vec![
+            (
+                "INSERT INTO t (name) VALUES (?), (?)".to_string(),
+                vec![Some("a".to_string()), Some("b".to_string())],
+            ),
+            (
+                "INSERT INTO t (name) VALUES (?)".to_string(),
+                vec![Some("c".to_string())],
+            ),
+            (
+                "INSERT INTO t (name) VALUES (?), (?)".to_string(),
+                vec![Some("d".to_string()), Some("e".to_string())],
+            ),
+        ];
+        let affected = execute_params_in_tx(&pool, &batches).await.unwrap();
+        assert_eq!(affected, vec![2u64, 1, 2]);
+        assert_eq!(count(&pool).await, 5);
+    }
+
+    /// The property the whole function exists for: a chunked paste is atomic
+    /// per *paste*, not per chunk. A loop over `execute_params` would leave the
+    /// first two batches committed here.
+    #[tokio::test]
+    async fn a_failure_midway_leaves_nothing_behind() {
+        let pool = sqlite_pool("rollback").await;
+        let batches = vec![
+            (
+                "INSERT INTO t (name) VALUES (?)".to_string(),
+                vec![Some("a".to_string())],
+            ),
+            (
+                "INSERT INTO t (name) VALUES (?)".to_string(),
+                vec![Some("b".to_string())],
+            ),
+            // NOT NULL violation.
+            ("INSERT INTO t (name) VALUES (?)".to_string(), vec![None]),
+        ];
+        assert!(execute_params_in_tx(&pool, &batches).await.is_err());
+        assert_eq!(count(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn an_empty_batch_list_is_a_no_op() {
+        let pool = sqlite_pool("empty").await;
+        assert_eq!(
+            execute_params_in_tx(&pool, &[]).await.unwrap(),
+            Vec::<u64>::new()
+        );
+        assert_eq!(count(&pool).await, 0);
     }
 }

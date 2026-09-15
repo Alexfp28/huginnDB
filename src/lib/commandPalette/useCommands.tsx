@@ -87,7 +87,6 @@ import { BUILT_IN_THEMES } from "@/lib/themes";
 import { DOCS } from "@/lib/appInfo/docs";
 import {
   isServerWide,
-  parentConnectionId,
   resolveConnectionLabel,
   tabLeafTitle,
   tableTabTitle,
@@ -529,10 +528,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
         keywords: `tab ${tab.title} ${tab.kind} pestaña`,
         icon: TAB_ICON[tab.kind],
         current: tab.id === activeTabId,
-        run: () => {
-          useTabs.getState().setActive(tab.id);
-          setSelected(parentConnectionId(tab.connectionId));
-        },
+        run: () => useTabs.getState().setActive(tab.id),
         alt: {
           hintKey: "commandPalette.hintCloseTab",
           run: () => useTabs.getState().close(tab.id),
@@ -637,8 +633,9 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
               try {
                 const childId = await openTrackedDatabaseView(p.id, name);
                 await refreshSchema(childId);
-                // The workspace follows the *profile*, never the synthetic
-                // child id — see `parentConnectionId`.
+                // No tab opens here, so `focusFollowsTab` has nothing to
+                // react to and this sets the focus itself — as the profile,
+                // never the synthetic child id.
                 setSelected(p.id);
               } catch (e) {
                 notify.error(String(e));
@@ -726,9 +723,6 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
               schema: tbl.schema,
               table: tbl.name,
             });
-            // The tab keeps the per-database child id; the *selection* must be
-            // the profile, or App's active-set sync clears it a render later.
-            setSelected(parentConnectionId(connectionId));
           },
         });
       }
@@ -737,7 +731,6 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // ── Saved queries + history ──────────────────────────────────────────────
     const openSql = (sql: string, title: string, connectionId: string) => {
       useTabs.getState().open({ kind: "query", title, connectionId, query: sql });
-      setSelected(parentConnectionId(connectionId));
     };
     if (queryTarget) {
       for (const q of savedQueries) {

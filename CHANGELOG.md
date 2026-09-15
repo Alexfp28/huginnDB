@@ -6,7 +6,137 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **"Paste rows as JSON…" — bulk row insert on all four SQL drivers.** Behind
+  the grid's Insert button, next to the inline draft row. One JSON object is
+  one row; paste an array and it becomes a single multi-row `INSERT` inside a
+  single transaction. This closes `ROADMAP.md`'s longest-standing open item:
+  bulk *delete* shipped in 1.0.2, and MongoDB has been covered since its
+  document dialog started accepting an array, but on SQL "here are forty rows"
+  had no path short of hand-writing the statement in the query editor.
+
+  The MongoDB dialog this borrows its shape from exists for a reason that
+  genuinely does not carry over — a collection is schemaless, so a field the
+  grid's sample missed could not be typed at all — and `insert_documents`'
+  own docstring says as much. That argument is about *shape*, and it still
+  holds. What SQL was missing is **bulk**, which is a different want.
+
+  Four things are worth stating because each had a plausible-looking
+  alternative:
+
+  - **A pasted key is not a column name until the catalogue says so.** Keys
+    are matched against the table's real columns and the *catalogue's*
+    spelling is what reaches the SQL, so nothing user-typed is ever quoted as
+    an identifier. An unknown key is refused by name, with the real columns
+    listed. Matching is case-insensitive, so a paste from a tool that
+    upper-cases its keys just works.
+  - **A row whose column set differs from the first is refused**, naming the
+    row and both sides of the difference. Unioning the columns and binding
+    `NULL` for the gaps looks friendlier and is wrong: it overwrites the
+    column's `DEFAULT`, which for a `NOT NULL DEFAULT now()` column turns a
+    valid insert into a constraint violation. Grouping rows by their key
+    signature is defensible, and was still not chosen first — the usual cause
+    of a differing key set is a typo in a key name, and grouping turns that
+    typo into a column silently taking its default.
+  - **A JSON `true` is stored as `1` in a boolean column and as the word in a
+    text one.** That decision reads the column's type rather than the driver,
+    which sounds backwards until you notice that `1`/`0` is accepted by all
+    four engines' boolean inputs anyway — the case a per-driver rule could not
+    have handled is the text column.
+  - **A paste too wide for the engine's bind-parameter ceiling is chunked, and
+    the chunks share one transaction.** 500 rows × 20 columns is five
+    statements on SQL Server (which refuses past 2100 parameters) and one
+    everywhere else, and either way the whole paste lands or none of it does.
+    The Console shows one entry, because one transaction is one unit of work.
+
+  Omitted columns take their database default and `null` writes a SQL `NULL`,
+  matching what the single-row insert has always done. The result reports how
+  many rows went in rather than their generated ids: the four engines disagree
+  about what a multi-row insert's ids even are — MySQL reports only the first,
+  SQL Server only the last — and a count is the one honest answer.
+
+  Not exposed over MCP. The connector already has a structured `insert_row`
+  that serves a model better than a text blob would, and every new write tool
+  costs three wiring steps the compiler does not check. See
+  [`adr/gotcha-084`](adr/gotcha-084-json-row-insert-catalogue-gated-and-transactional.md).
+
+- **"Query this table…" on a table or view in the schema tree.** It opens a
+  query editor already scoped to that relation's connection *and* database,
+  seeded with `SELECT * FROM <table> LIMIT 100;`.
+
+  The entry existed one and two levels up — a database node and a schema node
+  have had "New query here" for a while — and stopped at the level people
+  actually right-click, which is the table they are looking at. Getting a query
+  over a specific table meant opening a blank editor and retyping a name the
+  tree was already showing.
+
+  Two details are the reason this is not simply `openQueryTab(connectionId)`:
+
+  - It passes `resolveTarget: false`. In a server-wide connection the table
+    row's `connectionId` is already the `<parent>::db::<db>` child its subtree
+    was mounted for, and the default would hand that to `queryTargetFor`, which
+    re-points the tab at whichever database the *focused* tab happens to be on.
+    "Query this table" means this table's database.
+  - It goes through the explorer's action bundle rather than importing
+    `openQueryTab` directly, so it fires the same `onTableOpen` hook opening a
+    data tab does and the multi-DB tree's database accent moves with it.
+
+  `selectSnippet` grew an optional row limit for the seed, which also closes an
+  asymmetry it had carried since it was written: the MongoDB branch always
+  emitted `.limit(100)` and the SQL branch emitted no bound at all. That was
+  defensible while the only consumer was "Copy SELECT statement", where the
+  user reads the text before running it — it is not defensible for text the app
+  puts in an editor for you to run. SQL Server gets `SELECT TOP 100 *`, since
+  T-SQL has no `LIMIT` and the `OFFSET … FETCH NEXT` form the executed paging
+  path uses additionally requires an `ORDER BY` there is none to supply.
+  "Copy SELECT statement" is unchanged — it still copies the bare statement,
+  because a snippet you paste and tweak wants no bound guessed for it.
+
 ### Fixed
+
+- **With two connections live, the "+" button opened a query tab against the
+  wrong one.** The app carried two independent "current" pointers and nothing
+  connected them: `useUi.selectedConnectionId` — what the workspace points at,
+  and what the tab strip's `+`, the `newQuery` keybinding and the command
+  palette's new-query entry all resolve their target from — and
+  `useTabs.activeId`, the focused tab, which carries its own `connectionId`.
+
+  Only the *connection* flows ever wrote the first one: connect, reconnect, the
+  status-bar picker, the workspace picker, environment restore. Opening a tab
+  wrote only the second. So with a MySQL and a MongoDB connection both live,
+  clicking a MySQL table in the schema tree and pressing `+` opened the editor
+  against MongoDB — the tree never touched the selection at all, so it stayed
+  wherever the last *connect* had left it. `queryTargetFor` could not rescue
+  this by design: it only ever refines *within* the connection it is handed
+  (parent → its `::db::` child) and deliberately discards a focused tab
+  belonging to somebody else.
+
+  Clicking an **already open tab** of the other connection had exactly the same
+  ending. That half was never reported, because the tree is where people
+  notice it — but it is the same missing rule, and it is why the fix is not a
+  third `setSelectedConnectionId` call in the schema tree. The command palette
+  and the Ctrl+Tab switcher each already carried one, hand-written, which is
+  the shape of a rule that wants to live in one place. Focus now *is* the
+  focused tab's connection, derived once in
+  `src/stores/session/focusFollowsTab.ts`, and the four ad-hoc calls that were
+  approximating it are gone.
+
+  The workspace consequently follows the tab everywhere it already read that
+  value: the OS window title, the Pulse panel's target, the AI panel, the Saved
+  Queries panel and the tree's own hairline highlight. The persisted launch
+  state follows too — it now restores the connection of the last focused tab
+  rather than the last one connected, which is the same answer in every session
+  that ended with a tab open and a better one in the sessions that didn't.
+
+  Two constraints are load-bearing and written next to the code. The tab's id
+  is folded through `parentConnectionId` before it is stored, because
+  `selectedConnectionId` must name a real profile — `useConnections.active`
+  only holds top-level ids, and a `<parent>::db::<db>` selection is cleared one
+  render later and replaced with an arbitrary pool. And the subscription hangs
+  off the store rather than dockview's `onDidActivePanelChange`, which already
+  flows into `useTabs.setActive`; a second dockview↔store path is the thing
+  gotcha #010 exists to forbid.
 
 - **The grid's "Copy row as ▸ INSERT/UPDATE" and "Copy with column" snippets
   silently dropped backslashes on MySQL.** `sqlLiteral`

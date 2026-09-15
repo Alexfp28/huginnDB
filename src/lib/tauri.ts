@@ -44,6 +44,7 @@ import type {
   McpConnectorInfo,
   ImportResult,
   IndexInfo,
+  InsertRowsSummary,
   PoolStats,
   Preferences,
   PrivilegeInfo,
@@ -791,6 +792,26 @@ export const api = {
     collection: string;
     source: string;
   }) => invoke<CellValue>("insert_documents", args),
+
+  /**
+   * Insert one or more rows into a SQL table from pasted JSON text.
+   *
+   * The SQL counterpart of `insertDocuments`, and the bulk path `insertRow`
+   * never had: an object is one row, an array of objects is many, and the
+   * backend turns either into a single multi-row `INSERT` inside one
+   * transaction (chunked only when the engine's bind ceiling forces it).
+   *
+   * `source` crosses as text and is parsed in Rust, which is where the
+   * catalogue is — and the catalogue is what maps a pasted key onto a real
+   * column safely (gotcha #4) and what decides whether a JSON `true` binds as
+   * `1` or as the word. Refused on MongoDB, which has `insertDocuments`.
+   */
+  insertRows: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    source: string;
+  }) => invoke<InsertRowsSummary>("insert_rows", args),
 
   /**
    * Fetch a page of valid values for a foreign-key column. When

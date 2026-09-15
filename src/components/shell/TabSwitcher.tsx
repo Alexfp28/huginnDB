@@ -35,9 +35,7 @@ import {
 } from "lucide-react";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
-import { useUi } from "@/stores/session/ui";
 import {
-  parentConnectionId,
   resolveConnectionLabel,
   resolveConnectionParts,
   tabLeafTitle,
@@ -86,7 +84,6 @@ export function TabSwitcher() {
   const tabs = useTabs((s) => s.tabs);
   const activeId = useTabs((s) => s.activeId);
   const profiles = useConnections((s) => s.profiles);
-  const setSelected = useUi((s) => s.setSelectedConnectionId);
 
   const [query, setQuery] = useState("");
 
@@ -165,12 +162,10 @@ export function TabSwitcher() {
   );
 
   function jump(tab: AppTab) {
+    // Focusing the tab is the whole of it: `focusFollowsTab` folds the tab's
+    // connection through the owning profile and moves the workspace there.
+    // This used to do that itself, which is why the rule now lives in one place.
     useTabs.getState().setActive(tab.id);
-    // A tab of a per-database view carries the synthetic `<parent>::db::<db>`
-    // id, which is never in `useConnections.active` — selecting it directly got
-    // cleared by App's active-set sync a render later, silently landing the
-    // workspace on some other connection. Select the owning profile instead.
-    setSelected(parentConnectionId(tab.connectionId));
     setOpen(false);
   }
 

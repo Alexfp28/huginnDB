@@ -197,16 +197,42 @@ function qualifiedTable(
  * Note this is a clipboard snippet, not DDL: nothing here is ever executed by
  * the app, which is why assembling SQL text in the frontend is fine here and
  * not in the structure editor (whose statements are built in Rust).
+ *
+ * **`limit` is what the schema tree's "Query this table…" passes**, and it is
+ * the one caller whose text is going to be *run* rather than pasted — an
+ * unbounded `SELECT *` over a large table is exactly what the grid pages to
+ * avoid. It stays optional because "Copy SELECT statement" wants the bare
+ * statement to tweak, which is what it has always produced. The MongoDB branch
+ * always had its `.limit(100)`; the parameter is what lets the SQL branch stop
+ * being the asymmetric one.
  */
+/**
+ * Row cap the schema tree's "Query this table…" seeds its `SELECT` with.
+ *
+ * It lives next to `selectSnippet` rather than in the tree because it is the
+ * same number MongoDB's branch has always hard-coded, and having one of the two
+ * drift would put the app's two "show me this relation" snippets on different
+ * bounds.
+ */
+export const QUERY_HERE_LIMIT = 100;
+
 export function selectSnippet(
   driver: Driver | undefined,
   schema: string | undefined,
   table: string,
+  limit?: number,
 ): string {
   if (driver === "mongodb") {
-    return `db.${table}.find({}).limit(100)`;
+    return `db.${table}.find({}).limit(${limit ?? 100})`;
   }
-  return `SELECT * FROM ${qualifiedTable(driver, schema, table)};`;
+  const qt = qualifiedTable(driver, schema, table);
+  if (limit === undefined) return `SELECT * FROM ${qt};`;
+  // T-SQL has no `LIMIT`. `TOP n` is the portable spelling across every
+  // SQL Server version this app supports (2012+); `OFFSET … FETCH NEXT`, which
+  // `Dialect::paginate` uses on the executed path, additionally requires an
+  // `ORDER BY` and there is none to supply here.
+  if (driver === "sqlserver") return `SELECT TOP ${limit} * FROM ${qt};`;
+  return `SELECT * FROM ${qt} LIMIT ${limit};`;
 }
 
 /**
