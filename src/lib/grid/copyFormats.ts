@@ -53,11 +53,20 @@ export function quoteIdent(driver: Driver | undefined, name: string): string {
  * JSON / object values are stringified first; this is intentional —
  * Postgres accepts a JSON literal as a quoted string thanks to implicit
  * casts in most contexts. The user can refine if needed.
+ *
+ * MySQL treats `\` as a string-literal escape character by default (its
+ * `NO_BACKSLASH_ESCAPES` sql_mode is off unless the server opts in), so an
+ * un-escaped backslash — e.g. a `DOMAIN\user` value — silently loses the
+ * backslash when the snippet is pasted back and run. Postgres, SQLite and
+ * SQL Server don't give `\` any meaning in a plain quoted literal, so only
+ * MySQL needs this; the twin fix already exists in the dump path
+ * (`src-tauri/src/db/dump.rs`).
  */
-export function sqlLiteral(v: CellValue): string {
+export function sqlLiteral(v: CellValue, driver?: Driver): string {
   if (v === null || v === undefined) return "NULL";
   if (typeof v === "number" || typeof v === "boolean") return String(v);
-  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  let s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  if (driver === "mysql") s = s.replace(/\\/g, "\\\\");
   return "'" + s.replace(/'/g, "''") + "'";
 }
 
@@ -105,7 +114,7 @@ export function toSqlInsert(
 ): string {
   const tbl = qualifiedTable(driver, schema, tableName);
   const cols = columns.map((c) => quoteIdent(driver, c.name)).join(", ");
-  const vals = rowValues.map(sqlLiteral).join(", ");
+  const vals = rowValues.map((v) => sqlLiteral(v, driver)).join(", ");
   return `INSERT INTO ${tbl} (${cols}) VALUES (${vals});`;
 }
 
@@ -138,7 +147,7 @@ export function toSqlUpdate(
   const setPairs = columns
     .map((c, i) => {
       if (pkSet.has(c.name)) return null;
-      return `${quoteIdent(driver, c.name)} = ${sqlLiteral(rowValues[i])}`;
+      return `${quoteIdent(driver, c.name)} = ${sqlLiteral(rowValues[i], driver)}`;
     })
     .filter((s): s is string => s !== null)
     .join(", ");
@@ -148,7 +157,7 @@ export function toSqlUpdate(
     whereClause = pkIndices
       .map(
         (i) =>
-          `${quoteIdent(driver, columns[i].name)} = ${sqlLiteral(rowValues[i])}`,
+          `${quoteIdent(driver, columns[i].name)} = ${sqlLiteral(rowValues[i], driver)}`,
       )
       .join(" AND ");
   } else {

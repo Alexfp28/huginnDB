@@ -8,6 +8,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Las opciones "Copiar fila como ▸ INSERT/UPDATE" y "Copiar con columna" del
+  grid se comían las barras invertidas en MySQL.** `sqlLiteral`
+  (`src/lib/grid/copyFormats.ts`) entrecomillaba un valor de cadena doblando
+  las `'` incrustadas, pero nunca tocaba `\`. Eso es correcto para Postgres,
+  SQLite y SQL Server, ninguno de los cuales le da significado especial a `\`
+  dentro de un literal entrecomillado normal — pero MySQL sí, por defecto
+  (`NO_BACKSLASH_ESCAPES` está desactivado salvo que el servidor lo active):
+  un valor como `DOMINIO\usuario` se copiaba como `'DOMINIO\usuario'`, y al
+  pegarlo y ejecutarlo contra MySQL, `\u` se interpretaba como la secuencia
+  de escape de una `u` literal, así que la fila volvía como `DOMINIOusuario`.
+  La ruta de volcado del backend (`src-tauri/src/db/dump.rs`) ya escapaba
+  `\` → `\\` exactamente por este motivo; este generador de portapapeles,
+  construido de forma independiente en el frontend, no lo hacía.
+  `sqlLiteral` ahora recibe el driver y escapa `\` primero (antes de doblar
+  `'`) cuando es `mysql`, igual que la ruta de volcado; los otros tres
+  drivers quedan intactos por construcción, y `toSqlInsert`/`toSqlUpdate`/el
+  "Copiar con columna" de `GridRow` propagan el driver hasta el fondo.
+
 ## [1.24.0] — 2026-09-14
 
 ### Añadido

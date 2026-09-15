@@ -6,6 +6,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The grid's "Copy row as ▸ INSERT/UPDATE" and "Copy with column" snippets
+  silently dropped backslashes on MySQL.** `sqlLiteral`
+  (`src/lib/grid/copyFormats.ts`) quoted a string value by doubling embedded
+  `'` characters but never touched `\`. That is fine for Postgres, SQLite and
+  SQL Server, none of which give `\` any meaning inside a plain quoted
+  literal — but MySQL does, by default (`NO_BACKSLASH_ESCAPES` is off unless
+  the server opts in): a value like `DOMAIN\user` copied out as
+  `'DOMAIN\user'`, and pasting that back in and running it against MySQL
+  interpreted `\u` as the escape sequence for a literal `u`, so the row came
+  back as `DOMAINuser`. The backend's dump path
+  (`src-tauri/src/db/dump.rs`) already escaped `\` → `\\` for exactly this
+  reason; this clipboard-only generator, built independently in the
+  frontend, did not. `sqlLiteral` now takes the driver and escapes `\` first
+  (before doubling `'`) when it is `mysql`, matching the dump path; the other
+  three drivers are unaffected by construction, and `toSqlInsert`/
+  `toSqlUpdate`/`GridRow`'s "Copy with column" all thread the driver through.
+
 ## [1.24.0] — 2026-09-14
 
 ### Added

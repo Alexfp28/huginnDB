@@ -83,6 +83,17 @@ describe("sqlLiteral", () => {
   it("stringifies an object before quoting", () => {
     expect(sqlLiteral({ a: 1 })).toBe("'{\"a\":1}'");
   });
+
+  // Regression: MySQL treats `\` as a string-literal escape character by
+  // default, so a pasted-back snippet silently dropped it (`DOMAIN\user`
+  // became `DOMAINuser`) unless the backslash is itself doubled.
+  it("escapes a backslash for MySQL but not for other drivers", () => {
+    expect(sqlLiteral("DOMAIN\\user", "mysql")).toBe("'DOMAIN\\\\user'");
+    expect(sqlLiteral("DOMAIN\\user", "postgres")).toBe("'DOMAIN\\user'");
+    expect(sqlLiteral("DOMAIN\\user", "sqlserver")).toBe("'DOMAIN\\user'");
+    expect(sqlLiteral("DOMAIN\\user", "sqlite")).toBe("'DOMAIN\\user'");
+    expect(sqlLiteral("DOMAIN\\user")).toBe("'DOMAIN\\user'");
+  });
 });
 
 describe("toBulk", () => {

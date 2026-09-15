@@ -657,7 +657,7 @@ export const GridRow = memo(function GridRow({
                     label={t("dataGrid.ctxCopyWithColumn")}
                     onSelect={() =>
                       callbacksRef.current.copyToClipboard(
-                        `${meta.name} = ${sqlLiteral(value)}`,
+                        `${meta.name} = ${sqlLiteral(value, driver)}`,
                       )
                     }
                   />
