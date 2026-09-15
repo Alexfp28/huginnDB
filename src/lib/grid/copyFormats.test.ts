@@ -66,6 +66,48 @@ describe("selectSnippet", () => {
       "db.events.find({}).limit(100)",
     );
   });
+
+  // The limited form is what the schema tree's "Query this table…" runs, as
+  // opposed to what "Copy SELECT statement" puts on the clipboard.
+  describe("with a limit", () => {
+    it("appends LIMIT on the three drivers that have it", () => {
+      expect(selectSnippet("postgres", "public", "users", 100)).toBe(
+        'SELECT * FROM "public"."users" LIMIT 100;',
+      );
+      expect(selectSnippet("mysql", "shop", "orders", 100)).toBe(
+        "SELECT * FROM `shop`.`orders` LIMIT 100;",
+      );
+      expect(selectSnippet("sqlite", undefined, "users", 100)).toBe(
+        'SELECT * FROM "users" LIMIT 100;',
+      );
+    });
+
+    // T-SQL has no LIMIT, and `OFFSET … FETCH NEXT` would need an ORDER BY
+    // there is none to supply.
+    it("uses TOP n on SQL Server", () => {
+      expect(selectSnippet("sqlserver", "dbo", "Users", 100)).toBe(
+        "SELECT TOP 100 * FROM [dbo].[Users];",
+      );
+    });
+
+    it("threads the limit into MongoDB's own find().limit()", () => {
+      expect(selectSnippet("mongodb", undefined, "events", 50)).toBe(
+        "db.events.find({}).limit(50)",
+      );
+    });
+
+    it("leaves the unlimited form exactly as it was", () => {
+      expect(selectSnippet("postgres", "public", "users")).toBe(
+        'SELECT * FROM "public"."users";',
+      );
+    });
+
+    it("still escapes embedded delimiters", () => {
+      expect(selectSnippet("postgres", 'we"ird', 'a"b', 10)).toBe(
+        'SELECT * FROM "we""ird"."a""b" LIMIT 10;',
+      );
+    });
+  });
 });
 
 describe("sqlLiteral", () => {

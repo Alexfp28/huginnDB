@@ -6,6 +6,40 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **"Query this table…" on a table or view in the schema tree.** It opens a
+  query editor already scoped to that relation's connection *and* database,
+  seeded with `SELECT * FROM <table> LIMIT 100;`.
+
+  The entry existed one and two levels up — a database node and a schema node
+  have had "New query here" for a while — and stopped at the level people
+  actually right-click, which is the table they are looking at. Getting a query
+  over a specific table meant opening a blank editor and retyping a name the
+  tree was already showing.
+
+  Two details are the reason this is not simply `openQueryTab(connectionId)`:
+
+  - It passes `resolveTarget: false`. In a server-wide connection the table
+    row's `connectionId` is already the `<parent>::db::<db>` child its subtree
+    was mounted for, and the default would hand that to `queryTargetFor`, which
+    re-points the tab at whichever database the *focused* tab happens to be on.
+    "Query this table" means this table's database.
+  - It goes through the explorer's action bundle rather than importing
+    `openQueryTab` directly, so it fires the same `onTableOpen` hook opening a
+    data tab does and the multi-DB tree's database accent moves with it.
+
+  `selectSnippet` grew an optional row limit for the seed, which also closes an
+  asymmetry it had carried since it was written: the MongoDB branch always
+  emitted `.limit(100)` and the SQL branch emitted no bound at all. That was
+  defensible while the only consumer was "Copy SELECT statement", where the
+  user reads the text before running it — it is not defensible for text the app
+  puts in an editor for you to run. SQL Server gets `SELECT TOP 100 *`, since
+  T-SQL has no `LIMIT` and the `OFFSET … FETCH NEXT` form the executed paging
+  path uses additionally requires an `ORDER BY` there is none to supply.
+  "Copy SELECT statement" is unchanged — it still copies the bare statement,
+  because a snippet you paste and tweak wants no bound guessed for it.
+
 ### Fixed
 
 - **With two connections live, the "+" button opened a query tab against the

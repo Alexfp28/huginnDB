@@ -8,6 +8,43 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **"Consultar esta tabla…" sobre una tabla o vista del árbol de esquema.**
+  Abre un editor de query ya acotado a la conexión *y* la base de datos de esa
+  relación, sembrado con `SELECT * FROM <tabla> LIMIT 100;`.
+
+  La entrada existía uno y dos niveles más arriba — el nodo de base de datos y
+  el de esquema tienen "Nueva query aquí" desde hace tiempo — y se paraba justo
+  en el nivel donde la gente hace clic derecho de verdad, que es la tabla que
+  está mirando. Sacar una consulta sobre una tabla concreta obligaba a abrir un
+  editor en blanco y reescribir un nombre que el árbol ya tenía delante.
+
+  Dos detalles son la razón de que esto no sea simplemente
+  `openQueryTab(connectionId)`:
+
+  - Pasa `resolveTarget: false`. En una conexión a servidor completo el
+    `connectionId` de la fila ya es el hijo `<padre>::db::<db>` con el que se
+    montó ese subárbol, y el valor por defecto se lo daría a `queryTargetFor`,
+    que reapunta la pestaña a la base de datos en la que esté la pestaña
+    *enfocada*. "Consultar esta tabla" significa la base de datos de esta tabla.
+  - Va por el bundle de acciones del explorador en vez de importar
+    `openQueryTab` directamente, así que dispara el mismo `onTableOpen` que
+    dispara abrir una pestaña de datos y el acento de base de datos del árbol
+    multi-DB se mueve con ella.
+
+  `selectSnippet` ha ganado un límite de filas opcional para la semilla, lo que
+  además cierra una asimetría que arrastraba desde que se escribió: la rama de
+  MongoDB siempre emitía `.limit(100)` y la de SQL no emitía cota ninguna. Era
+  defendible mientras el único consumidor era "Copiar sentencia SELECT", donde
+  el usuario lee el texto antes de ejecutarlo — no lo es para un texto que la
+  app te pone en un editor para que lo ejecutes. SQL Server recibe
+  `SELECT TOP 100 *`, porque T-SQL no tiene `LIMIT` y la forma
+  `OFFSET … FETCH NEXT` que usa la ruta de paginación ejecutada exige además un
+  `ORDER BY` que aquí no hay de dónde sacar. "Copiar sentencia SELECT" no
+  cambia: sigue copiando la sentencia pelada, porque un fragmento que pegas y
+  retocas no quiere que le adivinen una cota.
+
 ### Corregido
 
 - **Con dos conexiones vivas, el botón "+" abría la pestaña de query contra la

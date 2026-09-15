@@ -396,6 +396,7 @@
       "newQueryHere": "New query here",
       "copyName": "Copy name",
       "copySelect": "Copy SELECT statement",
+      "queryTableHere": "Query this table…",
       "refresh": "Refresh",
       "editStructure": "Edit structure…",
       "newTable": "New table…",

@@ -23,6 +23,7 @@ import {
   PencilLine,
   RefreshCw,
   SquarePen,
+  SquareTerminal,
   Table as TableIcon,
   Trash2,
   Workflow,
@@ -381,6 +382,11 @@ export const TableRow = memo(function TableRow({
           icon={Copy}
           label={ct("schema.context.copyName")}
           onSelect={copyName}
+        />
+        <ContextMenuAction
+          icon={SquareTerminal}
+          label={ct("schema.context.queryTableHere")}
+          onSelect={() => actions.onOpenQuery(t)}
         />
         <ContextMenuAction
           icon={Code2}

@@ -50,6 +50,7 @@ import {
 } from "@/lib/db/driver";
 import { matchesPatterns } from "@/lib/schema/matchesFilter";
 import { useOpenTableKeys } from "@/lib/schema/useOpenTableKeys";
+import { QUERY_HERE_LIMIT, selectSnippet } from "@/lib/grid/copyFormats";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { api } from "@/lib/tauri";
 import { cn, formatBytes } from "@/lib/utils";
@@ -287,6 +288,18 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   const tableActions: TableActions = useMemo(
     () => ({
       openTab: wrappedOpenTab,
+      onOpenQuery: (tbl) => {
+        onTableOpen?.();
+        // `resolveTarget: false` is the load-bearing half. In multi-DB mode
+        // `connectionId` is already the `<parent>::db::<db>` child this subtree
+        // was mounted for, and the default would hand it to `queryTargetFor`,
+        // which re-points it at whichever database the *focused tab* happens to
+        // be on. "Query this table" means this table's database.
+        openQueryTab(connectionId, {
+          sql: selectSnippet(driver, tbl.schema, tbl.name, QUERY_HERE_LIMIT),
+          resolveTarget: false,
+        });
+      },
       refresh: () => refresh(connectionId),
       onRename: (tbl) => setRenameTarget(tbl),
       onDrop: (tbl) => setDropTarget(tbl),
@@ -314,7 +327,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
       onDropView: (tbl) => setDropViewTarget(tbl),
       driver,
     }),
-    [wrappedOpenTab, refresh, connectionId, t, driver],
+    [wrappedOpenTab, onTableOpen, refresh, connectionId, t, driver],
   );
 
   if (!cs) {
