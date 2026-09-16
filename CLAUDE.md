@@ -27,6 +27,14 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - Keep `CHANGELOG.md` in sync (Keep a Changelog format). Add to `Unreleased` as you go; the user will cut releases manually.
 - **`CHANGELOG.es.md` is the Spanish translation of `CHANGELOG.md` and must be updated in the same turn, never as a follow-up.** Every entry added to `CHANGELOG.md`'s `Unreleased` section gets its translated counterpart added to `CHANGELOG.es.md`'s `[Sin publicar]` section right away — this is the thing that keeps getting forgotten, so treat "update the changelog" as meaning both files unless told otherwise.
 
+## Pull request workflow
+
+- **Every commit lands via a pull request into `develop`, never a direct push — `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, all of them.** This replaces the old commit-only history: GitHub's release-notes generator reads merged PRs, not raw commits, so PR-level traceability is what makes a minor release's GitHub Release notes assemble themselves instead of being hand-curated from `git log`.
+- **Before touching any code, branch off `develop` first — never commit on `develop` directly.** The point is isolation: if a change breaks something mid-development, only that branch is broken and `develop` stays green. One branch per PR, one Conventional Commit type/scope per PR — don't mix an unrelated `chore:` into a `feat:` branch, it defeats the point of PR-level traceability. If a session starts with the working tree already on `develop`, cut the branch before the first edit, not after.
+- **Squash merge only.** The squashed commit's message is the long-form why-focused body this file already requires — it's what lands in `develop`'s history and feeds the release notes, so it must stand on its own without the PR page next to it.
+- **The maintainer reviews and merges manually in the GitHub UI — never auto-merge, even though he's the sole reviewer.** Open the PR (and push follow-up commits addressing review feedback if asked) but never click merge yourself; wait for Alex to do it.
+- PR title mirrors the commit's `type(scope): …`; PR body states the maintainer's authorship above the agent's own footer, per the signature rule above.
+
 ## Tech stack quick reference
 
 | Layer       | Choice                                                   |
