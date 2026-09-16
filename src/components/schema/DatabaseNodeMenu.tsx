@@ -195,11 +195,13 @@ export function DatabaseNodeMenu({
             onSelect={() => void onRefresh()}
           />
           <ContextMenuSeparator />
-          <ContextMenuAction
-            icon={Table2}
-            label={t("schema.context.newTable")}
-            onSelect={() => void createTableHere()}
-          />
+          {supportsDdlEditing(driver) && (
+            <ContextMenuAction
+              icon={Table2}
+              label={t("schema.context.newTable")}
+              onSelect={() => void createTableHere()}
+            />
+          )}
           {supportsDdlEditing(driver) && (
             <ContextMenuAction
               icon={Eye}

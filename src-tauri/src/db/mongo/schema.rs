@@ -512,6 +512,17 @@ pub(super) async fn infer_columns_of(
         }
     }
 
+    // An empty collection samples zero documents, so `order` would come back
+    // empty too — there is no catalog to fall back to the way `fetch_table_data`
+    // does for the SQL drivers (#27), because MongoDB has no schema outside the
+    // documents themselves. Every document gets an `_id` regardless, so seed it
+    // here: without it `cols` is empty, the grid has no PK to build a WHERE
+    // clause with, and the insert affordance hides along with it, leaving an
+    // empty collection with no way to write its first document from the UI.
+    if order.is_empty() {
+        order.push("_id".to_string());
+    }
+
     // Ensure `_id` is first even if the sample happened to order it later.
     order.sort_by_key(|k| if k == "_id" { 0 } else { 1 });
 

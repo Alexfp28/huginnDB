@@ -118,6 +118,33 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El nodo de una base de datos MongoDB ofrecía "Nueva tabla".**
+  `DatabaseNodeMenu` — el menú contextual que lleva un nodo de base de datos
+  tanto en el explorador de una sola BD como en el multi-BD — mostraba
+  "Nueva tabla" sin ninguna condición, justo al lado de "Nueva vista" y
+  "Nueva colección", que sí están filtradas por driver. El resto de acciones
+  de DDL en ese menú ya comprueban `supportsDdlEditing(driver)`, que es
+  `false` para MongoDB precisamente porque no tiene `CREATE TABLE` que
+  construir; a "Nueva tabla" simplemente le faltaba la misma comprobación,
+  así que una base de datos MongoDB mostraba "Nueva tabla" y "Nueva
+  colección" una al lado de la otra, y elegir la primera abría una pestaña
+  del editor de estructura que el driver no puede ejecutar. Ahora se filtra
+  igual que su vecina.
+- **Una colección de MongoDB vacía no tenía forma de insertar su primer
+  documento.** La opción de insertar de la rejilla exige una clave primaria
+  utilizable (`hasPk` en `TableDataTab`), y en MongoDB esa clave es el campo
+  `_id` de la colección — descubierto, como cualquier otro campo, muestreando
+  documentos (`infer_columns`). Una colección con cero documentos muestrea
+  cero campos, así que `_id` nunca aparecía y la rejilla concluía que la
+  colección no tenía clave primaria, ocultando Insertar junto con el resto de
+  acciones que dependen de ella. Es la misma clase de fallo que la 1.16.2
+  arregló para los drivers SQL (#27) — una relación vacía que no reporta
+  columnas — pero el arreglo de entonces (`fetch_table_data` recurriendo a la
+  definición del catálogo) no vale aquí, porque MongoDB no tiene catálogo al
+  que recurrir: la forma de una colección *es* lo que contienen sus
+  documentos. `infer_columns` ahora siembra `_id` a mano cuando el muestreo
+  vuelve vacío, ya que todo documento de MongoDB tiene uno exista o no
+  todavía ninguno que lo demuestre.
 - **Con dos conexiones vivas, el botón "+" abría la pestaña de query contra la
   que no era.** La app tenía dos punteros de "actual" independientes y nada los
   unía: `useUi.selectedConnectionId` — a qué apunta el workspace, y de donde

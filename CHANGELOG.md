@@ -108,6 +108,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A MongoDB database node offered "New table".** `DatabaseNodeMenu` — the
+  context menu a database node carries in both the single- and multi-DB
+  explorers — showed "New table" unconditionally, next to the driver-gated
+  "New view" and "New collection" entries right below it. Every other DDL
+  action on that menu already checks `supportsDdlEditing(driver)`, which is
+  `false` for MongoDB precisely because it has no `CREATE TABLE` to build;
+  "New table" was simply missing the same check, so a MongoDB database showed
+  both "New table" and "New collection" side by side, and picking the former
+  opened a structure-editor tab the driver cannot act on. It is now gated the
+  same way its neighbour is.
+- **An empty MongoDB collection had no way to insert its first document.**
+  The grid's Insert affordance requires a usable primary key
+  (`TableDataTab`'s `hasPk`), and on MongoDB that PK is the collection's `_id`
+  field — discovered, like every other field, by sampling documents
+  (`infer_columns`). A collection with zero documents samples zero fields, so
+  `_id` itself never showed up and the grid concluded the collection had no
+  PK at all, hiding Insert along with every other PK-gated action. This is
+  the same class of bug 1.16.2 fixed for the SQL drivers (#27) — an empty
+  relation reporting no columns — but the fix there (`fetch_table_data`
+  falling back to the catalog definition) doesn't carry over, because
+  MongoDB has no catalog to fall back to: a collection's shape *is* whatever
+  its documents contain. `infer_columns` now seeds `_id` by hand when the
+  sample comes back empty, since every MongoDB document gets one whether or
+  not any exist yet to prove it.
 - **With two connections live, the "+" button opened a query tab against the
   wrong one.** The app carried two independent "current" pointers and nothing
   connected them: `useUi.selectedConnectionId` — what the workspace points at,
