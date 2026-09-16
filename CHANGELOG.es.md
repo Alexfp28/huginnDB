@@ -10,6 +10,42 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **"Desplegar todos los objetos" — un gesto por documento y otro para toda la
+  página.** Cada tarjeta de la vista de lista lleva ahora un chevron junto al
+  contador de campos que despliega (o pliega) todos los objetos anidados de ese
+  documento a la vez, a cualquier profundidad; el pie de la tabla lleva el mismo
+  par para todos los documentos de la página, junto a los controles de ajuste de
+  columnas y zoom de fila que ya responden a "cómo estoy mirando esto".
+
+  Los chevrons por línea solo movían un nivel. Un documento cuyos valores
+  interesantes están dos o tres niveles abajo — un `processInfo` indexado por id
+  de dispositivo, cada entrada un objeto propio — costaba un clic por nivel para
+  leerlo, y luego los mismos clics otra vez en el documento siguiente. Leer una
+  página entera así no era algo que se pudiera hacer en la práctica.
+
+  Tres decisiones merecen contarse:
+
+  - **Invierte la base contra la que se miden los pliegues, en vez de conmutar
+    un conjunto de rutas.** Un contenedor escondido dentro de un ancestro
+    plegado no aporta ninguna línea, así que su ruta no está en la lista de
+    campos aplanada y no hay nada que conmutar — un "desplegar todo" basado en
+    conjuntos habría abierto exactamente un nivel y ahí se habría quedado.
+    Invertir la base abre el árbol entero de una vez y no cuesta nada por nivel.
+  - **La pulsación global es un epoch, no un booleano.** Es una acción, no un
+    estado: después de pulsarla puedes plegar un objeto a mano, y volver a
+    pulsarla tiene que desplegarlo otra vez. Un prop booleano ya valdría `true`
+    en la segunda pulsación y no pasaría nada. Además es lo que permite que una
+    tarjeta que entra en la ventana del virtualizador *después* de la pulsación
+    se monte ya desplegada.
+  - **Ninguno de los dos controles toca la preferencia *Desplegar los valores
+    anidados por defecto*.** Esa responde a "cómo debe abrirse un documento";
+    estos responden a "enséñame todo lo que hay en lo que estoy mirando ahora".
+    Mezclarlas haría que un gesto puntual reescribiera un ajuste persistido.
+
+  El control por documento se oculta en un documento que no tiene nada que
+  desplegar, y su sentido sigue a lo que hay en pantalla: solo dice "plegar"
+  cuando todos los contenedores visibles están abiertos.
+
 - **"Pegar filas como JSON…" — inserción masiva de filas en los cuatro drivers
   SQL.** Detrás del botón Insertar del grid, junto a la fila-borrador en línea.
   Un objeto JSON es una fila; pega un array y se convierte en un único `INSERT`

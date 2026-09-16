@@ -55,6 +55,8 @@ import { notify } from "@/lib/notify";
 import {
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Copy,
   Inbox,
   Maximize2,
@@ -105,6 +107,27 @@ import type {
   DraftRow,
 } from "@/types";
 
+/**
+ * A grid-wide "expand / collapse every nested object" gesture, broadcast to
+ * every card at once.
+ *
+ * An **epoch**, not a plain boolean, because this is an *action* and not a
+ * state: each card keeps its own folds (and its own per-card expand-all), so
+ * "expand everything" has to be something a card can apply once and then
+ * diverge from — pressing it, folding one object by hand, and pressing it
+ * again must expand that object back. A boolean prop would already be `true`
+ * on the second press and nothing would happen; a counter changes every time.
+ *
+ * It deliberately does not touch the `listExpandNested` preference: that one
+ * answers "how should documents *open*", this one answers "show me everything
+ * in what I am looking at right now", and conflating them would make a
+ * one-off gesture rewrite a persisted setting.
+ */
+export interface ExpandAllSignal {
+  epoch: number;
+  expanded: boolean;
+}
+
 /** Commit one field. `path` is the field path from the document root, `value`
  *  the text the editor produced (`null` for SQL NULL / BSON null), `typeHint`
  *  the type it should be written as. */
@@ -126,6 +149,9 @@ interface DocumentListViewProps {
   fontSize?: string | number;
   /** Whether nested containers start expanded (`gridPrefs.listExpandNested`). */
   expandNested: boolean;
+  /** The grid's last "expand/collapse all" press — see {@link ExpandAllSignal}.
+   *  `null` on a surface that offers no such control. */
+  expandAll?: ExpandAllSignal | null;
   showTypes: boolean;
   lineNumbers: boolean;
   /** Absent when the relation isn't writable (no PK, read-only result). */
@@ -226,6 +252,8 @@ interface DocFieldLabels {
   deleteField: string;
   collapse: string;
   expand: string;
+  expandAll: string;
+  collapseAll: string;
   expandEditor: string;
   opaqueType: string;
   changeType: string;
@@ -239,6 +267,7 @@ export function DocumentListView({
   zebraStripes,
   fontSize,
   expandNested,
+  expandAll,
   showTypes,
   lineNumbers,
   onFieldSave,
@@ -275,6 +304,8 @@ export function DocumentListView({
       deleteField: t("dataGrid.list.deleteField"),
       collapse: t("dataGrid.list.collapse"),
       expand: t("dataGrid.list.expand"),
+      expandAll: t("dataGrid.list.expandAll"),
+      collapseAll: t("dataGrid.list.collapseAll"),
       expandEditor: t("dataGrid.expandEditor"),
       opaqueType: t("dataGrid.list.opaqueType"),
       changeType: t("dataGrid.list.changeType"),
@@ -404,6 +435,7 @@ export function DocumentListView({
                 striped={zebraStripes && i % 2 === 1}
                 fontSize={fontSize}
                 expandNested={expandNested}
+                expandAll={expandAll ?? null}
                 showTypes={showTypes}
                 lineNumbers={lineNumbers}
                 // Capabilities as booleans, not the functions themselves — see
@@ -622,6 +654,9 @@ interface DocumentCardProps {
   striped: boolean;
   fontSize?: string | number;
   expandNested: boolean;
+  /** Stable object identity (it lives in `DataGrid` state), so it only breaks
+   *  this card's `memo()` when the gesture actually fires. */
+  expandAll: ExpandAllSignal | null;
   showTypes: boolean;
   lineNumbers: boolean;
   /** Derived from which callbacks the caller supplied (see
@@ -699,6 +734,7 @@ const DocumentCard = memo(function DocumentCard({
   striped,
   fontSize,
   expandNested,
+  expandAll,
   showTypes,
   lineNumbers,
   documentMode,
@@ -717,6 +753,24 @@ const DocumentCard = memo(function DocumentCard({
    * state fighting it.
    */
   const [toggled, setToggled] = useState<ReadonlySet<string>>(() => new Set());
+  /**
+   * What the diff above is a diff *from*, when this card has been expanded or
+   * collapsed wholesale — `null` means "whatever the preference says".
+   *
+   * "Expand every object in this document" cannot be expressed as a set of
+   * toggles: a nested container that is currently folded contributes no line,
+   * so its path is not in `fields` and there is nothing to toggle. Flipping
+   * the base the folds are measured against expands the whole tree in one
+   * move, at any depth, and costs nothing per level.
+   *
+   * Initialised from the grid-wide gesture so a card that scrolls into the
+   * window *after* "expand all" was pressed mounts already expanded — the
+   * virtualizer unmounts off-screen cards, so a freshly mounted one has no
+   * history of its own to go on.
+   */
+  const [baseExpanded, setBaseExpanded] = useState<boolean | null>(
+    expandAll?.expanded ?? null,
+  );
   const [edit, setEdit] = useState<EditState | null>(null);
   /**
    * Path key of the field whose type picker is open. The picker is mounted
@@ -740,9 +794,34 @@ const DocumentCard = memo(function DocumentCard({
   const rowValuesRef = useRef(rowValues);
   rowValuesRef.current = rowValues;
 
+  /**
+   * Apply the grid-wide gesture, and let the preference win over a stale
+   * per-card override when it changes at runtime.
+   *
+   * Both are React's documented "adjust state when a prop changes" pattern —
+   * set during render, not in an effect, so the card never paints one frame
+   * with the old folds before correcting itself. `toggled` is deliberately
+   * cleared with the gesture (it is a diff from a base that just moved, so
+   * keeping it would silently invert every hand-made fold) and deliberately
+   * kept when only the preference changes, which is the diff semantics the
+   * preference has always had.
+   */
+  const lastEpoch = useRef(expandAll?.epoch ?? 0);
+  if (expandAll && expandAll.epoch !== lastEpoch.current) {
+    lastEpoch.current = expandAll.epoch;
+    setBaseExpanded(expandAll.expanded);
+    setToggled(new Set());
+  }
+  const lastPref = useRef(expandNested);
+  if (lastPref.current !== expandNested) {
+    lastPref.current = expandNested;
+    setBaseExpanded(null);
+  }
+
+  const base = baseExpanded ?? expandNested;
   const isExpanded = useCallback(
-    (key: string) => (toggled.has(key) ? !expandNested : expandNested),
-    [toggled, expandNested],
+    (key: string) => (toggled.has(key) ? !base : base),
+    [toggled, base],
   );
 
   const fields = useMemo(
@@ -758,6 +837,25 @@ const DocumentCard = memo(function DocumentCard({
     () => new Map(columns.map((c) => [c.name, c.data_type])),
     [columns],
   );
+
+  /**
+   * Whether every container *on screen* is open, which is what decides
+   * whether the card's header button reads "expand all" or "collapse all".
+   *
+   * Measured against the visible lines rather than the whole document on
+   * purpose: a container hidden inside a folded ancestor is not something the
+   * user can see the state of, so letting it decide the button's direction
+   * would make the control disagree with what is in front of them.
+   */
+  const hasContainers = fields.some((f) => f.container !== null);
+  const allExpanded =
+    hasContainers && fields.every((f) => f.container === null || f.expanded);
+
+  /** Open (or fold) every nested object in this document, at any depth. */
+  function toggleAll() {
+    setBaseExpanded(!allExpanded);
+    setToggled(new Set());
+  }
 
   function toggleFold(key: string) {
     setToggled((prev) => {
@@ -991,6 +1089,20 @@ const DocumentCard = memo(function DocumentCard({
         <span className="shrink-0 tabular-nums text-3xs text-muted-foreground">
           {index + 1}
         </span>
+        {/* Unlike the card's other actions this one is always visible, not
+            revealed on hover: it is the answer to "what is actually in this
+            document", which is the question you have before you know whether
+            the card is worth pointing at. Hidden when nothing nests — a
+            control that would do nothing is worse than no control. */}
+        {hasContainers && (
+          <IconButton
+            size="xs"
+            icon={allExpanded ? ChevronsDownUp : ChevronsUpDown}
+            label={allExpanded ? labels.collapseAll : labels.expandAll}
+            className="-ml-1 shrink-0"
+            onClick={toggleAll}
+          />
+        )}
         <span className="text-3xs uppercase text-muted-foreground/50">
           {t("dataGrid.fieldsCount", { count: columns.length })}
         </span>

@@ -21,7 +21,7 @@
  * again, i.e. that the memo did NOT bail out.
  */
 import { useRef } from "react";
-import { render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import i18n from "i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -123,6 +123,10 @@ beforeEach(() => {
 
 afterEach(() => {
   i18n.t = originalT;
+  // `globals` is off in `vitest.config.ts`, so testing-library never registers
+  // its automatic cleanup — without this the previous test's cards stay in the
+  // document and every `screen` query below finds two of everything.
+  cleanup();
 });
 
 function fieldsCountCalls() {
@@ -167,5 +171,106 @@ describe("the list windows its cards", () => {
     expect(container.querySelectorAll("[data-index]").length).toBeGreaterThan(
       0,
     );
+  });
+});
+
+/**
+ * "Show me everything in this document", the gesture Compass has and this view
+ * did not: a document whose interesting values are two levels down had to be
+ * unfolded one chevron at a time, per level, per document.
+ *
+ * What makes it worth a test is that it cannot be expressed as a set of
+ * toggles. A container hidden inside a folded ancestor contributes no line, so
+ * its path is not in `fields` and there is nothing to toggle — which is why
+ * `DocumentCard` flips the *base* its folds are a diff from instead. These
+ * tests assert exactly that: the grandchild, invisible and unaddressable when
+ * the press happens, comes out expanded too.
+ */
+const nestedColumns: ColumnMeta[] = [
+  { name: "_id", data_type: "objectId" },
+  { name: "processInfo", data_type: "object" },
+];
+const nestedRows: CellValue[][] = [
+  ["42517f60", { "61": { state: "running", retries: 2 } }],
+];
+
+function NestedHarness({
+  expandAll,
+}: {
+  expandAll?: { epoch: number; expanded: boolean } | null;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  return (
+    <div ref={scrollRef} style={{ overflow: "auto", height: 400 }}>
+      <DocumentListView
+        scrollRef={scrollRef}
+        columns={nestedColumns}
+        rows={nestedRows}
+        nullDisplay="NULL"
+        zebraStripes={false}
+        expandNested={false}
+        expandAll={expandAll}
+        showTypes={false}
+        lineNumbers={false}
+        copyToClipboard={() => {}}
+        emptyLabel="empty"
+      />
+    </div>
+  );
+}
+
+describe("expand every nested object", () => {
+  it("unfolds the whole tree, including containers that had no line to toggle", () => {
+    render(<NestedHarness />);
+    // Collapsed: the nested `61` object is not drawn at all, so neither is the
+    // `state` leaf underneath it.
+    expect(screen.queryByText("61")).toBeNull();
+    expect(screen.queryByText("state")).toBeNull();
+
+    fireEvent.click(
+      screen.getByLabelText(
+        "Expand every nested object in this document",
+      ),
+    );
+    expect(screen.getByText("61")).toBeTruthy();
+    expect(screen.getByText("state")).toBeTruthy();
+  });
+
+  it("flips to collapse-all once everything is open, and folds back", () => {
+    render(<NestedHarness />);
+    fireEvent.click(
+      screen.getByLabelText("Expand every nested object in this document"),
+    );
+    fireEvent.click(
+      screen.getByLabelText("Collapse every nested object in this document"),
+    );
+    expect(screen.queryByText("61")).toBeNull();
+    expect(screen.queryByText("processInfo")).toBeTruthy();
+  });
+
+  it("applies the grid-wide gesture, and re-applies it on a second press", () => {
+    // The epoch is the whole point: the second press carries the same
+    // `expanded: true` a boolean prop would have, and still has to reach a
+    // card the user folded by hand in between.
+    const { rerender } = render(<NestedHarness expandAll={null} />);
+    expect(screen.queryByText("state")).toBeNull();
+
+    rerender(<NestedHarness expandAll={{ epoch: 1, expanded: true }} />);
+    expect(screen.getByText("state")).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByLabelText("Collapse every nested object in this document"),
+    );
+    expect(screen.queryByText("state")).toBeNull();
+
+    rerender(<NestedHarness expandAll={{ epoch: 2, expanded: true }} />);
+    expect(screen.getByText("state")).toBeTruthy();
+  });
+
+  it("offers no control on a document with nothing to unfold", () => {
+    render(<Harness onExpandField={() => {}} />);
+    expect(
+      screen.queryByLabelText("Expand every nested object in this document"),
+    ).toBeNull();
   });
 });
