@@ -148,14 +148,9 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     const held: string[] = [];
     let touchedProfiles = false;
     let touchedEnvironments = false;
-    // Counted, not just flagged: the whole point of telling the user is the
-    // number. "Some of your connections changed" is not actionable.
-    let changedProfiles = 0;
-    let changedEnvironments = 0;
-    // Local password overrides this sweep expired. Counted separately from
-    // `changedProfiles` because it is not the same news: a connection whose
-    // metadata was refreshed still works, and one whose credential was just
-    // swapped back to the published one may not.
+    // Local password overrides this sweep expired — the only sync outcome
+    // still worth a notification, since a credential swapping underneath
+    // somebody without a word can break their next connection.
     let supersededSecrets = 0;
 
     for (const origin of origins) {
@@ -163,12 +158,9 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
         const report = await api.syncOrigin(origin.id);
         if (report.added.length > 0 || report.updated.length > 0) {
           touchedProfiles = true;
-          changedProfiles += report.added.length + report.updated.length;
         }
         if (report.environmentsAdded.length > 0 || report.environmentsUpdated.length > 0) {
           touchedEnvironments = true;
-          changedEnvironments +=
-            report.environmentsAdded.length + report.environmentsUpdated.length;
         }
         held.push(...report.deferred);
         if (report.superseded && report.superseded.length > 0) {
@@ -238,22 +230,6 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
     if (touchedProfiles) await useConnections.getState().refreshProfiles();
     if (touchedEnvironments) await useEnvironments.getState().load();
 
-    // This sweep runs on a poll and at startup, so a shared origin can rewrite
-    // the connection tree — or add an environment — with nobody having asked
-    // for anything. Silence there is how a colleague's edit shows up as "my
-    // connections moved on their own". Only when something actually changed:
-    // the poll is frequent and a "nothing happened" card every few minutes is
-    // exactly the noise that makes people stop reading notifications.
-    if (changedProfiles > 0 || changedEnvironments > 0) {
-      notify.info(
-        changedEnvironments > 0
-          ? i18n.t("origins.syncedWithEnvironments", {
-              count: changedProfiles,
-              environments: changedEnvironments,
-            })
-          : i18n.t("origins.synced", { count: changedProfiles }),
-      );
-    }
     // Its own notification, and a warning rather than an info: the password
     // this machine was deliberately using has just been replaced by the
     // published one. That is the correct outcome — the publisher republished,

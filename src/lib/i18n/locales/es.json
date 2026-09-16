@@ -2801,8 +2801,6 @@
     "saveFailed": "No se pudo guardar el origen",
     "createDocumentFailed": "No se pudo crear el documento de origen",
     "addFailed": "No se pudo registrar el origen",
-    "synced": "{{count}} conexiones actualizadas desde un origen compartido",
-    "syncedWithEnvironments": "{{count}} conexiones y {{environments}} entornos actualizados desde un origen compartido",
     "secretOverridesSuperseded": "Tu contraseña propia de {{count}} conexión(es) compartida(s) se ha sustituido por la publicada"
   },
   "originEditor": {

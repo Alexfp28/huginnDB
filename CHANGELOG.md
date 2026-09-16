@@ -106,6 +106,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   copy-paste was redundant noise a user had to read past on each paste. Raised
   by David.
 
+- **A shared origin's background sync no longer toasts "N connection(s)
+  updated from a shared origin" every time it pulls a change.** The poll runs
+  every few minutes and at startup, so on a machine that follows an
+  actively-edited shared file the toast fired constantly for edits nobody on
+  this machine made — noise indistinguishable from something worth reading.
+  The vanished/superseded-secret notices this sweep also raises are untouched:
+  those name something the user has to act on (adopt, retire, or notice a
+  password changed underneath them), which this toast never did.
+
 ### Fixed
 
 - **A MongoDB database node offered "New table".** `DatabaseNodeMenu` — the

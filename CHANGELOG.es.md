@@ -116,6 +116,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   prefijo en cada copia-pega era ruido redundante que había que leer y
   descartar en cada pegado. Detectado por David.
 
+- **La sincronización en segundo plano de un origen compartido ya no muestra
+  el aviso "N conexiones actualizadas desde un origen compartido" cada vez que
+  recoge un cambio.** El sondeo corre cada pocos minutos y al arrancar, así
+  que en una máquina que sigue un fichero compartido editado activamente el
+  aviso saltaba constantemente por cambios que nadie hizo desde esta máquina —
+  ruido indistinguible de algo que mereciera la pena leer. Los avisos de
+  conexiones desaparecidas o de contraseña sustituida que esta misma
+  sincronización también lanza no se han tocado: esos sí nombran algo que el
+  usuario tiene que decidir (conservar, borrar, o notar que le cambiaron una
+  contraseña sin avisar).
+
 ### Corregido
 
 - **El nodo de una base de datos MongoDB ofrecía "Nueva tabla".**

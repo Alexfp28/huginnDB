@@ -2801,8 +2801,6 @@
     "saveFailed": "Could not save the origin",
     "createDocumentFailed": "Could not create the origin document",
     "addFailed": "Could not register the origin",
-    "synced": "{{count}} connection(s) updated from a shared origin",
-    "syncedWithEnvironments": "{{count}} connection(s) and {{environments}} environment(s) updated from a shared origin",
     "secretOverridesSuperseded": "Your own password for {{count}} shared connection(s) was replaced by the published one"
   },
   "originEditor": {
