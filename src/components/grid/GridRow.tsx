@@ -144,7 +144,6 @@ interface GridRowProps {
   columnInfoByName: Map<string, ColumnInfo>;
   driver?: Driver;
   tableName?: string;
-  tableSchema?: string;
   pkColumnNames?: string[];
   editable?: boolean;
   onCellSave?: (
@@ -224,7 +223,6 @@ export const GridRow = memo(function GridRow({
   columnInfoByName,
   driver,
   tableName,
-  tableSchema,
   pkColumnNames,
   editable,
   onCellSave,
@@ -690,7 +688,6 @@ export const GridRow = memo(function GridRow({
                               resultColumns,
                               driver,
                               tableName,
-                              tableSchema,
                             ),
                           )
                         }
@@ -705,7 +702,6 @@ export const GridRow = memo(function GridRow({
                               resultColumns,
                               driver,
                               tableName,
-                              tableSchema,
                               pkColumnNames,
                             ),
                           )

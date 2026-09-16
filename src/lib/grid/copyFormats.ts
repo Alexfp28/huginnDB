@@ -14,6 +14,11 @@
  * uses backticks (`` ` ``), Postgres / SQLite use double quotes (`"`).
  * Reusing this distinction keeps the snippets paste-ready against the
  * source database without manual edits.
+ *
+ * Table references are deliberately unqualified — no schema/database
+ * prefix. The query editor's connection dropdown already says which
+ * database a pasted snippet runs against, so a prefix was redundant noise
+ * on every copy-paste (see `qualifiedTable`).
  */
 
 import type { CellValue, ColumnMeta, Driver } from "@/types";
@@ -110,9 +115,8 @@ export function toSqlInsert(
   columns: ColumnMeta[],
   driver: Driver | undefined,
   tableName: string | undefined,
-  schema: string | undefined,
 ): string {
-  const tbl = qualifiedTable(driver, schema, tableName);
+  const tbl = qualifiedTable(driver, tableName);
   const cols = columns.map((c) => quoteIdent(driver, c.name)).join(", ");
   const vals = rowValues.map((v) => sqlLiteral(v, driver)).join(", ");
   return `INSERT INTO ${tbl} (${cols}) VALUES (${vals});`;
@@ -135,10 +139,9 @@ export function toSqlUpdate(
   columns: ColumnMeta[],
   driver: Driver | undefined,
   tableName: string | undefined,
-  schema: string | undefined,
   pkColumnNames: string[] | undefined,
 ): string {
-  const tbl = qualifiedTable(driver, schema, tableName);
+  const tbl = qualifiedTable(driver, tableName);
   const pkSet = new Set(pkColumnNames ?? []);
   const pkIndices = (pkColumnNames ?? [])
     .map((name) => columns.findIndex((c) => c.name === name))
@@ -167,19 +170,18 @@ export function toSqlUpdate(
 }
 
 /**
- * Build the qualified table reference for the snippet: `"schema"."table"`
- * when both are known, `"table"` when only the table is, `<table>` as a
- * paste-ready placeholder otherwise.
+ * Build the table reference for the snippet: the quoted table name, or
+ * `<table>` as a paste-ready placeholder when it isn't known.
+ *
+ * Deliberately unqualified — no schema/database prefix. The query editor's
+ * own connection dropdown already says which database a pasted snippet runs
+ * against, so a prefix here was redundant noise on every copy-paste.
  */
 function qualifiedTable(
   driver: Driver | undefined,
-  schema: string | undefined,
   table: string | undefined,
 ): string {
   if (!table) return "<table>";
-  if (schema && schema.length > 0) {
-    return `${quoteIdent(driver, schema)}.${quoteIdent(driver, table)}`;
-  }
   return quoteIdent(driver, table);
 }
 
@@ -197,6 +199,9 @@ function qualifiedTable(
  * Note this is a clipboard snippet, not DDL: nothing here is ever executed by
  * the app, which is why assembling SQL text in the frontend is fine here and
  * not in the structure editor (whose statements are built in Rust).
+ *
+ * Deliberately unqualified, same as `toSqlInsert`/`toSqlUpdate` — see
+ * `qualifiedTable`'s comment.
  *
  * **`limit` is what the schema tree's "Query this table…" passes**, and it is
  * the one caller whose text is going to be *run* rather than pasted — an
@@ -218,14 +223,13 @@ export const QUERY_HERE_LIMIT = 100;
 
 export function selectSnippet(
   driver: Driver | undefined,
-  schema: string | undefined,
   table: string,
   limit?: number,
 ): string {
   if (driver === "mongodb") {
     return `db.${table}.find({}).limit(${limit ?? 100})`;
   }
-  const qt = qualifiedTable(driver, schema, table);
+  const qt = qualifiedTable(driver, table);
   if (limit === undefined) return `SELECT * FROM ${qt};`;
   // T-SQL has no `LIMIT`. `TOP n` is the portable spelling across every
   // SQL Server version this app supports (2012+); `OFFSET … FETCH NEXT`, which
@@ -252,11 +256,10 @@ export function toBulk(
     columns: ColumnMeta[];
     driver: Driver | undefined;
     tableName?: string;
-    tableSchema?: string;
     pkColumnNames?: string[];
   },
 ): string {
-  const { columns, driver, tableName, tableSchema, pkColumnNames } = ctx;
+  const { columns, driver, tableName, pkColumnNames } = ctx;
   if (fmt === "json") {
     const arr = rows.map((r) => {
       const obj: Record<string, unknown> = {};
@@ -268,13 +271,9 @@ export function toBulk(
     return JSON.stringify(arr, null, 2);
   }
   if (fmt === "insert") {
-    return rows
-      .map((r) => toSqlInsert(r, columns, driver, tableName, tableSchema))
-      .join("\n");
+    return rows.map((r) => toSqlInsert(r, columns, driver, tableName)).join("\n");
   }
   return rows
-    .map((r) =>
-      toSqlUpdate(r, columns, driver, tableName, tableSchema, pkColumnNames),
-    )
+    .map((r) => toSqlUpdate(r, columns, driver, tableName, pkColumnNames))
     .join("\n");
 }

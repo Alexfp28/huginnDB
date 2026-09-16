@@ -29,40 +29,25 @@ describe("quoteIdent", () => {
 });
 
 describe("selectSnippet", () => {
-  it("qualifies with the schema when there is one", () => {
-    expect(selectSnippet("postgres", "public", "users")).toBe(
-      'SELECT * FROM "public"."users";',
+  // Deliberately unqualified — no schema/database prefix. The query editor's
+  // connection dropdown already says which database a pasted snippet runs
+  // against, so a prefix here was redundant noise on every copy-paste.
+  it("stays unqualified across drivers", () => {
+    expect(selectSnippet("postgres", "users")).toBe('SELECT * FROM "users";');
+    expect(selectSnippet("mysql", "orders")).toBe(
+      "SELECT * FROM `orders`;",
     );
-    expect(selectSnippet("mysql", "shop", "orders")).toBe(
-      "SELECT * FROM `shop`.`orders`;",
-    );
-    expect(selectSnippet("sqlserver", "dbo", "Users")).toBe(
-      "SELECT * FROM [dbo].[Users];",
+    expect(selectSnippet("sqlserver", "Users")).toBe(
+      "SELECT * FROM [Users];",
     );
   });
 
-  it("omits an absent or empty schema", () => {
-    expect(selectSnippet("sqlite", undefined, "users")).toBe(
-      'SELECT * FROM "users";',
-    );
-    expect(selectSnippet("sqlite", "", "users")).toBe('SELECT * FROM "users";');
-  });
-
-  // This is the bug the snippet was moved here to fix: the schema tree used to
-  // build the string with its own quoting, which did not escape.
-  it("escapes embedded delimiters in both parts", () => {
-    expect(selectSnippet("postgres", 'we"ird', 'a"b')).toBe(
-      'SELECT * FROM "we""ird"."a""b";',
-    );
+  it("escapes an embedded delimiter in the table name", () => {
+    expect(selectSnippet("postgres", 'a"b')).toBe('SELECT * FROM "a""b";');
   });
 
   it("emits a mongosh find() for MongoDB, which has no SQL", () => {
-    expect(selectSnippet("mongodb", undefined, "events")).toBe(
-      "db.events.find({}).limit(100)",
-    );
-    // The database name is already bound by the connection, so a Mongo snippet
-    // never qualifies — passing one must not change the output.
-    expect(selectSnippet("mongodb", "shop", "events")).toBe(
+    expect(selectSnippet("mongodb", "events")).toBe(
       "db.events.find({}).limit(100)",
     );
   });
@@ -71,13 +56,13 @@ describe("selectSnippet", () => {
   // opposed to what "Copy SELECT statement" puts on the clipboard.
   describe("with a limit", () => {
     it("appends LIMIT on the three drivers that have it", () => {
-      expect(selectSnippet("postgres", "public", "users", 100)).toBe(
-        'SELECT * FROM "public"."users" LIMIT 100;',
+      expect(selectSnippet("postgres", "users", 100)).toBe(
+        'SELECT * FROM "users" LIMIT 100;',
       );
-      expect(selectSnippet("mysql", "shop", "orders", 100)).toBe(
-        "SELECT * FROM `shop`.`orders` LIMIT 100;",
+      expect(selectSnippet("mysql", "orders", 100)).toBe(
+        "SELECT * FROM `orders` LIMIT 100;",
       );
-      expect(selectSnippet("sqlite", undefined, "users", 100)).toBe(
+      expect(selectSnippet("sqlite", "users", 100)).toBe(
         'SELECT * FROM "users" LIMIT 100;',
       );
     });
@@ -85,26 +70,24 @@ describe("selectSnippet", () => {
     // T-SQL has no LIMIT, and `OFFSET … FETCH NEXT` would need an ORDER BY
     // there is none to supply.
     it("uses TOP n on SQL Server", () => {
-      expect(selectSnippet("sqlserver", "dbo", "Users", 100)).toBe(
-        "SELECT TOP 100 * FROM [dbo].[Users];",
+      expect(selectSnippet("sqlserver", "Users", 100)).toBe(
+        "SELECT TOP 100 * FROM [Users];",
       );
     });
 
     it("threads the limit into MongoDB's own find().limit()", () => {
-      expect(selectSnippet("mongodb", undefined, "events", 50)).toBe(
+      expect(selectSnippet("mongodb", "events", 50)).toBe(
         "db.events.find({}).limit(50)",
       );
     });
 
     it("leaves the unlimited form exactly as it was", () => {
-      expect(selectSnippet("postgres", "public", "users")).toBe(
-        'SELECT * FROM "public"."users";',
-      );
+      expect(selectSnippet("postgres", "users")).toBe('SELECT * FROM "users";');
     });
 
     it("still escapes embedded delimiters", () => {
-      expect(selectSnippet("postgres", 'we"ird', 'a"b', 10)).toBe(
-        'SELECT * FROM "we""ird"."a""b" LIMIT 10;',
+      expect(selectSnippet("postgres", 'a"b', 10)).toBe(
+        'SELECT * FROM "a""b" LIMIT 10;',
       );
     });
   });

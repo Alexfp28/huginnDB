@@ -1095,7 +1095,6 @@ export function DataGrid({
       columns: result.columns,
       driver,
       tableName,
-      tableSchema,
       pkColumnNames,
     });
   }
@@ -1456,7 +1455,6 @@ export function DataGrid({
                               columnInfoByName={columnInfoByName}
                               driver={driver}
                               tableName={tableName}
-                              tableSchema={tableSchema}
                               pkColumnNames={pkColumnNames}
                               editable={editable}
                               onCellSave={onCellSave}

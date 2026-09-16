@@ -103,6 +103,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cambia: sigue copiando la sentencia pelada, porque un fragmento que pegas y
   retocas no quiere que le adivinen una cota.
 
+### Cambiado
+
+- **"Copiar fila como ▸ SQL INSERT/UPDATE" del grid y "Copiar sentencia
+  SELECT" / "Consultar esta tabla…" del árbol de esquema ya no cualifican la
+  referencia a la tabla con su schema o base de datos.** Antes emitían
+  `"schema"."tabla"` (o `` `bd`.`tabla` `` en MySQL); ahora es solo `"tabla"`.
+  Esa cualificación tenía sentido antes de que el editor de queries tuviera su
+  propio desplegable de conexión/base de datos — un snippet pegado necesitaba
+  decir a dónde pertenecía, porque nada más lo decía. Ahora el editor ya
+  muestra y controla contra qué base de datos corre la query, así que el
+  prefijo en cada copia-pega era ruido redundante que había que leer y
+  descartar en cada pegado. Detectado por David.
+
 ### Corregido
 
 - **Con dos conexiones vivas, el botón "+" abría la pestaña de query contra la

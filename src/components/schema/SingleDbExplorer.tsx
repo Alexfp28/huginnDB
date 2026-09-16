@@ -296,7 +296,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
         // which re-points it at whichever database the *focused tab* happens to
         // be on. "Query this table" means this table's database.
         openQueryTab(connectionId, {
-          sql: selectSnippet(driver, tbl.schema, tbl.name, QUERY_HERE_LIMIT),
+          sql: selectSnippet(driver, tbl.name, QUERY_HERE_LIMIT),
           resolveTarget: false,
         });
       },

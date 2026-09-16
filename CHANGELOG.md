@@ -93,6 +93,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   "Copy SELECT statement" is unchanged — it still copies the bare statement,
   because a snippet you paste and tweak wants no bound guessed for it.
 
+### Changed
+
+- **The grid's "Copy row as ▸ SQL INSERT/UPDATE" and the schema tree's
+  "Copy SELECT statement" / "Query this table…" no longer qualify the table
+  reference with its schema or database.** They used to emit
+  `"schema"."table"` (or `` `db`.`table` `` on MySQL); now it's just
+  `"table"`. That qualification made sense before the query editor had a
+  connection/database dropdown of its own — a pasted snippet needed to say
+  where it belonged, because nothing else did. Now the editor already shows
+  and controls which database a query runs against, so the prefix on every
+  copy-paste was redundant noise a user had to read past on each paste. Raised
+  by David.
+
 ### Fixed
 
 - **With two connections live, the "+" button opened a query tab against the

@@ -171,7 +171,7 @@ export const TableRow = memo(function TableRow({
     void copyToClipboard(t.name);
   };
   const copySelect = () => {
-    void copyToClipboard(selectSnippet(actions.driver, t.schema, t.name));
+    void copyToClipboard(selectSnippet(actions.driver, t.name));
   };
 
   const isMongo = actions.driver === "mongodb";
