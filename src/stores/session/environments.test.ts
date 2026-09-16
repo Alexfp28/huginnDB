@@ -31,6 +31,16 @@ vi.mock("@/lib/tauri", () => ({
 
 vi.mock("@/lib/window", () => ({ isMainWindow: () => true }));
 
+// `switchTo`'s outgoing teardown goes through this shared helper rather than
+// calling `useConnections.disconnect` itself — see `connectFlow.ts`. Mocked
+// at this boundary so a test controls exactly when each outgoing connection
+// "finishes closing" without also exercising the real schema/tab cleanup it
+// does alongside the disconnect.
+const disconnectAndClean = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/connection/connectFlow", () => ({
+  disconnectAndClean: (...args: unknown[]) => disconnectAndClean(...args),
+}));
+
 // The store reports its own failures now (`fail`). Raising a real notification
 // would drag the whole preferences store in for a flag nothing here asserts —
 // `notify.test.tsx` owns that behaviour.
@@ -79,6 +89,7 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
     getLaunchState.mockReset();
     saveLaunchState.mockClear();
     setActiveEnvironment.mockClear();
+    disconnectAndClean.mockReset().mockResolvedValue(undefined);
 
     useEnvironments.setState({
       environments: [
@@ -115,12 +126,14 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
     });
   });
 
-  it("keeps the outgoing environment's filter applied while its pools are still closing", async () => {
+  it("applies the incoming environment's filter before its pools finish closing", async () => {
     let resolveDisconnect!: () => void;
-    const disconnecting = new Promise<void>((resolve) => {
-      resolveDisconnect = resolve;
-    });
-    useConnections.setState({ disconnect: vi.fn(() => disconnecting) });
+    disconnectAndClean.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDisconnect = resolve;
+        }),
+    );
     getLaunchState.mockResolvedValue({
       activeConnections: ["incoming-conn"],
       selectedConnectionId: null,
@@ -133,11 +146,14 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
     const switching = useEnvironments.getState().switchTo("env-b");
     await flushMicrotasks();
 
-    // The teardown is still stuck on the slow disconnect — the outgoing
-    // environment's own filter must still be what's applied, never "show
-    // everything" (`null`), which is what a full flush of every saved
-    // profile from every environment looks like in `ConnectionsTree`.
-    expect(useUi.getState().visibleConnections).toEqual(["outgoing-conn"]);
+    // The outgoing teardown is still stuck on the slow disconnect, but the
+    // hand-over already happened — that's the whole point of moving it ahead
+    // of the teardown instead of after it: the incoming environment's own
+    // filter is what's applied, not "show everything" (`null`, a full flush
+    // of every saved profile from every environment in `ConnectionsTree`) and
+    // not the outgoing one either.
+    expect(useEnvironments.getState().activeId).toBe("env-b");
+    expect(useUi.getState().visibleConnections).toEqual(["incoming-conn"]);
 
     resolveDisconnect();
     await switching;
@@ -145,10 +161,50 @@ describe("useEnvironments.switchTo — outgoing view filter", () => {
     expect(useUi.getState().visibleConnections).toEqual(["incoming-conn"]);
   });
 
-  it("clears the filter if restoreSession can't read the incoming environment's launch state", async () => {
+  it("closes every outgoing connection concurrently, not one at a time", async () => {
     useConnections.setState({
-      disconnect: vi.fn().mockResolvedValue(undefined),
+      active: new Set(["outgoing-conn-1", "outgoing-conn-2"]),
     });
+    const resolvers: Record<string, () => void> = {};
+    disconnectAndClean.mockImplementation(
+      (id: string) =>
+        new Promise<void>((resolve) => {
+          resolvers[id] = resolve;
+        }),
+    );
+    getLaunchState.mockResolvedValue({
+      activeConnections: [],
+      selectedConnectionId: null,
+      activeTabId: null,
+      collapsedConnections: [],
+      visibleConnections: [],
+      databaseVisibility: {},
+    });
+
+    const switching = useEnvironments.getState().switchTo("env-b");
+    await flushMicrotasks();
+
+    // Both closes must already be in flight — a sequential loop would only
+    // have called the first one by now, leaving the switch stuck behind
+    // whichever connection happens to be slowest to close. `persistLaunch:
+    // false` because step 3 of `switchTo` already wrote the definitive launch
+    // state before either of these started.
+    expect(disconnectAndClean).toHaveBeenCalledWith("outgoing-conn-1", {
+      persistLaunch: false,
+    });
+    expect(disconnectAndClean).toHaveBeenCalledWith("outgoing-conn-2", {
+      persistLaunch: false,
+    });
+    expect(disconnectAndClean).toHaveBeenCalledTimes(2);
+
+    resolvers["outgoing-conn-1"]();
+    resolvers["outgoing-conn-2"]();
+    await switching;
+
+    expect(useUi.getState().visibleConnections).toEqual([]);
+  });
+
+  it("clears the filter if the incoming environment's launch state can't be read", async () => {
     getLaunchState.mockRejectedValue(new Error("boom"));
 
     await useEnvironments.getState().switchTo("env-b");
@@ -196,6 +252,7 @@ describe("useEnvironments.createAndEnter — the guard flag spans the seeding pa
     getWorkspaceLayout.mockClear().mockResolvedValue(null);
     saveWorkspaceLayout.mockReset().mockResolvedValue(undefined);
     saveEnvironment.mockReset().mockResolvedValue(ENV_NEW);
+    disconnectAndClean.mockReset().mockResolvedValue(undefined);
     // `create` refreshes the list from the backend, which has NOT switched the
     // active pointer yet — that is `switchTo`'s job a line later.
     listEnvironments.mockReset().mockResolvedValue({
@@ -212,7 +269,6 @@ describe("useEnvironments.createAndEnter — the guard flag spans the seeding pa
     useConnections.setState({
       profiles: [],
       active: new Set(["outgoing-conn"]),
-      disconnect: vi.fn().mockResolvedValue(undefined),
     });
     useUi.setState({
       selectedConnectionId: "outgoing-conn",

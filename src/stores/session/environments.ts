@@ -46,7 +46,8 @@ import {
   suspendSaves,
 } from "@/stores/session/persistedTabs";
 import { isMainWindow } from "@/lib/window";
-import type { Environment } from "@/types";
+import { disconnectAndClean } from "@/lib/connection/connectFlow";
+import type { Environment, LaunchState } from "@/types";
 
 /**
  * The environment list in the user's own order.
@@ -120,29 +121,34 @@ interface EnvironmentsState {
   activeId: string | null;
   /**
    * The environment the session is currently being rebuilt *for*, or `null`
-   * when idle. Guards against re-entry, lets the switcher disable itself, and
-   * is what `EnvironmentSwitchGuard` reads to seal the schema tree and the tab
-   * area off while the swap is in flight.
+   * when idle. Guards against re-entry and lets `EnvironmentRail`,
+   * `WorkspacePicker` and `EnvironmentSwitcher` disable themselves and show a
+   * spinner on the destination while a switch — including its background
+   * teardown/reconnect — is in flight, so a second switch can never start
+   * before the first one has fully settled.
    *
    * Set by both ways into an environment, not just `switchTo`: `createAndEnter`
    * holds it across its seeding pass too, because the `restoreSession()` it
    * runs at the end (after the cheap `switchTo` into an empty environment) is
    * the one that actually opens the replicated connections. Leaving it clear
-   * there meant the slower of the two paths was the unguarded one.
+   * there meant a second environment switch could start while that seeding
+   * pass was still reconnecting the replicated connections underneath it.
    *
    * NOT held for the launch restore (`App.tsx` → `restoreSession`): that path
-   * has no teardown — no pool is closed, no tab store is emptied under the
-   * user — so the hazard this field describes does not exist there, and
-   * curtaining the tree for the whole of a launch reconnect would trade a real
-   * bug for a worse first impression.
+   * has no outgoing environment to switch away from, so there is no second
+   * switch to guard against and no destination row to spin.
    *
-   * The target, not a boolean, and that is the whole point. `activeId` does not
-   * move until step 5 of `switchTo` — after the outgoing session is flushed and
-   * every one of its pools is torn down, which is the slow part. A `switching`
-   * flag paired with `isActive` therefore parked the spinner on the environment
-   * being *left* for the entire wait, so the one place in the UI that says
-   * "work is happening" pointed at the wrong row. No amount of styling fixes
-   * that: a boolean cannot say where you are going.
+   * The target, not a boolean, and that is the whole point. `activeId` moves
+   * early in `switchTo` — before the outgoing pools are even asked to close,
+   * let alone before the incoming ones finish reconnecting — precisely so the
+   * UI can already show the destination environment while its session is
+   * still being rebuilt in the background. A `switching` flag paired with
+   * `isActive` would flip to "done" the instant `activeId` catches up, well
+   * before the reconnect it is still waiting on has settled. `switchingTo`
+   * stays pointed at the destination for the whole of that background work,
+   * which is what lets the rail/picker/switcher keep saying "still working"
+   * for as long as it actually is. No amount of styling fixes that: a boolean
+   * cannot outlive the `activeId` flip it would be derived from.
    *
    * Read it as a primitive (gotcha #1) and derive `switching` at the call site
    * with `!== null`; a selector returning a fresh object would re-render every
@@ -211,8 +217,31 @@ interface EnvironmentsState {
    * the pane layout, restore focus. Shared by the launch flow in `App.tsx` and
    * by `switchTo`, because "entering an environment" is the same operation in
    * both cases and the ordering below is too easy to get subtly wrong twice.
+   *
+   * Just `applyIncomingEnvironment` followed by `reconnectIncomingEnvironment`
+   * when there is nothing that needs the two kept apart — the launch flow and
+   * `createAndEnter`'s seeding pass both fall in that bucket. `switchTo` is the
+   * one caller that runs them with the outgoing environment's teardown sandwiched
+   * in between, which is the reason the split exists at all — see its comment.
    */
   restoreSession: () => Promise<void>;
+  /**
+   * The fast half of `restoreSession`: theme, view filters, and the persisted
+   * launch state for whichever environment is active — nothing here depends on
+   * a database pool. Returns the launch state so the caller can decide whether
+   * (and when) to run `reconnectIncomingEnvironment`, or `null` when reading it
+   * failed (view filters are already cleared in that case; there is nothing left
+   * to reconnect).
+   */
+  applyIncomingEnvironment: () => Promise<LaunchState | null>;
+  /**
+   * The slow half: reconnect every pool the launch state says was live, restore
+   * the workspace layout, restore focus. Split out of `restoreSession` so
+   * `switchTo` can run it *after* handing the backend over to the incoming
+   * environment and starting the outgoing teardown, instead of blocking the UI
+   * on it — see `switchTo`'s comment for why that ordering is safe.
+   */
+  reconnectIncomingEnvironment: (launch: LaunchState) => Promise<void>;
 }
 
 /**
@@ -286,6 +315,11 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   },
 
   restoreSession: async () => {
+    const launch = await get().applyIncomingEnvironment();
+    if (launch) await get().reconnectIncomingEnvironment(launch);
+  },
+
+  applyIncomingEnvironment: async () => {
     // Entering an environment drops the tree's search, for the same reason
     // `applyLocalView` does: the needle and its scope belong to the
     // environment they were typed in. Done here rather than in `switchTo` so
@@ -304,19 +338,20 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       .getState()
       .setEnvironmentOverride(activeEnv ? effectiveThemeId(activeEnv) : null);
 
-    let launch;
+    let launch: LaunchState;
     try {
       launch = await api.getLaunchState();
     } catch (e) {
       console.error("[environments] failed to read launch state", e);
-      // `switchTo` deliberately leaves the outgoing environment's view
-      // filters in place through its own teardown (see its comment) and
-      // relies on `applyLaunchView` below to replace them. This is the one
-      // path that never reaches it, so it's the one place that has to clear
-      // them itself — otherwise the outgoing filter would stay pointed at an
-      // environment that isn't active anymore.
+      // `switchTo` used to leave the outgoing environment's view filters in
+      // place through its own teardown and rely on `applyLaunchView` below to
+      // replace them; it now flips `activeId` before touching any pool, so
+      // that window barely exists any more, but this catch is still the one
+      // path that never reaches `applyLaunchView` at all — it has to clear
+      // the filters itself, or they'd stay pointed at whatever was applied a
+      // moment ago.
       clearLaunchView();
-      return;
+      return null;
     }
 
     // The three view filters are restored *before* the `reconnectOnLaunch` gate
@@ -326,20 +361,18 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // so leaving them behind the gate meant that with reconnect off, entering
     // an environment showed the *previous* one's filters (or none at all after
     // a restart), which is the leak this whole per-environment scoping exists
-    // to close. This unconditional call is also what lets `switchTo` leave the
-    // outgoing environment's filter in place through its own teardown instead
-    // of clearing it pre-emptively (see its comment): whatever's still applied
-    // when we get here is replaced by the real thing regardless of
-    // `reconnectOnLaunch`, so there's no window left where it could leak into
-    // the environment being entered. Restoring them before the tree renders
-    // the reconnected connections (rather than after) is `applyLaunchView`'s
-    // own invariant, documented there.
+    // to close. Restoring them before the tree renders the reconnected
+    // connections (rather than after) is `applyLaunchView`'s own invariant,
+    // documented there.
     applyLaunchView(launch);
 
     // Everything from here down brings pools back up, and the layout
     // deliberately rides along with the reconnect (see `hydrateWorkspaceLayout`).
-    if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return;
+    if (!usePreferences.getState().prefs.ui.reconnectOnLaunch) return null;
+    return launch;
+  },
 
+  reconnectIncomingEnvironment: async (launch) => {
     if (launch.activeConnections.length > 0) {
       // Only reconnect ids that still have a profile, and skip anything already
       // live (a racing CLI intent, or a connection shared with the environment
@@ -429,7 +462,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     try {
       // 1. Flush the outgoing environment's tabs and pane geometry while the
       //    backend still points at it. Everything below writes to whichever
-      //    environment is active, so this has to happen before step 4.
+      //    environment is active, so this has to happen before step 3.
       // Capture everything the outgoing environment needs remembered *before*
       // anything is torn down. All three are gone by the time we could ask
       // again: the teardown empties `active`, and step 2 deliberately clears
@@ -440,14 +473,14 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       const leavingView = currentLaunchView();
       await flushAllTabState();
 
-      // From here until `restoreSession` finishes rebuilding the incoming
-      // session, block every debounced tab/layout save outright rather than
-      // just cancelling whatever happens to be armed at a couple of check
-      // points. The outgoing environment's real state is already on disk
-      // (the flush above); anything that wakes a `useTabs`/`useSchema`
-      // subscription between here and the resume is teardown/rebuild noise —
-      // most notably `disconnect()` below, whose `markDisconnected` can wake
-      // a *different*, still-subscribed connection's listener mid-loop, well
+      // From here until the background teardown/reconnect below finishes,
+      // block every debounced tab/layout save outright rather than just
+      // cancelling whatever happens to be armed at a couple of check points.
+      // The outgoing environment's real state is already on disk (the flush
+      // above); anything that wakes a `useTabs`/`useSchema` subscription
+      // between here and the resume is teardown/rebuild noise — most notably
+      // `disconnectAndClean()` below, whose `markDisconnected` can wake a
+      // *different*, still-subscribed connection's listener mid-batch, well
       // after any single `cancelPendingSaves()` call. A timer armed there
       // fires ~600ms later against whichever environment is active by
       // then — the incoming one — and overwrites its real tabs with a
@@ -466,44 +499,17 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
       //    first removes the race instead of papering over its result.
       useUi.getState().setSelectedConnectionId(null);
       useTabs.getState().replaceAll([], null);
-      // Deliberately do NOT clear the three view filters here. They stay
-      // pointed at the outgoing environment for the whole teardown below —
-      // that's still a valid filter for what `ConnectionsTree`/`WorkspacePicker`
-      // should show while that same environment's connections close one by
-      // one, so leaving it in place is what keeps the tree looking like "this
-      // environment's list, shrinking" instead of "every saved connection from
-      // every environment" for however long a slow SSH tunnel takes to close.
-      // `restoreSession` (step 6) applies the incoming environment's real
-      // filter unconditionally, before its own `reconnectOnLaunch` gate — see
-      // its comment — so there's no window left where the outgoing filter
-      // could leak into the incoming environment on the happy path. The one
-      // path where `restoreSession` never gets that far (its `getLaunchState`
-      // call failing) clears to empty itself, right there, instead of
-      // pre-emptively here.
 
-      // Emptying the tab store above wakes the per-connection subscriptions,
-      // but `suspendSaves()` already turned `scheduleSave` into a no-op, so
-      // nothing gets armed. (No `cancelPendingSaves()` needed here anymore —
-      // there's nothing to cancel.)
-
-      // 3. Tear down the live pools. `disconnect()` closes each connection's
-      //    tabs and drops its schema cache, which is what leaves a clean slate
-      //    for the incoming environment to hydrate into.
-      for (const connectionId of leaving) {
-        try {
-          await useConnections.getState().disconnect(connectionId);
-        } catch (e) {
-          console.warn(
-            `[environments] disconnect failed for ${connectionId}`,
-            e,
-          );
-        }
-      }
-
-      // 4. Re-record what was live, from the values captured at the top. Each
-      //    `disconnect()` persists the launch state as it goes, so by now the
-      //    outgoing environment thinks nothing was open — coming back to it
-      //    would restore an empty session. This last write wins.
+      // 3. Save the outgoing environment's final launch state right now, from
+      //    the values captured in step 1 — not after the teardown below, like
+      //    this used to. Nothing here depends on a pool actually being closed:
+      //    the values are already known, and `saveLaunchState` only cares that
+      //    the outgoing environment is still the active one on the backend
+      //    when the write lands (`get_launch_state`/`save_launch_state` always
+      //    resolve against whichever environment is active — see
+      //    `src-tauri/src/commands/prefs.rs`). Doing this first, once, is also
+      //    what lets step 5's teardown pass `persistLaunch: false` and skip
+      //    its own per-connection writes entirely, instead of racing this one.
       await api.saveLaunchState({
         activeConnections: leaving,
         selectedConnectionId: leavingSelected,
@@ -511,12 +517,44 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         ...leavingView,
       });
 
-      // 5. Hand the backend over to the incoming environment.
+      // 4. Hand the backend over to the incoming environment and bring up its
+      //    view (theme, filters, tabs) *before* a single outgoing pool has
+      //    been asked to close. This is the change that removes the blocking
+      //    wait: the outgoing environment's tree is not rendered any more by
+      //    the time step 5 below starts touching real network connections, so
+      //    there is nothing left on screen for a click to race against —
+      //    the hazard `EnvironmentSwitchGuard` used to exist for. The
+      //    "environment A's connections closing one by one" progress display
+      //    this replaces was a deliberate choice too, just the opposite one:
+      //    see the removed guard's history if this behaviour is ever missed.
       await api.setActiveEnvironment(id);
       set({ activeId: id });
+      const incomingLaunch = await get().applyIncomingEnvironment();
 
-      // 6. Bring the incoming environment up, same sequence as launch.
-      await get().restoreSession();
+      // 5. Only now close the outgoing pools — concurrently, reusing the same
+      //    helper `disconnectAll` uses for exactly this ("a pool that refuses
+      //    to close must not abandon the rest half-torn-down", see its
+      //    comment). `persistLaunch: false` because step 3 already wrote the
+      //    definitive launch state; a per-connection write here would land
+      //    against the *incoming* environment now that it is active.
+      await Promise.allSettled(
+        leaving.map((connectionId) =>
+          disconnectAndClean(connectionId, { persistLaunch: false }),
+        ),
+      );
+
+      // 6. Only after every outgoing pool is confirmed closed, reconnect the
+      //    incoming environment's own connections — still fully sequenced
+      //    behind the teardown above, just no longer blocking the UI while it
+      //    happens: reconnecting before the outgoing pools are actually gone
+      //    can briefly double the connection budget against the same server
+      //    (see the `disconnect` command's doc comment in
+      //    `src-tauri/src/commands/connection.rs`). Each connection shows its
+      //    own "connecting" state in the tree (`useConnections.connecting`)
+      //    until this resolves.
+      if (incomingLaunch) {
+        await get().reconnectIncomingEnvironment(incomingLaunch);
+      }
     } catch (e) {
       fail(set, e, "environments.switchFailedTitle");
       console.error("[environments] switch failed", e);
@@ -585,10 +623,10 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // Re-raise the flag `switchTo` just cleared. The switch above was the cheap
     // half — it entered an environment that had nothing in it yet; the pass
     // below writes the launch state and then reconnects every replicated
-    // connection for real, which is the slow, tear-down-and-rebuild window the
-    // UI has to be sealed off for. Without this, "New environment → start from
-    // X" was the one route into an environment that left the schema tree live
-    // while its pools were coming up.
+    // connection for real. Without this, "New environment → start from X"
+    // could let a second environment switch start while this one was still
+    // reconnecting underneath it — `switchingTo` disables the rail/picker/
+    // switcher for exactly that reason, see its comment.
     set({ switchingTo: created.id });
     try {
       for (const [id, tabState] of sourceTabs) {

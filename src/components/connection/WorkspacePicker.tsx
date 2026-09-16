@@ -121,7 +121,10 @@ function ConnectionsPane() {
   );
 
   const [query, setQuery] = useState("");
-  const [connecting, setConnecting] = useState<string | null>(null);
+  // Shared with `useConnections` rather than local state — see
+  // `ConnectionsTree`'s `connectingIds` for why: the environment switch's
+  // background reconnect calls the same `connect()` a card click does.
+  const connectingIds = useConnections((s) => s.connecting);
 
   const needle = query.trim().toLowerCase();
   const matches = useMemo(
@@ -138,26 +141,25 @@ function ConnectionsPane() {
   const buckets = useMemo(() => bucketByGroup(matches), [matches]);
 
   async function pick(p: ConnectionProfile) {
-    if (connecting) return;
+    if (connectingIds.has(p.id)) return;
     if (!active.has(p.id)) {
-      setConnecting(p.id);
       const ok = await connectAndWarm(p.id);
-      setConnecting(null);
       if (!ok) return;
     }
     setSelected(p.id);
   }
 
   function ConnectionCard({ p }: { p: ConnectionProfile }) {
+    const isConnecting = connectingIds.has(p.id);
     return (
       <PickerCard
         active={selected === p.id}
-        disabled={connecting === p.id}
+        disabled={isConnecting}
         onClick={() => void pick(p)}
         label={p.name}
         subtitle={driverLabel(p.driver)}
         icon={
-          connecting === p.id ? (
+          isConnecting ? (
             <Spinner size="lg" className="text-muted-foreground" />
           ) : (
             <DriverBadge driver={p.driver} size="lg" />

@@ -155,6 +155,50 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   three drivers are unaffected by construction, and `toSqlInsert`/
   `toSqlUpdate`/`GridRow`'s "Copy with column" all thread the driver through.
 
+- **Switching environments blocked the app for as long as the outgoing
+  connections took to close plus however long the incoming ones took to
+  reconnect — MongoDB's heavier handshake made this feel like a hang.**
+  `useEnvironments.switchTo` closes every pool the outgoing environment had
+  open before handing the backend over to the incoming one, and that ordering
+  is load-bearing (see gotcha #027 and the doc comment on the `disconnect`
+  command: reconnecting before the outgoing pools are actually gone can
+  briefly double the connection budget against the same server). A first pass
+  made the outgoing teardown itself concurrent instead of one connection at a
+  time, which helped but left the two real costs untouched: `switchTo` still
+  waited out the *entire* teardown-then-reconnect sequence before
+  `EnvironmentSwitchGuard` lifted its inert overlay off the schema tree and
+  tab area, so an environment with a slow MongoDB connection on either side of
+  the switch stayed sealed for however long that connection took.
+
+  The fix removes the wait rather than shrinking it: `switchTo` now hands the
+  backend over to the incoming environment — flipping the active pointer,
+  applying its theme/filters/tabs — *before* a single outgoing pool is asked
+  to close, instead of after every one of them is confirmed gone. The outgoing
+  environment's tree is consequently off screen by the time any real network
+  teardown starts, which is what let `EnvironmentSwitchGuard` be deleted
+  outright: the race it existed to prevent (a click reopening a pool mid-
+  teardown) needs the outgoing tree to still be rendered, and it no longer is.
+  The teardown-then-reconnect sequence itself is unchanged in shape (outgoing
+  pools close concurrently, reusing the same `disconnectAndClean` helper
+  `disconnectAll` uses; only once every one of them is confirmed closed do the
+  incoming pools open, still respecting the connection-budget ordering above)
+  — it just runs after the user is already looking at, and can already work
+  in, the destination environment, with each of its connections showing its
+  own "connecting…" state (`useConnections.connecting`, shared with a manual
+  click so the two can never race each other) until it comes up.
+
+  Getting the reorder right hinged on one thing verified against the backend
+  directly: `save_launch_state`/`get_launch_state`/`save_tab_state` all
+  resolve against *whichever environment is currently active*, with no
+  explicit environment id in the call. So the outgoing environment's
+  definitive final launch state — previously written after its teardown
+  loop, as a "last write wins" over each connection's own opportunistic
+  write during that loop — now has to be (and is) written *before* the
+  handover, from the same values already captured at the top of the
+  function; the individual `disconnectAndClean` calls that follow the
+  handover pass `persistLaunch: false` so they can no longer write over it
+  against the wrong (now-incoming) environment.
+
 ## [1.24.0] — 2026-09-14
 
 ### Added

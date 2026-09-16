@@ -333,8 +333,15 @@ export function ConnectionsTree() {
       setFoldOverrides((prev) => (prev.size === 0 ? prev : new Set()));
   }, [filtering]);
 
-  /** Id currently connecting, so its row can show a spinner and refuse clicks. */
-  const [connecting, setConnecting] = useState<string | null>(null);
+  /**
+   * Ids currently connecting, so their row can show a spinner and refuse a
+   * second click — shared with `useConnections` rather than local state,
+   * because the environment switch's background reconnect calls the same
+   * `connect()` this tree's own click handler does, and both need to land in
+   * the same place for a row to show "connecting…" regardless of which one
+   * kicked it off.
+   */
+  const connectingIds = useConnections((s) => s.connecting);
 
   /**
    * Has the filter folded this row to a single line?
@@ -379,11 +386,9 @@ export function ConnectionsTree() {
    * surprising behaviour.
    */
   async function handleRowClick(p: ConnectionProfile) {
-    if (connecting) return;
+    if (connectingIds.has(p.id)) return;
     if (!active.has(p.id)) {
-      setConnecting(p.id);
       const ok = await connectAndWarm(p.id);
-      setConnecting(null);
       if (!ok) return;
       setSelected(p.id);
       // Connecting unfolds: the click that opened it asked to see inside.
@@ -480,14 +485,12 @@ export function ConnectionsTree() {
 
   /** Tear the dead pool down and reopen it, mirroring the status bar's affordance. */
   async function handleReconnect(p: ConnectionProfile) {
-    setConnecting(p.id);
     try {
       await useConnections.getState().disconnect(p.id);
     } catch {
       // Already dead; reconnect regardless.
     }
     const ok = await connectAndWarm(p.id);
-    setConnecting(null);
     if (ok) setSelected(p.id);
   }
 
@@ -528,7 +531,7 @@ export function ConnectionsTree() {
         key={p.id}
         profile={p}
         isActive={isActive}
-        isBusy={connecting === p.id || loadingConnectionIds.has(p.id)}
+        isBusy={connectingIds.has(p.id) || loadingConnectionIds.has(p.id)}
         isExpanded={isExpanded(p)}
         isDisconnecting={disconnecting.has(p.id)}
         isSelected={selected === p.id}

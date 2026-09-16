@@ -42,7 +42,6 @@ import { PulsePanel } from "@/components/pulse/PulsePanel";
 import { AiPanel } from "@/components/ai/AiPanel";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { EnvironmentRail } from "@/components/connection/EnvironmentRail";
-import { EnvironmentSwitchGuard } from "@/components/shell/EnvironmentSwitchGuard";
 import {
   ActivityBar,
   type ActivityBarButton,
@@ -58,11 +57,7 @@ function SchemaPanel() {
   const id = useUi((s) => s.selectedConnectionId);
   return (
     <ConnectionErrorBoundary resetKey={id ?? undefined}>
-      {/* Inside the boundary, not outside it: a crash in the tree should still
-          render the boundary's fallback rather than a curtain over nothing. */}
-      <EnvironmentSwitchGuard className="h-full" contentClassName="h-full">
-        <ConnectionsTree />
-      </EnvironmentSwitchGuard>
+      <ConnectionsTree />
     </ConnectionErrorBoundary>
   );
 }
@@ -334,16 +329,10 @@ export function AppShell() {
 
       <SchemaSidePanel />
 
-      {/* The guard *is* the centre column rather than a box inside it: the
-          flex classes move to its inert-able content wrapper so the layout is
-          unchanged, and only the positioning context is added. */}
-      <EnvironmentSwitchGuard
-        className="flex min-w-0 flex-1 flex-col overflow-hidden"
-        contentClassName="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-2"
-      >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2">
         <IslandShell connectionId={selectedConnectionId} />
         <ConsoleDock />
-      </EnvironmentSwitchGuard>
+      </div>
 
       <RightSidePanel />
 

@@ -35,6 +35,16 @@ interface ConnectionsState {
   /** Ids of profiles that currently have a live pool in the backend. */
   active: Set<string>;
   /**
+   * Ids with a `connect()` call in flight. Shared across every trigger —
+   * a manual click, the reconnect loop an environment switch runs in the
+   * background, a CLI launch — because they all funnel through the same
+   * `connect()`, so one field here is enough for the tree/picker/status bar
+   * to show a "connecting…" row instead of a plain "not connected" one while
+   * any of them is mid-flight, and for `connect()` itself to refuse a second
+   * concurrent call for the same id instead of racing it.
+   */
+  connecting: Set<string>;
+  /**
    * Cached server version strings keyed by profile id.
    * Populated after a successful `connect()` call; never written to disk.
    */
@@ -101,6 +111,7 @@ interface ConnectionsState {
 export const useConnections = create<ConnectionsState>((set, get) => ({
   profiles: [],
   active: new Set(),
+  connecting: new Set(),
   versions: {},
   loading: false,
   error: null,
@@ -143,28 +154,43 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     return report;
   },
   connect: async (id, password, sshSecret) => {
-    await api.connect(id, password, sshSecret);
-    get().markConnected(id);
-
-    // Persist the updated launch state opportunistically so an abrupt close
-    // (crash, kill) still leaves the launch flow something to auto-reconnect
-    // and refocus. The definitive write happens on graceful close. No-op
-    // outside the main window (see `persistLaunchState`).
-    void persistLaunchState(Array.from(get().active));
-
-    // Rehydrate the persisted workspace (open tabs + schema-tree
-    // expansion) before we kick off the version probe, so the user sees
-    // their previous layout immediately on reconnect. The call honours
-    // the `restoreTabsOnOpen` preference internally.
-    await hydrateTabState(id);
-
-    // Fetch and cache the server version string. This is a best-effort call;
-    // a failure should not prevent the connection from succeeding.
+    // A no-op re-entry, not an error: an environment switch's background
+    // reconnect and a manual click (or a CLI intent following the same
+    // connection) can legitimately land on the same id at once, and the
+    // second caller has nothing useful to do but wait for the first.
+    if (get().connecting.has(id)) return;
+    set((s) => ({ connecting: new Set(s.connecting).add(id) }));
     try {
-      const version = await api.serverVersion(id);
-      set((s) => ({ versions: { ...s.versions, [id]: version } }));
-    } catch {
-      // Version display is non-critical; swallow the error silently.
+      await api.connect(id, password, sshSecret);
+      get().markConnected(id);
+
+      // Persist the updated launch state opportunistically so an abrupt close
+      // (crash, kill) still leaves the launch flow something to auto-reconnect
+      // and refocus. The definitive write happens on graceful close. No-op
+      // outside the main window (see `persistLaunchState`).
+      void persistLaunchState(Array.from(get().active));
+
+      // Rehydrate the persisted workspace (open tabs + schema-tree
+      // expansion) before we kick off the version probe, so the user sees
+      // their previous layout immediately on reconnect. The call honours
+      // the `restoreTabsOnOpen` preference internally.
+      await hydrateTabState(id);
+
+      // Fetch and cache the server version string. This is a best-effort call;
+      // a failure should not prevent the connection from succeeding.
+      try {
+        const version = await api.serverVersion(id);
+        set((s) => ({ versions: { ...s.versions, [id]: version } }));
+      } catch {
+        // Version display is non-critical; swallow the error silently.
+      }
+    } finally {
+      set((s) => {
+        if (!s.connecting.has(id)) return s;
+        const connecting = new Set(s.connecting);
+        connecting.delete(id);
+        return { connecting };
+      });
     }
   },
   markConnected: (id) => {

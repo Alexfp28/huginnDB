@@ -167,6 +167,54 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   drivers quedan intactos por construcción, y `toSqlInsert`/`toSqlUpdate`/el
   "Copiar con columna" de `GridRow` propagan el driver hasta el fondo.
 
+- **Cambiar de entorno bloqueaba la app lo que tardaban en cerrarse las
+  conexiones salientes más lo que tardaban en abrirse las entrantes — el
+  handshake más pesado de MongoDB hacía que pareciera un cuelgue.**
+  `useEnvironments.switchTo` cierra todos los pools que el entorno saliente
+  tenía abiertos antes de entregarle el backend al entrante, y ese orden es
+  estructural (ver la gotcha #027 y el comentario del comando `disconnect`:
+  reconectar antes de que los pools salientes estén realmente cerrados puede
+  duplicar brevemente el presupuesto de conexiones contra el mismo
+  servidor). Un primer cambio hizo concurrente el propio cierre saliente en
+  vez de uno a uno, lo que ayudaba pero dejaba intactos los dos costes
+  reales: `switchTo` seguía esperando toda la secuencia
+  cierre-luego-reconexión antes de que `EnvironmentSwitchGuard` retirase su
+  overlay inerte del árbol de esquema y del área de pestañas, así que un
+  entorno con una conexión MongoDB lenta en cualquiera de los dos lados del
+  cambio se quedaba sellado durante todo ese tiempo.
+
+  La solución quita la espera en vez de acortarla: `switchTo` ahora le
+  entrega el backend al entorno entrante — activando su puntero, aplicando
+  su tema/filtros/pestañas — *antes* de pedirle a un solo pool saliente que
+  se cierre, en vez de después de que todos estén confirmados como
+  cerrados. El árbol del entorno saliente deja de estar en pantalla antes
+  de que arranque ningún cierre de red real, que es justo lo que permitió
+  eliminar `EnvironmentSwitchGuard` por completo: la condición de carrera
+  que existía para evitar (un click reabriendo un pool a medio cerrar)
+  necesita que el árbol saliente siga renderizado, y ya no lo está. La
+  secuencia cierre-luego-reconexión en sí no cambia de forma (los pools
+  salientes se cierran de forma concurrente, reutilizando el mismo
+  `disconnectAndClean` que usa `disconnectAll`; solo cuando todos están
+  confirmados como cerrados se abren los entrantes, respetando el mismo
+  orden por el presupuesto de conexiones de antes) — simplemente corre ya
+  con el usuario mirando, y pudiendo trabajar ya, en el entorno destino, con
+  cada una de sus conexiones mostrando su propio estado "conectando…"
+  (`useConnections.connecting`, compartido con un click manual para que
+  nunca puedan pisarse entre sí) hasta que termina de abrirse.
+
+  Acertar con el reordenado dependió de un hecho verificado directamente
+  contra el backend: `save_launch_state`/`get_launch_state`/`save_tab_state`
+  siempre resuelven contra *el entorno que esté activo en ese momento*, sin
+  recibir ningún id de entorno explícito. Así que el guardado definitivo del
+  launch state del entorno saliente — antes escrito después de su bucle de
+  cierre, como un "gana la última escritura" sobre lo que cada conexión
+  escribía por su cuenta durante ese bucle — ahora se escribe (y tiene que
+  escribirse) *antes* del traspaso, con los mismos valores ya capturados al
+  principio de la función; las llamadas a `disconnectAndClean` que siguen al
+  traspaso pasan `persistLaunch: false` para que ya no puedan pisar ese
+  guardado escribiendo contra el entorno equivocado (el entrante, ahora
+  activo).
+
 ## [1.24.0] — 2026-09-14
 
 ### Añadido
