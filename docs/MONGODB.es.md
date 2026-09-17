@@ -127,7 +127,8 @@ lleva un chevron junto al contador de campos que despliega (o pliega) todos los
 objetos anidados de ese documento a la vez, a cualquier profundidad — lo que los
 chevrons por línea llevaban mal era un valor tres niveles abajo: tres clics para
 llegar y otros tres en el documento siguiente. El pie de la tabla tiene el mismo
-par para *todos* los documentos de la página, junto al zoom de altura de fila.
+par para *todos* los documentos de la página, junto al zoom de altura de fila, y
+la previsualización de agregación lo lleva flotando sobre sus documentos.
 Ambos son gestos puntuales: ninguno de los dos toca la preferencia **Desplegar
 los valores anidados por defecto** (Ajustes → Apariencia), que es la que decide
 cómo se abre un documento de entrada.

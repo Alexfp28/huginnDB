@@ -44,7 +44,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
   El control por documento se oculta en un documento que no tiene nada que
   desplegar, y su sentido sigue a lo que hay en pantalla: solo dice "plegar"
-  cuando todos los contenedores visibles están abiertos.
+  cuando todos los contenedores visibles están abiertos. La **previsualización
+  de agregación** lleva también el par, flotando sobre los documentos en vez de
+  en una barra propia: esa superficie es además el panel derecho de una tarjeta
+  de etapa, donde una franja permanente costaría justo las filas de preview que
+  justifican el panel. Mantiene su propia señal, al no tener un grid alrededor,
+  y oculta el control cuando el pipeline solo proyecta escalares.
 
 - **"Pegar filas como JSON…" — inserción masiva de filas en los cuatro drivers
   SQL.** Detrás del botón Insertar del grid, junto a la fila-borrador en línea.

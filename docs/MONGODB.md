@@ -121,7 +121,8 @@ chevron beside its field count that opens (or folds) every nested object in that
 document at once, at any depth — the case the per-line chevrons handled badly was
 a value three levels down, which took three clicks to reach and three more in the
 next document. The grid footer has the same pair for *every* document on the
-page, next to the row-height zoom. Both are one-off gestures: neither writes the
+page, next to the row-height zoom, and the aggregation preview carries it
+floated over its documents. Both are one-off gestures: neither writes the
 **Expand nested values by default** preference (Settings → Appearance), which is
 what decides how a document opens in the first place.
 

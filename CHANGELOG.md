@@ -42,7 +42,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
   The per-document control is hidden on a document with nothing to unfold, and
   its direction follows what is on screen — it reads "collapse" only once every
-  visible container is open.
+  visible container is open. The **aggregation preview** carries the pair too,
+  floated over the documents instead of in a bar of its own: that surface is
+  also a stage card's right-hand pane, where a permanent strip would cost the
+  preview rows the pane exists for. It owns its own signal, having no grid
+  around it, and hides the control when the pipeline projects only scalars.
 
 - **"Paste rows as JSON…" — bulk row insert on all four SQL drivers.** Behind
   the grid's Insert button, next to the inline draft row. One JSON object is
