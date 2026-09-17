@@ -32,7 +32,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Download, RefreshCw, Search, Star } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  RefreshCw,
+  Search,
+  Star,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -265,29 +273,37 @@ export function ExtensionsPanel({ active }: Props) {
           </div>
 
           {items.length > 0 && (
-            <div className="flex items-center justify-between gap-2 border-t border-border p-2 text-2xs text-muted-foreground">
-              {/* "about", never an exact figure — see the file header. */}
-              <span className="min-w-0 truncate">
-                {t("extensions.approxTotal", { count: total })}
+            // Chevrons and a page counter, not two word buttons and a
+            // sentence: at 340px the sentence truncated to "unos 1883
+            // resulta…" and the buttons still overflowed. The `~` carries
+            // what that sentence was for — the registry's total counts the
+            // icon themes this list filters out, so the page count is an
+            // upper bound.
+            <div className="flex items-center justify-between gap-2 border-t border-border p-1.5">
+              <Button
+                size="xs"
+                variant="ghost"
+                aria-label={t("common.previous")}
+                disabled={offset === 0 || loading}
+                onClick={() => void runSearch(query, Math.max(0, offset - PAGE_SIZE))}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              <span className="truncate text-2xs tabular-nums text-muted-foreground">
+                {t("extensions.page", {
+                  page: Math.floor(offset / PAGE_SIZE) + 1,
+                  pages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+                })}
               </span>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={offset === 0 || loading}
-                  onClick={() => void runSearch(query, Math.max(0, offset - PAGE_SIZE))}
-                >
-                  {t("common.previous")}
-                </Button>
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  disabled={offset + PAGE_SIZE >= total || loading}
-                  onClick={() => void runSearch(query, offset + PAGE_SIZE)}
-                >
-                  {t("common.next")}
-                </Button>
-              </div>
+              <Button
+                size="xs"
+                variant="ghost"
+                aria-label={t("common.next")}
+                disabled={offset + PAGE_SIZE >= total || loading}
+                onClick={() => void runSearch(query, offset + PAGE_SIZE)}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
           )}
         </div>

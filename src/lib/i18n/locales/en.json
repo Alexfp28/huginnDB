@@ -25,7 +25,9 @@
     "export": "Export",
     "clear": "Clear",
     "confirmTitle": "Confirm",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "previous": "Previous",
+    "next": "Next"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -3100,12 +3102,12 @@
     "apply": "Apply",
     "variants_one": "1 variant",
     "variants_other": "{{count}} variants",
-    "approxTotal": "about {{count, number}} results before icon themes are filtered",
     "updatesAvailable_one": "1 theme has a newer version",
     "updatesAvailable_other": "{{count}} themes have a newer version",
     "paletteEditedNote": "Themes whose palette you have edited will only have their editor theme updated.",
     "updated": "Updated \"{{name}}\"",
     "updatedEditorOnly": "Updated the editor theme for \"{{name}}\" — its palette was left alone because you had edited it",
-    "inUse": "In use"
+    "inUse": "In use",
+    "page": "Page {{page}} of ~{{pages}}"
   }
 }

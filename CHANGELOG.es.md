@@ -10,6 +10,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Las claves de traducción que faltan ahora rompen los tests.** Una clave
+  referenciada por el código pero ausente del fichero de idioma se mostraba
+  como la propia clave, y solo lo veía quien mirase ese botón: TypeScript no
+  comprueba el argumento de `t()` y ningún test montaba todos los componentes.
+  `src/lib/i18n/keys.test.ts` valida cada `t("…")` literal contra ambos idiomas
+  y que los dos tengan las mismas claves.
+
 - **Un panel de Extensiones: explorar Open VSX desde dentro de la app.** Un
   nuevo ocupante del panel lateral derecho, junto a Consultas guardadas, Pulse
   y el panel de IA. Busca en el registro, mira qué es cada tema (autor,

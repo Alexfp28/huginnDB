@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Missing translation keys now fail the test suite.** A key referenced by
+  the code but absent from a locale file used to render as the key itself,
+  visible only to whoever looked at that button — TypeScript does not check
+  `t()`'s argument and nothing mounted every component. `src/lib/i18n/keys.test.ts`
+  checks every literal `t("…")` against both locales and that the two carry the
+  same keys.
+
 - **An Extensions panel: browse Open VSX from inside the app.** A new occupant
   of the right dock, beside Saved queries, Pulse and the AI panel. Search the
   registry, see what each theme is (author, licence, downloads, how many
