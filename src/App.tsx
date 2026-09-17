@@ -18,6 +18,7 @@ import {
   selectUpdateNotificationVisible,
   useUpdateStore,
 } from "@/stores/update";
+import { hydrateInstalledThemes } from "@/stores/preferences/theme";
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WindowTitleSync } from "@/components/shell/WindowTitleSync";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
@@ -118,6 +119,15 @@ export default function App() {
   useEffect(() => {
     refreshConnections();
   }, [refreshConnections]);
+
+  // Arm Monaco with the editor themes that came from imported VS Code themes.
+  // They live on disk rather than in localStorage (see the note on
+  // `importedEditorThemes`), so unlike the palettes they cannot be read before
+  // first paint — which is fine: an editor that mounts first gets repainted
+  // when the definitions land. Runs in every window; the call is read-only.
+  useEffect(() => {
+    void hydrateInstalledThemes();
+  }, []);
 
   // Keep the workspace's focused connection following the focused tab. One
   // subscription for the window's lifetime; see

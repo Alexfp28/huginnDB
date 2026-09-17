@@ -12,7 +12,14 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { VsixPayload } from "@/lib/vscodeTheme/types";
+import type {
+  InstalledTheme,
+  InstalledThemeLibrary,
+  RegistrySearchPage,
+  RegistryTheme,
+  ThemeUpdateReport,
+  VsixPayload,
+} from "@/lib/vscodeTheme/types";
 import type {
   AiChatMessage,
   AiProbeReport,
@@ -1361,6 +1368,40 @@ export const api = {
    * testable without a running app.
    */
   readVsix: (filePath: string) => invoke<VsixPayload>("read_vsix", { path: filePath }),
+
+  /**
+   * Search the configured extension registry for colour themes.
+   *
+   * The registry URL is **not** a parameter on purpose: it is read from
+   * preferences inside the command, so the kill-switch cannot be bypassed by a
+   * caller naming its own destination. Same rule as the AI panel's endpoint
+   * (gotcha #71).
+   */
+  searchRegistryThemes: (query: string, offset: number, size: number) =>
+    invoke<RegistrySearchPage>("search_registry_themes", { query, offset, size }),
+
+  /** Download one extension and read the themes it contributes. The bytes are
+   *  verified against the registry's published digest before being read. */
+  installRegistryTheme: (theme: RegistryTheme) =>
+    invoke<VsixPayload>("install_registry_theme", { theme }),
+
+  /** The on-disk library: editor themes plus what an update needs. The
+   *  palettes themselves stay in the frontend's own store. */
+  listInstalledThemes: () => invoke<InstalledThemeLibrary>("list_installed_themes"),
+
+  saveInstalledTheme: (theme: InstalledTheme) =>
+    invoke<void>("save_installed_theme", { theme }),
+
+  forgetInstalledTheme: (familyId: string) =>
+    invoke<void>("forget_installed_theme", { familyId }),
+
+  /** Record that the user has edited this theme's derived palette, so a later
+   *  update refreshes only the editor half. Idempotent. */
+  markThemePaletteEdited: (familyId: string) =>
+    invoke<void>("mark_theme_palette_edited", { familyId }),
+
+  /** Ask the registry which installed themes have a newer version. */
+  checkThemeUpdates: () => invoke<ThemeUpdateReport>("check_theme_updates"),
 
   /**
    * Export one SQL table (schema + data) to a user-chosen `.sql` file — the

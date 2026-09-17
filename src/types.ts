@@ -893,6 +893,9 @@ export interface Preferences {
   /** The AI panel: where its model lives, and how much it is trusted. See
    *  {@link AiPrefs}. */
   ai: AiPrefs;
+  /** Whether the theme browser may reach an extension registry, and which.
+   *  See {@link ThemePrefs}. */
+  themes: ThemePrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
    * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
@@ -1039,6 +1042,23 @@ export type AiReasoningEffort =
  * keyed by the endpoint's origin, and no command returns it. The frontend only
  * ever learns *whether* one is stored (`api.aiHasKey`).
  */
+/**
+ * The theme browser's access to an extension registry (Open VSX).
+ *
+ * `registryEnabled` defaults to **true**, unlike every other new flag in this
+ * app, and the reasoning is in `prefs.rs`: the per-connection flags guard a
+ * database, while nothing of the user's leaves the machine here — anonymous
+ * GETs for public packages, no credentials, no telemetry, no schema.
+ *
+ * `registryUrl` exists because "the registry" is not always open-vsx.org:
+ * companies run their own Open VSX instance. It is also recorded per installed
+ * theme, so changing it cannot silently re-target an update.
+ */
+export interface ThemePrefs {
+  registryEnabled: boolean;
+  registryUrl: string;
+}
+
 export interface AiPrefs {
   /** Whether the panel is available at all. `false` on every existing install. */
   enabled: boolean;

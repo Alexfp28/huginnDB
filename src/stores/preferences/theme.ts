@@ -24,6 +24,8 @@ import {
   unregisterImportedMonacoThemes,
 } from "@/lib/monaco/monaco-themes";
 import { monacoThemeId, type ThemeImportResult } from "@/lib/vscodeTheme";
+import type { InstalledThemeSource } from "@/lib/vscodeTheme/types";
+import { api } from "@/lib/tauri";
 import {
   BUILT_IN_THEMES,
   applyTheme,
@@ -52,13 +54,20 @@ interface ThemeState {
    * Editor themes that arrived with an imported VS Code theme, keyed by the
    * custom family's id.
    *
-   * They live in this store, and not in `prefs.json` with the rest of the
-   * editor settings, because their lifetime is the family's: importing
-   * Dracula produces one chrome palette and one editor theme from the same
-   * file, and deleting the palette must not leave the editor picker offering
-   * an id nothing defines. Sizes are modest — the largest sampled theme
-   * (One Dark Pro, 275 token rules) serialises to ~20 KB — so localStorage
-   * holds them comfortably alongside the palettes.
+   * **In memory only — the file on disk is the source of truth.** This field
+   * is deliberately absent from `partialize`: `installed_themes.json` owns
+   * these (see `themes::store` in Rust) and [`hydrateInstalledThemes`] fills
+   * the map at startup. What it is still needed *here* for is the Preferences
+   * editor-theme picker, which has to re-render when a theme is installed or
+   * deleted — a value React can subscribe to, which a file is not.
+   *
+   * The split from the palettes is by shape rather than size. A palette is 30
+   * hex values read synchronously before first paint to avoid a FOUC, so it
+   * belongs in localStorage; a Monaco theme is ~20 KB (One Dark Pro's 275
+   * token rules), is exactly what localStorage should not accumulate once a
+   * registry can install a dozen, and tolerates arriving late because
+   * `registerImportedMonacoThemes` defines whatever it is handed whenever it
+   * is handed it.
    */
   importedEditorThemes: Record<string, ImportedEditorThemes>;
   /**
@@ -78,9 +87,19 @@ interface ThemeState {
   setThemeId: (id: string) => void;
   upsertCustom: (family: ThemeFamily) => void;
   /** Store an imported VS Code theme: its palette becomes a custom family,
-   *  its editor themes are registered with Monaco, and the family is made
-   *  active — the same ending as importing a `.huginndb-theme.json`. */
-  addImportedTheme: (result: ThemeImportResult) => void;
+   *  its editor themes are registered with Monaco and written to disk, and
+   *  the family is made active — the same ending as importing a
+   *  `.huginndb-theme.json`. `source` is present when it came from a
+   *  registry, and is what a later update check reads. */
+  addImportedTheme: (result: ThemeImportResult, source?: InstalledThemeSource) => void;
+  /** Replace an installed theme's editor themes, and its palette too unless
+   *  the user has edited it. Used by the update flow; see the note on
+   *  `paletteEdited` in `themes::store`. */
+  applyThemeUpdate: (
+    result: ThemeImportResult,
+    source: InstalledThemeSource,
+    keepPalette: boolean,
+  ) => void;
   deleteCustom: (id: string) => void;
   duplicateAsCustom: (sourceId: string, name: string) => string;
   /** `variant` edits that specific light/dark half of the family; omitted,
@@ -109,6 +128,96 @@ interface LegacyPersistedState {
 
 function allThemes(state: ThemeState): ThemeFamily[] {
   return [...BUILT_IN_THEMES, ...state.customThemes];
+}
+
+/** Pull the light/dark pair out of a build result, or `null` when one side is
+ *  missing — which would mean an id in the picker that nothing defines. */
+function pairEditorThemes(
+  label: string,
+  monacoThemes: ThemeImportResult["monacoThemes"],
+): ImportedEditorThemes | null {
+  const light = monacoThemes.find((m) => m.side === "light");
+  const dark = monacoThemes.find((m) => m.side === "dark");
+  return light && dark ? { label, light: light.data, dark: dark.data } : null;
+}
+
+/**
+ * Write one theme's record to `installed_themes.json`, fire-and-forget.
+ *
+ * Not awaited because every caller is a synchronous zustand action and the
+ * UI must repaint on the new theme immediately — the file is a durability
+ * concern, not a correctness one for this frame. A failure is reported and
+ * dropped: the theme still works for the session, and blocking the paint on
+ * a disk write would trade a visible feature for an invisible guarantee.
+ */
+function persistInstalled(
+  familyId: string,
+  name: string,
+  editorThemes: ImportedEditorThemes,
+  source: InstalledThemeSource | undefined,
+  paletteEdited: boolean,
+) {
+  void api
+    .saveInstalledTheme({
+      familyId,
+      name,
+      source: source ?? null,
+      installedAt: new Date().toISOString(),
+      paletteEdited,
+      editorThemes: { light: editorThemes.light, dark: editorThemes.dark },
+    })
+    .catch((e) => console.error("[theme] could not record installed theme:", e));
+}
+
+/**
+ * Load `installed_themes.json` and arm Monaco with what it holds.
+ *
+ * Called once at startup, after the store has rehydrated. Ordering against
+ * Monaco's own load does not matter: `registerImportedMonacoThemes` remembers
+ * definitions it is given before Monaco exists and `registerMonacoThemes`
+ * replays them, so whichever finishes first is fine.
+ *
+ * It also migrates: a build before the library moved to disk kept these in
+ * localStorage, so anything still there is written out and dropped from the
+ * persisted blob. Cheap, runs once, and the alternative is one person's
+ * imported themes silently disappearing.
+ */
+export async function hydrateInstalledThemes(): Promise<void> {
+  const state = useThemeStore.getState();
+  const stranded = Object.entries(state.importedEditorThemes ?? {});
+
+  let fromDisk: Record<string, ImportedEditorThemes> = {};
+  try {
+    const library = await api.listInstalledThemes();
+    fromDisk = Object.fromEntries(
+      library.themes.map((t) => [
+        t.familyId,
+        {
+          label: t.name,
+          light: t.editorThemes.light as monaco.editor.IStandaloneThemeData,
+          dark: t.editorThemes.dark as monaco.editor.IStandaloneThemeData,
+        },
+      ]),
+    );
+  } catch (e) {
+    // An unreadable library costs imported editor themes for this session and
+    // nothing else — the palettes are elsewhere and the built-ins are intact.
+    console.error("[theme] could not read the installed theme library:", e);
+  }
+
+  for (const [familyId, themes] of stranded) {
+    if (fromDisk[familyId]) continue;
+    fromDisk[familyId] = themes;
+    persistInstalled(familyId, themes.label, themes, undefined, false);
+  }
+
+  useThemeStore.setState({ importedEditorThemes: fromDisk });
+  registerImportedMonacoThemes(
+    Object.entries(fromDisk).flatMap(([familyId, themes]) => [
+      { id: monacoThemeId(familyId, "light"), data: themes.light },
+      { id: monacoThemeId(familyId, "dark"), data: themes.dark },
+    ]),
+  );
 }
 
 /** The zustand/persist `migrate` logic, extracted so it's testable without
@@ -192,23 +301,42 @@ export const useThemeStore = create<ThemeState>()(
         });
         applyTheme(resolveActiveFamily(get()), get().mode);
       },
-      addImportedTheme: (result) => {
+      addImportedTheme: (result, source) => {
         const { family, monacoThemes } = result;
-        const light = monacoThemes.find((m) => m.side === "light");
-        const dark = monacoThemes.find((m) => m.side === "dark");
+        const editorThemes = pairEditorThemes(family.name, monacoThemes);
         set((s) => ({
           customThemes: [...s.customThemes.filter((f) => f.id !== family.id), family],
           themeId: family.id,
-          importedEditorThemes:
-            light && dark
-              ? {
-                  ...s.importedEditorThemes,
-                  [family.id]: { label: family.name, light: light.data, dark: dark.data },
-                }
-              : s.importedEditorThemes,
+          importedEditorThemes: editorThemes
+            ? { ...s.importedEditorThemes, [family.id]: editorThemes }
+            : s.importedEditorThemes,
         }));
         registerImportedMonacoThemes(monacoThemes.map((m) => ({ id: m.id, data: m.data })));
         applyTheme(family, get().mode);
+        if (editorThemes) {
+          persistInstalled(family.id, family.name, editorThemes, source, false);
+        }
+      },
+      applyThemeUpdate: (result, source, keepPalette) => {
+        const { family, monacoThemes } = result;
+        const editorThemes = pairEditorThemes(family.name, monacoThemes);
+        set((s) => ({
+          // The editor half is always replaced; the palette is only replaced
+          // when the user has not edited it. See `paletteEdited` in
+          // `themes::store` — an update must never be a silent overwrite of
+          // someone's colour work.
+          customThemes: keepPalette
+            ? s.customThemes
+            : s.customThemes.map((f) => (f.id === family.id ? family : f)),
+          importedEditorThemes: editorThemes
+            ? { ...s.importedEditorThemes, [family.id]: editorThemes }
+            : s.importedEditorThemes,
+        }));
+        registerImportedMonacoThemes(monacoThemes.map((m) => ({ id: m.id, data: m.data })));
+        applyTheme(resolveActiveFamily(get()), get().mode);
+        if (editorThemes) {
+          persistInstalled(family.id, family.name, editorThemes, source, keepPalette);
+        }
       },
       deleteCustom: (id) => {
         set((s) => {
@@ -223,6 +351,9 @@ export const useThemeStore = create<ThemeState>()(
           };
         });
         unregisterImportedMonacoThemes([monacoThemeId(id, "light"), monacoThemeId(id, "dark")]);
+        void api
+          .forgetInstalledTheme(id)
+          .catch((e) => console.error("[theme] could not forget installed theme:", e));
         applyTheme(resolveActiveFamily(get()), get().mode);
       },
       duplicateAsCustom: (sourceId, name) => {
@@ -275,6 +406,16 @@ export const useThemeStore = create<ThemeState>()(
           ),
         }));
         applyTheme(updated, get().mode);
+        // Tell the backend this palette is now the user's, so a later update
+        // refreshes only the editor half. Fire-and-forget and idempotent on
+        // the Rust side, so calling it on every keystroke of a colour picker
+        // is a no-op after the first — and the flag being set one edit late
+        // is harmless, while being set never is not.
+        if (get().importedEditorThemes[family.id]) {
+          void api
+            .markThemePaletteEdited(family.id)
+            .catch((e) => console.error("[theme] could not flag palette edit:", e));
+        }
       },
       setActiveMode: (mode) => {
         // O(1): the active family's `light-dark()` variables already contain
@@ -304,25 +445,22 @@ export const useThemeStore = create<ThemeState>()(
       name: STORAGE_KEYS.theme,
       version: 1, // no `version` was configured before this refactor — zustand treats an unversioned blob as 0
       migrate: migrateThemeState,
+      // `importedEditorThemes` is absent on purpose: the file on disk owns
+      // them, and `hydrateInstalledThemes` fills the in-memory map at
+      // startup. Persisting them here as well would give two sources of
+      // truth for the same ~20 KB per theme, in the one store that is read
+      // synchronously before first paint.
       partialize: (state) => ({
         themeId: state.themeId,
         mode: state.mode,
         customThemes: state.customThemes,
-        importedEditorThemes: state.importedEditorThemes,
       }),
+      // Paint immediately from what localStorage holds; the editor themes
+      // arrive later, from disk, via `hydrateInstalledThemes`. Splitting the
+      // two is what keeps first paint synchronous.
       onRehydrateStorage: () => (state) => {
         if (!state) return;
         const s = state as ThemeState;
-        // Re-arm Monaco before the first editor mounts. `registerImported-
-        // MonacoThemes` tolerates running before `loader.init()` resolves —
-        // it remembers the definitions and `registerMonacoThemes` replays
-        // them — so the order of these two is not something to depend on.
-        registerImportedMonacoThemes(
-          Object.entries(s.importedEditorThemes ?? {}).flatMap(([familyId, themes]) => [
-            { id: monacoThemeId(familyId, "light"), data: themes.light },
-            { id: monacoThemeId(familyId, "dark"), data: themes.dark },
-          ]),
-        );
         applyTheme(resolveActiveFamily(s), s.mode);
       },
     },

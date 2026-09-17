@@ -58,6 +58,11 @@ export interface ThemeImportResult {
    *  `ensureContrast` did what it could. Shown as a caveat, never a refusal:
    *  the result lands in the Appearance editor where it can be fixed. */
   warnings: string[];
+  /** The variant paths this result was built from, resolved (so both sides
+   *  are filled even when the user picked one). Carried back out because an
+   *  install has to record which variants were chosen — an update rebuilds
+   *  the same pairing rather than asking again. */
+  selection: { lightPath: string; darkPath: string };
 }
 
 /** Stable Monaco theme ids for an imported family. Prefixed so they cannot
@@ -125,6 +130,7 @@ export function buildThemeImport(
   return {
     family: { id, name, builtin: false, light, dark },
     monacoThemes,
+    selection: { lightPath, darkPath },
     warnings: [
       ...paletteWarnings(light).map((w) => `light:${w}`),
       ...paletteWarnings(dark).map((w) => `dark:${w}`),

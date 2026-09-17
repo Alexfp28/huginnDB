@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Activity, Bot, Moon, Save, Settings, Sun } from "lucide-react";
+import { Activity, Blocks, Bot, Moon, Save, Settings, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
 import {
@@ -46,6 +46,7 @@ import {
   ActivityBar,
   type ActivityBarButton,
 } from "@/components/shell/ActivityBar";
+import { ExtensionsPanel } from "@/components/settings/ExtensionsPanel";
 import { IslandShell } from "@/components/shell/IslandShell";
 import { ConsoleDock } from "@/components/shell/ConsoleDock";
 import { CollapsiblePanel } from "@/components/shell/CollapsiblePanel";
@@ -146,6 +147,7 @@ function RightSidePanel() {
   const savedWidth = useSessionPanelLayout((s) => s.savedWidth);
   const pulseWidth = useSessionPanelLayout((s) => s.pulseWidth);
   const aiWidth = useSessionPanelLayout((s) => s.aiWidth);
+  const extensionsWidth = useSessionPanelLayout((s) => s.extensionsWidth);
   const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
   const selectedConnectionId = useUi((s) => s.selectedConnectionId);
   const [dragging, setDragging] = useState(false);
@@ -170,10 +172,25 @@ function RightSidePanel() {
     if (rightPanel === "ai") setAiMounted(true);
   }, [rightPanel]);
 
+  // Same again for the extensions panel: nobody pays for a registry search
+  // they never asked for, and once opened it keeps its results and scroll
+  // position while the dock shows something else. Its `active` prop is what
+  // gates fetching, not being mounted.
+  const [extensionsMounted, setExtensionsMounted] = useState(rightPanel === "extensions");
+  useEffect(() => {
+    if (rightPanel === "extensions") setExtensionsMounted(true);
+  }, [rightPanel]);
+
   const docked = rightPanel ?? lastRightPanel;
   const open = rightPanel !== null;
   const width =
-    docked === "pulse" ? pulseWidth : docked === "ai" ? aiWidth : savedWidth;
+    docked === "pulse"
+      ? pulseWidth
+      : docked === "ai"
+        ? aiWidth
+        : docked === "extensions"
+          ? extensionsWidth
+          : savedWidth;
 
   return (
     <>
@@ -215,6 +232,11 @@ function RightSidePanel() {
             {aiMounted && (
               <div className="h-full" hidden={docked !== "ai"}>
                 <AiPanel connectionId={selectedConnectionId} />
+              </div>
+            )}
+            {extensionsMounted && (
+              <div className="h-full" hidden={docked !== "extensions"}>
+                <ExtensionsPanel active={open && rightPanel === "extensions"} />
               </div>
             )}
           </div>
@@ -320,6 +342,13 @@ export function AppShell() {
       label: t("panels.ai"),
       active: rightPanel === "ai",
       onClick: () => selectRightPanel("ai"),
+    },
+    {
+      id: "extensions",
+      icon: Blocks,
+      label: t("panels.extensions"),
+      active: rightPanel === "extensions",
+      onClick: () => selectRightPanel("extensions"),
     },
   ];
 

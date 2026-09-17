@@ -195,6 +195,49 @@ async fn fetch_json(client: &reqwest::Client, url: &str) -> AppResult<serde_json
     serde_json::from_slice(&bytes).map_err(AppError::from)
 }
 
+/// How long a fetched manifest stays usable. Long enough that paging back and
+/// forth, or retyping a query, costs nothing; short enough that a theme
+/// published during the session is still found on the next search.
+const MANIFEST_TTL: Duration = Duration::from_secs(15 * 60);
+
+/// Manifests already fetched this session, keyed by URL.
+///
+/// **This cache is not an optimisation, it is basic manners.** Filtering one
+/// page of results costs one manifest fetch per candidate — 25 requests for a
+/// 24-result page — and the registry publishes neither `Cache-Control` nor
+/// `ETag`, so there is nothing to revalidate against and no shared cache doing
+/// this for us. Without it, paging back one page or retyping a query re-fetches
+/// everything, against someone else's free infrastructure.
+///
+/// Memory-only and unbounded within the TTL: a manifest is 1–11 KB and a
+/// session that browses hundreds of themes is still well under a megabyte, so
+/// an eviction policy would be machinery for a problem that does not arise.
+/// `OnceLock` rather than `LazyLock`: the latter is stable since 1.80 and this
+/// crate's MSRV is 1.77, which `clippy::incompatible_msrv` enforces.
+type ManifestCache =
+    parking_lot::Mutex<std::collections::HashMap<String, (std::time::Instant, serde_json::Value)>>;
+static MANIFEST_CACHE: std::sync::OnceLock<ManifestCache> = std::sync::OnceLock::new();
+
+fn manifest_cache() -> &'static ManifestCache {
+    MANIFEST_CACHE.get_or_init(|| parking_lot::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// `fetch_json` for manifests, memoised. A failure is never cached — the
+/// registry's 503s are transient, and remembering one would turn a blip into
+/// fifteen minutes of a theme mysteriously missing from the results.
+async fn fetch_manifest(client: &reqwest::Client, url: &str) -> AppResult<serde_json::Value> {
+    if let Some((at, value)) = manifest_cache().lock().get(url) {
+        if at.elapsed() < MANIFEST_TTL {
+            return Ok(value.clone());
+        }
+    }
+    let value = fetch_json(client, url).await?;
+    manifest_cache()
+        .lock()
+        .insert(url.to_string(), (std::time::Instant::now(), value.clone()));
+    Ok(value)
+}
+
 fn str_field(v: &serde_json::Value, key: &str) -> String {
     v.get(key)
         .and_then(|x| x.as_str())
@@ -293,7 +336,7 @@ pub async fn search(base_url: &str, query: &str, offset: u64, size: u64) -> AppR
                 .and_then(|v| v.as_str())
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("{base}/api/{ns}/{name}/latest/file/package.json"));
-            let manifest = fetch_json(&client, &manifest_url).await.ok()?;
+            let manifest = fetch_manifest(&client, &manifest_url).await.ok()?;
             to_registry_theme(&hit, &manifest)
         }
     }))
@@ -329,7 +372,7 @@ pub async fn lookup(
         .and_then(|v| v.as_str())
         .map(str::to_string)
         .unwrap_or_else(|| format!("{base}/api/{namespace}/{name}/latest/file/package.json"));
-    let Ok(manifest) = fetch_json(&client, &manifest_url).await else {
+    let Ok(manifest) = fetch_manifest(&client, &manifest_url).await else {
         return Ok(None);
     };
     Ok(to_registry_theme(&meta, &manifest))

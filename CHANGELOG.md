@@ -8,6 +8,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **An Extensions panel: browse Open VSX from inside the app.** A new occupant
+  of the right dock, beside Saved queries, Pulse and the AI panel. Search the
+  registry, see what each theme is (author, licence, downloads, how many
+  variants it contributes), install it, and apply it — without leaving the
+  window.
+
+  Installed themes are checked for newer versions, and updating one **never
+  overwrites a palette you have edited**: the editor theme is refreshed and
+  your colours are left exactly as you set them. The panel says which themes
+  that applies to before you press anything.
+
+  Some details that are decisions rather than plumbing:
+
+  - **Icon themes never appear.** The registry files colour themes and icon
+    themes under the same `Themes` category and its search response cannot
+    tell them apart — only each extension's manifest can. HuginnDB fetches
+    that manifest (1–11 KB, not the whole package) and filters on it, so
+    Material Icon Theme costs 11 KB to discard rather than 6 MB. It also means
+    the result count is approximate, and the panel says "about".
+  - **Downloads are verified** against the checksum the registry publishes
+    beside each package, and refused outright on a mismatch.
+  - **The app decides where to connect, not the panel.** The registry URL is
+    read from your preferences inside the backend, so turning the browser off
+    in Settings → Appearance actually turns it off. You can also point it at
+    your own Open VSX instance, and each installed theme remembers where it
+    came from, so changing the setting never re-targets an existing theme's
+    updates.
+  - Nothing of yours leaves the machine: anonymous requests for public
+    packages, no credentials, no telemetry, no schema.
+
 - **Import a VS Code colour theme — your editor theme, and an app palette
   derived from it.** Settings → Appearance's **Import theme…** now also accepts
   a `.vsix` extension package or a bare `*-color-theme.json`, alongside the
