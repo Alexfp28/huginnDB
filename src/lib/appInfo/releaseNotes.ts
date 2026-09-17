@@ -42,6 +42,7 @@ import {
   LayoutList,
   ListFilter,
   ListTree,
+  Package,
   Palette,
   PanelTop,
   Pencil,
@@ -87,6 +88,23 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.26.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_26_0.tagline",
+    highlights: [
+      {
+        icon: Package,
+        titleKey: "whatsNew.releases.1_26_0.items.openVsxBrowser.title",
+        bodyKey: "whatsNew.releases.1_26_0.items.openVsxBrowser.body",
+      },
+      {
+        icon: Palette,
+        titleKey: "whatsNew.releases.1_26_0.items.vscodeThemeImport.title",
+        bodyKey: "whatsNew.releases.1_26_0.items.vscodeThemeImport.body",
+      },
+    ],
+  },
   {
     version: "1.25.0",
     major: true,

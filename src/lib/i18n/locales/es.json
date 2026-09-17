@@ -2256,6 +2256,19 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_26_0": {
+        "tagline": "Explora Open VSX en busca de un tema sin salir de la ventana, o dale a la app un .vsix y recupera tanto los colores exactos de tu editor como una paleta de la app derivada de ellos.",
+        "items": {
+          "openVsxBrowser": {
+            "title": "Explora e instala temas desde Open VSX",
+            "body": "Un nuevo panel de Extensiones en el dock derecho: busca en el registro, mira qué es cada tema (icono, autor, licencia, descargas, cuántas variantes aporta) e instálalo y aplícalo de un clic. Los temas instalados se comprueban en busca de actualizaciones, y una actualización nunca pisa una paleta que hayas editado."
+          },
+          "vscodeThemeImport": {
+            "title": "Importa un tema de color de VS Code",
+            "body": "El botón Importar tema… de Ajustes → Apariencia acepta ahora también un paquete .vsix o un *-color-theme.json suelto. El editor recibe el tema tal cual — tokenColors incluidos — y el resto de la app recibe una paleta derivada de él, que aterriza como un tema personalizado editable en vez de una aproximación."
+          }
+        }
+      },
       "1_25_0": {
         "tagline": "Las celdas se abren ya formateadas, un documento se despliega hasta el fondo con un clic, cuarenta filas entran pegadas como JSON y el espacio de trabajo apunta por fin a la pestaña que estás mirando.",
         "items": {

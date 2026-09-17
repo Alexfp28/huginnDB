@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.26.0] — 2026-09-17
+
 ### Añadido
 
 - **Las claves de traducción que faltan ahora rompen los tests.** Una clave

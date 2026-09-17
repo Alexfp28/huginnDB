@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.26.0] — 2026-09-17
+
 ### Added
 
 - **Missing translation keys now fail the test suite.** A key referenced by

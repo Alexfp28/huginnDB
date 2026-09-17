@@ -2256,6 +2256,19 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_26_0": {
+        "tagline": "Browse Open VSX for a theme without leaving the window, or hand the app a .vsix and get back both your editor's exact colours and an app palette derived from them.",
+        "items": {
+          "openVsxBrowser": {
+            "title": "Browse and install themes from Open VSX",
+            "body": "A new Extensions panel in the right dock — search the registry, see what each theme is (icon, author, licence, downloads, how many variants it contributes), and install and apply it in one click. Installed themes are checked for updates, and an update never overwrites a palette you have edited."
+          },
+          "vscodeThemeImport": {
+            "title": "Import a VS Code colour theme",
+            "body": "Settings → Appearance's Import theme… now also accepts a .vsix package or a bare *-color-theme.json. The editor gets the theme itself — tokenColors and all — and the rest of the app gets a palette derived from it, landing as an editable custom theme rather than an approximation."
+          }
+        }
+      },
       "1_25_0": {
         "tagline": "Cells open already formatted, a document unfolds to the bottom in one click, forty rows go in as pasted JSON, and the workspace finally points at the tab you are actually looking at.",
         "items": {
