@@ -137,8 +137,15 @@ in a roadmap and now don't:
    **(b)** it returns intermittent 503s (two of seven probes during the
    original survey), so retries, caching and full offline degradation are
    requirements, not polish; **(c)** the `Themes` category covers icon themes
-   too, so `contributes.themes` in the manifest is the only reliable filter
-   and that means reading the `.vsix`. This is also the first feature that
+   too, so `contributes.themes` is the only reliable filter — but the
+   registry serves each extension's `package.json` on its own (1–11 KB, via
+   `files.manifest`), so filtering costs a small fetch rather than a `.vsix`
+   download: Material Icon Theme reports `colorThemes=0` and is discarded
+   without pulling 6 MB. Two more findings worth keeping: the search response
+   carries **no `Cache-Control` and no `ETag`**, so any caching is ours to
+   own with our own TTL; and each version publishes a **`sha256`** that was
+   verified to match its `.vsix` byte for byte, which makes integrity
+   checking on download essentially free. This is also the first feature that
    would make the app talk to a third party it does not control, so it wants
    an explicit opt-in, a configurable registry URL (self-hosted open-vsx
    exists in companies) and a way to turn it off entirely. **Storage becomes a
