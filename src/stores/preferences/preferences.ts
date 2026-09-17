@@ -52,6 +52,9 @@ const DEFAULT_PREFS: Preferences = {
     jsonSchemaValidation: true,
     jsonSchemaCompletion: true,
     jsonSchemaHover: true,
+    autoFormatJson: true,
+    autoFormatXml: true,
+    autoFormatSql: false,
   },
   grid: {
     rowHeight: 26,

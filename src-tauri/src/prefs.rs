@@ -118,6 +118,29 @@ pub struct EditorPrefs {
     pub json_schema_completion: bool,
     /// Show a property's schema `description` on hover.
     pub json_schema_hover: bool,
+    /// Pretty-print a cell's value the moment the editor (or the preview
+    /// panel) opens, per detected content type.
+    ///
+    /// Three flags rather than one because the types are not one want: someone
+    /// who keeps JSON blobs in a column wants those unfolded without also
+    /// having their XML reflowed. They are also three so each gets its own
+    /// addressable row — `PrefId` derives from these key names, so a nested
+    /// object would collapse the three into one command-palette entry with no
+    /// in-place toggle.
+    ///
+    /// JSON and XML default **on**, which is the one place the "a new flag
+    /// starts off" convention bends, and for a concrete reason: the read-only
+    /// `CellPreview` panel has always formatted unconditionally, so shipping
+    /// these off would quietly take that away from every existing install. Off
+    /// would not be a neutral default here — it would be a regression.
+    ///
+    /// SQL defaults off. It is the genuinely new capability, and unlike the
+    /// other two its formatter rewrites the statement (keyword casing) rather
+    /// than only its whitespace, so it cannot clear the losslessness check the
+    /// automatic path applies to the other two.
+    pub auto_format_json: bool,
+    pub auto_format_xml: bool,
+    pub auto_format_sql: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -590,6 +613,13 @@ impl Default for EditorPrefs {
             json_schema_validation: true,
             json_schema_completion: true,
             json_schema_hover: true,
+            // On, so the preview panel keeps doing what it has always done —
+            // see the doc comment on the fields.
+            auto_format_json: true,
+            auto_format_xml: true,
+            // Off: new capability, new dependency, and a formatter that
+            // rewrites more than whitespace.
+            auto_format_sql: false,
         }
     }
 }

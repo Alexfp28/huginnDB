@@ -1255,6 +1255,18 @@
       "formatOnPaste": {
         "label": "Format on paste",
         "desc": "Apply Monaco's basic SQL formatter to pasted snippets."
+      },
+      "autoFormatJson": {
+        "label": "Auto-format JSON on open",
+        "desc": "Pretty-print JSON cell values as soon as the editor or the preview panel opens. Skipped when reformatting would change the value rather than only its whitespace."
+      },
+      "autoFormatXml": {
+        "label": "Auto-format XML on open",
+        "desc": "Indent XML cell values as soon as the editor or the preview panel opens. Skipped when reformatting would drop or alter any content."
+      },
+      "autoFormatSql": {
+        "label": "Auto-format SQL on open",
+        "desc": "Reformat SQL cell values as soon as the editor or the preview panel opens, using the connection's dialect. Unlike JSON and XML this rewrites the statement itself — keyword casing and line breaks — not just its spacing."
       }
     },
     "grid": {
@@ -2216,6 +2228,39 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_25_0": {
+        "tagline": "Cells open already formatted, a document unfolds to the bottom in one click, forty rows go in as pasted JSON, and the workspace finally points at the tab you are actually looking at.",
+        "items": {
+          "autoFormat": {
+            "title": "Cells open already formatted",
+            "body": "Settings → Editor gains a switch per content type — JSON, XML and SQL — so a column of JSON blobs opens unfolded without your XML being reflowed too. It refuses any reformat that would change the value rather than only its whitespace, so opening a row and saving it can never rewrite a number behind your back."
+          },
+          "expandAll": {
+            "title": "Unfold every nested object at once",
+            "body": "A chevron beside each card's field count opens (or closes) every nested object in that document at any depth, and the grid footer carries the same pair for the whole page. The aggregation preview has it too. Neither one rewrites your \"expand nested values by default\" preference."
+          },
+          "pasteRowsJson": {
+            "title": "Paste rows as JSON — bulk insert on the SQL drivers",
+            "body": "One object is one row, an array is many, and the backend turns either into one multi-row INSERT per bind-ceiling chunk inside a single transaction. Keys are matched against the real catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted."
+          },
+          "queryThisTable": {
+            "title": "\"Query this table…\" on the level people right-click",
+            "body": "A table or view in the schema tree opens a query editor already scoped to that relation's connection and database, seeded with SELECT * FROM <table> LIMIT 100. The entry existed one and two levels up and stopped short of the table you were looking at."
+          },
+          "focusFollowsTab": {
+            "title": "The workspace follows the focused tab",
+            "body": "With a MySQL and a MongoDB connection both live, clicking a MySQL table and pressing + opened the editor against MongoDB. Focus now is the focused tab's connection, derived in one place — and the window title, Pulse, the AI panel, Saved Queries and the tree highlight all follow it."
+          },
+          "fasterEnvironmentSwitch": {
+            "title": "Switching environments stops waiting on the network",
+            "body": "The destination environment is handed the backend before a single outgoing pool is asked to close, so you are looking at — and working in — the new environment while the old one tears down behind it. The inert overlay that used to seal the tree and tabs is gone outright."
+          },
+          "mysqlBackslash": {
+            "title": "Copied SQL no longer eats backslashes on MySQL",
+            "body": "\"Copy row as ▸ INSERT/UPDATE\" quoted strings by doubling ' and never touched \\, so DOMAIN\\user pasted back into MySQL came out as DOMAINuser. The clipboard generator now escapes \\ the way the dump path always did."
+          }
+        }
+      },
       "1_24_0": {
         "tagline": "A shared origin no longer hands you all or nothing — tick the parts you want — and a MongoDB database can finally be dropped, from a database node that single-connection trees never had.",
         "items": {

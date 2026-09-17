@@ -40,7 +40,7 @@ in a roadmap and now don't:
 | Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
 | **HuginnDB Pulse** — live server health/performance monitoring | 1.20.0 | Vital signs, top time-consuming statements (with `EXPLAIN`), storage, sessions and index usage for **MySQL and MongoDB**, docked next to the workspace or expanded into its own window; an opt-in per-connection history sampler (`pulse.db`) answers "was this slow yesterday too"; reachable over MCP through seven read-only tools. Postgres/SQLite/SQL Server show an explicit "not supported yet" state. See `docs/PULSE.md`. |
 | **AI panel** — an in-app, local-first assistant | 1.22.0 | Docked beside Pulse, off by default. Two independently declared axes (where inference runs, whether rows may enter the context) gate everything; four assisted actions run on one model call each, agent mode drives the read-only tool catalogue and is gated on a measured tool-capable endpoint, and no write tool exists at all. Conversations are memory-only. See `docs/AI.md` for what exists, `docs/AI_ROADMAP.md` for the design rationale and the questions deferred past v1, and gotchas #71–#74 for the invariants. |
-| Bulk row insert | Unreleased | "Paste rows as JSON…", behind the grid's Insert button, on all four SQL drivers: an object is one row, an array is many, and the backend turns either into one multi-row `INSERT` per bind-ceiling chunk inside a single transaction. Bulk *delete* had shipped in 1.0.2 and MongoDB had been covered since its document dialog accepted an array; this is the SQL half. Keys are validated against the catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted. See `CLAUDE.md` gotcha #84. |
+| Bulk row insert | 1.25.0 | "Paste rows as JSON…", behind the grid's Insert button, on all four SQL drivers: an object is one row, an array is many, and the backend turns either into one multi-row `INSERT` per bind-ceiling chunk inside a single transaction. Bulk *delete* had shipped in 1.0.2 and MongoDB had been covered since its document dialog accepted an array; this is the SQL half. Keys are validated against the catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted. See `CLAUDE.md` gotcha #84. |
 
 ## Open (priority order)
 
@@ -246,7 +246,11 @@ the gap was that nothing outside the three environment *pickers* consumed it,
 so the app could not act on a fact it already held. Closed by
 `EnvironmentSwitchGuard`, one seam over both regions, and by widening
 `switchingTo` to cover `createAndEnter`'s seeding pass, which was the slower of
-the two routes into an environment and the unguarded one.
+the two routes into an environment and the unguarded one. **Superseded in 1.25.0**:
+`switchTo` now hands the backend over to the incoming environment *before* a
+single outgoing pool is asked to close, so the outgoing tree is already off
+screen by the time any teardown starts and the guard had nothing left to seal —
+it was deleted rather than kept.
 
 **A second class 3 instance, found and closed.** `SchemaSliceLike`
 (`src/lib/schema/treeMatches.ts`) was `{ databases, tables, loading,

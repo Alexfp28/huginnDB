@@ -1205,6 +1205,22 @@ export interface EditorPrefs {
   jsonSchemaCompletion: boolean;
   /** Show a property's schema `description` on hover. */
   jsonSchemaHover: boolean;
+  /**
+   * Pretty-print a cell's value as soon as the editor or the preview panel
+   * opens, one flag per detected content type. Consumed through
+   * `autoFormatOnOpen` (`lib/grid/autoFormat.ts`), never by calling
+   * `tryFormat` directly — the automatic path discards any reformat that
+   * changed more than whitespace, which is what makes it safe for the result
+   * to become the editor's save baseline.
+   *
+   * JSON and XML default **on** so the preview panel, which has always
+   * formatted unconditionally, keeps behaving as it did. SQL defaults off: its
+   * formatter rewrites keyword casing, so it cannot clear that check and is
+   * offered as an explicit opt-in instead.
+   */
+  autoFormatJson: boolean;
+  autoFormatXml: boolean;
+  autoFormatSql: boolean;
 }
 
 export interface GridPrefs {

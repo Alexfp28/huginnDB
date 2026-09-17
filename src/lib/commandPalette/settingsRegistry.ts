@@ -221,6 +221,36 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: onOff((p) => p.editor.formatOnPaste),
     toggle: (p, w) => w.updateEditor({ formatOnPaste: !p.editor.formatOnPaste }),
   },
+  {
+    prefId: "editor.autoFormatJson",
+    section: "editor",
+    labelKey: "settings.editor.autoFormatJson.label",
+    descKey: "settings.editor.autoFormatJson.desc",
+    keywords:
+      "auto format json open cell beautify pretty print formatear automático abrir celda embellecer",
+    value: onOff((p) => p.editor.autoFormatJson),
+    toggle: (p, w) => w.updateEditor({ autoFormatJson: !p.editor.autoFormatJson }),
+  },
+  {
+    prefId: "editor.autoFormatXml",
+    section: "editor",
+    labelKey: "settings.editor.autoFormatXml.label",
+    descKey: "settings.editor.autoFormatXml.desc",
+    keywords:
+      "auto format xml open cell indent formatear automático abrir celda indentar sangrar",
+    value: onOff((p) => p.editor.autoFormatXml),
+    toggle: (p, w) => w.updateEditor({ autoFormatXml: !p.editor.autoFormatXml }),
+  },
+  {
+    prefId: "editor.autoFormatSql",
+    section: "editor",
+    labelKey: "settings.editor.autoFormatSql.label",
+    descKey: "settings.editor.autoFormatSql.desc",
+    keywords:
+      "auto format sql open cell query dialect formatear automático abrir celda consulta dialecto",
+    value: onOff((p) => p.editor.autoFormatSql),
+    toggle: (p, w) => w.updateEditor({ autoFormatSql: !p.editor.autoFormatSql }),
+  },
 
   // ── Data grid ─────────────────────────────────────────────────────────────
   {

@@ -88,6 +88,48 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.25.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_25_0.tagline",
+    highlights: [
+      {
+        icon: Wand2,
+        titleKey: "whatsNew.releases.1_25_0.items.autoFormat.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.autoFormat.body",
+      },
+      {
+        icon: ListTree,
+        titleKey: "whatsNew.releases.1_25_0.items.expandAll.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.expandAll.body",
+      },
+      {
+        icon: Braces,
+        titleKey: "whatsNew.releases.1_25_0.items.pasteRowsJson.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.pasteRowsJson.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_25_0.items.queryThisTable.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.queryThisTable.body",
+      },
+      {
+        icon: Target,
+        titleKey: "whatsNew.releases.1_25_0.items.focusFollowsTab.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.focusFollowsTab.body",
+      },
+      {
+        icon: Timer,
+        titleKey: "whatsNew.releases.1_25_0.items.fasterEnvironmentSwitch.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.fasterEnvironmentSwitch.body",
+      },
+      {
+        icon: Copy,
+        titleKey: "whatsNew.releases.1_25_0.items.mysqlBackslash.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.mysqlBackslash.body",
+      },
+    ],
+  },
+  {
     version: "1.24.0",
     major: true,
     taglineKey: "whatsNew.releases.1_24_0.tagline",

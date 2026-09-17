@@ -8,7 +8,59 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.25.0] — 2026-09-17
+
 ### Añadido
+
+- **El contenido de una celda se formatea nada más abrirla, según su tipo.**
+  Ajustes → Editor gana tres interruptores: formatear automáticamente **JSON**,
+  **XML** y **SQL** al abrir. Son independientes a propósito, porque los tipos
+  no son un único deseo: quien tiene columnas con JSON quiere verlas
+  desplegadas sin que le reformateen también el XML. Planteado por David.
+
+  El botón **Format** llevaba ahí desde siempre, y la app siempre ha sabido qué
+  tipo de contenido tiene una celda (`detectLanguage`) — lo que faltaba era una
+  forma de decir "hazlo ya". La app además se contradecía a sí misma: el panel
+  de vista previa, que es de solo lectura, formateaba *sin preguntar*, así que
+  veías el valor formateado, abrías el editor sobre él y salía en crudo. Las
+  tres superficies —vista previa, editor modal y panel lateral— leen ahora los
+  mismos tres interruptores.
+
+  Cuatro decisiones merecen explicación:
+
+  - **El camino automático rechaza cualquier reformateo que haya cambiado algo
+    más que espacios en blanco, y esa es la razón de que esto no sean tres
+    líneas.** Formatear JSON significa `JSON.parse` + `JSON.stringify`, que es
+    una ida y vuelta del *valor*, no de los espacios: `10000000000000000001`
+    vuelve como `…000`, `1.0` se convierte en `1`, las claves duplicadas se
+    colapsan, las claves con aspecto de entero se reordenan al principio y
+    `\u0041` pasa a `A`. Eso siempre ha sido así detrás del botón Format, donde
+    el clic es el usuario aceptando la reescritura. Al abrir sería otra cosa,
+    porque el texto formateado pasa a ser el punto de partida para guardar:
+    "abre la fila con el id de Snowflake, pulsa Ctrl+S y escribe en silencio un
+    número distinto". Así que el camino automático formatea, comprueba que solo
+    se movieron espacios fuera de literales entrecomillados y de CDATA, y
+    descarta su propio resultado cuando no fue así. El botón manual se queda
+    deliberadamente sin esa comprobación.
+  - **El texto formateado es el nuevo punto de partida, no una edición.** Abrir
+    una celda no la marca como modificada y cerrarla no avisa de nada; una
+    sesión aparcada que se restaura tras cambiar de pestaña nunca se vuelve a
+    formatear, ni tampoco el buffer que entrega "mover al panel lateral" —
+    `formatXml` no es idempotente, así que una segunda pasada desviaría la
+    indentación que acaba de aplicar.
+  - **JSON y XML vienen activados; SQL, desactivado.** Los dos primeros son lo
+    que mantiene el panel de vista previa haciendo lo que siempre ha hecho:
+    enviarlos apagados se lo habría quitado a todas las instalaciones
+    existentes en vez de ser un valor por defecto neutro. SQL es la capacidad
+    nueva, y su formateador reescribe la sentencia —mayúsculas de las palabras
+    clave—, así que no puede superar la comprobación a la que sí se someten los
+    otros dos, y se ofrece como una activación explícita.
+  - **El formateo de SQL sigue el dialecto de la conexión**, mediante la nueva
+    dependencia `sql-formatter` (MIT): PostgreSQL, MySQL, SQLite y T-SQL para
+    SQL Server, y SQL estándar donde no hay conexión a la que preguntar. Solo
+    se importan esos cinco dialectos por su nombre en vez de la veintena que
+    trae el paquete, así que el bundle crece ~109 KB en crudo / ~30 KB
+    comprimido en lugar de arrastrar también BigQuery y Snowflake.
 
 - **"Desplegar todos los objetos" — un gesto por documento y otro para toda la
   página.** Cada tarjeta de la vista de lista lleva ahora un chevron junto al

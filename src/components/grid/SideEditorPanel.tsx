@@ -53,6 +53,13 @@ import {
   detectLanguage,
   type ContentLanguage,
 } from "@/lib/grid/detectContentType";
+import { autoFormatOnOpen } from "@/lib/grid/autoFormat";
+import {
+  usePreferences,
+  selectEditorPrefs,
+} from "@/stores/preferences/preferences";
+import { useConnections } from "@/stores/session/connections";
+import { resolveConnectionDriver } from "@/lib/connectionLabel";
 import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 
@@ -142,9 +149,7 @@ export function SideEditorPanel() {
    *  cell always has. */
   function loadFresh(next: CellEditorTarget) {
     loadedTargetRef.current = next;
-    baselineRef.current = next.value;
-    setTarget(next);
-    setValue(next.value);
+    const raw = next.value ?? "";
     // A *resolved* schema binding is the signal that this column holds JSON,
     // so it wins over the heuristic — see the same call in the modal
     // `CellEditor`. The mere presence of `next.binding` (coordinates only, no
@@ -159,12 +164,46 @@ export function SideEditorPanel() {
           )
         ]?.[next.binding.column]
       : false;
-    setLanguage(hasResolvedSchema ? "json" : detectLanguage(next.value ?? ""));
+    const lang = hasResolvedSchema ? "json" : detectLanguage(raw);
+    // Auto-format on open, unless this is a live buffer being handed over.
+    //
+    // The stores are read imperatively rather than through hooks because
+    // `loadFresh` is a one-shot imperative load that itself sets `target` — a
+    // subscription keyed on the target it is in the middle of installing is a
+    // render-order tangle for a value that is only ever needed right here.
+    const seed = next.preformatted
+      ? raw
+      : autoFormatOnOpen(
+          raw,
+          lang,
+          selectEditorPrefs(usePreferences.getState()),
+          resolveConnectionDriver(
+            useConnections.getState().profiles,
+            next.binding?.connectionId ?? "",
+          ),
+        );
+    // The FORMATTED text is the baseline, not the raw value. That is what
+    // makes opening a cell not count as an edit: `valueRef !== baselineRef` is
+    // false straight after this, so no unsaved-changes guard fires on close
+    // and no discard prompt fires when the user clicks the next cell. The
+    // trade is explicit — saving afterwards writes the formatted text — which
+    // is why `autoFormatOnOpen` refuses any reformat that moved more than
+    // whitespace.
+    baselineRef.current = seed;
+    setTarget(next);
+    setValue(seed);
+    setLanguage(lang);
     setEditorKey((k) => k + 1);
   }
 
   /** Restore a parked session exactly as it was left — including whatever
-   *  language the user picked and whatever text they'd typed, saved or not. */
+   *  language the user picked and whatever text they'd typed, saved or not.
+   *
+   *  Deliberately does NOT auto-format, and the asymmetry with `loadFresh` is
+   *  the point rather than an oversight: this restores a buffer the user was
+   *  already working in. Re-running the formatter would reindent text they had
+   *  hand-edited, and `formatXml` is not idempotent, so a session parked and
+   *  restored a few times would drift further each round. */
   function restoreParked(parked: ParkedSession) {
     loadedTargetRef.current = parked.target;
     baselineRef.current = parked.original;

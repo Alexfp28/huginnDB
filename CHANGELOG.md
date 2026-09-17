@@ -6,7 +6,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.25.0] — 2026-09-17
+
 ### Added
+
+- **Cell content is formatted the moment you open it — per content type.**
+  Settings → Editor grows three switches: auto-format **JSON**, **XML** and
+  **SQL** on open. They are independent on purpose, because the types are not
+  one want: someone whose columns hold JSON blobs wants those unfolded without
+  also having their XML reflowed. Raised by David.
+
+  The **Format** button has been there all along, and the app has always known
+  what kind of content a cell holds (`detectLanguage`) — what was missing was
+  any way to say "just do it". The app also disagreed with itself: the
+  read-only preview panel formatted *unconditionally*, so you saw the value
+  pretty-printed, opened the editor on it, and got raw text. All three surfaces
+  — preview, modal editor and docked side panel — now read the same three
+  switches.
+
+  Four decisions are worth stating:
+
+  - **The automatic path refuses any reformat that changed more than
+    whitespace, and that is the reason this is not a three-line change.**
+    Pretty-printing JSON means `JSON.parse` + `JSON.stringify`, which is a
+    *value* round trip, not a whitespace one: `10000000000000000001` comes back
+    as `…000`, `1.0` becomes `1`, duplicate keys collapse, integer-like keys
+    are hoisted and sorted, `\u0041` becomes `A`. That has always been true
+    behind the Format button, where the click is the user accepting a rewrite.
+    On open it would be something else entirely, because the formatted text
+    becomes the editor's save baseline — "open the row with the Snowflake id,
+    press Ctrl+S, silently write a different number". So the automatic path
+    formats, checks that only whitespace outside quoted literals and CDATA
+    moved, and discards its own output when it did not. The manual button is
+    deliberately left ungated.
+  - **The formatted text is the new baseline, not an edit.** Opening a cell
+    does not mark it dirty and closing it raises nothing; a parked session
+    restored after a tab switch is never re-formatted, and neither is the
+    buffer handed over by "move to side panel" — `formatXml` is not idempotent,
+    so a second pass would drift the indentation it just applied.
+  - **JSON and XML default on, SQL defaults off.** The first two are what keeps
+    the preview panel doing what it has always done: shipping them off would
+    have taken that away from every existing install rather than being a
+    neutral default. SQL is the new capability, and its formatter rewrites the
+    statement — keyword casing — so it cannot clear the losslessness check the
+    other two are held to, and is offered as an explicit opt-in instead.
+  - **SQL formatting follows the connection's dialect**, via the new
+    `sql-formatter` dependency (MIT): PostgreSQL, MySQL, SQLite and T-SQL for
+    SQL Server, standard SQL where there is no connection to ask. Only those
+    five dialects are imported by name rather than the package's twenty-odd, so
+    the bundle grows ~109 KB raw / ~30 KB gzipped rather than carrying BigQuery
+    and Snowflake along for the ride.
 
 - **"Expand every nested object" — one gesture per document, and one for the
   whole page.** Each card in the grid's list view now carries a chevron beside

@@ -49,6 +49,8 @@ import {
   tryFormat,
   type ContentLanguage,
 } from "@/lib/grid/detectContentType";
+import { autoFormatOnOpen } from "@/lib/grid/autoFormat";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import {
   usePreferences,
   selectEditorPrefs,
@@ -129,6 +131,9 @@ export function CellEditorBody({
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
+  /** Dialect for the Format button's SQL branch. `useConnectionDriver` already
+   *  folds a synthetic `<parent>::db::<db>` id back to its profile. */
+  const driver = useConnectionDriver(binding?.connectionId ?? "");
   const resolvedAll = useJsonSchemas((s) => s.resolved);
   const revision = useJsonSchemas((s) => s.revision);
 
@@ -185,6 +190,12 @@ export function CellEditorBody({
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center gap-2">
+        {/* Switching language deliberately does NOT re-run the formatter.
+            This control exists to correct a wrong detection, not to transform
+            the text — and re-formatting here would dirty a clean side-panel
+            buffer (the baseline is fixed at load), so changing syntax
+            highlighting would start raising the unsaved-changes guard on
+            close. The Format button is one control to the right. */}
         <Select
           value={language}
           onValueChange={(v) => onLanguageChange(v as ContentLanguage)}
@@ -204,7 +215,12 @@ export function CellEditorBody({
         <Button
           size="sm"
           variant="outline"
-          onClick={() => onChange(tryFormat(value, language))}
+          // Straight to `tryFormat`, NOT through `autoFormatOnOpen`: the
+          // automatic path refuses a reformat that changed more than
+          // whitespace, and it is gated on the per-type preference. Neither
+          // applies to an explicit click — that click *is* the user asking for
+          // the rewrite, whatever it costs.
+          onClick={() => onChange(tryFormat(value, language, driver))}
         >
           {t("cellEditor.format")}
         </Button>
@@ -257,25 +273,14 @@ export function CellEditor({
   binding,
 }: Props) {
   const { t } = useTranslation();
-  const [value, setValue] = useState(initialValue);
-  const detected = useMemo(
-    () => detectLanguage(initialValue ?? ""),
-    [initialValue],
-  );
-  const [language, setLanguage] = useState<ContentLanguage>(detected);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [fullscreen, setFullscreen] = useFullscreenToggle(() => open);
-  /** Bumped whenever a new value is loaded so Monaco remounts with an empty
-   *  undo stack (mirrors the side panel; defensive even though the dialog
-   *  usually unmounts between opens). */
-  const [editorKey, setEditorKey] = useState(0);
-  const openInSide = useCellEditor((s) => s.open);
-  const canSave = !readonly && !!onSave;
   // Derive from raw state (gotcha #1), mirroring `CellEditorBody`'s own
   // `resolved` — `binding` alone is just coordinates (connection/schema/
   // table/column) and is truthy for almost any real-table cell, whether or
   // not a schema is actually bound to this column.
+  //
+  // This block sits *above* the `useState` calls because the initial value now
+  // depends on it: the seed is auto-formatted, and which formatter runs
+  // depends on the language, which `hasResolvedSchema` can override.
   const resolvedAll = useJsonSchemas((s) => s.resolved);
   const revision = useJsonSchemas((s) => s.revision);
   const hasResolvedSchema = useMemo(() => {
@@ -288,6 +293,31 @@ export function CellEditor({
     return !!resolvedAll[key]?.[binding.column];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [binding, resolvedAll, revision]);
+  const autoFormatPrefs = usePreferences(selectEditorPrefs);
+  const driver = useConnectionDriver(binding?.connectionId ?? "");
+  const detected = useMemo(
+    // A *resolved* schema binding is a stronger claim that this column holds
+    // JSON than the heuristic is, which is why it already wins here; a user
+    // who asked for JSON to be auto-formatted wants it on those columns most.
+    () => (hasResolvedSchema ? "json" : detectLanguage(initialValue ?? "")),
+    [hasResolvedSchema, initialValue],
+  );
+  // Lazy initialiser, not a plain value: the grid mounts this dialog already
+  // `open`, so without it there is one committed paint showing the raw text
+  // before the effect below swaps in the formatted one.
+  const [value, setValue] = useState(() =>
+    autoFormatOnOpen(initialValue ?? "", detected, autoFormatPrefs, driver),
+  );
+  const [language, setLanguage] = useState<ContentLanguage>(detected);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useFullscreenToggle(() => open);
+  /** Bumped whenever a new value is loaded so Monaco remounts with an empty
+   *  undo stack (mirrors the side panel; defensive even though the dialog
+   *  usually unmounts between opens). */
+  const [editorKey, setEditorKey] = useState(0);
+  const openInSide = useCellEditor((s) => s.open);
+  const canSave = !readonly && !!onSave;
   // Modifier label for the save-shortcut chip (⌘ on macOS, Ctrl elsewhere).
   // Through `formatForDisplay`, which is the one place that decides how a
   // combo is spelled for the user.
@@ -312,20 +342,24 @@ export function CellEditor({
           : Type;
   const bytes = useMemo(() => new TextEncoder().encode(value).length, [value]);
 
+  // `detected` already folds in the resolved-schema override — see the same
+  // rule in `SideEditorPanel.loadFresh`. The mere presence of `binding`
+  // (coordinates only, no confirmed schema) is not enough; that used to force
+  // JSON mode on almost every cell of a real table.
+  //
+  // The preferences and the driver are read but deliberately NOT in the
+  // dependency array: re-seeding because someone toggled a preference midway
+  // through an edit would throw away what they had typed.
   useEffect(() => {
     if (open) {
-      setValue(initialValue);
-      // A *resolved* schema binding is the signal that this column holds
-      // JSON, so it wins over the heuristic — see the same call in
-      // `SideEditorPanel.loadFresh`. The mere presence of `binding`
-      // (coordinates only, no confirmed schema) is not enough — that used to
-      // force JSON mode on almost every cell of a real table.
-      setLanguage(
-        hasResolvedSchema ? "json" : detectLanguage(initialValue ?? ""),
+      setValue(
+        autoFormatOnOpen(initialValue ?? "", detected, autoFormatPrefs, driver),
       );
+      setLanguage(detected);
       setSaveError(null);
       setEditorKey((k) => k + 1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialValue]);
 
   async function handleSave() {
@@ -354,6 +388,11 @@ export function CellEditor({
       // Easy to forget, and the symptom is subtle: without it "move to side
       // panel" silently drops the schema.
       binding,
+      // `value` is this dialog's live buffer, already auto-formatted on open
+      // (and possibly edited since). The side panel must take it as-is rather
+      // than formatting it a second time — `formatXml` is not idempotent, and
+      // a handover is not a fresh open.
+      preformatted: true,
     });
     useSessionPanelLayout.getState().openSideEditor();
     onOpenChange(false);
