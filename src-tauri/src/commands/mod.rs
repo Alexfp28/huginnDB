@@ -24,6 +24,7 @@ pub mod pulse;
 pub mod query;
 pub mod schema;
 pub mod structure;
+pub mod themes;
 pub mod view;
 
 use crate::log_bus::TauriSink;

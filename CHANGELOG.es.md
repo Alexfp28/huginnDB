@@ -8,6 +8,76 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Importar un tema de color de VS Code: tu tema en el editor, y una paleta de
+  la app derivada de él.** El botón **Importar tema…** de Ajustes → Apariencia
+  acepta ahora también un paquete de extensión `.vsix` o un
+  `*-color-theme.json` suelto, además de las exportaciones
+  `.huginndb-theme.json` que ya admitía. Planteado por David, cuyo punto de
+  partida era [open-vsx.org](https://open-vsx.org) — el registro abierto que
+  usan Cursor, VSCodium y Gitpod, y el correcto: los términos del marketplace
+  de Microsoft prohíben acceder a él desde productos que no sean VS Code.
+
+  Esta versión hace la conversión, sin red. Navegar open-vsx desde dentro de la
+  app es un trabajo aparte; lo que entra aquí es todo lo que va por debajo, que
+  es la parte que decide si la idea merece el código de red.
+
+  Qué hace realmente un tema importado, dicho sin adornos porque las dos
+  mitades no son lo mismo:
+
+  - **El editor recibe el tema tal cual.** Monaco *es* el editor de VS Code, así
+    que `tokenColors` y los colores `editor.*` significan aquí exactamente lo
+    mismo que allí. Importa Dracula y el editor SQL es Dracula, no una
+    aproximación — incluida la selección translúcida, que se conserva en vez de
+    aplanarse porque ahí sí está pensada para serlo.
+  - **El resto de la app recibe una paleta derivada.** Un tema de VS Code nombra
+    ~600 claves según el widget que pinta cada una (`sideBar.background`,
+    `list.hoverBackground`); HuginnDB nombra 30 según el papel que cumple cada
+    una (`card`, `accent`, `brand`, `pk`/`fk`). Eso es una lectura, no una
+    traducción, así que la importación aterriza como un tema personalizado
+    normal en el editor de Apariencia, con todos los tokens editables después.
+    El diálogo muestra la paleta derivada antes de confirmar.
+
+  Cuatro cosas que la conversión resuelve, todas descubiertas leyendo temas
+  reales y no la especificación:
+
+  - **Los archivos de tema son JSON *con comentarios*, y muchos no se parsean
+    sin eso.** Dos de los cinco temas que quedan como fixtures de test (Tokyo
+    Night y Nord) fallan directamente con `JSON.parse`.
+  - **Los colores translúcidos `#RRGGBBAA` se componen al importar**, contra el
+    fondo de editor del propio tema — hasta 52 claves en un solo tema. Son
+    translúcidos en VS Code porque su renderizador los pinta sobre lo que haya
+    detrás; resolver eso una vez al importar es lo que deja intacto el pipeline
+    de color de la app.
+  - **Las claves que faltan se resuelven dentro del tema, nunca con los valores
+    por defecto de VS Code.** Los cinco temas muestreados omiten `menu.*`, y One
+    Dark Pro omite además `button.foreground`. Tomar prestados los valores de VS
+    Code metería su anillo de foco azul dentro de una importación de Gruvbox;
+    en su lugar cada token recorre una cadena de claves relacionadas que el tema
+    sí declara, terminando en algo derivado de su propio fondo y su propio color
+    de texto.
+  - **Una superficie que se resuelve al mismo color del fondo se separa un
+    nivel.** Cuatro de los cinco temas muestreados lo hacen al menos una vez:
+    la barra lateral de Nord *es* su fondo de editor, y el menú y los campos de
+    GitHub Light son blanco puro. Es correcto en VS Code, que separa esos
+    planos con un borde; aquí significaría un panel que no está y un campo de
+    entrada sin campo. Solo se corrige un colapso real, así que una separación
+    sutil que el tema sí declaró se respeta tal cual.
+  - **Todos los pares texto/superficie se comprueban por contraste.** VS Code
+    puede rescatar un par malo con una excepción por widget y esta paleta no,
+    así que un tema cuya superficie de hover casi coincide con su color de texto
+    acabaría mostrando una fila seleccionada ilegible.
+
+  Una extensión suele ser varios temas — GitHub aporta nueve variantes, Gruvbox
+  seis, One Dark Pro cinco —, así que el diálogo de importación empareja una
+  variante clara con una oscura en una sola familia de tema. Elegir solo una
+  rellena con ella ambas mitades, en lugar de inventar una paleta que nadie
+  diseñó, y lo avisa.
+
+  Los temas de editor importados aparecen en el selector de tema de Ajustes →
+  Editor y se borran junto con la familia de tema con la que llegaron.
+
 ## [1.25.0] — 2026-09-17
 
 ### Añadido

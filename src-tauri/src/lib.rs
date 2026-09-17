@@ -358,6 +358,7 @@ pub fn run() {
             commands::structure::get_table_structure,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
+            commands::themes::read_vsix,
             commands::view::get_view_definition,
             commands::view::preview_view_change,
             commands::view::apply_view_change,
