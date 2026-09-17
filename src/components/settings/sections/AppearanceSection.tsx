@@ -196,8 +196,15 @@ export function AppearanceSection() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr] gap-3">
+    // The section SCROLLS rather than dividing a fixed height between its
+    // parts. It used to be `flex-1` colour editor plus one `shrink-0` group,
+    // which fits; adding a second group squeezed the editor to roughly the
+    // height of its own header, so the thing this page exists for became the
+    // smallest thing on it. The editor now states a floor tall enough to show
+    // a colour group without scrolling twice, and anything past the viewport
+    // is reached by scrolling the page.
+    <div className="flex h-full flex-col gap-3 overflow-y-auto">
+      <div className="grid min-h-[24rem] shrink-0 grid-cols-[180px_1fr] gap-3">
         <aside className="overflow-y-auto rounded-md border border-border bg-card/40">
           <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-3xs uppercase tracking-wider text-muted-foreground backdrop-blur">
             {t("settings.appearance.themes")}
@@ -337,6 +344,7 @@ export function AppearanceSection() {
       </div>
 
       <DataViewGroup />
+      <ThemeRegistryGroup />
 
       <ImportVsCodeThemeDialog
         payload={vsixPayload}
@@ -352,6 +360,51 @@ export function AppearanceSection() {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Where the theme browser looks, and whether it looks at all.
+ *
+ * Both controls exist for environments rather than for taste. A company may
+ * run its own Open VSX instance, and an air-gapped install needs to point
+ * somewhere reachable or turn the feature off entirely rather than watch every
+ * search time out. The URL is also recorded per installed theme, so changing
+ * it here re-targets future searches without re-targeting the updates of
+ * themes already installed from somewhere else.
+ */
+function ThemeRegistryGroup() {
+  const prefs = usePreferences((s) => s.prefs.themes);
+  const updateThemes = usePreferences((s) => s.updateThemes);
+  const { t } = useTranslation();
+  return (
+    <section className="shrink-0 rounded-md border border-border px-4 pb-1">
+      <div className="border-b border-border/60 py-2 text-3xs uppercase tracking-wider text-muted-foreground">
+        {t("settings.appearance.registry.title")}
+      </div>
+      <PrefRow
+        label={t("settings.appearance.registry.enabled.label")}
+        description={t("settings.appearance.registry.enabled.desc")}
+      >
+        <Switch
+          checked={prefs.registryEnabled}
+          onCheckedChange={(registryEnabled) => updateThemes({ registryEnabled })}
+        />
+      </PrefRow>
+      <PrefRow
+        label={t("settings.appearance.registry.url.label")}
+        description={t("settings.appearance.registry.url.desc")}
+        htmlFor="prefs-theme-registry-url"
+      >
+        <Input
+          id="prefs-theme-registry-url"
+          value={prefs.registryUrl}
+          disabled={!prefs.registryEnabled}
+          onChange={(e) => updateThemes({ registryUrl: e.target.value })}
+          className="h-8 w-72 text-xs"
+        />
+      </PrefRow>
+    </section>
   );
 }
 

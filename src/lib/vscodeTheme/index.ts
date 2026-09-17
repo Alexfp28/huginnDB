@@ -39,6 +39,75 @@ export function describeVariants(payload: VsixPayload): ThemeVariantChoice[] {
   }));
 }
 
+/**
+ * The variants to install when nobody is asked.
+ *
+ * Installing used to open the variant picker unconditionally, which made a
+ * one-click action a three-step one and asked a question most extensions do
+ * not pose: the answer is simply "the light one and the dark one". This picks
+ * the **first** contribution on each side, because a manifest's order is the
+ * author's own — `GitHub Light Default` precedes its high-contrast and
+ * colourblind siblings, `Dracula Theme` precedes `Dracula Theme Soft` — so
+ * first is the variant the author leads with.
+ *
+ * A side with no contribution is left undefined and `buildThemeImport` fills
+ * it from the other, which is the honest fallback: a dark-only extension has
+ * no light palette to infer.
+ *
+ * The picker is still reachable for the cases where the first is not what
+ * someone wants (Gruvbox Dark Hard rather than Medium); it just stopped being
+ * compulsory.
+ */
+export function autoPairVariants(variants: VsixThemeContribution[]): ThemeImportSelection {
+  const firstOn = (side: "light" | "dark") =>
+    variants.find((v) => (isLightVariant(v.uiTheme) ? "light" : "dark") === side)?.path;
+  return { lightPath: firstOn("light"), darkPath: firstOn("dark") };
+}
+
+/**
+ * Find the installed family that came from a given registry extension.
+ *
+ * Matched on `namespace`/`name` — the registry's identity — and **not** on the
+ * display name, which is what the first version did and why an install did not
+ * show up as installed. Two independent ways that failed: the name recorded at
+ * install time comes from the package manifest while the search row shows the
+ * registry's `displayName`, and nothing requires those to be equal; and
+ * renaming a theme in Appearance afterwards made it stop matching itself.
+ *
+ * A theme imported from a local `.vsix` has no registry origin at all, so it
+ * is reconciled on its manifest identifier instead — otherwise downloading
+ * Dracula by hand and then opening the panel would offer it as if it were not
+ * already installed.
+ *
+ * Kept here rather than in the panel so it can be tested without mounting
+ * anything — it is the join between two stores, not a rendering concern.
+ */
+export function findInstalledFamily(
+  installed: Record<
+    string,
+    {
+      source?: { namespace: string; name: string } | null;
+      identifier?: string | null;
+    }
+  >,
+  extension: { namespace: string; name: string },
+): string | null {
+  const target = `${extension.namespace}.${extension.name}`.toLowerCase();
+  const hit = Object.entries(installed).find(([, v]) => {
+    // Installed from this registry: the recorded namespace/name is exact.
+    if (v.source?.namespace === extension.namespace && v.source?.name === extension.name) {
+      return true;
+    }
+    // Installed from a local `.vsix`: it has no registry origin, but its
+    // manifest names the same extension. `publisher.name` equals the
+    // registry's `namespace.name` for every colour theme sampled — compared
+    // case-insensitively anyway, since a namespace may be capitalised
+    // differently in one place than the other (`GitHub`).
+    return (v.identifier ?? "").toLowerCase() === target;
+  });
+  return hit ? hit[0] : null;
+}
+
 export interface ThemeImportSelection {
   /** Contributed path of the variant to use for the light half. */
   lightPath?: string;
@@ -58,6 +127,20 @@ export interface ThemeImportResult {
    *  `ensureContrast` did what it could. Shown as a caveat, never a refusal:
    *  the result lands in the Appearance editor where it can be fixed. */
   warnings: string[];
+  /** The variant paths this result was built from, resolved (so both sides
+   *  are filled even when the user picked one). Carried back out because an
+   *  install has to record which variants were chosen — an update rebuilds
+   *  the same pairing rather than asking again. */
+  selection: { lightPath: string; darkPath: string };
+  /** The extension's `publisher.name`, from its manifest. Recorded for every
+   *  install so a theme that arrived as a local `.vsix` is still recognised
+   *  in the registry listing. Empty for a bare `*-color-theme.json`, which
+   *  has no manifest to name it. */
+  identifier: string;
+  /** The package version, from the manifest. Recorded with the identifier so
+   *  a locally imported theme has something for an update check to compare
+   *  a registry's latest against. */
+  packageVersion: string;
 }
 
 /** Stable Monaco theme ids for an imported family. Prefixed so they cannot
@@ -125,6 +208,9 @@ export function buildThemeImport(
   return {
     family: { id, name, builtin: false, light, dark },
     monacoThemes,
+    selection: { lightPath, darkPath },
+    identifier: payload.identifier,
+    packageVersion: payload.version,
     warnings: [
       ...paletteWarnings(light).map((w) => `light:${w}`),
       ...paletteWarnings(dark).map((w) => `dark:${w}`),

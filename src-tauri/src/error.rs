@@ -127,6 +127,20 @@ pub enum AppError {
     #[error("inference error: {0}")]
     Inference(String),
 
+    /// An extension registry (Open VSX) was unreachable, or answered with a
+    /// status rather than a body.
+    ///
+    /// Its own variant rather than [`Self::Network`] for the same reason
+    /// [`Self::Inference`] is: `reqwest` raises no error for an HTTP status,
+    /// so a `503` — which this registry returns intermittently, often enough
+    /// that retries are a requirement rather than politeness — produces a
+    /// perfectly successful `Response` that the caller must still treat as a
+    /// failure. It also separates "the theme registry is having a bad
+    /// afternoon", which the user can only wait out, from a malformed
+    /// package, which is [`Self::InvalidInput`] and will never succeed.
+    #[error("registry error: {0}")]
+    Registry(String),
+
     /// Tauri window-management failure (e.g. creating a new window).
     #[error("window error: {0}")]
     Window(#[from] tauri::Error),

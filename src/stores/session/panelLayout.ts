@@ -41,11 +41,15 @@ const PULSE_WIDTH_DEFAULT = 320;
  *  words reads as broken, and the SQL blocks are Monaco editors whose lines
  *  should not wrap at all if it can be helped. */
 const AI_WIDTH_DEFAULT = 360;
+/** Wider than Saved: each row carries a name, a publisher/version line, a
+ *  two-line description and an install button, and below ~300px the button
+ *  wraps under the text and the list stops scanning as a list. */
+const EXTENSIONS_WIDTH_DEFAULT = 340;
 const CONSOLE_HEIGHT_DEFAULT = 190;
 const SIDE_EDITOR_WIDTH_DEFAULT = 420;
 
 /** The panels that can occupy the right dock. One at a time. */
-export type RightPanelId = "saved" | "pulse" | "ai";
+export type RightPanelId = "saved" | "pulse" | "ai" | "extensions";
 
 export const PANEL_CLAMPS = {
   schemaWidth: { min: 200, max: 600 },
@@ -55,6 +59,7 @@ export const PANEL_CLAMPS = {
   // and the send button stop fitting on one line, and a Monaco block becomes
   // a horizontal scrollbar with three characters above it.
   aiWidth: { min: 300, max: 720 },
+  extensionsWidth: { min: 300, max: 720 },
   consoleHeight: { min: 120, max: 600 },
   sideEditorWidth: { min: 280, max: 720 },
 } as const;
@@ -64,14 +69,18 @@ export const PANEL_CLAMPS = {
  *  spelling the mapping a second time. */
 export function rightPanelSizeKey(
   id: RightPanelId,
-): "savedWidth" | "pulseWidth" | "aiWidth" {
+): "savedWidth" | "pulseWidth" | "aiWidth" | "extensionsWidth" {
   // A total map rather than a chain of ternaries: adding an occupant to
   // `RightPanelId` without giving it a width is then a compile error here,
   // which is the one place the mapping is spelled.
-  const KEYS: Record<RightPanelId, "savedWidth" | "pulseWidth" | "aiWidth"> = {
+  const KEYS: Record<
+    RightPanelId,
+    "savedWidth" | "pulseWidth" | "aiWidth" | "extensionsWidth"
+  > = {
     saved: "savedWidth",
     pulse: "pulseWidth",
     ai: "aiWidth",
+    extensions: "extensionsWidth",
   };
   return KEYS[id];
 }
@@ -150,6 +159,7 @@ interface PanelLayoutState {
   savedWidth: number;
   pulseWidth: number;
   aiWidth: number;
+  extensionsWidth: number;
   consoleOpen: boolean;
   consoleHeight: number;
   sideEditorOpen: boolean;
@@ -199,6 +209,7 @@ const DEFAULTS: PanelLayoutData = {
   savedWidth: SAVED_WIDTH_DEFAULT,
   pulseWidth: PULSE_WIDTH_DEFAULT,
   aiWidth: AI_WIDTH_DEFAULT,
+  extensionsWidth: EXTENSIONS_WIDTH_DEFAULT,
   consoleOpen: false,
   consoleHeight: CONSOLE_HEIGHT_DEFAULT,
   sideEditorOpen: false,

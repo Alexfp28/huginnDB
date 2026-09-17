@@ -134,6 +134,10 @@ tokio-util = { version = "0.7", features = ["rt", "compat"] }
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
     "json",
+    # `stream` is what lets `themes::registry` enforce its download ceiling
+    # against the bytes actually arriving rather than against a
+    # `Content-Length` a server is free to get wrong or lie about.
+    "stream",
 ] }
 # Reading `.vsix` theme packages (commands::themes). A `.vsix` is a ZIP, and
 # this crate is ALREADY in the lock file as a transitive dependency of the

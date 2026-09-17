@@ -33,7 +33,13 @@ import {
 } from "./parse";
 import { mapVariant, paletteWarnings } from "./map";
 import { splitScopes, toMonacoTheme } from "./monaco";
-import { buildThemeImport, describeVariants, monacoThemeId } from "./index";
+import {
+  autoPairVariants,
+  buildThemeImport,
+  findInstalledFamily,
+  describeVariants,
+  monacoThemeId,
+} from "./index";
 import type { VsixPayload } from "./types";
 
 import dracula from "./__fixtures__/dracula.json?raw";
@@ -386,5 +392,119 @@ describe("end-to-end import", () => {
   it("takes the light/dark side of a bare file from its own `type`", () => {
     expect(describeVariants(payloadOf(githubLight))[0].side).toBe("light");
     expect(describeVariants(payloadOf(dracula))[0].side).toBe("dark");
+  });
+});
+
+describe("automatic variant pairing", () => {
+  const contribution = (label: string, uiTheme: string, path: string) =>
+    ({ label, uiTheme, path }) as never;
+
+  it("takes the first contribution on each side", () => {
+    // Manifest order is the author's own: GitHub leads with its Default
+    // variants and follows with high-contrast and colourblind ones.
+    const pair = autoPairVariants([
+      contribution("GitHub Light Default", "vs", "light-default.json"),
+      contribution("GitHub Light High Contrast", "hc-light", "light-hc.json"),
+      contribution("GitHub Dark Default", "vs-dark", "dark-default.json"),
+      contribution("GitHub Dark High Contrast", "hc-black", "dark-hc.json"),
+    ]);
+    expect(pair).toEqual({
+      lightPath: "light-default.json",
+      darkPath: "dark-default.json",
+    });
+  });
+
+  it("leaves a side undefined when the extension contributes none", () => {
+    // Dracula ships two dark variants and no light one; the undefined side is
+    // what makes `buildThemeImport` duplicate rather than invent a palette.
+    const pair = autoPairVariants([
+      contribution("Dracula Theme", "vs-dark", "dracula.json"),
+      contribution("Dracula Theme Soft", "vs-dark", "dracula-soft.json"),
+    ]);
+    expect(pair).toEqual({ lightPath: undefined, darkPath: "dracula.json" });
+  });
+
+  it("produces a usable import with no questions asked", () => {
+    const payload = payloadOf(dracula, "dracula.json");
+    const result = buildThemeImport(payload, autoPairVariants(payload.themes));
+    expect(result.family.name).toBeTruthy();
+    expect(result.monacoThemes).toHaveLength(2);
+  });
+
+  it("returns an empty selection for an extension with no variants", () => {
+    // `buildThemeImport` then refuses, rather than this inventing a path.
+    expect(autoPairVariants([])).toEqual({ lightPath: undefined, darkPath: undefined });
+  });
+});
+
+describe("matching an installed theme to a registry row", () => {
+  const dracula = { namespace: "dracula-theme", name: "theme-dracula" };
+
+  it("matches on the registry identity, not the display name", () => {
+    // The regression this replaced: an install whose recorded name came from
+    // the package manifest never matched the row, which shows the registry's
+    // own `displayName`. Here they deliberately disagree.
+    const installed = {
+      "fam-1": { label: "Dracula", source: { ...dracula, registryUrl: "", version: "1" } },
+    };
+    expect(findInstalledFamily(installed, dracula)).toBe("fam-1");
+  });
+
+  it("still matches after the theme is renamed", () => {
+    const installed = {
+      "fam-1": { label: "My own purple thing", source: { ...dracula } },
+    };
+    expect(findInstalledFamily(installed, dracula)).toBe("fam-1");
+  });
+
+  it("does not match a different extension from the same publisher", () => {
+    const installed = { "fam-1": { label: "Dracula", source: { ...dracula } } };
+    expect(
+      findInstalledFamily(installed, { namespace: "dracula-theme", name: "something-else" }),
+    ).toBeNull();
+  });
+
+  it("ignores themes imported from a local file, which have no source", () => {
+    const installed = { "fam-1": { label: "Dracula", source: null } };
+    expect(findInstalledFamily(installed, dracula)).toBeNull();
+  });
+});
+
+describe("reconciling a locally imported theme with its registry listing", () => {
+  const extension = { namespace: "dracula-theme", name: "theme-dracula" };
+
+  it("matches a local .vsix import on its manifest identifier", () => {
+    // No registry origin at all — it was dragged in from disk — but the
+    // manifest names the same extension, so the panel must not offer it as
+    // if it were new. Verified against the live registry before being relied
+    // on: `publisher.name` equalled `namespace.name` for every colour theme
+    // sampled.
+    const installed = {
+      "fam-1": { label: "Dracula", source: null, identifier: "dracula-theme.theme-dracula" },
+    };
+    expect(findInstalledFamily(installed, extension)).toBe("fam-1");
+  });
+
+  it("ignores capitalisation, which differs between the two sources", () => {
+    const installed = {
+      "fam-1": { label: "GitHub", source: null, identifier: "github.github-vscode-theme" },
+    };
+    expect(
+      findInstalledFamily(installed, { namespace: "GitHub", name: "github-vscode-theme" }),
+    ).toBe("fam-1");
+  });
+
+  it("does not match a different extension whose name merely starts the same", () => {
+    const installed = {
+      "fam-1": { label: "Dracula", source: null, identifier: "dracula-theme.theme-dracula" },
+    };
+    expect(
+      findInstalledFamily(installed, { namespace: "dracula-theme", name: "theme" }),
+    ).toBeNull();
+  });
+
+  it("carries the identifier out of a build so the install can record it", () => {
+    const payload = payloadOf(dracula, "dracula.json");
+    expect(buildThemeImport(payload, autoPairVariants(payload.themes)).identifier).toBe("");
   });
 });

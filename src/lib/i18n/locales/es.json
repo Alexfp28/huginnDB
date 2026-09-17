@@ -25,7 +25,9 @@
     "export": "Exportar",
     "clear": "Limpiar",
     "confirmTitle": "Confirmar",
-    "confirm": "Confirmar"
+    "confirm": "Confirmar",
+    "previous": "Anterior",
+    "next": "Siguiente"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -74,7 +76,8 @@
     "rightDock": "Panel derecho",
     "console": "Consola",
     "cell": "Celda",
-    "ai": "Asistente"
+    "ai": "Asistente",
+    "extensions": "Extensiones"
   },
   "menu": {
     "file": {
@@ -632,14 +635,14 @@
     "fitColumns": "Ajustar todas las columnas al contenido",
     "fitColumnsToWidth": "Ajustar todas las columnas al ancho visible",
     "insertMore": "Otras formas de añadir datos",
-      "insertRows": {
-        "action": "Pegar filas como JSON…",
-        "title": "Pegar filas en {{table}}",
-        "hint": "Un objeto JSON es una fila; pega un array para insertar varias de una vez. Todas las filas tienen que nombrar las mismas columnas — una columna omitida toma el valor por defecto de la base de datos, y null escribe un NULL de SQL. Todo entra en una única transacción.",
-        "confirm": "Insertar",
-        "inserting": "Insertando…",
-        "failed": "No se pudo insertar: {{message}}"
-      },
+    "insertRows": {
+      "action": "Pegar filas como JSON…",
+      "title": "Pegar filas en {{table}}",
+      "hint": "Un objeto JSON es una fila; pega un array para insertar varias de una vez. Todas las filas tienen que nombrar las mismas columnas — una columna omitida toma el valor por defecto de la base de datos, y null escribe un NULL de SQL. Todo entra en una única transacción.",
+      "confirm": "Insertar",
+      "inserting": "Insertando…",
+      "failed": "No se pudo insertar: {{message}}"
+    },
     "insertDocument": {
       "action": "Nuevo documento…",
       "title": "Nuevo documento en {{collection}}",
@@ -1335,7 +1338,6 @@
       "vscodeImport": {
         "title": "Importar un tema de VS Code",
         "description": "El editor recibe el tema tal cual. El resto de la aplicación recibe una paleta derivada de él, que puedes editar después como cualquier tema personalizado.",
-        "name": "Nombre del tema",
         "lightVariant": "Variante clara",
         "darkVariant": "Variante oscura",
         "noVariant": "Ninguna",
@@ -1398,6 +1400,17 @@
         "actions": "Acciones y marca",
         "status": "Colores de estado",
         "borders": "Bordes y foco"
+      },
+      "registry": {
+        "title": "Registro de temas",
+        "enabled": {
+          "label": "Explorar un registro de extensiones",
+          "desc": "Permite al explorador de temas buscar y descargar temas de color. Solo se descargan paquetes públicos: nunca salen de esta máquina credenciales, telemetría ni esquemas. Desactívalo en una instalación sin salida a internet."
+        },
+        "url": {
+          "label": "URL del registro",
+          "desc": "Por defecto, open-vsx.org. Apúntalo a tu propia instancia de Open VSX si tu organización tiene una. Cada tema instalado recuerda de dónde vino, así que cambiar esto no redirige las actualizaciones de los temas ya instalados."
+        }
       }
     },
     "shortcuts": {
@@ -3076,5 +3089,25 @@
       "explainSlowHint": "Preguntar por qué es lenta esta sentencia",
       "documentRelationAction": "Documentar con IA"
     }
+  },
+  "extensions": {
+    "searchPlaceholder": "Buscar temas…",
+    "loading": "Buscando en el registro…",
+    "empty": "Ningún tema de color coincide. Los temas de iconos se filtran, así que una búsqueda que parece vacía puede haber encontrado alguno.",
+    "disabled": "El registro de temas está desactivado. Vuelve a activarlo en Ajustes → Apariencia.",
+    "install": "Instalar",
+    "reinstall": "Reinstalar",
+    "installing": "Descargando…",
+    "apply": "Aplicar",
+    "variants_one": "1 variante",
+    "variants_other": "{{count}} variantes",
+    "updatesAvailable_one": "1 tema tiene una versión más reciente",
+    "updatesAvailable_other": "{{count}} temas tienen una versión más reciente",
+    "paletteEditedNote": "De los temas cuya paleta hayas editado solo se actualizará el tema del editor.",
+    "updated": "Se actualizó «{{name}}»",
+    "updatedEditorOnly": "Se actualizó el tema de editor de «{{name}}»; su paleta se ha respetado porque la habías editado",
+    "inUse": "En uso",
+    "page": "Página {{page}} de ~{{pages}}",
+    "chooseVariants": "Elegir variantes…"
   }
 }

@@ -31,7 +31,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -81,12 +80,12 @@ export function ImportVsCodeThemeDialog({ payload, onCancel, onConfirm }: Props)
 
   const [lightPath, setLightPath] = useState<string>(() => lightVariants[0]?.path ?? NONE);
   const [darkPath, setDarkPath] = useState<string>(() => darkVariants[0]?.path ?? NONE);
-  const [name, setName] = useState<string>(() => payload?.displayName ?? "");
-
+  // No name field: the package already carries one, and asking for it made
+  // the user restate something correct before they could continue. Renaming a
+  // theme afterwards is what Settings → Appearance is for.
   const selection = {
     lightPath: lightPath === NONE ? undefined : lightPath,
     darkPath: darkPath === NONE ? undefined : darkPath,
-    name,
   };
 
   // Building is cheap and pure, so the preview IS the result — there is no
@@ -98,9 +97,9 @@ export function ImportVsCodeThemeDialog({ payload, onCancel, onConfirm }: Props)
     } catch {
       return null;
     }
-    // `selection` is rebuilt every render; its three fields are the real deps.
+    // `selection` is rebuilt every render; its two fields are the real deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, lightPath, darkPath, name]);
+  }, [payload, lightPath, darkPath]);
 
   if (!payload) return null;
 
@@ -122,17 +121,6 @@ export function ImportVsCodeThemeDialog({ payload, onCancel, onConfirm }: Props)
           {attribution && (
             <p className="text-xs text-muted-foreground">{attribution}</p>
           )}
-
-          <div className="space-y-1.5">
-            <Label htmlFor="vscode-theme-name">
-              {t("settings.appearance.vscodeImport.name")}
-            </Label>
-            <Input
-              id="vscode-theme-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <VariantPicker

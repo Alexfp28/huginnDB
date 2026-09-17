@@ -35,6 +35,7 @@ import type {
   Preferences,
   PulsePrefs,
   SchemaTableMetric,
+  ThemePrefs,
   UiPrefs,
 } from "@/types";
 
@@ -151,6 +152,12 @@ const DEFAULT_PREFS: Preferences = {
     // setting guaranteed to work against every endpoint.
     reasoningEffort: "auto",
   },
+  themes: {
+    // On by default, against the usual "a new flag starts off" rule — see the
+    // reasoning on `ThemePrefs`. Nothing of the user's leaves the machine.
+    registryEnabled: true,
+    registryUrl: "https://open-vsx.org",
+  },
   keybindings: {},
 };
 
@@ -165,6 +172,7 @@ interface PreferencesState {
   updateConnections: (patch: Partial<ConnectionPrefs>) => void;
   updatePulse: (patch: Partial<PulsePrefs>) => void;
   updateAi: (patch: Partial<AiPrefs>) => void;
+  updateThemes: (patch: Partial<ThemePrefs>) => void;
   /**
    * Merge shortcut overrides. A key mapped to `undefined` is **deleted**,
    * which is how "reset this row to its default" is expressed — writing the
@@ -359,6 +367,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
       const next: Preferences = {
         ...s.prefs,
         ai: { ...s.prefs.ai, ...patch },
+      };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
+  updateThemes(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        themes: { ...s.prefs.themes, ...patch },
       };
       save.schedule(next);
       return { prefs: next };

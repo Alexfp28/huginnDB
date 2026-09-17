@@ -50,6 +50,7 @@ mod store;
 mod tab_state;
 #[cfg(test)]
 mod testkit;
+mod themes;
 mod transfer;
 
 use state::{AppState, StartupArgs};
@@ -359,6 +360,13 @@ pub fn run() {
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
             commands::themes::read_vsix,
+            commands::themes::search_registry_themes,
+            commands::themes::install_registry_theme,
+            commands::themes::list_installed_themes,
+            commands::themes::save_installed_theme,
+            commands::themes::forget_installed_theme,
+            commands::themes::mark_theme_palette_edited,
+            commands::themes::check_theme_updates,
             commands::view::get_view_definition,
             commands::view::preview_view_change,
             commands::view::apply_view_change,

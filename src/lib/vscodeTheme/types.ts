@@ -64,3 +64,85 @@ export interface VsCodeThemeFile {
 /** Import failures the UI shows directly. `message` is an i18n key suffix,
  *  matching how `ThemeImportError` already works in `lib/themeTransfer.ts`. */
 export class VsCodeThemeError extends Error {}
+
+/** One colour-theme extension as a registry lists it. Mirrors
+ *  `themes::registry::RegistryTheme`. */
+export interface RegistryTheme {
+  namespace: string;
+  name: string;
+  displayName: string;
+  description: string;
+  version: string;
+  license?: string | null;
+  downloadCount: number;
+  averageRating?: number | null;
+  reviewCount: number;
+  verified: boolean;
+  iconUrl?: string | null;
+  downloadUrl: string;
+  sha256Url?: string | null;
+  /** What the extension contributes — also the proof it is a colour theme. */
+  variants: VsixThemeContribution[];
+}
+
+export interface RegistrySearchPage {
+  items: RegistryTheme[];
+  /**
+   * The registry's own count for the query, **before** icon themes are
+   * filtered out — so an upper bound, not a total. The UI says "about" for
+   * this reason: an exact count would mean fetching every manifest in the
+   * result set.
+   */
+  total: number;
+  offset: number;
+}
+
+/** Where an installed theme came from. Mirrors `themes::store::ThemeSource`. */
+export interface InstalledThemeSource {
+  registryUrl: string;
+  namespace: string;
+  name: string;
+  version: string;
+  lightPath?: string | null;
+  darkPath?: string | null;
+}
+
+/** One record in `installed_themes.json`. */
+export interface InstalledTheme {
+  /** Join key with the custom family in the frontend theme store. */
+  familyId: string;
+  name: string;
+  source?: InstalledThemeSource | null;
+  /** The extension's `publisher.name` from its manifest, recorded for every
+   *  install so a locally imported `.vsix` is still matched to its registry
+   *  listing. */
+  identifier?: string | null;
+  /** The package version this install came from. */
+  version?: string | null;
+  installedAt: string;
+  /** Set once the user edits any token of the derived palette; an update
+   *  then leaves the palette alone. Never cleared by an update. */
+  paletteEdited: boolean;
+  editorThemes: { light: unknown; dark: unknown };
+}
+
+export interface InstalledThemeLibrary {
+  version: number;
+  themes: InstalledTheme[];
+}
+
+export interface ThemeUpdate {
+  familyId: string;
+  name: string;
+  installedVersion: string;
+  availableVersion: string;
+  paletteEdited: boolean;
+  theme: RegistryTheme;
+}
+
+export interface ThemeUpdateReport {
+  updates: ThemeUpdate[];
+  /** Installed themes the registry could not be asked about. Surfaced so
+   *  "no updates" and "no updates, 3 unreachable" read differently. */
+  unchecked: number;
+}

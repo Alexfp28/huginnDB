@@ -73,6 +73,9 @@ pub struct Preferences {
     /// Where the AI panel's model lives and how much it is trusted. See
     /// [`AiPrefs`].
     pub ai: AiPrefs,
+    /// Whether the theme browser may reach an extension registry, and which
+    /// one. See [`ThemePrefs`].
+    pub themes: ThemePrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
     /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
@@ -528,6 +531,40 @@ impl Default for AiPrefs {
     }
 }
 
+/// The theme browser's access to an extension registry.
+///
+/// **`enabled` defaults to `true`, against this project's rule that a new flag
+/// starts off** (gotchas #58 and #83), and the exception is argued rather than
+/// assumed. Those flags are per-connection and guard a *database*: leaving one
+/// on by default would expose a server the user never offered. Nothing of the
+/// user's leaves the machine here — the browser issues anonymous GETs for
+/// public packages, sends no credentials, no telemetry and no schema — and the
+/// app already makes outbound requests for the updater and the issue reporter,
+/// so this is not a new capability, only a new destination. A browser that
+/// shipped off would also be a feature nobody finds.
+///
+/// `url` exists because "the registry" is not always open-vsx.org: companies
+/// run their own Open VSX instance, and an air-gapped install needs to point
+/// somewhere reachable or turn the whole thing off. It is stored per installed
+/// theme as well (`themes::store::ThemeSource`), so changing it here cannot
+/// silently re-target an update at a different registry's extension that
+/// happens to share a name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ThemePrefs {
+    pub registry_enabled: bool,
+    pub registry_url: String,
+}
+
+impl Default for ThemePrefs {
+    fn default() -> Self {
+        Self {
+            registry_enabled: true,
+            registry_url: crate::themes::registry::DEFAULT_REGISTRY_URL.into(),
+        }
+    }
+}
+
 /// Pulse's background history sampler — the one part of Pulse with a real,
 /// recurring cost, so every knob here exists to keep that cost bounded and
 /// visible rather than to add features. Nothing here has any effect on a
@@ -590,6 +627,7 @@ impl Default for Preferences {
             connections: ConnectionPrefs::default(),
             pulse: PulsePrefs::default(),
             ai: AiPrefs::default(),
+            themes: ThemePrefs::default(),
             keybindings: HashMap::new(),
         }
     }

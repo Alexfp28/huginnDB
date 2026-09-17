@@ -25,7 +25,9 @@
     "export": "Export",
     "clear": "Clear",
     "confirmTitle": "Confirm",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "previous": "Previous",
+    "next": "Next"
   },
   "sandbox": {
     "badge": "CANARY",
@@ -74,7 +76,8 @@
     "rightDock": "Right dock",
     "console": "Console",
     "cell": "Cell",
-    "ai": "Assistant"
+    "ai": "Assistant",
+    "extensions": "Extensions"
   },
   "menu": {
     "file": {
@@ -603,14 +606,14 @@
     "fitColumns": "Fit all columns to their content",
     "fitColumnsToWidth": "Fit all columns to the visible width",
     "insertMore": "Other ways to add data",
-      "insertRows": {
-        "action": "Paste rows as JSON…",
-        "title": "Paste rows into {{table}}",
-        "hint": "One JSON object is one row; paste an array to insert several at once. Every row must name the same columns — an omitted column takes the database default, and null writes a SQL NULL. All of it goes in as a single transaction.",
-        "confirm": "Insert",
-        "inserting": "Inserting…",
-        "failed": "Could not insert: {{message}}"
-      },
+    "insertRows": {
+      "action": "Paste rows as JSON…",
+      "title": "Paste rows into {{table}}",
+      "hint": "One JSON object is one row; paste an array to insert several at once. Every row must name the same columns — an omitted column takes the database default, and null writes a SQL NULL. All of it goes in as a single transaction.",
+      "confirm": "Insert",
+      "inserting": "Inserting…",
+      "failed": "Could not insert: {{message}}"
+    },
     "insertDocument": {
       "action": "New document…",
       "title": "New document in {{collection}}",
@@ -1335,7 +1338,6 @@
       "vscodeImport": {
         "title": "Import a VS Code theme",
         "description": "The editor gets the theme itself. The rest of the app gets a palette derived from it, which you can edit afterwards like any custom theme.",
-        "name": "Theme name",
         "lightVariant": "Light variant",
         "darkVariant": "Dark variant",
         "noVariant": "None",
@@ -1398,6 +1400,17 @@
         "actions": "Actions & brand",
         "status": "Status colours",
         "borders": "Borders & focus"
+      },
+      "registry": {
+        "title": "Theme registry",
+        "enabled": {
+          "label": "Browse an extension registry",
+          "desc": "Lets the theme browser search and download colour themes. Only public packages are fetched — no credentials, telemetry or schema ever leave this machine. Turn it off on an install with no outbound network."
+        },
+        "url": {
+          "label": "Registry URL",
+          "desc": "Defaults to open-vsx.org. Point it at your own Open VSX instance if your organisation runs one. Each installed theme remembers where it came from, so changing this does not re-target the updates of themes already installed."
+        }
       }
     },
     "shortcuts": {
@@ -3076,5 +3089,25 @@
       "explainSlowHint": "Ask why this statement is slow",
       "documentRelationAction": "Document with AI"
     }
+  },
+  "extensions": {
+    "searchPlaceholder": "Search themes…",
+    "loading": "Searching the registry…",
+    "empty": "No colour themes matched. Icon themes are filtered out, so a search that looks empty may still have matched some.",
+    "disabled": "The theme registry is turned off. Turn it back on in Settings → Appearance.",
+    "install": "Install",
+    "reinstall": "Reinstall",
+    "installing": "Downloading…",
+    "apply": "Apply",
+    "variants_one": "1 variant",
+    "variants_other": "{{count}} variants",
+    "updatesAvailable_one": "1 theme has a newer version",
+    "updatesAvailable_other": "{{count}} themes have a newer version",
+    "paletteEditedNote": "Themes whose palette you have edited will only have their editor theme updated.",
+    "updated": "Updated \"{{name}}\"",
+    "updatedEditorOnly": "Updated the editor theme for \"{{name}}\" — its palette was left alone because you had edited it",
+    "inUse": "In use",
+    "page": "Page {{page}} of ~{{pages}}",
+    "chooseVariants": "Choose variants…"
   }
 }
