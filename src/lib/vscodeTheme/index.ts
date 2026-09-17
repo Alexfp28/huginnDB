@@ -39,6 +39,55 @@ export function describeVariants(payload: VsixPayload): ThemeVariantChoice[] {
   }));
 }
 
+/**
+ * The variants to install when nobody is asked.
+ *
+ * Installing used to open the variant picker unconditionally, which made a
+ * one-click action a three-step one and asked a question most extensions do
+ * not pose: the answer is simply "the light one and the dark one". This picks
+ * the **first** contribution on each side, because a manifest's order is the
+ * author's own — `GitHub Light Default` precedes its high-contrast and
+ * colourblind siblings, `Dracula Theme` precedes `Dracula Theme Soft` — so
+ * first is the variant the author leads with.
+ *
+ * A side with no contribution is left undefined and `buildThemeImport` fills
+ * it from the other, which is the honest fallback: a dark-only extension has
+ * no light palette to infer.
+ *
+ * The picker is still reachable for the cases where the first is not what
+ * someone wants (Gruvbox Dark Hard rather than Medium); it just stopped being
+ * compulsory.
+ */
+export function autoPairVariants(variants: VsixThemeContribution[]): ThemeImportSelection {
+  const firstOn = (side: "light" | "dark") =>
+    variants.find((v) => (isLightVariant(v.uiTheme) ? "light" : "dark") === side)?.path;
+  return { lightPath: firstOn("light"), darkPath: firstOn("dark") };
+}
+
+/**
+ * Find the installed family that came from a given registry extension.
+ *
+ * Matched on `namespace`/`name` — the registry's identity — and **not** on the
+ * display name, which is what the first version did and why an install did not
+ * show up as installed. Two independent ways that failed: the name recorded at
+ * install time comes from the package manifest while the search row shows the
+ * registry's `displayName`, and nothing requires those to be equal; and
+ * renaming a theme in Appearance afterwards made it stop matching itself.
+ *
+ * Kept here rather than in the panel so it can be tested without mounting
+ * anything — it is the join between two stores, not a rendering concern.
+ */
+export function findInstalledFamily(
+  installed: Record<string, { source?: { namespace: string; name: string } | null }>,
+  extension: { namespace: string; name: string },
+): string | null {
+  const hit = Object.entries(installed).find(
+    ([, v]) =>
+      v.source?.namespace === extension.namespace && v.source?.name === extension.name,
+  );
+  return hit ? hit[0] : null;
+}
+
 export interface ThemeImportSelection {
   /** Contributed path of the variant to use for the light half. */
   lightPath?: string;

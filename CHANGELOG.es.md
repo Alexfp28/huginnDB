@@ -19,9 +19,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **Un panel de Extensiones: explorar Open VSX desde dentro de la app.** Un
   nuevo ocupante del panel lateral derecho, junto a Consultas guardadas, Pulse
-  y el panel de IA. Busca en el registro, mira qué es cada tema (autor,
-  licencia, descargas, cuántas variantes aporta), instálalo y aplícalo sin
-  salir de la ventana.
+  y el panel de IA. Busca en el registro, mira qué es cada tema (icono,
+  autor, licencia, descargas, cuántas variantes aporta), instálalo de un clic
+  y aplícalo sin salir de la ventana. Al instalar se emparejan solas la primera
+  variante clara y la primera oscura de la extensión; elegir otras está ahí
+  para cuando lo quieras, no antes de cada instalación.
 
   Se comprueba si los temas instalados tienen versiones nuevas, y actualizar
   uno **nunca pisa una paleta que hayas editado**: se refresca el tema del

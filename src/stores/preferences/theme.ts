@@ -42,6 +42,16 @@ import {
 export interface ImportedEditorThemes {
   /** Family name at import time — what the Preferences editor picker shows. */
   label: string;
+  /**
+   * Where this family came from, when it came from a registry.
+   *
+   * Carried in memory purely so the Extensions panel can mark a search result
+   * as already installed. That used to be matched on the family *name*, which
+   * is wrong for the obvious reason — a theme renamed after import, or an
+   * extension whose registry display name differs from its manifest's, stops
+   * matching itself — and the join key was sitting on disk the whole time.
+   */
+  source?: InstalledThemeSource | null;
   light: monaco.editor.IStandaloneThemeData;
   dark: monaco.editor.IStandaloneThemeData;
 }
@@ -135,10 +145,13 @@ function allThemes(state: ThemeState): ThemeFamily[] {
 function pairEditorThemes(
   label: string,
   monacoThemes: ThemeImportResult["monacoThemes"],
+  source?: InstalledThemeSource,
 ): ImportedEditorThemes | null {
   const light = monacoThemes.find((m) => m.side === "light");
   const dark = monacoThemes.find((m) => m.side === "dark");
-  return light && dark ? { label, light: light.data, dark: dark.data } : null;
+  return light && dark
+    ? { label, source: source ?? null, light: light.data, dark: dark.data }
+    : null;
 }
 
 /**
@@ -194,6 +207,7 @@ export async function hydrateInstalledThemes(): Promise<void> {
         t.familyId,
         {
           label: t.name,
+          source: t.source ?? null,
           light: t.editorThemes.light as monaco.editor.IStandaloneThemeData,
           dark: t.editorThemes.dark as monaco.editor.IStandaloneThemeData,
         },
@@ -303,7 +317,7 @@ export const useThemeStore = create<ThemeState>()(
       },
       addImportedTheme: (result, source) => {
         const { family, monacoThemes } = result;
-        const editorThemes = pairEditorThemes(family.name, monacoThemes);
+        const editorThemes = pairEditorThemes(family.name, monacoThemes, source);
         set((s) => ({
           customThemes: [...s.customThemes.filter((f) => f.id !== family.id), family],
           themeId: family.id,
@@ -319,7 +333,7 @@ export const useThemeStore = create<ThemeState>()(
       },
       applyThemeUpdate: (result, source, keepPalette) => {
         const { family, monacoThemes } = result;
-        const editorThemes = pairEditorThemes(family.name, monacoThemes);
+        const editorThemes = pairEditorThemes(family.name, monacoThemes, source);
         set((s) => ({
           // The editor half is always replaced; the palette is only replaced
           // when the user has not edited it. See `paletteEdited` in

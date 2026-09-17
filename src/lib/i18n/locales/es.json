@@ -1338,7 +1338,6 @@
       "vscodeImport": {
         "title": "Importar un tema de VS Code",
         "description": "El editor recibe el tema tal cual. El resto de la aplicación recibe una paleta derivada de él, que puedes editar después como cualquier tema personalizado.",
-        "name": "Nombre del tema",
         "lightVariant": "Variante clara",
         "darkVariant": "Variante oscura",
         "noVariant": "Ninguna",
@@ -3108,6 +3107,7 @@
     "updated": "Se actualizó «{{name}}»",
     "updatedEditorOnly": "Se actualizó el tema de editor de «{{name}}»; su paleta se ha respetado porque la habías editado",
     "inUse": "En uso",
-    "page": "Página {{page}} de ~{{pages}}"
+    "page": "Página {{page}} de ~{{pages}}",
+    "chooseVariants": "Elegir variantes…"
   }
 }

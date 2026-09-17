@@ -1338,7 +1338,6 @@
       "vscodeImport": {
         "title": "Import a VS Code theme",
         "description": "The editor gets the theme itself. The rest of the app gets a palette derived from it, which you can edit afterwards like any custom theme.",
-        "name": "Theme name",
         "lightVariant": "Light variant",
         "darkVariant": "Dark variant",
         "noVariant": "None",
@@ -3108,6 +3107,7 @@
     "updated": "Updated \"{{name}}\"",
     "updatedEditorOnly": "Updated the editor theme for \"{{name}}\" — its palette was left alone because you had edited it",
     "inUse": "In use",
-    "page": "Page {{page}} of ~{{pages}}"
+    "page": "Page {{page}} of ~{{pages}}",
+    "chooseVariants": "Choose variants…"
   }
 }

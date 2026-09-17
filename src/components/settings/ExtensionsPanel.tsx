@@ -39,16 +39,25 @@ import {
   Download,
   RefreshCw,
   Search,
+  SlidersHorizontal,
   Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { useThemeStore } from "@/stores/preferences/theme";
 import { usePreferences } from "@/stores/preferences/preferences";
-import type { ThemeImportResult, VsixPayload } from "@/lib/vscodeTheme";
+import {
+  autoPairVariants,
+  buildThemeImport,
+  findInstalledFamily,
+  VsCodeThemeError,
+  type ThemeImportResult,
+  type VsixPayload,
+} from "@/lib/vscodeTheme";
 import type {
   InstalledThemeSource,
   RegistryTheme,
@@ -130,30 +139,73 @@ export function ExtensionsPanel({ active }: Props) {
       .catch(() => setUpdates([]));
   }, [active, registryEnabled, runSearch]);
 
-  async function beginInstall(theme: RegistryTheme, update?: ThemeUpdate) {
+  /**
+   * Download an extension and install it.
+   *
+   * `chooseVariants` is what the picker used to be by default. Installing now
+   * pairs the first light and first dark contribution itself
+   * (`autoPairVariants`) and finishes, because for most extensions there is no
+   * question to ask — the answer is "the light one and the dark one". The
+   * picker stays reachable for the cases where the first is not what someone
+   * wants, and is always used for an update, which must rebuild the exact
+   * pairing that was installed rather than re-guess it.
+   */
+  async function beginInstall(
+    theme: RegistryTheme,
+    opts: { update?: ThemeUpdate; chooseVariants?: boolean } = {},
+  ) {
+    const { update, chooseVariants } = opts;
     setBusyId(`${theme.namespace}.${theme.name}`);
     try {
-      setPending({ payload: await api.installRegistryTheme(theme), theme, update });
+      const payload = await api.installRegistryTheme(theme);
+      if (chooseVariants) {
+        setPending({ payload, theme, update });
+        return;
+      }
+      const selection = update
+        ? {
+            lightPath: update.theme.variants.find((v) => v.path === installedPath(update, "light"))
+              ?.path,
+            darkPath: update.theme.variants.find((v) => v.path === installedPath(update, "dark"))
+              ?.path,
+          }
+        : autoPairVariants(payload.themes);
+      // A recorded pairing can no longer exist (the extension dropped a
+      // variant between versions), so fall back rather than refuse.
+      const resolved =
+        selection.lightPath || selection.darkPath
+          ? selection
+          : autoPairVariants(payload.themes);
+      finishInstall(buildThemeImport(payload, resolved), { payload, theme, update });
     } catch (e) {
-      notify.error(String(e));
+      notify.error(e instanceof VsCodeThemeError ? t(`settings.appearance.importError.${e.message}`) : String(e));
     } finally {
       setBusyId(null);
     }
   }
 
-  function finishInstall(result: ThemeImportResult) {
-    if (!pending) return;
+  /** The variant path recorded when this theme was installed, if any. */
+  function installedPath(update: ThemeUpdate, side: "light" | "dark"): string | undefined {
+    const record = installed[update.familyId]?.source;
+    return (side === "light" ? record?.lightPath : record?.darkPath) ?? undefined;
+  }
+
+  function finishInstall(
+    result: ThemeImportResult,
+    context: { payload: VsixPayload; theme: RegistryTheme; update?: ThemeUpdate } | null = pending,
+  ) {
+    if (!context) return;
     const source: InstalledThemeSource = {
       // Recorded per theme so that pointing the app at a different registry
       // later cannot silently re-target this theme's updates.
-      registryUrl: new URL(pending.theme.downloadUrl).origin,
-      namespace: pending.theme.namespace,
-      name: pending.theme.name,
-      version: pending.theme.version,
+      registryUrl: new URL(context.theme.downloadUrl).origin,
+      namespace: context.theme.namespace,
+      name: context.theme.name,
+      version: context.theme.version,
       lightPath: result.selection.lightPath,
       darkPath: result.selection.darkPath,
     };
-    const update = pending.update;
+    const update = context.update;
     if (update) {
       applyThemeUpdate(
         { ...result, family: { ...result.family, id: update.familyId } },
@@ -223,7 +275,7 @@ export function ExtensionsPanel({ active }: Props) {
                       <Button
                         size="xs"
                         variant="outline"
-                        onClick={() => void beginInstall(u.theme, u)}
+                        onClick={() => void beginInstall(u.theme, { update: u })}
                       >
                         <RefreshCw className="h-3 w-3" />
                       </Button>
@@ -255,7 +307,7 @@ export function ExtensionsPanel({ active }: Props) {
             ) : (
               <ul className="space-y-1.5">
                 {items.map((theme) => {
-                  const familyId = installedFamilyId(installed, theme);
+                  const familyId = findInstalledFamily(installed, theme);
                   return (
                     <ThemeRow
                       key={`${theme.namespace}.${theme.name}`}
@@ -264,6 +316,9 @@ export function ExtensionsPanel({ active }: Props) {
                       installedFamilyId={familyId}
                       isActive={familyId !== null && familyId === activeThemeId}
                       onInstall={() => void beginInstall(theme)}
+                      onChooseVariants={() =>
+                        void beginInstall(theme, { chooseVariants: true })
+                      }
                       onApply={() => familyId && setThemeId(familyId)}
                     />
                   );
@@ -319,26 +374,6 @@ export function ExtensionsPanel({ active }: Props) {
       />
     </>
   );
-}
-
-/**
- * Which installed family, if any, came from this extension.
- *
- * Matched on the family *name*, which is what the install recorded from the
- * extension's display name. The precise join key (`source.namespace/name`)
- * lives on disk rather than in the store, and pulling the whole library into
- * memory to light up one badge would be a second source of truth for what is
- * installed. A name collision shows an "installed" mark on the wrong row and
- * costs nothing else — the install path itself never consults this.
- */
-function installedFamilyId(
-  installed: Record<string, { label: string }>,
-  theme: RegistryTheme,
-): string | null {
-  const hit = Object.entries(installed).find(
-    ([, v]) => v.label.trim().toLowerCase() === theme.displayName.trim().toLowerCase(),
-  );
-  return hit ? hit[0] : null;
 }
 
 function PanelFrame({ title, children }: { title: string; children: React.ReactNode }) {
@@ -440,6 +475,7 @@ function ThemeRow({
   installedFamilyId,
   isActive,
   onInstall,
+  onChooseVariants,
   onApply,
 }: {
   theme: RegistryTheme;
@@ -447,6 +483,7 @@ function ThemeRow({
   installedFamilyId: string | null;
   isActive: boolean;
   onInstall: () => void;
+  onChooseVariants: () => void;
   onApply: () => void;
 }) {
   const { t } = useTranslation();
@@ -519,7 +556,7 @@ function ThemeRow({
           <span className="px-1 opacity-50">·</span>
           {t("extensions.variants", { count: theme.variants.length })}
         </p>
-        <div className="flex shrink-0 gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {/* "Apply" only appears once a theme is installed and is not the
               active one — a button that does nothing visible is worse than no
               button. */}
@@ -527,6 +564,18 @@ function ThemeRow({
             <Button size="xs" variant="outline" onClick={onApply}>
               {t("extensions.apply")}
             </Button>
+          )}
+          {/* Only offered when there is a choice to make. Installing takes the
+              author's first light and dark variants without asking; this is
+              for the person who wants Gruvbox Dark Hard rather than Medium. */}
+          {theme.variants.length > 1 && (
+            <IconButton
+              size="xs"
+              icon={SlidersHorizontal}
+              label={t("extensions.chooseVariants")}
+              disabled={busy}
+              onClick={onChooseVariants}
+            />
           )}
           <Button
             size="xs"

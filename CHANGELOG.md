@@ -17,9 +17,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **An Extensions panel: browse Open VSX from inside the app.** A new occupant
   of the right dock, beside Saved queries, Pulse and the AI panel. Search the
-  registry, see what each theme is (author, licence, downloads, how many
-  variants it contributes), install it, and apply it — without leaving the
-  window.
+  registry, see what each theme is (icon, author, licence, downloads, how many
+  variants it contributes), install it in one click, and apply it — without
+  leaving the window. Installing pairs the extension's first light and dark
+  variants itself; picking different ones is there for when you want it, not
+  before every install.
 
   Installed themes are checked for newer versions, and updating one **never
   overwrites a palette you have edited**: the editor theme is refreshed and
