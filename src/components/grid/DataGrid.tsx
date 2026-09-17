@@ -37,7 +37,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { tableKey } from "@/stores/session/schema";
-import { Columns3, Inbox, Pin, UnfoldHorizontal } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Columns3,
+  Inbox,
+  Pin,
+  UnfoldHorizontal,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/common/EmptyState";
 import { isBitType, isNumericType } from "@/lib/grid/columnKinds";
@@ -48,6 +55,7 @@ import {
 import { useGridPrefs } from "@/lib/grid/useGridPrefs";
 import {
   DocumentListView,
+  type ExpandAllSignal,
   type FieldSave,
 } from "@/components/grid/DocumentListView";
 import type {
@@ -845,6 +853,23 @@ export function DataGrid({
   /** List view has no columns to size; an empty result has nothing to size. */
   const showFitControls = viewMode !== "list" && result.columns.length > 0;
 
+  /**
+   * The list view's counterpart to the fit controls: same footer, same
+   * question ("how am I looking at this"), same "only where it means
+   * something" gating — one sizes columns you can only have in the table, the
+   * other unfolds nested objects you can only see in the list.
+   *
+   * Held as state here rather than pushed down as a prop per card because
+   * every card has to hear the same press; see `ExpandAllSignal` for why it
+   * is an epoch and not a boolean. The object identity only changes when the
+   * gesture fires, so it doesn't defeat `DocumentCard`'s memo in between.
+   */
+  const showListControls = viewMode === "list" && result.columns.length > 0;
+  const [expandAll, setExpandAll] = useState<ExpandAllSignal | null>(null);
+  function expandAllDocuments(expanded: boolean) {
+    setExpandAll((prev) => ({ epoch: (prev?.epoch ?? 0) + 1, expanded }));
+  }
+
   function fitColumnsToWidth() {
     const port = scrollRef.current;
     if (!port) return;
@@ -1149,6 +1174,7 @@ export function DataGrid({
               zebraStripes={zebraStripes}
               fontSize={cellStyle.fontSize}
               expandNested={listExpandNested}
+              expandAll={expandAll}
               showTypes={listShowTypes}
               lineNumbers={listLineNumbers}
               onFieldSave={editable ? onFieldSave : undefined}
@@ -1525,7 +1551,7 @@ export function DataGrid({
           right (pagination) groups so they land on opposite edges instead of
           bunching together. Omitted entirely when the caller has nothing to
           put here (query/view result tabs, which don't paginate). */}
-      {(footer || showFitControls) && (
+      {(footer || showFitControls || showListControls) && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border bg-background px-3 py-1.5 text-xs">
           {/* Column sizing sits with the row-height zoom, not in the header.
               Both answer "how am I looking at this", which is what the footer
@@ -1554,6 +1580,23 @@ export function DataGrid({
                 onClick={fitColumnsToWidth}
               />
             </div>
+          )}
+          {showListControls && (
+            <div className="flex items-center">
+              <IconButton
+                icon={ChevronsUpDown}
+                label={t("dataGrid.list.expandAllDocuments")}
+                onClick={() => expandAllDocuments(true)}
+              />
+              <IconButton
+                icon={ChevronsDownUp}
+                label={t("dataGrid.list.collapseAllDocuments")}
+                onClick={() => expandAllDocuments(false)}
+              />
+            </div>
+          )}
+          {showListControls && footer && (
+            <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
           )}
           {/* Column sizing and row zoom are neighbours but not one group, and a
               gap alone does not say so — the same separator `GridToolbar` uses

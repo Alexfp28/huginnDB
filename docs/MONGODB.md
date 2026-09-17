@@ -116,6 +116,16 @@ Three things about it are deliberate:
   wants. The type picker is their escape hatch — it writes a fresh value of the
   chosen type.
 
+**Unfolding is one gesture, not one per level.** Every document card carries a
+chevron beside its field count that opens (or folds) every nested object in that
+document at once, at any depth — the case the per-line chevrons handled badly was
+a value three levels down, which took three clicks to reach and three more in the
+next document. The grid footer has the same pair for *every* document on the
+page, next to the row-height zoom, and the aggregation preview carries it
+floated over its documents. Both are one-off gestures: neither writes the
+**Expand nested values by default** preference (Settings → Appearance), which is
+what decides how a document opens in the first place.
+
 One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
 the new key plus an `$unset` of the old one, and doing that safely needs one
 atomic document-level update rather than the per-field writes this view uses.

@@ -12,10 +12,15 @@
  * pipeline result reads exactly like a collection does one tab over.
  */
 
-import { useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ChevronsDownUp, ChevronsUpDown } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import { DocumentListView } from "@/components/grid/DocumentListView";
+import { IconButton } from "@/components/ui/icon-button";
+import {
+  DocumentListView,
+  type ExpandAllSignal,
+} from "@/components/grid/DocumentListView";
 import {
   usePreferences,
   selectGridPrefs,
@@ -47,6 +52,38 @@ export function PipelineOutput({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const grid = usePreferences(selectGridPrefs);
 
+  /**
+   * "Unfold every nested object", the same gesture the data grid offers in its
+   * footer — held here rather than received as a prop because this surface has
+   * no grid around it to own the state. See `ExpandAllSignal` for why the press
+   * is an epoch and not a boolean.
+   */
+  const [expandAll, setExpandAll] = useState<ExpandAllSignal | null>(null);
+  function expandAllDocuments(expanded: boolean) {
+    setExpandAll((prev) => ({ epoch: (prev?.epoch ?? 0) + 1, expanded }));
+  }
+
+  /**
+   * Whether anything in the sample nests at all — a `$group` that projects four
+   * scalars has nothing to unfold, and a control that cannot do anything is
+   * worse than no control.
+   *
+   * Only the first few documents are inspected: this runs on every preview
+   * refresh (a keystroke in the stage body, debounced) and the answer is a
+   * yes/no about shape, which a sample settles as well as a scan. A pipeline
+   * whose 40th document is the first to carry a sub-document loses the button,
+   * which is the cheaper of the two mistakes available here.
+   */
+  const hasNested = useMemo(() => {
+    const rows = result?.rows;
+    if (!rows) return false;
+    return rows
+      .slice(0, 20)
+      .some((row) =>
+        row.some((v) => v !== null && typeof v === "object"),
+      );
+  }, [result]);
+
   if (error) {
     return (
       <div
@@ -75,9 +112,35 @@ export function PipelineOutput({
   }
 
   return (
-    <div className={cn("relative flex h-full min-h-0 flex-col", className)}>
+    <div
+      className={cn(
+        "group/preview relative flex h-full min-h-0 flex-col",
+        className,
+      )}
+    >
       {/* A running refresh dims the stale documents instead of unmounting
           them: a preview that blanks on every keystroke is unreadable. */}
+      {/* Floated over the documents rather than given a bar of its own: this
+          surface is also a stage card's right-hand pane, where a permanent
+          strip would cost preview rows that are the whole point of the pane.
+          Revealed on hover for the same reason the cards' own row actions are,
+          and anchored clear of the scrollbar. */}
+      {hasNested && (
+        <div className="absolute right-3 top-1 z-10 flex items-center gap-0.5 rounded-md bg-background/80 opacity-0 backdrop-blur-sm transition-opacity group-hover/preview:opacity-100 focus-within:opacity-100">
+          <IconButton
+            size="xs"
+            icon={ChevronsUpDown}
+            label={t("dataGrid.list.expandAllDocuments")}
+            onClick={() => expandAllDocuments(true)}
+          />
+          <IconButton
+            size="xs"
+            icon={ChevronsDownUp}
+            label={t("dataGrid.list.collapseAllDocuments")}
+            onClick={() => expandAllDocuments(false)}
+          />
+        </div>
+      )}
       <div
         // The list windows its cards against this element, so it needs a
         // handle on it — see `DocumentListView`'s virtualizer note.
@@ -101,6 +164,7 @@ export function PipelineOutput({
             Math.max(10, Math.round(grid.rowHeight * 0.46)),
           )}
           expandNested={grid.listExpandNested}
+          expandAll={expandAll}
           showTypes={grid.listShowTypes}
           lineNumbers={grid.listLineNumbers}
           copyToClipboard={(text) => void copyToClipboard(text)}

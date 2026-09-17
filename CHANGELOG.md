@@ -8,6 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **"Expand every nested object" — one gesture per document, and one for the
+  whole page.** Each card in the grid's list view now carries a chevron beside
+  its field count that unfolds (or folds) every nested object in that document
+  at once, at any depth; the grid footer carries the same pair for every
+  document on the page, beside the column-fit and row-zoom controls that
+  already answer "how am I looking at this".
+
+  The per-line chevrons only ever moved one level. A document whose interesting
+  values sit two or three levels down — a `processInfo` keyed by device id,
+  each entry an object of its own — took one click per level to read, and then
+  the same clicks again in the next document. Reading a page of them was not a
+  practical thing to do.
+
+  Three decisions are worth stating:
+
+  - **It flips the base the folds are measured against, rather than toggling a
+    set of paths.** A container hidden inside a folded ancestor contributes no
+    line, so its path is not in the flattened field list and there is nothing
+    to toggle — a set-based "expand all" would have unfolded exactly one level
+    and stopped. Flipping the base opens the whole tree in one move and costs
+    nothing per level.
+  - **The grid-wide press is an epoch, not a boolean.** It is an action, not a
+    state: after pressing it you may fold one object by hand, and pressing it
+    again has to expand that object back. A boolean prop would already be
+    `true` on the second press and nothing would happen. It is also what lets a
+    card that scrolls into the virtualizer's window *after* the press mount
+    already expanded.
+  - **Neither control writes the *Expand nested values by default*
+    preference.** That one answers "how should a document open"; these answer
+    "show me everything in what I am looking at right now". Conflating them
+    would make a one-off gesture rewrite a persisted setting.
+
+  The per-document control is hidden on a document with nothing to unfold, and
+  its direction follows what is on screen — it reads "collapse" only once every
+  visible container is open. The **aggregation preview** carries the pair too,
+  floated over the documents instead of in a bar of its own: that surface is
+  also a stage card's right-hand pane, where a permanent strip would cost the
+  preview rows the pane exists for. It owns its own signal, having no grid
+  around it, and hides the control when the pipeline projects only scalars.
+
 - **"Paste rows as JSON…" — bulk row insert on all four SQL drivers.** Behind
   the grid's Insert button, next to the inline draft row. One JSON object is
   one row; paste an array and it becomes a single multi-row `INSERT` inside a
