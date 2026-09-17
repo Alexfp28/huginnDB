@@ -52,6 +52,11 @@ export interface ImportedEditorThemes {
    * matching itself — and the join key was sitting on disk the whole time.
    */
   source?: InstalledThemeSource | null;
+  /** The extension's `publisher.name`. Present for a local `.vsix` import too,
+   *  which is what lets the browser recognise one. */
+  identifier?: string | null;
+  /** Package version at install time, for the update check. */
+  version?: string | null;
   light: monaco.editor.IStandaloneThemeData;
   dark: monaco.editor.IStandaloneThemeData;
 }
@@ -145,12 +150,21 @@ function allThemes(state: ThemeState): ThemeFamily[] {
 function pairEditorThemes(
   label: string,
   monacoThemes: ThemeImportResult["monacoThemes"],
-  source?: InstalledThemeSource,
+  source: InstalledThemeSource | undefined,
+  identifier: string,
+  packageVersion: string,
 ): ImportedEditorThemes | null {
   const light = monacoThemes.find((m) => m.side === "light");
   const dark = monacoThemes.find((m) => m.side === "dark");
   return light && dark
-    ? { label, source: source ?? null, light: light.data, dark: dark.data }
+    ? {
+        label,
+        source: source ?? null,
+        identifier: identifier || null,
+        version: packageVersion || null,
+        light: light.data,
+        dark: dark.data,
+      }
     : null;
 }
 
@@ -175,6 +189,8 @@ function persistInstalled(
       familyId,
       name,
       source: source ?? null,
+      identifier: editorThemes.identifier ?? null,
+      version: editorThemes.version ?? null,
       installedAt: new Date().toISOString(),
       paletteEdited,
       editorThemes: { light: editorThemes.light, dark: editorThemes.dark },
@@ -208,6 +224,8 @@ export async function hydrateInstalledThemes(): Promise<void> {
         {
           label: t.name,
           source: t.source ?? null,
+          identifier: t.identifier ?? null,
+          version: t.version ?? null,
           light: t.editorThemes.light as monaco.editor.IStandaloneThemeData,
           dark: t.editorThemes.dark as monaco.editor.IStandaloneThemeData,
         },
@@ -317,7 +335,13 @@ export const useThemeStore = create<ThemeState>()(
       },
       addImportedTheme: (result, source) => {
         const { family, monacoThemes } = result;
-        const editorThemes = pairEditorThemes(family.name, monacoThemes, source);
+        const editorThemes = pairEditorThemes(
+          family.name,
+          monacoThemes,
+          source,
+          result.identifier,
+          result.packageVersion,
+        );
         set((s) => ({
           customThemes: [...s.customThemes.filter((f) => f.id !== family.id), family],
           themeId: family.id,
@@ -333,7 +357,13 @@ export const useThemeStore = create<ThemeState>()(
       },
       applyThemeUpdate: (result, source, keepPalette) => {
         const { family, monacoThemes } = result;
-        const editorThemes = pairEditorThemes(family.name, monacoThemes, source);
+        const editorThemes = pairEditorThemes(
+          family.name,
+          monacoThemes,
+          source,
+          result.identifier,
+          result.packageVersion,
+        );
         set((s) => ({
           // The editor half is always replaced; the palette is only replaced
           // when the user has not edited it. See `paletteEdited` in

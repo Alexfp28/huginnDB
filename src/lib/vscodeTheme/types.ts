@@ -113,6 +113,12 @@ export interface InstalledTheme {
   familyId: string;
   name: string;
   source?: InstalledThemeSource | null;
+  /** The extension's `publisher.name` from its manifest, recorded for every
+   *  install so a locally imported `.vsix` is still matched to its registry
+   *  listing. */
+  identifier?: string | null;
+  /** The package version this install came from. */
+  version?: string | null;
   installedAt: string;
   /** Set once the user edits any token of the derived palette; an update
    *  then leaves the palette alone. Never cleared by an update. */

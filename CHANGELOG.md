@@ -21,7 +21,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   variants it contributes), install it in one click, and apply it — without
   leaving the window. Installing pairs the extension's first light and dark
   variants itself; picking different ones is there for when you want it, not
-  before every install.
+  before every install. A theme you imported by hand from a `.vsix` is
+  recognised in the listing too, and gets update checks, by matching its
+  manifest identifier.
 
   Installed themes are checked for newer versions, and updating one **never
   overwrites a palette you have edited**: the editor theme is refreshed and

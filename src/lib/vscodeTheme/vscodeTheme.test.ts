@@ -469,3 +469,42 @@ describe("matching an installed theme to a registry row", () => {
     expect(findInstalledFamily(installed, dracula)).toBeNull();
   });
 });
+
+describe("reconciling a locally imported theme with its registry listing", () => {
+  const extension = { namespace: "dracula-theme", name: "theme-dracula" };
+
+  it("matches a local .vsix import on its manifest identifier", () => {
+    // No registry origin at all — it was dragged in from disk — but the
+    // manifest names the same extension, so the panel must not offer it as
+    // if it were new. Verified against the live registry before being relied
+    // on: `publisher.name` equalled `namespace.name` for every colour theme
+    // sampled.
+    const installed = {
+      "fam-1": { label: "Dracula", source: null, identifier: "dracula-theme.theme-dracula" },
+    };
+    expect(findInstalledFamily(installed, extension)).toBe("fam-1");
+  });
+
+  it("ignores capitalisation, which differs between the two sources", () => {
+    const installed = {
+      "fam-1": { label: "GitHub", source: null, identifier: "github.github-vscode-theme" },
+    };
+    expect(
+      findInstalledFamily(installed, { namespace: "GitHub", name: "github-vscode-theme" }),
+    ).toBe("fam-1");
+  });
+
+  it("does not match a different extension whose name merely starts the same", () => {
+    const installed = {
+      "fam-1": { label: "Dracula", source: null, identifier: "dracula-theme.theme-dracula" },
+    };
+    expect(
+      findInstalledFamily(installed, { namespace: "dracula-theme", name: "theme" }),
+    ).toBeNull();
+  });
+
+  it("carries the identifier out of a build so the install can record it", () => {
+    const payload = payloadOf(dracula, "dracula.json");
+    expect(buildThemeImport(payload, autoPairVariants(payload.themes)).identifier).toBe("");
+  });
+});

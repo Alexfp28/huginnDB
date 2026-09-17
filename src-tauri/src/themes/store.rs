@@ -65,6 +65,28 @@ pub struct InstalledTheme {
     /// check for updates and never appears in the update list.
     #[serde(default)]
     pub source: Option<ThemeSource>,
+    /// The extension's own `publisher.name` from its manifest, recorded for
+    /// **every** install including a local `.vsix`.
+    ///
+    /// It exists because [`source`] answers "where did this come from", which
+    /// a file import cannot answer, while the browser also needs "which
+    /// extension is this" — so that a theme installed from a downloaded
+    /// `.vsix` is still recognised in the results rather than offered as if it
+    /// were new. Measured against the registry before being relied on: for
+    /// every colour theme sampled, `publisher.name` equals the registry's
+    /// `namespace.name` exactly.
+    #[serde(default)]
+    pub identifier: Option<String>,
+    /// The package version this install came from, recorded alongside
+    /// [`identifier`] for every install.
+    ///
+    /// [`ThemeSource::version`] already holds this for a registry install; the
+    /// duplicate exists so a **local** `.vsix` import has one too, which is
+    /// what lets the update check reach it. Without a version there is nothing
+    /// to compare a registry's latest against, and the theme would show as
+    /// installed while silently never updating.
+    #[serde(default)]
+    pub version: Option<String>,
     /// RFC 3339. Informational — shown in the library, never compared.
     #[serde(default)]
     pub installed_at: String,
@@ -126,6 +148,14 @@ pub fn upsert(library: &mut InstalledThemes, mut theme: InstalledTheme) {
         theme.palette_edited = theme.palette_edited || existing.palette_edited;
         if theme.installed_at.is_empty() {
             theme.installed_at = existing.installed_at.clone();
+        }
+        // A record written before identifiers existed keeps whatever the new
+        // one knows, but a new one that knows nothing must not erase it.
+        if theme.identifier.is_none() {
+            theme.identifier = existing.identifier.clone();
+        }
+        if theme.version.is_none() {
+            theme.version = existing.version.clone();
         }
     }
     match library
@@ -227,6 +257,8 @@ mod tests {
             source: None,
             installed_at: "2026-09-17T10:00:00Z".into(),
             palette_edited: edited,
+            identifier: Some("someone.my-theme".into()),
+            version: Some("1.0.0".into()),
             editor_themes: serde_json::json!({ "light": {}, "dark": {} }),
         }
     }
@@ -313,6 +345,22 @@ mod tests {
         // "cannot parse" must never silently mean "up to date".
         assert!(is_newer("2026.02", "2025.12"));
         assert!(is_newer("v2", "v1"));
+    }
+
+    #[test]
+    fn upsert_never_erases_a_known_identifier() {
+        // Reinstalling from a path that does not know the identifier (an old
+        // record, a future caller) must not lose the one already stored --
+        // it is what matches a locally imported theme to a registry row.
+        let mut lib = InstalledThemes::default();
+        upsert(&mut lib, theme("a", false));
+        let mut blank = theme("a", false);
+        blank.identifier = None;
+        upsert(&mut lib, blank);
+        assert_eq!(
+            find(&lib, "a").unwrap().identifier.as_deref(),
+            Some("someone.my-theme")
+        );
     }
 
     #[test]

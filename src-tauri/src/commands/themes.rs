@@ -147,21 +147,47 @@ pub async fn check_theme_updates() -> AppResult<ThemeUpdateReport> {
     let mut updates = Vec::new();
     let mut unchecked = 0usize;
 
+    // The configured registry, for themes that carry no origin of their own.
+    // Resolved once, and a disabled browser means there is nothing to check.
+    let default_registry = registry_base().ok();
+
     for installed in &library.themes {
-        let Some(source) = &installed.source else {
+        // Where to ask, who to ask about, and what we currently have. A
+        // registry install answers all three from its own record; a local
+        // `.vsix` import answers the last two from its manifest and borrows
+        // the first from preferences — which is the whole point of recording
+        // an identifier for a file the user dragged in.
+        let target = match (&installed.source, &installed.identifier, &installed.version) {
+            (Some(s), _, _) => Some((
+                s.registry_url.clone(),
+                s.namespace.clone(),
+                s.name.clone(),
+                s.version.clone(),
+            )),
+            (None, Some(id), Some(version)) => id.split_once('.').and_then(|(ns, name)| {
+                default_registry
+                    .clone()
+                    .map(|base| (base, ns.to_string(), name.to_string(), version.clone()))
+            }),
+            _ => None,
+        };
+        let Some((registry_url, namespace, name, current)) = target else {
             continue;
         };
-        match registry::lookup(&source.registry_url, &source.namespace, &source.name).await {
-            Ok(Some(latest)) if store::is_newer(&latest.version, &source.version) => {
+
+        match registry::lookup(&registry_url, &namespace, &name).await {
+            Ok(Some(latest)) if store::is_newer(&latest.version, &current) => {
                 updates.push(ThemeUpdate {
                     family_id: installed.family_id.clone(),
                     name: installed.name.clone(),
-                    installed_version: source.version.clone(),
+                    installed_version: current,
                     available_version: latest.version.clone(),
                     palette_edited: installed.palette_edited,
                     theme: latest,
                 });
             }
+            // Not found is a perfectly ordinary answer for a locally imported
+            // theme that this registry simply does not carry.
             Ok(_) => {}
             Err(_) => unchecked += 1,
         }

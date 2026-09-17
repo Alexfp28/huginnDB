@@ -23,7 +23,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   autor, licencia, descargas, cuántas variantes aporta), instálalo de un clic
   y aplícalo sin salir de la ventana. Al instalar se emparejan solas la primera
   variante clara y la primera oscura de la extensión; elegir otras está ahí
-  para cuando lo quieras, no antes de cada instalación.
+  para cuando lo quieras, no antes de cada instalación. Un tema que hayas
+  importado a mano desde un `.vsix` también se reconoce en el listado, y recibe
+  avisos de actualización, emparejándolo por el identificador de su
+  manifiesto.
 
   Se comprueba si los temas instalados tienen versiones nuevas, y actualizar
   uno **nunca pisa una paleta que hayas editado**: se refresca el tema del
