@@ -40,6 +40,7 @@ in a roadmap and now don't:
 | Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
 | **HuginnDB Pulse** — live server health/performance monitoring | 1.20.0 | Vital signs, top time-consuming statements (with `EXPLAIN`), storage, sessions and index usage for **MySQL and MongoDB**, docked next to the workspace or expanded into its own window; an opt-in per-connection history sampler (`pulse.db`) answers "was this slow yesterday too"; reachable over MCP through seven read-only tools. Postgres/SQLite/SQL Server show an explicit "not supported yet" state. See `docs/PULSE.md`. |
 | **AI panel** — an in-app, local-first assistant | 1.22.0 | Docked beside Pulse, off by default. Two independently declared axes (where inference runs, whether rows may enter the context) gate everything; four assisted actions run on one model call each, agent mode drives the read-only tool catalogue and is gated on a measured tool-capable endpoint, and no write tool exists at all. Conversations are memory-only. See `docs/AI.md` for what exists, `docs/AI_ROADMAP.md` for the design rationale and the questions deferred past v1, and gotchas #71–#74 for the invariants. |
+| VS Code theme import | *Unreleased* | `Import theme…` in Settings → Appearance accepts a `.vsix` or a bare `*-color-theme.json`. One file yields two things of different kinds: the editor gets a **translation** (Monaco *is* VS Code's editor), the chrome gets a **derivation** — ~230 widget-named keys read into 30 role-named tokens — which lands as an editable custom family rather than being presented as "your theme". Built against five real open-vsx themes kept as fixtures. Browsing the registry in-app is still open, see below. See `CLAUDE.md` gotcha #87. |
 | Bulk row insert | 1.25.0 | "Paste rows as JSON…", behind the grid's Insert button, on all four SQL drivers: an object is one row, an array is many, and the backend turns either into one multi-row `INSERT` per bind-ceiling chunk inside a single transaction. Bulk *delete* had shipped in 1.0.2 and MongoDB had been covered since its document dialog accepted an array; this is the SQL half. Keys are validated against the catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted. See `CLAUDE.md` gotcha #84. |
 
 ## Open (priority order)
@@ -123,9 +124,34 @@ in a roadmap and now don't:
 8. **macOS bundle with code signing.** The build is expected to work but is
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).
-9. **Visual query builder** — low priority. Monaco is fast enough that most
+9. **Browse open-vsx from inside the app** — the other half of VS Code theme
+   import, which shipped offline first on purpose. What exists today converts
+   a file the user already has; what is missing is everything that needs the
+   network: search against
+   [open-vsx.org](https://open-vsx.org)'s public API, a preview before
+   installing, download and unzip of the `.vsix`, and update checks. Three
+   things are already known and should shape the design rather than be
+   rediscovered: **(a)** the registry is the correct one and not a
+   second-best — Microsoft's marketplace terms forbid access from non-VS Code
+   products, which is why Cursor, VSCodium and Gitpod all use this one;
+   **(b)** it returns intermittent 503s (two of seven probes during the
+   original survey), so retries, caching and full offline degradation are
+   requirements, not polish; **(c)** the `Themes` category covers icon themes
+   too, so `contributes.themes` in the manifest is the only reliable filter
+   and that means reading the `.vsix`. This is also the first feature that
+   would make the app talk to a third party it does not control, so it wants
+   an explicit opt-in, a configurable registry URL (self-hosted open-vsx
+   exists in companies) and a way to turn it off entirely. **Storage becomes a
+   real decision at this point**: the palettes and their Monaco themes live in
+   `localStorage` today, which is fine for a handful of hand-imported themes
+   and not for an installed library — expect to split "the resolved active
+   palette" (stays in `localStorage`, read pre-mount to avoid FOUC) from "the
+   installed library" (a new file in the config dir, on `json_schemas.json`'s
+   rules).
+
+10. **Visual query builder** — low priority. Monaco is fast enough that most
    users probably don't want one; only pursue if there's real demand.
-10. **Keyset (seek) pagination for deep table navigation** — low priority.
+11. **Keyset (seek) pagination for deep table navigation** — low priority.
    The data browser paginates with `LIMIT/OFFSET` (and `.skip()` on MongoDB),
    which is O(offset): jumping deep into a multi-million-row table makes the
    engine scan and discard every skipped row. A `WHERE (sort_key) > :last`
