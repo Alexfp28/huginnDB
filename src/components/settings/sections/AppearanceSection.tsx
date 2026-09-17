@@ -196,8 +196,15 @@ export function AppearanceSection() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-3">
-      <div className="grid min-h-0 flex-1 grid-cols-[180px_1fr] gap-3">
+    // The section SCROLLS rather than dividing a fixed height between its
+    // parts. It used to be `flex-1` colour editor plus one `shrink-0` group,
+    // which fits; adding a second group squeezed the editor to roughly the
+    // height of its own header, so the thing this page exists for became the
+    // smallest thing on it. The editor now states a floor tall enough to show
+    // a colour group without scrolling twice, and anything past the viewport
+    // is reached by scrolling the page.
+    <div className="flex h-full flex-col gap-3 overflow-y-auto">
+      <div className="grid min-h-[24rem] shrink-0 grid-cols-[180px_1fr] gap-3">
         <aside className="overflow-y-auto rounded-md border border-border bg-card/40">
           <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-3xs uppercase tracking-wider text-muted-foreground backdrop-blur">
             {t("settings.appearance.themes")}

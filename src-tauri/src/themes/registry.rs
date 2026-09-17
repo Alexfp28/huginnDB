@@ -12,10 +12,13 @@
 //! - **The search endpoint's `Themes` category covers icon themes as well as
 //!   colour themes**, and the search response says nothing about what an
 //!   extension contributes. Only `contributes.themes` in the manifest does.
-//! - **The manifest is served on its own** (`files.manifest`, 1–11 KB), so
-//!   that filter costs a small fetch per candidate instead of a multi-megabyte
-//!   `.vsix` download. Material Icon Theme is discarded for 11 KB rather than
-//!   for 6 MB.
+//! - **The manifest is served on its own** at
+//!   `/api/{ns}/{name}/latest/file/package.json` (1–11 KB), so that filter
+//!   costs a small fetch per candidate instead of a multi-megabyte `.vsix`
+//!   download. Material Icon Theme is discarded for 11 KB rather than for
+//!   6 MB. Note that a **search hit carries no `files.manifest`** — only the
+//!   per-extension metadata response does — so that path is the normal route
+//!   here rather than a fallback, despite reading like one below.
 //! - **Responses carry no `Cache-Control` and no `ETag`**, so there is nothing
 //!   to piggyback on: any caching is ours to own, with our own TTL.
 //! - **Every version publishes a `sha256`** next to its `.vsix`, verified to
@@ -335,6 +338,10 @@ pub async fn search(base_url: &str, query: &str, offset: u64, size: u64) -> AppR
                 .and_then(|f| f.get("manifest"))
                 .and_then(|v| v.as_str())
                 .map(str::to_string)
+                // Search hits do not include `files.manifest` (only the
+                // per-extension metadata response does), so this branch is
+                // what actually runs for every result. The map above is kept
+                // for the day the search response grows the field.
                 .unwrap_or_else(|| format!("{base}/api/{ns}/{name}/latest/file/package.json"));
             let manifest = fetch_manifest(&client, &manifest_url).await.ok()?;
             to_registry_theme(&hit, &manifest)

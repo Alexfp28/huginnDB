@@ -3098,7 +3098,6 @@
     "reinstall": "Reinstall",
     "installing": "Downloading…",
     "apply": "Apply",
-    "downloads": "{{count, number}} downloads",
     "variants_one": "1 variant",
     "variants_other": "{{count}} variants",
     "approxTotal": "about {{count, number}} results before icon themes are filtered",
@@ -3106,6 +3105,7 @@
     "updatesAvailable_other": "{{count}} themes have a newer version",
     "paletteEditedNote": "Themes whose palette you have edited will only have their editor theme updated.",
     "updated": "Updated \"{{name}}\"",
-    "updatedEditorOnly": "Updated the editor theme for \"{{name}}\" — its palette was left alone because you had edited it"
+    "updatedEditorOnly": "Updated the editor theme for \"{{name}}\" — its palette was left alone because you had edited it",
+    "inUse": "In use"
   }
 }

@@ -30,11 +30,12 @@
  * quietly behaves differently.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Download, RefreshCw, Search, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { useThemeStore } from "@/stores/preferences/theme";
@@ -335,6 +336,88 @@ function PanelFrame({ title, children }: { title: string; children: React.ReactN
   );
 }
 
+/**
+ * Compact download counts, localised.
+ *
+ * `Intl` does this better than a hand-rolled K/M helper would: `maximum-
+ * SignificantDigits: 3` gives `843K`, `1.45M`, `12.5K` in English and
+ * `843 mil`, `1,45 M` in Spanish, with the locale's own separators. A raw
+ * `842,877` is six characters of precision nobody acts on, in a column that
+ * has to share one line with a rating and a variant count.
+ */
+function useCompactNumber() {
+  const { i18n } = useTranslation();
+  return useMemo(
+    () =>
+      new Intl.NumberFormat(i18n.language, {
+        notation: "compact",
+        maximumSignificantDigits: 3,
+      }),
+    [i18n.language],
+  );
+}
+
+/**
+ * A stable hue per extension, for the monogram shown when a theme publishes no
+ * icon. Derived from the identifier so the same extension is always the same
+ * colour — a random or fixed grey would make the fallback read as "broken
+ * image" rather than as a deliberate placeholder. Fixed saturation and
+ * lightness keep it legible against either app variant.
+ */
+function monogramHue(seed: string): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  return Math.abs(hash) % 360;
+}
+
+/**
+ * The extension's published icon, falling back to a coloured monogram.
+ *
+ * `onError` matters more than it looks: the icon is a third-party URL on the
+ * registry, and a 404 or a blocked request would otherwise leave a broken
+ * image glyph in a list where every other row has artwork. The fixed box also
+ * stops rows from reflowing as images arrive.
+ */
+function ThemeIcon({ theme }: { theme: RegistryTheme }) {
+  const [failed, setFailed] = useState(false);
+  const id = `${theme.namespace}.${theme.name}`;
+  const showImage = theme.iconUrl && !failed;
+  return (
+    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md ring-1 ring-border/70">
+      {showImage ? (
+        <img
+          src={theme.iconUrl ?? undefined}
+          alt=""
+          loading="lazy"
+          className="h-full w-full bg-muted object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div
+          className="flex h-full w-full items-center justify-center text-sm font-semibold text-white"
+          style={{ backgroundColor: `hsl(${monogramHue(id)} 45% 42%)` }}
+        >
+          {theme.displayName.trim().charAt(0).toUpperCase() || "?"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One result card.
+ *
+ * The layout is a deliberate three-band split rather than a flat stack of
+ * lines, because in a ~340px panel everything competes: **identity** (icon,
+ * name, publisher) reads first, **description** second at full width where it
+ * has room for two lines, and **metrics plus the action** share the last band.
+ * The previous version put all six facts on consecutive equal-weight lines,
+ * which scans as a paragraph rather than as a list of choices.
+ *
+ * Metrics are separated by middots rather than gaps: at this width the
+ * separator costs less than the whitespace would, and it groups them as one
+ * secondary unit against the button.
+ */
 function ThemeRow({
   theme,
   busy,
@@ -351,46 +434,93 @@ function ThemeRow({
   onApply: () => void;
 }) {
   const { t } = useTranslation();
+  const compact = useCompactNumber();
+  const installed = installedFamilyId !== null;
+
   return (
-    <li className="rounded-md border border-border p-2">
-      <div className="flex items-baseline gap-1.5">
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">
-          {theme.displayName}
-        </span>
-        {isActive && <Check className="h-3 w-3 shrink-0 text-success" />}
+    <li
+      className={cn(
+        "group rounded-lg border p-2.5 transition-colors duration-150",
+        // An installed theme is marked by its border rather than by a badge
+        // competing with the name; the active one gets the brand accent, which
+        // is the app's own "this is live" colour.
+        isActive
+          ? "border-brand/60 bg-brand/[0.06]"
+          : installed
+            ? "border-success/40 hover:border-success/60"
+            : "border-border hover:border-brand/40 hover:bg-accent/40",
+      )}
+    >
+      <div className="flex gap-2.5">
+        <ThemeIcon theme={theme} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold leading-tight">
+              {theme.displayName}
+            </span>
+            {isActive ? (
+              <span className="shrink-0 rounded-sm bg-brand px-1 py-px text-3xs font-medium uppercase tracking-wide text-brand-foreground">
+                {t("extensions.inUse")}
+              </span>
+            ) : (
+              installed && <Check className="h-3 w-3 shrink-0 text-success" />
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-3xs text-muted-foreground">
+            {theme.namespace}
+            <span className="px-1 opacity-50">·</span>v{theme.version}
+            {theme.license && (
+              <>
+                <span className="px-1 opacity-50">·</span>
+                {theme.license}
+              </>
+            )}
+          </p>
+        </div>
       </div>
-      <p className="text-3xs text-muted-foreground">
-        {theme.namespace} · v{theme.version}
-        {theme.license ? ` · ${theme.license}` : ""}
-      </p>
-      <p className="mt-1 line-clamp-2 text-2xs text-muted-foreground">{theme.description}</p>
-      <div className="mt-1.5 flex items-center gap-2">
-        <span className="text-3xs text-muted-foreground">
-          {t("extensions.downloads", { count: theme.downloadCount })}
-        </span>
-        {theme.averageRating != null && (
-          <span className="flex items-center gap-0.5 text-3xs text-muted-foreground">
-            <Star className="h-2.5 w-2.5" />
-            {theme.averageRating.toFixed(1)}
+
+      {theme.description && (
+        <p className="mt-1.5 line-clamp-2 text-2xs leading-relaxed text-muted-foreground">
+          {theme.description}
+        </p>
+      )}
+
+      <div className="mt-2 flex items-center gap-2">
+        <p className="min-w-0 flex-1 truncate text-3xs tabular-nums text-muted-foreground">
+          <span className="inline-flex items-center gap-0.5">
+            <Download className="h-2.5 w-2.5" />
+            {compact.format(theme.downloadCount)}
           </span>
-        )}
-        <span className="text-3xs text-muted-foreground">
+          {theme.averageRating != null && (
+            <>
+              <span className="px-1 opacity-50">·</span>
+              <span className="inline-flex items-center gap-0.5">
+                <Star className="h-2.5 w-2.5" />
+                {theme.averageRating.toFixed(1)}
+              </span>
+            </>
+          )}
+          <span className="px-1 opacity-50">·</span>
           {t("extensions.variants", { count: theme.variants.length })}
-        </span>
-        <div className="ml-auto flex gap-1">
+        </p>
+        <div className="flex shrink-0 gap-1">
           {/* "Apply" only appears once a theme is installed and is not the
-              active one — a button that does nothing visible is worse than
-              no button. */}
-          {installedFamilyId && !isActive && (
+              active one — a button that does nothing visible is worse than no
+              button. */}
+          {installed && !isActive && (
             <Button size="xs" variant="outline" onClick={onApply}>
               {t("extensions.apply")}
             </Button>
           )}
-          <Button size="xs" variant={installedFamilyId ? "ghost" : "default"} disabled={busy} onClick={onInstall}>
-            <Download className="mr-1 h-3 w-3" />
+          <Button
+            size="xs"
+            variant={installed ? "ghost" : "default"}
+            disabled={busy}
+            onClick={onInstall}
+          >
             {busy
               ? t("extensions.installing")
-              : installedFamilyId
+              : installed
                 ? t("extensions.reinstall")
                 : t("extensions.install")}
           </Button>

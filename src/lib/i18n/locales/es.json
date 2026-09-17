@@ -3098,7 +3098,6 @@
     "reinstall": "Reinstalar",
     "installing": "Descargando…",
     "apply": "Aplicar",
-    "downloads": "{{count, number}} descargas",
     "variants_one": "1 variante",
     "variants_other": "{{count}} variantes",
     "approxTotal": "unos {{count, number}} resultados antes de filtrar los de iconos",
@@ -3106,6 +3105,7 @@
     "updatesAvailable_other": "{{count}} temas tienen una versión más reciente",
     "paletteEditedNote": "De los temas cuya paleta hayas editado solo se actualizará el tema del editor.",
     "updated": "Se actualizó «{{name}}»",
-    "updatedEditorOnly": "Se actualizó el tema de editor de «{{name}}»; su paleta se ha respetado porque la habías editado"
+    "updatedEditorOnly": "Se actualizó el tema de editor de «{{name}}»; su paleta se ha respetado porque la habías editado",
+    "inUse": "En uso"
   }
 }
