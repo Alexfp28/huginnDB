@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.25.0] — 2026-09-17
+
 ### Añadido
 
 - **"Desplegar todos los objetos" — un gesto por documento y otro para toda la

@@ -2216,6 +2216,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_25_0": {
+        "tagline": "Un documento se despliega hasta el fondo con un clic, cuarenta filas entran pegadas como JSON y el espacio de trabajo apunta por fin a la pestaña que estás mirando.",
+        "items": {
+          "expandAll": {
+            "title": "Despliega todos los objetos anidados de golpe",
+            "body": "Un chevron junto al contador de campos de cada tarjeta abre (o cierra) todos los objetos anidados de ese documento a cualquier profundidad, y el pie de la tabla lleva el mismo par para toda la página. La vista previa de agregación también lo tiene. Ninguno de los dos reescribe tu preferencia \"desplegar valores anidados por defecto\"."
+          },
+          "pasteRowsJson": {
+            "title": "Pegar filas como JSON: inserción masiva en los drivers SQL",
+            "body": "Un objeto es una fila, un array son muchas, y el backend convierte cualquiera de los dos en un INSERT multi-fila por cada bloque que cabe en el techo de parámetros, dentro de una sola transacción. Las claves se validan contra el catálogo real antes de poder convertirse en identificadores, y una fila cuyo conjunto de columnas difiere de la primera se rechaza en vez de rellenarse con defaults en silencio."
+          },
+          "queryThisTable": {
+            "title": "\"Consultar esta tabla…\" en el nivel en el que la gente hace clic derecho",
+            "body": "Una tabla o vista del árbol de esquema abre un editor de queries ya apuntando a la conexión y la base de datos de esa relación, con SELECT * FROM <tabla> LIMIT 100 dentro. La entrada existía uno y dos niveles más arriba y se quedaba corta justo en la tabla que estabas mirando."
+          },
+          "focusFollowsTab": {
+            "title": "El espacio de trabajo sigue a la pestaña con el foco",
+            "body": "Con una conexión MySQL y otra MongoDB vivas, hacer clic en una tabla de MySQL y pulsar + abría el editor contra MongoDB. El foco ahora es la conexión de la pestaña enfocada, derivada en un único sitio, y el título de la ventana, Pulse, el panel de IA, las Queries guardadas y el resaltado del árbol la siguen."
+          },
+          "fasterEnvironmentSwitch": {
+            "title": "Cambiar de entorno deja de esperar a la red",
+            "body": "El entorno de destino recibe el backend antes de que se pida cerrar un solo pool del saliente, así que ya estás viendo — y usando — el entorno nuevo mientras el viejo se desmonta por detrás. La capa inerte que sellaba el árbol y las pestañas ha desaparecido del todo."
+          },
+          "mysqlBackslash": {
+            "title": "El SQL copiado ya no se come las barras invertidas en MySQL",
+            "body": "\"Copiar fila como ▸ INSERT/UPDATE\" citaba las cadenas duplicando ' pero nunca tocaba \\, así que DOMAIN\\user pegado de vuelta en MySQL salía como DOMAINuser. El generador del portapapeles escapa ahora \\ igual que siempre hizo la ruta de volcado."
+          }
+        }
+      },
       "1_24_0": {
         "tagline": "Un origen compartido deja de ser todo o nada —marcas las partes que quieres— y una base de datos MongoDB por fin se puede eliminar, desde un nodo de base de datos que los árboles de conexión única nunca tuvieron.",
         "items": {

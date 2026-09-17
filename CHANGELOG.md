@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.25.0] — 2026-09-17
+
 ### Added
 
 - **"Expand every nested object" — one gesture per document, and one for the
