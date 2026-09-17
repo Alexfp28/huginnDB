@@ -7,6 +7,9 @@
  * editor.
  */
 
+import { formatSql, sqlDialectFor } from "@/lib/grid/formatSql";
+import type { Driver } from "@/types";
+
 export type ContentLanguage = "json" | "xml" | "sql" | "plaintext";
 
 /** Guess the content language by inspecting the first/last characters. */
@@ -45,8 +48,24 @@ export function detectLanguage(value: string): ContentLanguage {
  * Best-effort pretty-print for the supported languages. Returns `value`
  * unchanged for plaintext or when formatting fails (so the user never
  * loses their content).
+ *
+ * **This is the raw formatter — it happily rewrites content, not just
+ * whitespace.** `JSON.parse`/`stringify` loses integer precision past 2^53,
+ * normalises `1.0` to `1`, dedupes duplicate keys and hoists integer-like ones;
+ * `formatXml` does not parse at all. That is acceptable behind the explicit
+ * "Format" button, where the click *is* the user accepting a rewrite. The
+ * automatic path must go through `autoFormatOnOpen` instead, which refuses any
+ * reformat that changed more than whitespace.
+ *
+ * `driver` only matters for `sql` — it picks the dialect. It is optional so the
+ * call sites that have no connection identity (and the manual button before it
+ * learned about drivers) keep compiling; SQL then formats as standard SQL.
  */
-export function tryFormat(value: string, lang: ContentLanguage): string {
+export function tryFormat(
+  value: string,
+  lang: ContentLanguage,
+  driver?: Driver,
+): string {
   if (lang === "json") {
     try {
       return JSON.stringify(JSON.parse(value), null, 2);
@@ -56,6 +75,9 @@ export function tryFormat(value: string, lang: ContentLanguage): string {
   }
   if (lang === "xml") {
     return formatXml(value);
+  }
+  if (lang === "sql") {
+    return formatSql(value, sqlDialectFor(driver));
   }
   return value;
 }

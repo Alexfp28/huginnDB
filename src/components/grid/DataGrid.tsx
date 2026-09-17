@@ -1617,6 +1617,7 @@ export function DataGrid({
         <CellPreview
           columnName={selectedCell.column.name}
           value={selectedCell.value}
+          connectionId={connectionId}
           onClose={() => setSelectedCell(null)}
           onFullscreen={() => {
             openHeavyEditor(

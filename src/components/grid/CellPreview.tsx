@@ -13,9 +13,12 @@
 import { useEffect, useMemo } from "react";
 import { X, Maximize2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { detectLanguage, tryFormat } from "@/lib/grid/detectContentType";
+import { detectLanguage } from "@/lib/grid/detectContentType";
+import { autoFormatOnOpen } from "@/lib/grid/autoFormat";
+import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
 import {
   usePreferences,
+  selectEditorPrefs,
   selectGridPrefs,
 } from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
@@ -49,6 +52,10 @@ interface Props {
    * Persists `null` for the cell via the caller's update path.
    */
   onSetNull?: () => Promise<void>;
+  /** Connection this cell belongs to, used only to pick the SQL dialect when
+   *  the value is a query string. Absent for grids with no connection
+   *  identity, which then format as standard SQL. */
+  connectionId?: string;
 }
 
 export function CellPreview({
@@ -58,6 +65,7 @@ export function CellPreview({
   onFullscreen,
   onSave,
   onSetNull,
+  connectionId,
 }: Props) {
   /** String representation of the raw cell value. */
   const rawText = useMemo(() => {
@@ -69,8 +77,28 @@ export function CellPreview({
   /** Content type detected from the raw text. Recomputed only when value changes. */
   const lang = useMemo(() => detectLanguage(rawText), [rawText]);
 
-  /** Formatted display text (pretty-printed JSON, indented XML, etc.). */
-  const formatted = useMemo(() => tryFormat(rawText, lang), [rawText, lang]);
+  const editorPrefs = usePreferences(selectEditorPrefs);
+  const driver = useConnectionDriver(connectionId ?? "");
+
+  /**
+   * Formatted display text (pretty-printed JSON, indented XML, …), subject to
+   * the per-type preferences.
+   *
+   * This panel used to format unconditionally, which is why `autoFormatJson`
+   * and `autoFormatXml` ship **on** — off would have silently taken that away
+   * from every existing install rather than being a neutral default.
+   *
+   * Note what this is NOT wired into: `onSave` below sends `rawText`, never
+   * `formatted`. That asymmetry is deliberate and worth preserving — the
+   * preview's formatting is display-only and can never write, which is exactly
+   * why enabling it by default carries no risk on this surface. The editors,
+   * where the formatted text *does* become what gets saved, are the ones that
+   * need `autoFormatOnOpen`'s losslessness check.
+   */
+  const formatted = useMemo(
+    () => autoFormatOnOpen(rawText, lang, editorPrefs, driver),
+    [rawText, lang, editorPrefs, driver],
+  );
 
   /** Handle keyboard shortcuts: F11 → fullscreen, Esc → close, Ctrl+S → save. */
   useEffect(() => {

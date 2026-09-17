@@ -1255,6 +1255,18 @@
       "formatOnPaste": {
         "label": "Formatear al pegar",
         "desc": "Aplicar el formateador SQL de Monaco a los fragmentos pegados."
+      },
+      "autoFormatJson": {
+        "label": "Formatear JSON al abrir",
+        "desc": "Formatea los valores JSON de una celda en cuanto se abre el editor o el panel de vista previa. Se omite cuando reformatear cambiaría el valor y no solo sus espacios."
+      },
+      "autoFormatXml": {
+        "label": "Formatear XML al abrir",
+        "desc": "Indenta los valores XML de una celda en cuanto se abre el editor o el panel de vista previa. Se omite cuando reformatear perdería o alteraría contenido."
+      },
+      "autoFormatSql": {
+        "label": "Formatear SQL al abrir",
+        "desc": "Reformatea los valores SQL de una celda en cuanto se abre el editor o el panel de vista previa, con el dialecto de la conexión. A diferencia de JSON y XML, esto reescribe la propia sentencia —mayúsculas de las palabras clave y saltos de línea—, no solo su espaciado."
       }
     },
     "grid": {
@@ -2217,8 +2229,12 @@
     "readLess": "Leer menos",
     "releases": {
       "1_25_0": {
-        "tagline": "Un documento se despliega hasta el fondo con un clic, cuarenta filas entran pegadas como JSON y el espacio de trabajo apunta por fin a la pestaña que estás mirando.",
+        "tagline": "Las celdas se abren ya formateadas, un documento se despliega hasta el fondo con un clic, cuarenta filas entran pegadas como JSON y el espacio de trabajo apunta por fin a la pestaña que estás mirando.",
         "items": {
+          "autoFormat": {
+            "title": "Las celdas se abren ya formateadas",
+            "body": "Ajustes → Editor gana un interruptor por tipo de contenido —JSON, XML y SQL—, así que una columna de JSON se abre desplegada sin que te reformateen también el XML. Rechaza cualquier reformateo que cambiaría el valor y no solo sus espacios, así que abrir una fila y guardarla nunca puede reescribirte un número por detrás."
+          },
           "expandAll": {
             "title": "Despliega todos los objetos anidados de golpe",
             "body": "Un chevron junto al contador de campos de cada tarjeta abre (o cierra) todos los objetos anidados de ese documento a cualquier profundidad, y el pie de la tabla lleva el mismo par para toda la página. La vista previa de agregación también lo tiene. Ninguno de los dos reescribe tu preferencia \"desplegar valores anidados por defecto\"."

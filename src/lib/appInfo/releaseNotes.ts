@@ -93,6 +93,11 @@ export const RELEASE_NOTES: ReleaseNote[] = [
     taglineKey: "whatsNew.releases.1_25_0.tagline",
     highlights: [
       {
+        icon: Wand2,
+        titleKey: "whatsNew.releases.1_25_0.items.autoFormat.title",
+        bodyKey: "whatsNew.releases.1_25_0.items.autoFormat.body",
+      },
+      {
         icon: ListTree,
         titleKey: "whatsNew.releases.1_25_0.items.expandAll.title",
         bodyKey: "whatsNew.releases.1_25_0.items.expandAll.body",

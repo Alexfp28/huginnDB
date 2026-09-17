@@ -155,6 +155,46 @@ export function EditorSection() {
           onCheckedChange={(v) => updateEditor({ formatOnPaste: v })}
         />
       </PrefRow>
+
+      {/* Auto-format on open, one switch per content type the app detects.
+          Three rows rather than one grouped control because they are three
+          independent wants — a column of JSON blobs is a different situation
+          from a column of XML — and because `PrefId` derives from the key
+          names, so three keys is what makes each of them individually
+          reachable from the command palette. `plaintext` is absent by
+          construction: there is nothing to format. */}
+      <PrefRow
+        label={t("settings.editor.autoFormatJson.label")}
+        prefId="editor.autoFormatJson"
+        description={t("settings.editor.autoFormatJson.desc")}
+      >
+        <Switch
+          checked={editor.autoFormatJson}
+          onCheckedChange={(v) => updateEditor({ autoFormatJson: v })}
+        />
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.editor.autoFormatXml.label")}
+        prefId="editor.autoFormatXml"
+        description={t("settings.editor.autoFormatXml.desc")}
+      >
+        <Switch
+          checked={editor.autoFormatXml}
+          onCheckedChange={(v) => updateEditor({ autoFormatXml: v })}
+        />
+      </PrefRow>
+
+      <PrefRow
+        label={t("settings.editor.autoFormatSql.label")}
+        prefId="editor.autoFormatSql"
+        description={t("settings.editor.autoFormatSql.desc")}
+      >
+        <Switch
+          checked={editor.autoFormatSql}
+          onCheckedChange={(v) => updateEditor({ autoFormatSql: v })}
+        />
+      </PrefRow>
     </div>
   );
 }

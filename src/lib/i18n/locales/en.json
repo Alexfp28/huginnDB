@@ -1255,6 +1255,18 @@
       "formatOnPaste": {
         "label": "Format on paste",
         "desc": "Apply Monaco's basic SQL formatter to pasted snippets."
+      },
+      "autoFormatJson": {
+        "label": "Auto-format JSON on open",
+        "desc": "Pretty-print JSON cell values as soon as the editor or the preview panel opens. Skipped when reformatting would change the value rather than only its whitespace."
+      },
+      "autoFormatXml": {
+        "label": "Auto-format XML on open",
+        "desc": "Indent XML cell values as soon as the editor or the preview panel opens. Skipped when reformatting would drop or alter any content."
+      },
+      "autoFormatSql": {
+        "label": "Auto-format SQL on open",
+        "desc": "Reformat SQL cell values as soon as the editor or the preview panel opens, using the connection's dialect. Unlike JSON and XML this rewrites the statement itself — keyword casing and line breaks — not just its spacing."
       }
     },
     "grid": {
@@ -2217,8 +2229,12 @@
     "readLess": "Read less",
     "releases": {
       "1_25_0": {
-        "tagline": "A document unfolds to the bottom in one click, forty rows go in as pasted JSON, and the workspace finally points at the tab you are actually looking at.",
+        "tagline": "Cells open already formatted, a document unfolds to the bottom in one click, forty rows go in as pasted JSON, and the workspace finally points at the tab you are actually looking at.",
         "items": {
+          "autoFormat": {
+            "title": "Cells open already formatted",
+            "body": "Settings → Editor gains a switch per content type — JSON, XML and SQL — so a column of JSON blobs opens unfolded without your XML being reflowed too. It refuses any reformat that would change the value rather than only its whitespace, so opening a row and saving it can never rewrite a number behind your back."
+          },
           "expandAll": {
             "title": "Unfold every nested object at once",
             "body": "A chevron beside each card's field count opens (or closes) every nested object in that document at any depth, and the grid footer carries the same pair for the whole page. The aggregation preview has it too. Neither one rewrites your \"expand nested values by default\" preference."
