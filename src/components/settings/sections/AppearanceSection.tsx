@@ -58,9 +58,15 @@ import {
   themeFileName,
   ThemeImportError,
 } from "@/lib/themeTransfer";
+import {
+  payloadFromBareThemeFile,
+  VsCodeThemeError,
+  type VsixPayload,
+} from "@/lib/vscodeTheme";
 import { api } from "@/lib/tauri";
 import type { GridPrefs } from "@/types";
 import { PrefRow } from "./PrefRow";
+import { ImportVsCodeThemeDialog } from "../dialogs/ImportVsCodeThemeDialog";
 
 // i18n-key lookup for COLOR_GROUPS' keys — COLOR_KEYS stays the single source
 // of truth for label keys, this just indexes it by key for the grouped editor.
@@ -79,6 +85,10 @@ export function AppearanceSection() {
   const deleteCustom = useThemeStore((s) => s.deleteCustom);
   const upsertCustom = useThemeStore((s) => s.upsertCustom);
   const [newName, setNewName] = useState("");
+  /** The unzipped extension awaiting a variant choice, or `null` when the
+   *  import dialog is closed. */
+  const [vsixPayload, setVsixPayload] = useState<VsixPayload | null>(null);
+  const addImportedTheme = useThemeStore((s) => s.addImportedTheme);
   const { t } = useTranslation();
 
   // Which half of `active` (light/dark) the colour editor below shows —
@@ -120,26 +130,64 @@ export function AppearanceSection() {
     }
   }
 
-  /** Import a theme file as a new custom theme (always a fresh id — see
-   *  `parseThemeFile`) and switch to it immediately, same as duplicating one. */
+  /**
+   * Import a theme as a new custom theme (always a fresh id — see
+   * `parseThemeFile`) and switch to it immediately, same as duplicating one.
+   *
+   * One entry point handles three file shapes, because asking the user which
+   * kind of theme file they have would be asking them to know something the
+   * file already says:
+   *
+   * - a `.huginndb-theme.json` export — applied directly, as before;
+   * - a `.vsix` VS Code extension — unzipped by the backend, then the variant
+   *   picker opens, since an extension contributes several themes;
+   * - a bare `*-color-theme.json` lifted out of an extension — same picker,
+   *   with the single variant it represents.
+   *
+   * The own-format attempt comes first and its failure is the branch: a
+   * HuginnDB export and a VS Code theme are both JSON objects, and only
+   * `parseThemeFile` can tell them apart (it checks the `kind` marker).
+   */
   async function handleImportTheme() {
     try {
       const picked = await openFileDialog({
         multiple: false,
         directory: false,
         title: t("settings.appearance.importTitle"),
-        filters: [{ name: "JSON", extensions: ["json"] }],
+        filters: [
+          { name: t("settings.appearance.importFilter"), extensions: ["json", "vsix"] },
+        ],
       });
       if (typeof picked !== "string" || !picked) return;
+
+      if (picked.toLowerCase().endsWith(".vsix")) {
+        setVsixPayload(await api.readVsix(picked));
+        return;
+      }
+
       const raw = await api.readTextFile(picked);
-      const theme = parseThemeFile(raw);
+      let theme;
+      try {
+        theme = parseThemeFile(raw);
+      } catch (e) {
+        if (!(e instanceof ThemeImportError)) throw e;
+        // Not one of ours — the only other thing a `.json` here can be is a
+        // VS Code colour theme. If that fails too, the original error is the
+        // more useful one to show, since the user picked a `.json`.
+        try {
+          setVsixPayload(payloadFromBareThemeFile(raw, picked));
+          return;
+        } catch {
+          throw e;
+        }
+      }
       upsertCustom(theme);
       setThemeId(theme.id);
       notify.success(
         t("settings.appearance.importSuccess", { name: theme.name }),
       );
     } catch (e) {
-      if (e instanceof ThemeImportError) {
+      if (e instanceof ThemeImportError || e instanceof VsCodeThemeError) {
         notify.error(t(`settings.appearance.importError.${e.message}`));
       } else {
         notify.error(String(e));
@@ -289,6 +337,20 @@ export function AppearanceSection() {
       </div>
 
       <DataViewGroup />
+
+      <ImportVsCodeThemeDialog
+        payload={vsixPayload}
+        onCancel={() => setVsixPayload(null)}
+        onConfirm={(result) => {
+          setVsixPayload(null);
+          // The store does the rest: stores the family, registers both Monaco
+          // themes, and makes it active.
+          addImportedTheme(result);
+          notify.success(
+            t("settings.appearance.importSuccess", { name: result.family.name }),
+          );
+        }}
+      />
     </div>
   );
 }

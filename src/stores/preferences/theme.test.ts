@@ -3,14 +3,18 @@ import { describe, expect, it } from "vitest";
 import { migrateThemeState } from "./theme";
 
 describe("migrateThemeState", () => {
-  it("passes a v1 (already migrated) blob through unchanged", () => {
+  it("passes a v1 blob through, defaulting the fields it predates", () => {
     const v1 = {
       themeId: "claude",
       mode: "light",
       customThemes: [],
       environmentOverrideId: null,
     };
-    expect(migrateThemeState(v1, 1)).toBe(v1);
+    // No longer identity: a v1 blob was written before VS Code theme import
+    // existed, so it has no `importedEditorThemes` at all. Defaulting it in
+    // the migration — rather than at each read site — is what keeps
+    // `deleteCustom`'s object spread from being handed `undefined`.
+    expect(migrateThemeState(v1, 1)).toEqual({ ...v1, importedEditorThemes: {} });
   });
 
   it("resolves a pre-refactor built-in id to its family id and derives the global mode", () => {

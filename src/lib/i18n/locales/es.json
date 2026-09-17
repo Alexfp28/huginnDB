@@ -1325,9 +1325,24 @@
       "exportTooltip": "Exportar tema…",
       "importTitle": "Importar tema…",
       "importSuccess": "Se importó «{{name}}» como nuevo tema personalizado",
+      "importFilter": "Temas (.json, .vsix)",
       "importError": {
         "notJson": "Ese archivo no es un JSON válido.",
-        "notATheme": "Ese archivo no parece una exportación de tema de HuginnDB."
+        "notATheme": "Ese archivo no es ni una exportación de tema de HuginnDB ni un tema de color de VS Code.",
+        "themeFileMissing": "Falta el archivo de colores de ese tema dentro del paquete.",
+        "noVariantSelected": "Elige al menos una variante para importar."
+      },
+      "vscodeImport": {
+        "title": "Importar un tema de VS Code",
+        "description": "El editor recibe el tema tal cual. El resto de la aplicación recibe una paleta derivada de él, que puedes editar después como cualquier tema personalizado.",
+        "name": "Nombre del tema",
+        "lightVariant": "Variante clara",
+        "darkVariant": "Variante oscura",
+        "noVariant": "Ninguna",
+        "singleVariantNote": "Con una sola variante elegida, esa rellena ambas mitades: el otro modo se verá igual en lugar de inventar una paleta que nadie diseñó.",
+        "preview": "Paleta derivada",
+        "contrastWarning": "Algunos pares de color siguen con poco contraste tras el ajuste: {{pairs}}. Puedes corregirlos en el editor de abajo.",
+        "confirm": "Importar tema"
       },
       "dataView": {
         "title": "Vista de datos",

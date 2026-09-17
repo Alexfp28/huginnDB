@@ -16,8 +16,14 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type * as monaco from "monaco-editor";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { customThemeId } from "@/lib/utils";
+import {
+  registerImportedMonacoThemes,
+  unregisterImportedMonacoThemes,
+} from "@/lib/monaco/monaco-themes";
+import { monacoThemeId, type ThemeImportResult } from "@/lib/vscodeTheme";
 import {
   BUILT_IN_THEMES,
   applyTheme,
@@ -29,10 +35,32 @@ import {
   type ThemeMode,
 } from "@/lib/themes";
 
+/** The two Monaco themes an imported VS Code theme brings with it, kept
+ *  beside the family they came from. */
+export interface ImportedEditorThemes {
+  /** Family name at import time — what the Preferences editor picker shows. */
+  label: string;
+  light: monaco.editor.IStandaloneThemeData;
+  dark: monaco.editor.IStandaloneThemeData;
+}
+
 interface ThemeState {
   themeId: string;
   mode: ThemeMode;
   customThemes: ThemeFamily[];
+  /**
+   * Editor themes that arrived with an imported VS Code theme, keyed by the
+   * custom family's id.
+   *
+   * They live in this store, and not in `prefs.json` with the rest of the
+   * editor settings, because their lifetime is the family's: importing
+   * Dracula produces one chrome palette and one editor theme from the same
+   * file, and deleting the palette must not leave the editor picker offering
+   * an id nothing defines. Sizes are modest — the largest sampled theme
+   * (One Dark Pro, 275 token rules) serialises to ~20 KB — so localStorage
+   * holds them comfortably alongside the palettes.
+   */
+  importedEditorThemes: Record<string, ImportedEditorThemes>;
   /**
    * Theme id the *active environment* wants applied instead of `themeId`, or
    * `null` for "no override — use the default". Only ever fixes the FAMILY,
@@ -49,6 +77,10 @@ interface ThemeState {
   environmentOverrideId: string | null;
   setThemeId: (id: string) => void;
   upsertCustom: (family: ThemeFamily) => void;
+  /** Store an imported VS Code theme: its palette becomes a custom family,
+   *  its editor themes are registered with Monaco, and the family is made
+   *  active — the same ending as importing a `.huginndb-theme.json`. */
+  addImportedTheme: (result: ThemeImportResult) => void;
   deleteCustom: (id: string) => void;
   duplicateAsCustom: (sourceId: string, name: string) => string;
   /** `variant` edits that specific light/dark half of the family; omitted,
@@ -82,7 +114,13 @@ function allThemes(state: ThemeState): ThemeFamily[] {
 /** The zustand/persist `migrate` logic, extracted so it's testable without
  *  touching localStorage — the persist config below just wraps it. */
 export function migrateThemeState(persisted: unknown, version: number): ThemeState {
-  if (version === 1) return persisted as ThemeState;
+  // A v1 blob predates imported editor themes, so the field is absent rather
+  // than empty. Defaulting it here (not at each read site) is what keeps
+  // `deleteCustom`'s spread from being handed `undefined`.
+  if (version === 1) {
+    const state = persisted as ThemeState;
+    return { ...state, importedEditorThemes: state.importedEditorThemes ?? {} };
+  }
 
   const old = (persisted ?? {}) as LegacyPersistedState;
   const oldThemeId = old.themeId ?? "dark";
@@ -105,6 +143,8 @@ export function migrateThemeState(persisted: unknown, version: number): ThemeSta
     themeId: resolveLegacyThemeId(oldThemeId),
     mode,
     customThemes,
+    // No pre-v1 blob can hold these — imports did not exist yet.
+    importedEditorThemes: {},
     environmentOverrideId: null,
   } as ThemeState;
 }
@@ -131,6 +171,7 @@ export const useThemeStore = create<ThemeState>()(
       themeId: "dark",
       mode: "dark",
       customThemes: [],
+      importedEditorThemes: {},
       environmentOverrideId: null,
       setEnvironmentOverride: (themeId) => {
         set({
@@ -151,11 +192,37 @@ export const useThemeStore = create<ThemeState>()(
         });
         applyTheme(resolveActiveFamily(get()), get().mode);
       },
-      deleteCustom: (id) => {
+      addImportedTheme: (result) => {
+        const { family, monacoThemes } = result;
+        const light = monacoThemes.find((m) => m.side === "light");
+        const dark = monacoThemes.find((m) => m.side === "dark");
         set((s) => ({
-          customThemes: s.customThemes.filter((f) => f.id !== id),
-          themeId: s.themeId === id ? "dark" : s.themeId,
+          customThemes: [...s.customThemes.filter((f) => f.id !== family.id), family],
+          themeId: family.id,
+          importedEditorThemes:
+            light && dark
+              ? {
+                  ...s.importedEditorThemes,
+                  [family.id]: { label: family.name, light: light.data, dark: dark.data },
+                }
+              : s.importedEditorThemes,
         }));
+        registerImportedMonacoThemes(monacoThemes.map((m) => ({ id: m.id, data: m.data })));
+        applyTheme(family, get().mode);
+      },
+      deleteCustom: (id) => {
+        set((s) => {
+          // The editor themes go with the palette they arrived with:
+          // leaving them behind would keep an id in the Preferences picker
+          // whose family no longer exists.
+          const { [id]: _removed, ...importedEditorThemes } = s.importedEditorThemes;
+          return {
+            customThemes: s.customThemes.filter((f) => f.id !== id),
+            themeId: s.themeId === id ? "dark" : s.themeId,
+            importedEditorThemes,
+          };
+        });
+        unregisterImportedMonacoThemes([monacoThemeId(id, "light"), monacoThemeId(id, "dark")]);
         applyTheme(resolveActiveFamily(get()), get().mode);
       },
       duplicateAsCustom: (sourceId, name) => {
@@ -241,9 +308,22 @@ export const useThemeStore = create<ThemeState>()(
         themeId: state.themeId,
         mode: state.mode,
         customThemes: state.customThemes,
+        importedEditorThemes: state.importedEditorThemes,
       }),
       onRehydrateStorage: () => (state) => {
-        if (state) applyTheme(resolveActiveFamily(state as ThemeState), (state as ThemeState).mode);
+        if (!state) return;
+        const s = state as ThemeState;
+        // Re-arm Monaco before the first editor mounts. `registerImported-
+        // MonacoThemes` tolerates running before `loader.init()` resolves —
+        // it remembers the definitions and `registerMonacoThemes` replays
+        // them — so the order of these two is not something to depend on.
+        registerImportedMonacoThemes(
+          Object.entries(s.importedEditorThemes ?? {}).flatMap(([familyId, themes]) => [
+            { id: monacoThemeId(familyId, "light"), data: themes.light },
+            { id: monacoThemeId(familyId, "dark"), data: themes.dark },
+          ]),
+        );
+        applyTheme(resolveActiveFamily(s), s.mode);
       },
     },
   ),

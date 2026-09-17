@@ -1325,9 +1325,24 @@
       "exportTooltip": "Export theme…",
       "importTitle": "Import theme…",
       "importSuccess": "Imported \"{{name}}\" as a new custom theme",
+      "importFilter": "Themes (.json, .vsix)",
       "importError": {
         "notJson": "That file isn't valid JSON.",
-        "notATheme": "That file doesn't look like a HuginnDB theme export."
+        "notATheme": "That file is neither a HuginnDB theme export nor a VS Code colour theme.",
+        "themeFileMissing": "That theme's colour file is missing from the package.",
+        "noVariantSelected": "Pick at least one variant to import."
+      },
+      "vscodeImport": {
+        "title": "Import a VS Code theme",
+        "description": "The editor gets the theme itself. The rest of the app gets a palette derived from it, which you can edit afterwards like any custom theme.",
+        "name": "Theme name",
+        "lightVariant": "Light variant",
+        "darkVariant": "Dark variant",
+        "noVariant": "None",
+        "singleVariantNote": "With one variant chosen, it fills both halves — the other mode will look the same rather than inventing a palette nobody designed.",
+        "preview": "Derived palette",
+        "contrastWarning": "Some colour pairs stay low-contrast after adjustment: {{pairs}}. You can fix them in the editor below.",
+        "confirm": "Import theme"
       },
       "dataView": {
         "title": "Data view",

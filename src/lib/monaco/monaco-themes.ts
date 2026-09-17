@@ -297,15 +297,69 @@ export const MONACO_THEME_DEFINITIONS: Record<
 };
 
 /**
+ * Themes imported from a VS Code `.vsix` (see `lib/vscodeTheme/`), which the
+ * catalogue above cannot know at build time.
+ *
+ * They are held here rather than passed around because registration happens
+ * at two unrelated moments and both must see the same set: at startup, when
+ * the theme store rehydrates a previously imported theme from localStorage,
+ * and mid-session, the instant the user imports one. Whichever comes first
+ * has to work, so this module remembers both the definitions AND every
+ * Monaco namespace it has been handed.
+ */
+const IMPORTED_THEMES = new Map<string, monaco.editor.IStandaloneThemeData>();
+const MONACO_INSTANCES = new Set<typeof monaco>();
+
+/**
  * Register every custom theme with the Monaco runtime. Must be called
  * after `loader.init()` resolves so the global `monaco` namespace is
  * the same one `@monaco-editor/react` will pick up. Calling it more
  * than once is harmless — `defineTheme` overwrites existing ids.
  */
 export function registerMonacoThemes(m: typeof monaco) {
+  MONACO_INSTANCES.add(m);
   for (const [id, def] of Object.entries(MONACO_THEME_DEFINITIONS)) {
     m.editor.defineTheme(id, def);
   }
+  for (const [id, def] of IMPORTED_THEMES) {
+    m.editor.defineTheme(id, def);
+  }
+}
+
+/**
+ * Add (or replace) imported editor themes and define them on every Monaco
+ * namespace seen so far. Safe to call before Monaco has loaded: the
+ * definitions are remembered and `registerMonacoThemes` replays them.
+ *
+ * A malformed definition is swallowed per theme — `defineTheme` throws on a
+ * colour it does not recognise, and one bad rule out of 275 must not take
+ * down the editor for a theme the user just chose. The converter already
+ * filters for this (`lib/vscodeTheme/monaco.ts`); this is the second net.
+ */
+export function registerImportedMonacoThemes(
+  entries: { id: string; data: monaco.editor.IStandaloneThemeData }[],
+) {
+  for (const { id, data } of entries) {
+    IMPORTED_THEMES.set(id, data);
+    for (const m of MONACO_INSTANCES) {
+      try {
+        m.editor.defineTheme(id, data);
+      } catch {
+        /* keep the other themes registered */
+      }
+    }
+  }
+}
+
+/** Drop imported themes — called when the custom theme owning them is
+ *  deleted, so `resolveMonacoTheme` stops accepting an id nothing defines.
+ *
+ *  No labels are kept here on purpose: the Preferences picker builds its rows
+ *  from `importedEditorThemes` in the theme store, which is reactive. A second
+ *  copy in this module would be a mutable `Map` React cannot subscribe to,
+ *  and it would drift the moment a theme is renamed. */
+export function unregisterImportedMonacoThemes(ids: string[]) {
+  for (const id of ids) IMPORTED_THEMES.delete(id);
 }
 
 /**
@@ -315,6 +369,10 @@ export function registerMonacoThemes(m: typeof monaco) {
  * selected). Keeps the editor renderable rather than blank.
  */
 export function resolveMonacoTheme(id: string | undefined): MonacoThemeId {
+  // An imported theme's id is not in the compile-time union, so it is
+  // checked against the live registry first — otherwise selecting one would
+  // silently snap back to `huginn-dark` on the next resolve.
+  if (id && IMPORTED_THEMES.has(id)) return id as MonacoThemeId;
   const known = MONACO_THEME_OPTIONS.find((o) => o.id === id);
   // Falls back to the brand editor theme (matching `prefs.rs`'s own default),
   // not One Dark Pro: an unset or unknown id should land on the palette the

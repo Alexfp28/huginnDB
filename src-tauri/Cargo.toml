@@ -135,6 +135,11 @@ reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
     "json",
 ] }
+# Reading `.vsix` theme packages (commands::themes). A `.vsix` is a ZIP, and
+# this crate is ALREADY in the lock file as a transitive dependency of the
+# Tauri updater — declaring it directly adds a line here and nothing at all to
+# the dependency tree or the build time.
+zip = { version = "4", default-features = false, features = ["deflate"] }
 aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"

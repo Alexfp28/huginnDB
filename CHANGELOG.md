@@ -6,6 +6,66 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Import a VS Code colour theme — your editor theme, and an app palette
+  derived from it.** Settings → Appearance's **Import theme…** now also accepts
+  a `.vsix` extension package or a bare `*-color-theme.json`, alongside the
+  `.huginndb-theme.json` exports it already took. Raised by David, whose
+  starting point was [open-vsx.org](https://open-vsx.org) — the open registry
+  Cursor, VSCodium and Gitpod use, and the correct one: Microsoft's own
+  marketplace terms forbid access from products that are not VS Code.
+
+  This release does the conversion, offline. Browsing open-vsx from inside the
+  app is a separate piece of work; what lands here is everything underneath it,
+  which is the part that decides whether the idea is worth the network code.
+
+  What an imported theme actually does, stated plainly because the two halves
+  differ:
+
+  - **The editor gets the theme itself.** Monaco *is* VS Code's editor, so
+    `tokenColors` and the `editor.*` colours mean here exactly what they mean
+    upstream. Import Dracula and the SQL editor is Dracula, not an
+    approximation — down to the translucent selection, which is preserved
+    rather than flattened because it is meant to be translucent there.
+  - **The rest of the app gets a palette derived from it.** A VS Code theme
+    names ~600 keys after the widget each paints (`sideBar.background`,
+    `list.hoverBackground`); HuginnDB names 30 after the role each plays
+    (`card`, `accent`, `brand`, `pk`/`fk`). That is a reading, not a
+    translation, so the import lands as an ordinary custom theme in the
+    Appearance editor — every token editable afterwards. The dialog previews
+    the derived palette before you commit to it.
+
+  Four things the conversion handles, each found by reading real themes rather
+  than the spec:
+
+  - **Theme files are JSON *with comments*, and plenty do not parse without
+    that.** Two of the five themes kept as test fixtures (Tokyo Night, Nord)
+    fail `JSON.parse` outright.
+  - **Translucent `#RRGGBBAA` colours are composited at import**, against the
+    theme's own editor background — up to 52 keys in a single theme. They are
+    translucent in VS Code because its renderer paints them over whatever is
+    behind them; resolving that once at import is what keeps the app's colour
+    pipeline unchanged.
+  - **Missing keys fall back inside the theme, never to VS Code's defaults.**
+    All five sampled themes omit `menu.*`, and One Dark Pro also omits
+    `button.foreground`. Borrowing VS Code's own values would put its blue
+    focus ring inside a Gruvbox import; each token instead walks a chain of
+    related keys the theme does state, ending at something derived from its own
+    background and foreground.
+  - **Every text/surface pair is contrast-checked.** VS Code can rescue a bad
+    pair with a per-widget override and this palette cannot, so a theme whose
+    hover surface nearly matches its text colour would otherwise ship an
+    unreadable selected row.
+
+  One extension is usually several themes — GitHub contributes nine variants,
+  Gruvbox six, One Dark Pro five — so the import dialog pairs one light variant
+  with one dark one into a single theme family. Choosing only one fills both
+  halves with it rather than inventing a palette nobody designed, and says so.
+
+  Imported editor themes appear in Settings → Editor's theme picker and are
+  deleted along with the theme family they arrived with.
+
 ## [1.25.0] — 2026-09-17
 
 ### Added

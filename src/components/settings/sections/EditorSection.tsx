@@ -4,8 +4,11 @@
  * `usePreferences(selectEditorPrefs)`; this section only writes them.
  */
 
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { useThemeStore } from "@/stores/preferences/theme";
+import { monacoThemeId } from "@/lib/vscodeTheme";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -30,6 +33,18 @@ export function EditorSection() {
   const editor = usePreferences(selectEditorPrefs);
   const updateEditor = usePreferences((s) => s.updateEditor);
   const { t } = useTranslation();
+  // Editor themes that came in with an imported VS Code theme. Read from the
+  // theme store rather than from Monaco's own registry so the picker updates
+  // the moment one is imported or deleted — see `monaco-themes.ts`.
+  const importedEditorThemes = useThemeStore((s) => s.importedEditorThemes);
+  const importedThemeOptions = useMemo(
+    () =>
+      Object.entries(importedEditorThemes).flatMap(([familyId, themes]) => [
+        { id: monacoThemeId(familyId, "dark"), label: `${themes.label} (dark)` },
+        { id: monacoThemeId(familyId, "light"), label: `${themes.label} (light)` },
+      ]),
+    [importedEditorThemes],
+  );
 
   return (
     <div className="space-y-1">
@@ -54,6 +69,11 @@ export function EditorSection() {
           </SelectTrigger>
           <SelectContent>
             {MONACO_THEME_OPTIONS.map((opt) => (
+              <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                {opt.label}
+              </SelectItem>
+            ))}
+            {importedThemeOptions.map((opt) => (
               <SelectItem key={opt.id} value={opt.id} className="text-xs">
                 {opt.label}
               </SelectItem>

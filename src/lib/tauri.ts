@@ -12,6 +12,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import type { VsixPayload } from "@/lib/vscodeTheme/types";
 import type {
   AiChatMessage,
   AiProbeReport,
@@ -1351,6 +1352,15 @@ export const api = {
    */
   writeTextFile: (filePath: string, contents: string) =>
     invoke<void>("write_text_file", { filePath, contents }),
+
+  /**
+   * Read a VS Code extension package (`.vsix`) and get back its manifest's
+   * contributed colour themes plus the raw text of the theme files. Unzipping
+   * is all the backend does here — the parsing, the palette derivation and
+   * the Monaco translation all live in `src/lib/vscodeTheme/`, so they stay
+   * testable without a running app.
+   */
+  readVsix: (filePath: string) => invoke<VsixPayload>("read_vsix", { path: filePath }),
 
   /**
    * Export one SQL table (schema + data) to a user-chosen `.sql` file — the
