@@ -800,21 +800,34 @@ const DocumentCard = memo(function DocumentCard({
    *
    * Both are React's documented "adjust state when a prop changes" pattern —
    * set during render, not in an effect, so the card never paints one frame
-   * with the old folds before correcting itself. `toggled` is deliberately
-   * cleared with the gesture (it is a diff from a base that just moved, so
-   * keeping it would silently invert every hand-made fold) and deliberately
-   * kept when only the preference changes, which is the diff semantics the
-   * preference has always had.
+   * with the old folds before correcting itself.
+   *
+   * **The "last seen" marker has to be state, not a ref**, and this is the
+   * whole reason these two lines are worth a docblock. `StrictMode` (which
+   * `main.tsx` wraps the app in) invokes a component's body twice and throws
+   * the first pass away — but a ref mutation is not part of what gets thrown
+   * away. Written to a ref, the marker was already up to date when the second
+   * pass ran, the condition was false, and the `setBaseExpanded` that the
+   * discarded pass had queued was the only one there ever was. The result was
+   * a card that had demonstrably *seen* the gesture (its marker said so) and
+   * was still folded. State is discarded along with the render that set it, so
+   * the second pass sees the same "before" value the first one did and queues
+   * the update that survives.
+   *
+   * `toggled` is deliberately cleared with the gesture (it is a diff from a
+   * base that just moved, so keeping it would silently invert every hand-made
+   * fold) and deliberately kept when only the preference changes, which is the
+   * diff semantics the preference has always had.
    */
-  const lastEpoch = useRef(expandAll?.epoch ?? 0);
-  if (expandAll && expandAll.epoch !== lastEpoch.current) {
-    lastEpoch.current = expandAll.epoch;
+  const [seenEpoch, setSeenEpoch] = useState(expandAll?.epoch ?? 0);
+  if (expandAll && expandAll.epoch !== seenEpoch) {
+    setSeenEpoch(expandAll.epoch);
     setBaseExpanded(expandAll.expanded);
     setToggled(new Set());
   }
-  const lastPref = useRef(expandNested);
-  if (lastPref.current !== expandNested) {
-    lastPref.current = expandNested;
+  const [seenPref, setSeenPref] = useState(expandNested);
+  if (seenPref !== expandNested) {
+    setSeenPref(expandNested);
     setBaseExpanded(null);
   }
 

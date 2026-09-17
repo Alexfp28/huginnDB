@@ -20,7 +20,7 @@
  * `DocumentListView` re-render is proof `DocumentCard`'s function body ran
  * again, i.e. that the memo did NOT bail out.
  */
-import { useRef } from "react";
+import { StrictMode, useRef } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import i18n from "i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -194,6 +194,19 @@ const nestedRows: CellValue[][] = [
   ["42517f60", { "61": { state: "running", retries: 2 } }],
 ];
 
+/**
+ * Every case below mounts under `StrictMode`, exactly as `main.tsx` does, and
+ * that is not decoration.
+ *
+ * The grid-wide gesture shipped broken in a way no non-strict test could see:
+ * the card tracked the last epoch it had applied in a *ref*, and StrictMode
+ * runs a component body twice and discards the first pass. The ref mutation
+ * survived that discard, the second pass therefore saw "already applied", and
+ * the only `setState` that had been queued belonged to the render React threw
+ * away — a card that had seen the gesture and stayed folded. Outside
+ * StrictMode the body runs once and the bug is invisible, which is precisely
+ * how it reached a build.
+ */
 function NestedHarness({
   expandAll,
 }: {
@@ -221,7 +234,11 @@ function NestedHarness({
 
 describe("expand every nested object", () => {
   it("unfolds the whole tree, including containers that had no line to toggle", () => {
-    render(<NestedHarness />);
+    render(
+      <StrictMode>
+        <NestedHarness />
+      </StrictMode>,
+    );
     // Collapsed: the nested `61` object is not drawn at all, so neither is the
     // `state` leaf underneath it.
     expect(screen.queryByText("61")).toBeNull();
@@ -237,7 +254,11 @@ describe("expand every nested object", () => {
   });
 
   it("flips to collapse-all once everything is open, and folds back", () => {
-    render(<NestedHarness />);
+    render(
+      <StrictMode>
+        <NestedHarness />
+      </StrictMode>,
+    );
     fireEvent.click(
       screen.getByLabelText("Expand every nested object in this document"),
     );
@@ -252,10 +273,18 @@ describe("expand every nested object", () => {
     // The epoch is the whole point: the second press carries the same
     // `expanded: true` a boolean prop would have, and still has to reach a
     // card the user folded by hand in between.
-    const { rerender } = render(<NestedHarness expandAll={null} />);
+    const { rerender } = render(
+      <StrictMode>
+        <NestedHarness expandAll={null} />
+      </StrictMode>,
+    );
     expect(screen.queryByText("state")).toBeNull();
 
-    rerender(<NestedHarness expandAll={{ epoch: 1, expanded: true }} />);
+    rerender(
+      <StrictMode>
+        <NestedHarness expandAll={{ epoch: 1, expanded: true }} />
+      </StrictMode>,
+    );
     expect(screen.getByText("state")).toBeTruthy();
 
     fireEvent.click(
@@ -263,7 +292,11 @@ describe("expand every nested object", () => {
     );
     expect(screen.queryByText("state")).toBeNull();
 
-    rerender(<NestedHarness expandAll={{ epoch: 2, expanded: true }} />);
+    rerender(
+      <StrictMode>
+        <NestedHarness expandAll={{ epoch: 2, expanded: true }} />
+      </StrictMode>,
+    );
     expect(screen.getByText("state")).toBeTruthy();
   });
 
