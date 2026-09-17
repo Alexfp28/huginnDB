@@ -57,6 +57,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     en su lugar cada token recorre una cadena de claves relacionadas que el tema
     sí declara, terminando en algo derivado de su propio fondo y su propio color
     de texto.
+  - **Una superficie que se resuelve al mismo color del fondo se separa un
+    nivel.** Cuatro de los cinco temas muestreados lo hacen al menos una vez:
+    la barra lateral de Nord *es* su fondo de editor, y el menú y los campos de
+    GitHub Light son blanco puro. Es correcto en VS Code, que separa esos
+    planos con un borde; aquí significaría un panel que no está y un campo de
+    entrada sin campo. Solo se corrige un colapso real, así que una separación
+    sutil que el tema sí declaró se respeta tal cual.
   - **Todos los pares texto/superficie se comprueban por contraste.** VS Code
     puede rescatar un par malo con una excepción por widget y esta paleta no,
     así que un tema cuya superficie de hover casi coincide con su color de texto

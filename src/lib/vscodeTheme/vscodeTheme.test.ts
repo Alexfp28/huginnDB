@@ -233,6 +233,28 @@ describe("chrome palette derivation", () => {
     expect(paletteWarnings(mapVariant(file, isLight))).toEqual([]);
   });
 
+  it.each(FIXTURES)("%s keeps every surface distinct from the page", (_name, raw, isLight) => {
+    // Four of these five hand back at least one surface identical to
+    // `editor.background` — Nord's sidebar IS its editor background, GitHub
+    // Light's menu and input backgrounds are both plain white. Correct in VS
+    // Code, which separates those planes with a border; here it would mean a
+    // panel that is not there and an input field with no field.
+    const c = mapVariant(loadThemeFile("theme.json", { "theme.json": raw }), isLight);
+    for (const token of ["card", "popover", "secondary", "muted", "accent"] as const) {
+      expect(c[token].toLowerCase(), `${token} collapsed onto background`).not.toBe(
+        c.background.toLowerCase(),
+      );
+    }
+  });
+
+  it("leaves a subtle separation the theme did state alone", () => {
+    // Tokyo Night's panel (#16161e on #1a1b26) is a deliberate, quiet step.
+    // The collapse guard must not "improve" it — only an actual collapse is
+    // corrected.
+    const c = mapVariant(loadThemeFile("t.json", { "t.json": tokyoNight }), false);
+    expect(c.card).toBe("#16161e");
+  });
+
   it("flattens a translucent selection rather than dropping it", () => {
     // Dracula's `list.activeSelectionBackground` is opaque but its
     // `list.hoverBackground` is #44475A75 - the derived accent must be a

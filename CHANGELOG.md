@@ -53,6 +53,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     focus ring inside a Gruvbox import; each token instead walks a chain of
     related keys the theme does state, ending at something derived from its own
     background and foreground.
+  - **A surface that resolves to the page background is pushed one plane
+    away.** Four of the five sampled themes do this at least once — Nord's
+    sidebar *is* its editor background, GitHub Light's menu and input
+    backgrounds are both plain white. Correct in VS Code, which separates those
+    planes with a border; here it would mean a panel that is not there and an
+    input field with no field. Only an actual collapse is corrected, so a quiet
+    separation the theme did state survives untouched.
   - **Every text/surface pair is contrast-checked.** VS Code can rescue a bad
     pair with a per-widget override and this palette cannot, so a theme whose
     hover surface nearly matches its text colour would otherwise ship an

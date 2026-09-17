@@ -61,6 +61,41 @@ function plane(background: string, isLight: boolean, amount: number): string {
 }
 
 /**
+ * Below this ratio two surfaces are the same surface. Deliberately tiny: it
+ * catches the collapsed case without touching a separation the theme meant to
+ * be subtle (Tokyo Night's `#16161e` panel on a `#1a1b26` page sits at 1.06
+ * and is left exactly as written).
+ */
+const SURFACE_COLLAPSE = 1.02;
+
+/**
+ * A surface that resolved to its own background is pushed one plane away.
+ *
+ * This is the one place the mapping deliberately diverges from the source
+ * theme, and it is not a rendering nicety. Four of the five sampled themes
+ * hand at least one surface back identical to `editor.background` — Nord's
+ * `sideBar.background` IS its editor background, GitHub Light's `menu` and
+ * `input` backgrounds are both plain white. That is correct in VS Code, which
+ * separates those planes with `panel.border`; this palette leans on surface
+ * contrast instead (see the four-level depth ramp in `lib/themes.ts`), so
+ * taking it literally does not produce a flat theme, it produces a panel that
+ * is not there and an input field with no field.
+ *
+ * Only an actual collapse is corrected, so a theme that does separate its
+ * planes — however subtly — keeps the separation it wrote.
+ */
+function separated(
+  resolved: string,
+  background: string,
+  isLight: boolean,
+  amount: number,
+): string {
+  return contrastRatio(resolved, background) < SURFACE_COLLAPSE
+    ? plane(background, isLight, amount)
+    : resolved;
+}
+
+/**
  * Derive one `ThemeColors` from one parsed VS Code theme variant.
  *
  * `isLight` comes from the manifest's `uiTheme` rather than from the file's
@@ -81,25 +116,33 @@ export function mapVariant(theme: VsCodeThemeFile, isLight: boolean): ThemeColor
   const foreground = ensureContrast(foregroundRaw, background, TEXT_CONTRAST);
 
   // -- Surfaces ------------------------------------------------------------
-  const card =
+  const card = separated(
     pick(colors, background, [
       "sideBar.background",
       "editorWidget.background",
       "panel.background",
-    ]) ?? plane(background, isLight, 0.03);
+    ]) ?? plane(background, isLight, 0.03),
+    background,
+    isLight,
+    0.03,
+  );
   const cardForeground = ensureContrast(
     pick(colors, card, ["sideBar.foreground", "panel.foreground"]) ?? foreground,
     card,
     TEXT_CONTRAST,
   );
 
-  const popover =
+  const popover = separated(
     pick(colors, background, [
       "menu.background",
       "dropdown.background",
       "editorWidget.background",
       "quickInput.background",
-    ]) ?? plane(background, isLight, 0.05);
+    ]) ?? plane(background, isLight, 0.05),
+    background,
+    isLight,
+    0.05,
+  );
   const popoverForeground = ensureContrast(
     pick(colors, popover, [
       "menu.foreground",
@@ -110,17 +153,25 @@ export function mapVariant(theme: VsCodeThemeFile, isLight: boolean): ThemeColor
     TEXT_CONTRAST,
   );
 
-  const secondary =
+  const secondary = separated(
     pick(colors, background, [
       "editorGroupHeader.tabsBackground",
       "tab.inactiveBackground",
       "sideBarSectionHeader.background",
-    ]) ?? plane(background, isLight, 0.04);
+    ]) ?? plane(background, isLight, 0.04),
+    background,
+    isLight,
+    0.04,
+  );
   const secondaryForeground = ensureContrast(foreground, secondary, TEXT_CONTRAST);
 
-  const muted =
+  const muted = separated(
     pick(colors, background, ["input.background", "editorWidget.background"]) ??
-    plane(background, isLight, 0.04);
+      plane(background, isLight, 0.04),
+    background,
+    isLight,
+    0.04,
+  );
   // `mutedForeground` is the app's de-emphasised text. A theme that states
   // none gets a mix of its own foreground into its own background - the one
   // derivation that reads as dimmed rather than as a different hue.
@@ -134,12 +185,16 @@ export function mapVariant(theme: VsCodeThemeFile, isLight: boolean): ThemeColor
 
   // `accent` is the pointer/selected surface, and the single most likely key
   // to arrive translucent (`#44475A75` in Dracula) - hence the flatten.
-  const accent =
+  const accent = separated(
     pick(colors, background, [
       "list.activeSelectionBackground",
       "list.hoverBackground",
       "editor.selectionBackground",
-    ]) ?? plane(background, isLight, 0.08);
+    ]) ?? plane(background, isLight, 0.08),
+    background,
+    isLight,
+    0.08,
+  );
   const accentForeground = ensureContrast(
     pick(colors, accent, ["list.activeSelectionForeground", "list.hoverForeground"]) ??
       foreground,
