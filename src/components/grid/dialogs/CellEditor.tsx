@@ -55,7 +55,7 @@ import {
   usePreferences,
   selectEditorPrefs,
 } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import {
   useCellEditor,
   type CellBindingContext,
@@ -131,6 +131,10 @@ export function CellEditorBody({
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
   /** Dialect for the Format button's SQL branch. `useConnectionDriver` already
    *  folds a synthetic `<parent>::db::<db>` id back to its profile. */
   const driver = useConnectionDriver(binding?.connectionId ?? "");
@@ -242,7 +246,7 @@ export function CellEditorBody({
           path={modelPath}
           value={value}
           language={language}
-          theme={resolveMonacoTheme(editorPrefs.theme)}
+          theme={monacoTheme}
           onChange={handleEditorChange}
           onMount={(editor, monacoNs) => {
             const save = () => onSubmitRef.current?.();

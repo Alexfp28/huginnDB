@@ -36,7 +36,7 @@ import {
   usePreferences,
   selectEditorPrefs,
 } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
 import { ensureSqlProviders, registerSqlEditor } from "@/lib/monaco/monacoSql";
@@ -75,6 +75,10 @@ export function ViewEditorTab({
 }: Props) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
   const refreshSchema = useSchema((s) => s.refresh);
   const closeTab = useTabs((s) => s.close);
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
@@ -366,7 +370,7 @@ export function ViewEditorTab({
               // #9); the attribute is what tells the window listener that
               // focus in here is *not* in the grid or the tree.
               wrapperProps={{ "data-kb-scope": "editor" }}
-              theme={resolveMonacoTheme(editorPrefs.theme)}
+              theme={monacoTheme}
               value={query}
               onChange={handleEditorChange}
               onMount={handleMount}

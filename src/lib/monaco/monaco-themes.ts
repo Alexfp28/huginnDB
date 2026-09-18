@@ -424,18 +424,30 @@ export function getMonacoPreviewColors(id: string | undefined): MonacoPreviewCol
   if (resolved === "vs-dark" || resolved === "vs-light") {
     return BUILTIN_PREVIEW[resolved];
   }
-  const def = MONACO_THEME_DEFINITIONS[resolved];
+  // An imported theme's id resolves to itself, so it is NOT a key of the
+  // compile-time catalogue — reading that record directly is what used to
+  // throw the instant someone picked an imported theme in Preferences. The
+  // final `?? huginn-dark` covers the one frame where an id is accepted by
+  // the registry and its definition is not in hand yet.
+  const def =
+    IMPORTED_THEMES.get(resolved) ??
+    MONACO_THEME_DEFINITIONS[resolved as keyof typeof MONACO_THEME_DEFINITIONS] ??
+    MONACO_THEME_DEFINITIONS["huginn-dark"];
+  // `rules` / `colors` are optional in `IStandaloneThemeData` and an imported
+  // blob comes back off disk as plain JSON, so neither is assumed present.
+  const rules = def.rules ?? [];
+  const colors = def.colors ?? {};
   const rule = (token: string) =>
-    def.rules.find((r) => r.token === token)?.foreground;
+    rules.find((r) => r.token === token)?.foreground;
   const hex = (v: string | undefined, fallback: string) =>
     v ? (v.startsWith("#") ? v : `#${v}`) : fallback;
   return {
-    background: def.colors["editor.background"] ?? "#282c34",
+    background: colors["editor.background"] ?? "#282c34",
     foreground: hex(rule(""), "#abb2bf"),
     comment: hex(rule("comment"), "#5c6370"),
     keyword: hex(rule("keyword"), "#c678dd"),
     string: hex(rule("string"), "#98c379"),
     number: hex(rule("number"), "#d19a66"),
-    lineNumber: def.colors["editorLineNumber.foreground"] ?? "#4b5263",
+    lineNumber: colors["editorLineNumber.foreground"] ?? "#4b5263",
   };
 }

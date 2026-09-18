@@ -20,6 +20,37 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Corregido
 
+- **Un tema de VS Code importado llega por fin a los editores SQL.** Se
+  apilaban dos fallos y, entre los dos, la mitad de editor de un tema
+  importado era inalcanzable.
+
+  Elegir uno en Ajustes → Editor reventaba el panel entero: la vista previa
+  leía los colores del catálogo integrado, del que un id importado no es
+  clave, así que desreferenciaba `undefined` y se llevaba por delante todo el
+  diálogo de Ajustes.
+
+  Y aun eligiéndolo con éxito, nunca se aplicaba. Las definiciones de un tema
+  importado se leen de `installed_themes.json` en una llamada asíncrona
+  *posterior* al primer pintado, así que un editor que montara en esa ventana
+  degradaba el id al tema por defecto — con razón, porque Monaco lanza un
+  error con un id que nadie ha definido — y nada lo recuperaba, porque el id
+  se calculaba a partir de un registro a nivel de módulo al que ningún
+  componente estaba suscrito. El resultado: todos los editores de la app
+  clavados en HuginnDB Dark durante toda la sesión mientras la interfaz
+  mostraba la paleta importada. Ahora el id se deriva del store de temas, de
+  modo que la misma actualización que registra las definiciones repinta los
+  editores.
+
+- **Instalar un tema ahora también tematiza el editor.** La interfaz se
+  quedaba con la paleta importada y el editor se quedaba donde estaba, sin
+  nada en la UI que dijera que eran dos ajustes distintos. Instalar o
+  actualizar un tema apunta el editor a los colores de editor de esa misma
+  extensión, un cambio claro/oscuro sigue a la familia a su otra variante, y
+  borrar un tema saca al editor del id que acaba de dejar de existir. Un
+  editor puesto a propósito en un tema del catálogo — Monokai, GitHub Dark,
+  un integrado de VS — no se pisa nunca: esa es una elección tomada al margen
+  de la interfaz.
+
 - **Dejar el puerto en blanco ahora significa «el predeterminado de este
   driver» en vez de puerto cero.** Una conexión guardada sin puerto se marcaba
   tal cual — `host:0` — y volvía como conexión rechazada citando un puerto que

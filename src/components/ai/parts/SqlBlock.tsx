@@ -36,7 +36,7 @@ import Editor, { type Monaco } from "@monaco-editor/react";
 
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import {
   ensureSqlProviders,
   registerSqlEditor,
@@ -77,6 +77,10 @@ export function SqlBlock({
 }) {
   const { t } = useTranslation();
   const prefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(prefs.theme);
   const editorOptions = useEditorOptions(
     () => ({
       ...readOnlyEditorOptions(prefs),
@@ -159,7 +163,7 @@ export function SqlBlock({
         height={height}
         value={code}
         language={language}
-        theme={resolveMonacoTheme(prefs.theme)}
+        theme={monacoTheme}
         options={editorOptions}
         onMount={handleMount}
       />

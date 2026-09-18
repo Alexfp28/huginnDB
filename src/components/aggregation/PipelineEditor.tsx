@@ -27,7 +27,7 @@ import {
   type MongoCompletionEntry,
 } from "@/lib/monaco/monacoMongo";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { usePreferences, selectEditorPrefs } from "@/stores/preferences/preferences";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
@@ -60,6 +60,10 @@ export function PipelineEditor({
   completion,
 }: Props) {
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
 
   // `addCommand` keeps its handler for the editor's lifetime, so it reads the
   // latest callback through a ref rather than closing over the first render's
@@ -176,7 +180,7 @@ export function PipelineEditor({
       // See the note in `ViewEditorTab`: this marks Monaco's focus area for
       // the window-level dispatcher.
       wrapperProps={{ "data-kb-scope": "editor" }}
-      theme={resolveMonacoTheme(editorPrefs.theme)}
+      theme={monacoTheme}
       value={value}
       onChange={handleEditorChange}
       onMount={handleMount}

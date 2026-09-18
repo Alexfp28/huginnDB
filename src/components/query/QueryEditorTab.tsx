@@ -75,7 +75,7 @@ import {
   usePreferences,
   selectEditorPrefs,
 } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { useQueryHistory } from "@/stores/query/queryHistory";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
@@ -139,6 +139,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const tab = useTabs((s) => s.tabs.find((t) => t.id === tabId));
   const updateQuery = useTabs((s) => s.updateQuery);
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
   const addHistory = useQueryHistory((s) => s.add);
   const allHistory = useQueryHistory((s) => s.entries);
   const clearHistory = useQueryHistory((s) => s.clear);
@@ -827,12 +831,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 // with it both registry entries above — survives the switch.
                 language={isMongo ? MONGO_QUERY_LANGUAGE : "sql"}
                 // `theme.mode` (app theme) used to be the only signal;
-                // now Editor prefs own the Monaco theme so users can
-                // pick One Dark Pro / GitHub / Monokai / Solarized
-                // independently of the app chrome. `resolveMonacoTheme`
-                // falls back to the brand theme (huginn-dark) if
-                // `prefs.json` carries an unknown id.
-                theme={resolveMonacoTheme(editorPrefs.theme)}
+                // now Editor prefs own the Monaco theme so users can pick One
+                // Dark Pro / GitHub / Monokai / Solarized — or an imported VS
+                // Code theme — independently of the app chrome. See
+                // `useMonacoTheme` for why the id is resolved reactively.
+                theme={monacoTheme}
                 value={sql}
                 onChange={handleEditorChange}
                 onMount={handleMount}
