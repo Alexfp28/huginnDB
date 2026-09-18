@@ -40,7 +40,7 @@ import {
   usePreferences,
   selectEditorPrefs,
 } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import type { LogEntry } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
@@ -113,6 +113,10 @@ export function Console() {
   const setQuery = useLogs((s) => s.setQuery);
   const toggleKind = useLogs((s) => s.toggleKind);
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const listRef = useRef<VirtuosoHandle>(null);
 
@@ -321,7 +325,7 @@ export function Console() {
             <Editor
               height="100%"
               language={selected.kind === "sql" ? "sql" : "plaintext"}
-              theme={resolveMonacoTheme(editorPrefs.theme)}
+              theme={monacoTheme}
               value={selectedDetailValue}
               options={detailEditorOptions}
             />

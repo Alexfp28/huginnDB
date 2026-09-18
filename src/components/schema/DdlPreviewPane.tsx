@@ -15,7 +15,7 @@ import Editor from "@monaco-editor/react";
 
 import { RefreshCw } from "lucide-react";
 
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import type { EditorPrefs } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
@@ -40,6 +40,9 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
     () => readOnlyEditorOptions(prefs),
     [prefs],
   );
+  // Hoisted out of the JSX because the editor sits behind the `error`
+  // branch — a hook cannot be called from one side of a ternary.
+  const monacoTheme = useMonacoTheme(prefs.theme);
 
   return (
     <div className="flex h-48 flex-col border-t border-border">
@@ -59,7 +62,7 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
           height="100%"
           value={ddl}
           language="sql"
-          theme={resolveMonacoTheme(prefs.theme)}
+          theme={monacoTheme}
           options={editorOptions}
         />
       )}

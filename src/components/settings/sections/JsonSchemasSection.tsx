@@ -54,7 +54,7 @@ import {
   usePreferences,
   selectEditorPrefs,
 } from "@/stores/preferences/preferences";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { schemaModelPath, collectExternalRefs } from "@/lib/monaco/monacoJson";
 import { schemaUri } from "@/stores/jsonSchemas";
 import { SCHEMA_TEMPLATES } from "@/lib/jsonSchema/templates";
@@ -75,6 +75,10 @@ export function JsonSchemasSection() {
   const saveSchema = useJsonSchemas((s) => s.saveSchema);
   const deleteSchema = useJsonSchemas((s) => s.deleteSchema);
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
   const openExport = useJsonSchemaTransfer((s) => s.openExport);
   const setImportOpen = useJsonSchemaTransfer((s) => s.setImportOpen);
 
@@ -484,7 +488,7 @@ export function JsonSchemasSection() {
                       // draft-07 meta-schema attach by `fileMatch`.
                       path={schemaModelPath(selected.id)}
                       language="json"
-                      theme={resolveMonacoTheme(editorPrefs.theme)}
+                      theme={monacoTheme}
                       value={body}
                       onChange={handleBodyChange}
                       options={bodyEditorOptions}

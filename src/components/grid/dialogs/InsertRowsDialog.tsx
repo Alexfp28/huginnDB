@@ -40,7 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { DialogActions } from "@/components/ui/dialog-actions";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
-import { resolveMonacoTheme } from "@/lib/monaco/monaco-themes";
+import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
 import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { api } from "@/lib/tauri";
@@ -75,6 +75,10 @@ export function InsertRowsDialog({
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
+  // Resolved through the hook, not the bare function: an imported
+  // theme's definition arrives after first paint, and only a store
+  // subscription repaints this editor when it does.
+  const monacoTheme = useMonacoTheme(editorPrefs.theme);
   const [source, setSource] = useState(INITIAL_SOURCE);
   const { submitting, error, run, clearError } = useAsyncSubmit();
 
@@ -144,7 +148,7 @@ export function InsertRowsDialog({
             <Editor
               height={280}
               language="json"
-              theme={resolveMonacoTheme(editorPrefs.theme)}
+              theme={monacoTheme}
               value={source}
               onChange={(v) => setSource(v ?? "")}
               onMount={handleMount}

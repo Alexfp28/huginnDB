@@ -123,8 +123,12 @@ export default function App() {
   // Arm Monaco with the editor themes that came from imported VS Code themes.
   // They live on disk rather than in localStorage (see the note on
   // `importedEditorThemes`), so unlike the palettes they cannot be read before
-  // first paint — which is fine: an editor that mounts first gets repainted
-  // when the definitions land. Runs in every window; the call is read-only.
+  // first paint. An editor that mounts first *is* repainted when the
+  // definitions land — but only because it resolves its theme through
+  // `useMonacoTheme`, which subscribes to the store this fills. This comment
+  // used to assert that repaint while nothing implemented it (gotcha #90);
+  // the guarantee lives in the hook, not here. Runs in every window; the
+  // call is read-only.
   useEffect(() => {
     void hydrateInstalledThemes();
   }, []);

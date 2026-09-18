@@ -26,6 +26,8 @@ import {
 import { monacoThemeId, type ThemeImportResult } from "@/lib/vscodeTheme";
 import type { InstalledThemeSource } from "@/lib/vscodeTheme/types";
 import { api } from "@/lib/tauri";
+// One-way: preferences knows nothing about themes, so this cannot cycle.
+import { usePreferences } from "./preferences";
 import {
   BUILT_IN_THEMES,
   applyTheme,
@@ -166,6 +168,77 @@ function pairEditorThemes(
         dark: dark.data,
       }
     : null;
+}
+
+/**
+ * Keep the Monaco editor pointed at the app theme's own editor colours.
+ *
+ * Installing a VS Code theme is one act, not two: the chrome takes the
+ * palette and the editor takes the tokenisation, both out of the same
+ * extension. Leaving `editor.theme` untouched is what produced the reported
+ * state — the app repainted as the imported theme while every SQL editor sat
+ * on HuginnDB Dark, with no hint in the UI that the two were separate knobs.
+ *
+ * The editor preference stays a preference: this only fires on the moves
+ * where the user's intent is unambiguous.
+ *
+ *   - installing or updating a theme, which is an explicit "use this";
+ *   - flipping light/dark while the editor is on this family's other side;
+ *   - switching families while the editor is following the one being left,
+ *     including onto a built-in, where "its editor theme" is the brand pair.
+ *
+ * An editor parked on a curated theme (Monokai, GitHub Dark, a VS built-in)
+ * is a choice made independently of the chrome and is never overwritten.
+ *
+ * The decision is pure and exported so it can be tested without a store: it
+ * returns the id to write, or `null` for "leave the editor alone".
+ */
+export function nextEditorTheme(
+  current: string,
+  familyId: string,
+  mode: ThemeMode,
+  importedFamilyIds: string[],
+  force = false,
+): string | null {
+  const next = importedFamilyIds.includes(familyId)
+    ? monacoThemeId(familyId, mode)
+    : mode === "light"
+      ? "huginn-light"
+      : "huginn-dark";
+  if (current === next) return null;
+  // Was the editor following *some* imported family? Only then does an
+  // implicit move carry the user's intent with it — an editor parked on a
+  // curated theme was chosen independently of the chrome.
+  const following =
+    force ||
+    importedFamilyIds.some(
+      (id) =>
+        current === monacoThemeId(id, "light") ||
+        current === monacoThemeId(id, "dark"),
+    );
+  return following ? next : null;
+}
+
+/** The store-facing half: reads the live editor pref, writes it back when
+ *  {@link nextEditorTheme} says the editor should move. */
+function syncEditorTheme(
+  state: ThemeState,
+  familyId: string,
+  mode: ThemeMode,
+  opts: { force?: boolean } = {},
+) {
+  const prefs = usePreferences.getState();
+  // Before `hydrate()` the in-memory prefs are defaults, not the user's —
+  // writing here would persist a theme they never chose.
+  if (!prefs.hydrated) return;
+  const next = nextEditorTheme(
+    prefs.prefs.editor.theme,
+    familyId,
+    mode,
+    Object.keys(state.importedEditorThemes),
+    opts.force,
+  );
+  if (next) prefs.updateEditor({ theme: next });
 }
 
 /**
@@ -323,6 +396,7 @@ export const useThemeStore = create<ThemeState>()(
       setThemeId: (id) => {
         set({ themeId: resolveLegacyThemeId(id) });
         applyTheme(resolveActiveFamily(get()), get().mode);
+        syncEditorTheme(get(), resolveActiveFamily(get()).id, get().mode);
       },
       upsertCustom: (family) => {
         set((s) => {
@@ -352,6 +426,9 @@ export const useThemeStore = create<ThemeState>()(
         registerImportedMonacoThemes(monacoThemes.map((m) => ({ id: m.id, data: m.data })));
         applyTheme(family, get().mode);
         if (editorThemes) {
+          // `force`: installing is the explicit "use this theme", so the
+          // editor follows even when it was on a curated theme until now.
+          syncEditorTheme(get(), family.id, get().mode, { force: true });
           persistInstalled(family.id, family.name, editorThemes, source, false);
         }
       },
@@ -378,6 +455,7 @@ export const useThemeStore = create<ThemeState>()(
         }));
         registerImportedMonacoThemes(monacoThemes.map((m) => ({ id: m.id, data: m.data })));
         applyTheme(resolveActiveFamily(get()), get().mode);
+        syncEditorTheme(get(), resolveActiveFamily(get()).id, get().mode);
         if (editorThemes) {
           persistInstalled(family.id, family.name, editorThemes, source, keepPalette);
         }
@@ -395,6 +473,17 @@ export const useThemeStore = create<ThemeState>()(
           };
         });
         unregisterImportedMonacoThemes([monacoThemeId(id, "light"), monacoThemeId(id, "dark")]);
+        // The family is already out of `importedEditorThemes` by now, so the
+        // editor is no longer "following" anything a plain call would
+        // recognise — `force` is what moves a pref that still names an id
+        // nothing defines. `resolveMonacoTheme` would cover the render, but
+        // the Preferences picker would show a blank row for a deleted theme.
+        const editorThemeWas = usePreferences.getState().prefs.editor.theme;
+        syncEditorTheme(get(), resolveActiveFamily(get()).id, get().mode, {
+          force:
+            editorThemeWas === monacoThemeId(id, "light") ||
+            editorThemeWas === monacoThemeId(id, "dark"),
+        });
         void api
           .forgetInstalledTheme(id)
           .catch((e) => console.error("[theme] could not forget installed theme:", e));
@@ -467,6 +556,7 @@ export const useThemeStore = create<ThemeState>()(
         if (get().mode === mode) return;
         set({ mode });
         applyColorScheme(mode);
+        syncEditorTheme(get(), resolveActiveFamily(get()).id, mode);
       },
       resetActive: () => {
         const family = resolveActiveFamily(get());

@@ -17,6 +17,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Fixed
 
+- **An imported VS Code theme now actually reaches the SQL editors.** Two
+  faults stacked on top of each other, and between them an imported theme's
+  editor half was unreachable.
+
+  Picking one in Settings → Editor crashed the panel outright: the preview
+  read the colours out of the built-in catalogue, which an imported id is not
+  a key of, so it dereferenced `undefined` and took the whole Settings dialog
+  down with it.
+
+  And even chosen successfully, it never applied. An imported theme's
+  definitions are read from `installed_themes.json` one async call *after*
+  first paint, so an editor mounting in that window resolved the id down to
+  the default — correctly, since Monaco throws on an id nothing has defined —
+  and nothing brought it back, because the id was computed from a module-level
+  registry no component was subscribed to. The result was every editor in the
+  app stuck on HuginnDB Dark for the whole session while the chrome showed the
+  imported palette. The id is now derived from the theme store, so the same
+  update that registers the definitions repaints the editors.
+
+- **Installing a theme now themes the editor too.** The app chrome took the
+  imported palette and the editor was left where it was, with nothing in the
+  UI saying they were separate knobs. Installing or updating a theme points
+  the editor at that extension's own editor colours, a light/dark flip follows
+  the family to its other side, and deleting a theme moves the editor off the
+  id that just stopped existing. An editor deliberately parked on a curated
+  theme — Monokai, GitHub Dark, a VS built-in — is never overwritten: that is
+  a choice made independently of the chrome.
+
 - **Leaving the port blank now means "this driver's default" instead of port
   zero.** A connection saved without a port was dialled verbatim — `host:0` —
   and came back as a connection refused naming a port you never typed. An
