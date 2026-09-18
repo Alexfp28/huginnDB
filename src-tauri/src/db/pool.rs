@@ -289,16 +289,22 @@ pub async fn open_pool(
 
     // SQLite is a local file; tunnels don't apply. For network drivers,
     // bring the tunnel up first so we know which local port to target.
+    //
+    // `effective_port`, not `profile.port`: a profile saved with a blank port
+    // means "the driver's default", and that has to be resolved before either
+    // branch — the tunnel's *remote* port is as much a real port as the one
+    // the URL names.
+    let remote_port = profile.effective_port();
     let (host, port, handle): (String, u16, Option<SshTunnelHandle>) =
         if let (Some(tunnel), false) = (
             profile.ssh_tunnel.as_ref(),
             matches!(profile.driver, Driver::Sqlite),
         ) {
-            let h = ssh::open_tunnel(tunnel, ssh_secret, &profile.host, profile.port, known_hosts)
+            let h = ssh::open_tunnel(tunnel, ssh_secret, &profile.host, remote_port, known_hosts)
                 .await?;
             ("127.0.0.1".to_string(), h.local_port, Some(h))
         } else {
-            (profile.host.clone(), profile.port, None)
+            (profile.host.clone(), remote_port, None)
         };
 
     let url = build_url(profile, password, &host, port);

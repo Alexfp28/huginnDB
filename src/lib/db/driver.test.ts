@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  effectivePort,
   requiresInitialCollection,
   supportsCreateDatabase,
   supportsDropDatabase,
@@ -51,5 +52,30 @@ describe("database-level capabilities", () => {
     expect(supportsCreateDatabase(undefined)).toBe(false);
     expect(supportsDropDatabase(undefined)).toBe(false);
     expect(requiresInitialCollection(undefined)).toBe(false);
+  });
+});
+
+/**
+ * A stored port of `0` is what the dialog writes when the field is left
+ * blank, and what a `--port`-less CLI launch or an imported profile can
+ * carry. Every surface that prints or compares a port has to read it as the
+ * driver's default, the same way `ConnectionProfile::effective_port` does on
+ * the backend — printing `db:0` would name a port nothing listens on.
+ */
+describe("effectivePort", () => {
+  it("resolves a blank port to the driver's default", () => {
+    expect(effectivePort("postgres", 0)).toBe(5432);
+    expect(effectivePort("mysql", 0)).toBe(3306);
+    expect(effectivePort("mongodb", 0)).toBe(27017);
+    expect(effectivePort("sqlserver", 0)).toBe(1433);
+  });
+
+  it("never second-guesses a port the user typed", () => {
+    expect(effectivePort("postgres", 6432)).toBe(6432);
+    expect(effectivePort("sqlserver", 1450)).toBe(1450);
+  });
+
+  it("leaves SQLite at zero, having no server to default to", () => {
+    expect(effectivePort("sqlite", 0)).toBe(0);
   });
 });
