@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **"Edit connection…" on a connection's right-click menu.** Changing a saved
+  connection's host, port or username meant File → Manage connections and then
+  finding the row again in a list that is routinely fifty long — from a tree
+  node that already knew exactly which connection you meant. The manager now
+  opens focused on it. Offered while disconnected too, which is where it is
+  needed most: a connection that will not open is the one you want to correct.
+
 ## [1.26.0] — 2026-09-17
 
 ### Added
