@@ -8,6 +8,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **«Editar conexión…» en el menú contextual de una conexión.** Cambiar el
+  host, el puerto o el usuario de una conexión guardada obligaba a ir a
+  Archivo → Gestionar conexiones y volver a buscar la fila en una lista que
+  fácilmente tiene cincuenta — partiendo de un nodo del árbol que ya sabía
+  exactamente de qué conexión hablabas. Ahora el gestor se abre directamente
+  sobre ella. También se ofrece con la conexión desconectada, que es cuando
+  más falta hace: una conexión que no abre es justo la que quieres corregir.
+  
 ### Corregido
 
 - **Dejar el puerto en blanco ahora significa «el predeterminado de este

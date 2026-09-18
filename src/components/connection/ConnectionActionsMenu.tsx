@@ -37,6 +37,7 @@ import {
   DatabaseZap,
   Download,
   ListFilter,
+  Pencil,
   Plug,
   PlugZap,
   RefreshCw,
@@ -70,6 +71,7 @@ import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
+import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTreeSearch } from "@/stores/session/treeSearch";
@@ -134,6 +136,21 @@ export function ConnectionActionsMenu({
       notify.error(String(e));
     });
   };
+
+  /**
+   * Open the connection manager already focused on this profile.
+   *
+   * The only route to a connection's own settings used to be File → Manage
+   * connections, and then finding the row again in a list that is routinely
+   * fifty long — from a tree node that already knows exactly which profile is
+   * meant. `openManage` has taken an id since the command palette needed one,
+   * so this is a second caller for an existing capability rather than a new
+   * surface: `FileMenu` stays the single mount point for the dialog, and a
+   * profile deleted between this click and that render falls back to a new
+   * draft on its own.
+   */
+  const editConnection = () =>
+    useConnectionDialog.getState().openManage(connectionId);
 
   // Right-clicking to open the menu doesn't keep the row hovered (the
   // pointer moves onto the menu itself), so without this the row you
@@ -243,6 +260,14 @@ export function ConnectionActionsMenu({
                   lifecycle/placement actions, so they share one separator
                   instead of earning a third. */}
               <ContextMenuSeparator />
+              {/* Grouped with the placement actions rather than with the
+                  content ones above: this edits the connection *itself*, not
+                  anything inside it. */}
+              <ContextMenuAction
+                icon={Pencil}
+                label={t("connectionsTree.editConnection")}
+                onSelect={editConnection}
+              />
               <ContextMenuAction
                 icon={AppWindow}
                 label={t("connectionsTree.openInNewWindow")}
@@ -273,6 +298,14 @@ export function ConnectionActionsMenu({
                 icon={AppWindow}
                 label={t("connectionsTree.openInNewWindow")}
                 onSelect={openInNewWindow}
+              />
+              {/* Offered while disconnected too, and this branch is where it
+                  is needed most: a connection that will not open is exactly
+                  the one whose host, port or username you want to correct. */}
+              <ContextMenuAction
+                icon={Pencil}
+                label={t("connectionsTree.editConnection")}
+                onSelect={editConnection}
               />
             </>
           )}
