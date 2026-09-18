@@ -17,6 +17,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   exactamente de qué conexión hablabas. Ahora el gestor se abre directamente
   sobre ella. También se ofrece con la conexión desconectada, que es cuando
   más falta hace: una conexión que no abre es justo la que quieres corregir.
+  
+### Corregido
+
+- **Dejar el puerto en blanco ahora significa «el predeterminado de este
+  driver» en vez de puerto cero.** Una conexión guardada sin puerto se marcaba
+  tal cual — `host:0` — y volvía como conexión rechazada citando un puerto que
+  nunca escribiste. Un campo de puerto vacío se resuelve ahora a 5432 / 3306 /
+  27017 / 1433 al conectar, y el campo muestra ese número en gris para que
+  quede claro qué va a pasar si lo dejas vacío. Lo mismo vale para un
+  arranque por CLI sin `--port` y para un perfil importado que lo omita.
+
+  El puerto **no** se escribe en el perfil: `profiles.json` sigue registrando
+  que no elegiste ninguno, así que la conexión sigue el predeterminado del
+  driver en lugar de congelar el valor de hoy, y una conexión compartida por
+  un origen no propaga un número que su publicador nunca introdujo.
+
+- **Las instancias nombradas de SQL Server se descubren por el SQL Browser,
+  esta vez de verdad.** La consulta se enviaba al puerto TCP de la propia
+  instancia en lugar de al UDP 1434 del Browser, así que siempre caducaba y la
+  conexión solo funcionaba si además habías escrito el puerto estático de la
+  instancia, que se usa como alternativa. Una instancia en puerto dinámico no
+  había forma de alcanzarla. Ahora `SERVIDOR` + nombre de instancia con el
+  puerto en blanco conecta, igual que en SSMS.
 
 ## [1.26.0] — 2026-09-17
 

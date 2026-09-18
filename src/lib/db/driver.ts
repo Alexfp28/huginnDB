@@ -11,7 +11,26 @@
  * MySQL handshake) into an actionable suggestion.
  */
 
+import { DEFAULT_PORTS } from "@/lib/constants";
 import type { Driver } from "@/types";
+
+/**
+ * The port a profile really connects to, resolving a blank one to the
+ * driver's default.
+ *
+ * A stored port of `0` means "the driver's default", not port zero — the
+ * dialog's port field can be left blank, `--port` is optional, and an
+ * imported profile can omit it. The backend resolves it the same way
+ * (`ConnectionProfile::effective_port`); this is the copy every surface that
+ * *shows* a port uses, so a profile the user left blank reads as
+ * `db:5432`, which is where it connects, rather than as `db:0`, which is
+ * nowhere.
+ *
+ * SQLite has no port and answers `0`; no SQLite surface prints one.
+ */
+export function effectivePort(driver: Driver, port: number): number {
+  return port > 0 ? port : DEFAULT_PORTS[driver];
+}
 
 const DRIVER_ALIASES: Record<string, Driver> = {
   postgres: "postgres",

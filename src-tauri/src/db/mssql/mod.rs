@@ -65,6 +65,19 @@ const DEFAULT_MAX_SESSIONS: usize = 4;
 /// when the Browser doesn't answer.
 const DEFAULT_PORT: u16 = 1433;
 
+/// The UDP port the **SQL Server Browser** answers on.
+///
+/// Not a TCP port of the instance, and not interchangeable with
+/// [`DEFAULT_PORT`]: the Browser is a separate service whose whole job is to
+/// hand out the dynamic TCP port a *named* instance chose at startup.
+///
+/// It has to be stated here because `tiberius` reads the target of its
+/// discovery datagram off the same `Config` as the TDS connection
+/// (`connect_named` sends to `Config::get_addr()`), so a `Config` carrying the
+/// instance's TCP port would send the lookup to the instance instead of to the
+/// Browser — see [`connect_uncapped`].
+const SQL_BROWSER_PORT: u16 = 1434;
+
 /// How a TDS session reaches the server.
 #[derive(Clone, Copy, Debug)]
 enum Reach {
@@ -549,7 +562,16 @@ async fn connect_uncapped(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> 
         // (UDP 1434) and connects to it.
         Reach::Browser { fallback_port } => {
             use tiberius::SqlBrowser;
-            match TcpStream::connect_named(cfg).await {
+            // `connect_named` sends its discovery datagram to
+            // `Config::get_addr()` — *the config's own port* — and only then
+            // rewrites the address with whatever the Browser replied. Handing
+            // it the config we log in with therefore aimed the lookup at the
+            // instance's TCP port, where nothing is listening for UDP, and
+            // every named instance fell through to the static-port fallback
+            // after a second of timeout. Discovery gets its own clone pointed
+            // at the Browser; the login below still uses `cfg`, so the port it
+            // carries continues to serve as the fallback target.
+            match TcpStream::connect_named(&discovery_config(cfg)).await {
                 Ok(tcp) => tcp,
                 Err(browser_err) => {
                     // The Browser is a separate UDP service from the instance's
@@ -559,10 +581,10 @@ async fn connect_uncapped(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> 
                     // told us that port, try it before giving up:
                     // `instance_name` is only ever read by the Browser lookup,
                     // so the TDS login that follows is unaffected by having
-                    // skipped it. A port left at the default is *not* a signal
-                    // — retrying 1433 on a host whose UDP is being dropped
-                    // would usually just pay a second connect timeout for
-                    // nothing.
+                    // skipped it. A port left at the default (or left blank,
+                    // which resolves to it) is *not* a signal — retrying 1433
+                    // on a host whose UDP is being dropped would usually just
+                    // pay a second connect timeout for nothing.
                     let Some(port) = fallback_port else {
                         return Err(AppError::MsSql(browser_err));
                     };
@@ -583,6 +605,20 @@ async fn connect_uncapped(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> 
     };
     tcp.set_nodelay(true)?;
     Ok(Client::connect(cfg.clone(), tcp.compat_write()).await?)
+}
+
+/// The config used to *ask the SQL Browser* where a named instance listens.
+///
+/// A copy of the login config with its port moved to [`SQL_BROWSER_PORT`].
+/// `tiberius`' `connect_named` reads the datagram's destination off
+/// `Config::get_addr()`, so this is the whole difference between a lookup that
+/// reaches the Browser and one that is sent to the instance's TCP port and
+/// times out — and the reason it is a named function rather than two lines
+/// inline is so a test can state it.
+fn discovery_config(cfg: &Config) -> Config {
+    let mut discovery = cfg.clone();
+    discovery.port(SQL_BROWSER_PORT);
+    discovery
 }
 
 /// Split an SSMS-style `HOST\INSTANCE` into its two parts.
@@ -641,7 +677,9 @@ fn build_config(
     cfg.host(host);
     // Set even for a named instance, whose real port the Browser hands out and
     // `connect_named` substitutes: it is what `Reach::Browser`'s fallback
-    // connects to when the Browser doesn't answer.
+    // connects to when the Browser doesn't answer. Discovery itself does *not*
+    // use this config — it gets a clone aimed at [`SQL_BROWSER_PORT`], because
+    // `tiberius` would otherwise send the lookup here.
     cfg.port(port);
     // A blank database is a legitimate choice ("connect to the server, then let
     // me pick from the tree"); SQL Server falls back to the login's default
@@ -655,7 +693,10 @@ fn build_config(
         Some(inst) => {
             cfg.instance_name(inst);
             Reach::Browser {
-                fallback_port: (port != DEFAULT_PORT && port != 0).then_some(port),
+                // `port` is already resolved (`ConnectionProfile::effective_port`),
+                // so a blank port arrives here as `DEFAULT_PORT` and is treated
+                // as the non-signal it is.
+                fallback_port: (port != DEFAULT_PORT).then_some(port),
             }
         }
         None => Reach::Port,
@@ -737,13 +778,16 @@ pub async fn open_pool(
         ));
     }
 
+    // A blank port means "the default instance's 1433" (see
+    // `ConnectionProfile::effective_port`); resolve it once, before the tunnel
+    // decision, so both branches dial the same number.
+    let remote_port = profile.effective_port();
     let (host, port, handle) = match profile.ssh_tunnel.as_ref() {
         Some(tunnel) => {
-            let h =
-                ssh::open_tunnel(tunnel, ssh_secret, &server, profile.port, known_hosts).await?;
+            let h = ssh::open_tunnel(tunnel, ssh_secret, &server, remote_port, known_hosts).await?;
             ("127.0.0.1".to_string(), h.local_port, Some(h))
         }
-        None => (server, profile.port, None),
+        None => (server, remote_port, None),
     };
 
     let (cfg, reach) = build_config(profile, password, &host, port, instance.as_deref())?;
@@ -778,8 +822,79 @@ pub async fn open_pool(
 #[cfg(test)]
 mod tests {
     use super::{
-        binary_convert, bound_by_acquire_timeout, result_leaves_session_healthy, split_instance,
+        binary_convert, bound_by_acquire_timeout, build_config, discovery_config,
+        result_leaves_session_healthy, split_instance, Reach, DEFAULT_PORT, SQL_BROWSER_PORT,
     };
+    use crate::state::{ConnectionProfile, Driver};
+
+    fn mssql_profile() -> ConnectionProfile {
+        ConnectionProfile {
+            driver: Driver::MsSql,
+            host: "SVRSQL3".into(),
+            port: 0,
+            ..crate::testkit::profile("p")
+        }
+    }
+
+    /// The regression this pair of constants exists for: until 1.27.0 the
+    /// Browser lookup was sent to whatever port the login config carried, so
+    /// a named instance on the default port asked for its own location on TCP
+    /// 1433 — where no UDP listener has ever been — and every named instance
+    /// depended on the static-port fallback to connect at all.
+    #[test]
+    fn the_browser_lookup_goes_to_the_browser_not_to_the_instance() {
+        let profile = mssql_profile();
+        let (cfg, _) = build_config(&profile, "pw", "SVRSQL3", DEFAULT_PORT, Some("SQL2022"))
+            .expect("sql login builds");
+        assert_eq!(cfg.get_addr(), format!("SVRSQL3:{DEFAULT_PORT}"));
+        assert_eq!(
+            discovery_config(&cfg).get_addr(),
+            format!("SVRSQL3:{SQL_BROWSER_PORT}")
+        );
+    }
+
+    #[test]
+    fn a_default_port_is_not_taken_for_a_static_instance_port() {
+        // Retrying 1433 after the Browser went quiet buys a second timeout and
+        // nothing else, so it is deliberately not offered as a fallback —
+        // whether the user typed it or left the field blank.
+        let profile = mssql_profile();
+        let (_, reach) = build_config(&profile, "pw", "SVRSQL3", DEFAULT_PORT, Some("SQL2022"))
+            .expect("sql login builds");
+        assert!(matches!(
+            reach,
+            Reach::Browser {
+                fallback_port: None
+            }
+        ));
+    }
+
+    #[test]
+    fn a_port_typed_alongside_an_instance_becomes_its_static_fallback() {
+        let profile = mssql_profile();
+        let (_, reach) = build_config(&profile, "pw", "SVRSQL3", 1450, Some("SQL2022"))
+            .expect("sql login builds");
+        assert!(matches!(
+            reach,
+            Reach::Browser {
+                fallback_port: Some(1450)
+            }
+        ));
+    }
+
+    #[test]
+    fn no_instance_means_no_browser_round_trip() {
+        let profile = mssql_profile();
+        let (_, reach) =
+            build_config(&profile, "pw", "SVRSQL3", DEFAULT_PORT, None).expect("sql login builds");
+        assert!(matches!(reach, Reach::Port));
+    }
+
+    /// A SQL Server profile saved with a blank port dials 1433, not 0.
+    #[test]
+    fn a_blank_port_resolves_to_the_default_instance_port() {
+        assert_eq!(mssql_profile().effective_port(), DEFAULT_PORT);
+    }
 
     #[test]
     fn accepts_the_ssms_host_backslash_instance_form_in_either_field() {

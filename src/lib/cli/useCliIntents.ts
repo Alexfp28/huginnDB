@@ -59,7 +59,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { startCliConnectBridge } from "@/lib/bridges/cli-connect-bridge";
 import { DEFAULT_PORTS } from "@/lib/constants";
-import { driverMismatchHint, normalizeDriver } from "@/lib/db/driver";
+import { driverMismatchHint, effectivePort, normalizeDriver } from "@/lib/db/driver";
 import { api } from "@/lib/tauri";
 import { isMainWindow, MAIN_WINDOW_LABEL } from "@/lib/window";
 import { usePreferences } from "@/stores/preferences/preferences";
@@ -183,7 +183,11 @@ export function useCliIntents() {
       return candidates.find(
         (c) =>
           c.host === p.host &&
-          c.port === port &&
+          // Compared as resolved ports: a saved profile that left the field
+          // blank is the same server as a `--port 5432` launch, and minting a
+          // second throwaway profile for it is exactly what this match exists
+          // to avoid.
+          effectivePort(c.driver, c.port) === port &&
           c.database === p.database &&
           c.username === p.username,
       );

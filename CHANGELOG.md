@@ -14,6 +14,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   node that already knew exactly which connection you meant. The manager now
   opens focused on it. Offered while disconnected too, which is where it is
   needed most: a connection that will not open is the one you want to correct.
+  
+### Fixed
+
+- **Leaving the port blank now means "this driver's default" instead of port
+  zero.** A connection saved without a port was dialled verbatim — `host:0` —
+  and came back as a connection refused naming a port you never typed. An
+  empty port field now resolves to 5432 / 3306 / 27017 / 1433 at connect time,
+  and the field shows that number in grey so it is clear what leaving it empty
+  will do. The same applies to a `--port`-less CLI launch and to an imported
+  profile that omits it.
+
+  The port is **not** written into the profile: `profiles.json` keeps
+  recording that you did not choose one, so the connection follows the
+  driver's default rather than freezing today's value, and a connection shared
+  through an origin does not push a number its publisher never entered.
+
+- **SQL Server named instances are discovered through the SQL Browser — for
+  real this time.** The lookup was being sent to the instance's own TCP port
+  instead of to the Browser's UDP 1434, so it always timed out and the
+  connection only succeeded if you had also typed the instance's static port,
+  which is used as a fallback. An instance on a dynamic port could not be
+  reached at all. Now `SERVER` + instance name with the port left blank
+  connects, the way it does in SSMS.
 
 ## [1.26.0] — 2026-09-17
 

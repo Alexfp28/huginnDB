@@ -18,6 +18,7 @@ import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { Checkbox } from "@/components/ui/checkbox";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
 import { isFromOrigin } from "@/lib/connection/origin";
+import { effectivePort } from "@/lib/db/driver";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
 
@@ -59,8 +60,9 @@ export function ConnectionRailRow({
     profile.driver === "sqlite"
       ? sqliteFileLabel(profile.database)
       : profile.driver === "mongodb"
-        ? profile.connection_string || `${profile.host}:${profile.port}`
-        : `${profile.host}:${profile.port}/${profile.database}`;
+        ? profile.connection_string ||
+          `${profile.host}:${effectivePort(profile.driver, profile.port)}`
+        : `${profile.host}:${effectivePort(profile.driver, profile.port)}/${profile.database}`;
 
   // A shared profile can't be bulk-deleted: the backend refuses the id, because
   // the next sync would recreate it from the published file anyway. The checkbox
