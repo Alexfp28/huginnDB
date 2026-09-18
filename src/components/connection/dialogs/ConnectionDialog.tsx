@@ -39,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DEFAULT_PORTS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/common/PasswordInput";
@@ -811,6 +812,11 @@ export function ConnectionDialog({
                               <Input
                                 type="number"
                                 value={port || ""}
+                                // Blank is a real choice, not an unfinished
+                                // field: it stores 0, which both sides read as
+                                // "this driver's default". The placeholder is
+                                // the number that will be dialled.
+                                placeholder={String(DEFAULT_PORTS[driver])}
                                 disabled={mongoUriManual}
                                 onChange={(e) =>
                                   setPort(Number(e.target.value))
@@ -945,6 +951,10 @@ export function ConnectionDialog({
                               <Input
                                 type="number"
                                 value={port || ""}
+                                // See the MongoDB field above: an empty port
+                                // means the driver's default, and saying which
+                                // one is what makes leaving it empty safe.
+                                placeholder={String(DEFAULT_PORTS[driver])}
                                 onChange={(e) =>
                                   setPort(Number(e.target.value))
                                 }

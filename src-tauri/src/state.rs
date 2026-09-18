@@ -64,6 +64,31 @@ impl Driver {
             Self::MsSql => "sqlserver",
         }
     }
+
+    /// The port this driver listens on when the profile does not name one.
+    ///
+    /// `None` for SQLite, which has no server and therefore no port to
+    /// default to. Every other driver returns the value its own documentation
+    /// calls the default, which is the number the user would otherwise have to
+    /// know and retype into every profile.
+    ///
+    /// This is the **backend** copy of the frontend's `DEFAULT_PORTS`
+    /// (`src/lib/constants.ts`). The duplication is deliberate and the
+    /// direction matters: the dialog uses its copy to *prefill* a field, while
+    /// this one decides what a profile carrying no port actually connects to —
+    /// including profiles the dialog never touched, which arrive from the CLI,
+    /// from an imported `.json`, and from a shared origin.
+    pub fn default_port(self) -> Option<u16> {
+        match self {
+            Self::Postgres => Some(5432),
+            Self::Mysql => Some(3306),
+            Self::Sqlite => None,
+            Self::Mongo => Some(27017),
+            // A *default* instance. A named one is discovered through the SQL
+            // Browser instead — see `crate::db::mssql`'s `Reach`.
+            Self::MsSql => Some(1433),
+        }
+    }
 }
 
 /// How a SQL Server connection authenticates.
@@ -177,6 +202,12 @@ pub struct ConnectionProfile {
     /// Host or, for SQLite, the empty string.
     pub host: String,
     /// TCP port for server-backed drivers. Ignored for SQLite.
+    ///
+    /// **Zero means "the driver's default"**, not port zero: nothing can
+    /// listen on 0, so the value is free to carry that meaning, and it is what
+    /// a blank port field in the connection dialog stores. Never dial this
+    /// field directly — go through [`ConnectionProfile::effective_port`], which
+    /// resolves it against [`Driver::default_port`].
     pub port: u16,
     /// Database / catalog name. For SQLite this is the filesystem path.
     pub database: String,
@@ -477,6 +508,29 @@ impl ConnectionProfile {
     /// don't collide on shared hosts.
     pub fn keyring_account(&self) -> String {
         format!("{}::{}", self.id, self.username)
+    }
+
+    /// The port this profile actually connects to.
+    ///
+    /// A profile may legitimately carry no port at all — the dialog's port
+    /// field can be left blank, the CLI's `--port` is optional, and an
+    /// imported or origin-synced profile can simply omit it — and all three
+    /// land here as `0`. Until 1.27.0 that zero was dialled verbatim: the URL
+    /// builders wrote `host:0`, `tiberius` was handed `Config::port(0)`, and
+    /// the user got a connection refused naming a port they never typed.
+    ///
+    /// Resolving it here rather than at save time is what keeps the stored
+    /// profile honest: `profiles.json` records that the user did not choose a
+    /// port, so the profile follows the driver's default if it ever moves,
+    /// and a shared origin does not propagate a number its publisher never
+    /// entered.
+    ///
+    /// SQLite has no port; it returns `0`, which no SQLite code path reads.
+    pub fn effective_port(&self) -> u16 {
+        if self.port != 0 {
+            return self.port;
+        }
+        self.driver.default_port().unwrap_or(0)
     }
 
     /// Key under which the SSH secret (password or key passphrase) is
@@ -1190,6 +1244,51 @@ mod tests {
         let profile: ConnectionProfile = serde_json::from_value(stored).expect("must still parse");
         assert!(!profile.ai_enabled);
         assert!(!profile.ai_rows_allowed);
+    }
+
+    /// A port left blank in the dialog, omitted by the CLI, or missing from an
+    /// imported profile all reach the backend as `0`. Dialling that verbatim
+    /// is what produced `host:0` connection refusals; each driver answers with
+    /// the number its own documentation calls the default instead.
+    #[test]
+    fn a_blank_port_resolves_to_the_drivers_default() {
+        for (driver, expected) in [
+            (Driver::Postgres, 5432),
+            (Driver::Mysql, 3306),
+            (Driver::Mongo, 27017),
+            (Driver::MsSql, 1433),
+        ] {
+            let profile = ConnectionProfile {
+                driver,
+                port: 0,
+                ..crate::testkit::profile("p")
+            };
+            assert_eq!(profile.effective_port(), expected, "{driver:?}");
+        }
+    }
+
+    #[test]
+    fn a_port_the_user_typed_is_never_second_guessed() {
+        let profile = ConnectionProfile {
+            driver: Driver::Postgres,
+            port: 6432,
+            ..crate::testkit::profile("p")
+        };
+        assert_eq!(profile.effective_port(), 6432);
+    }
+
+    /// SQLite is a file path, not a socket: there is no default to fall back
+    /// to and nothing reads the value, so it stays `0` rather than borrowing
+    /// another driver's number.
+    #[test]
+    fn sqlite_has_no_default_port_to_fall_back_to() {
+        assert_eq!(Driver::Sqlite.default_port(), None);
+        let profile = ConnectionProfile {
+            driver: Driver::Sqlite,
+            port: 0,
+            ..crate::testkit::profile("p")
+        };
+        assert_eq!(profile.effective_port(), 0);
     }
 
     fn insert(conns: &mut ActiveConnections, id: &str, origin: PoolOrigin, idle_millis: u64) {

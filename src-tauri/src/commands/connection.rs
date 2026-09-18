@@ -958,7 +958,7 @@ pub(crate) async fn connect_inner(
             "connect: opening {} pool to {}:{}/{} (max {} connections)",
             profile.driver.wire_name(),
             profile.host,
-            profile.port,
+            profile.effective_port(),
             profile.database,
             limits.max_connections
         ),

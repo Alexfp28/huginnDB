@@ -77,15 +77,20 @@ pub async fn open_pool(
                 Some(src) if !src.is_empty() => format!("?authSource={}", enc(src)),
                 _ => String::new(),
             };
+            // `effective_port` rather than the raw field: a URI-less profile
+            // with no port (CLI `--host` without `--port`, or a dialog profile
+            // whose port box was left blank) used to assemble
+            // `mongodb://host:0/db`, which the driver rejects outright.
+            let port = profile.effective_port();
             if profile.username.is_empty() {
-                format!("mongodb://{}:{}{}{}", profile.host, profile.port, db, query)
+                format!("mongodb://{}:{}{}{}", profile.host, port, db, query)
             } else {
                 format!(
                     "mongodb://{}:{}@{}:{}{}{}",
                     enc(&profile.username),
                     enc(password),
                     profile.host,
-                    profile.port,
+                    port,
                     db,
                     query
                 )

@@ -80,7 +80,9 @@ impl EndpointKey {
         Some(Self {
             driver: profile.driver,
             host: normalise_host(&profile.host),
-            port: profile.port,
+            // The port the pool will really dial, so a profile that left the
+            // field blank shares a budget with one that spelled 5432 out.
+            port: profile.effective_port(),
             tunnel: profile
                 .ssh_tunnel
                 .as_ref()
@@ -273,6 +275,26 @@ mod tests {
         let a = EndpointKey::for_profile(&profile(Driver::Postgres, "DB.example.com", 5432));
         let b = EndpointKey::for_profile(&profile(Driver::Postgres, " db.example.com ", 5432));
         assert_eq!(a, b);
+    }
+
+    /// A profile that left the port field blank and one that spelled the
+    /// default out are the same server, and have to spend the same budget —
+    /// otherwise the two together could open twice the ceiling against it.
+    #[test]
+    fn a_blank_port_shares_the_budget_with_the_default_it_resolves_to() {
+        assert_eq!(
+            EndpointKey::for_profile(&profile(Driver::Postgres, "db", 0)),
+            EndpointKey::for_profile(&profile(Driver::Postgres, "db", 5432))
+        );
+        assert_eq!(
+            EndpointKey::for_profile(&profile(Driver::MsSql, "db", 0)),
+            EndpointKey::for_profile(&profile(Driver::MsSql, "db", 1433))
+        );
+        // And still separates two genuinely different servers.
+        assert_ne!(
+            EndpointKey::for_profile(&profile(Driver::Postgres, "db", 0)),
+            EndpointKey::for_profile(&profile(Driver::Postgres, "db", 6432))
+        );
     }
 
     #[test]
