@@ -242,6 +242,30 @@ export function ConnectionsSection() {
       </PrefRow>
 
       <PrefRow
+        label={t("settings.connections.operationTimeout.label")}
+        prefId="connections.operationTimeoutSecs"
+        description={t("settings.connections.operationTimeout.desc")}
+        htmlFor="prefs-conn-op-timeout"
+      >
+        <Input
+          id="prefs-conn-op-timeout"
+          type="number"
+          min={5}
+          max={600}
+          step={5}
+          value={connections.operationTimeoutSecs}
+          onChange={(e) =>
+            numeric(
+              (n) => updateConnections({ operationTimeoutSecs: n }),
+              5,
+              600,
+            )(e.target.value)
+          }
+          className="h-8 w-24 text-right font-mono text-xs"
+        />
+      </PrefRow>
+
+      <PrefRow
         label={t("settings.connections.mcpBridge.label")}
         prefId="connections.mcpBridge"
         description={t("settings.connections.mcpBridge.desc")}

@@ -141,6 +141,22 @@ export interface ConnectionProfile {
    */
   max_connections?: number | null;
   /**
+   * Ceiling, in seconds, for a single read-only introspection call against this
+   * server — listing databases and tables, describing a relation, the keepalive
+   * ping. Overrides the global `connections.operationTimeoutSecs` preference;
+   * `null`/absent means "use the preference".
+   *
+   * Never bounds a data query: that runtime is the user's own SQL.
+   *
+   * Same placement argument as {@link max_connections}, and for the same
+   * reason — how long a server takes to answer is a fact about that *server*.
+   * Unlike the MCP/Pulse/AI opt-ins, it is **not** preserved across a
+   * shared-origin sync: those are local decisions a publisher cannot know,
+   * while this one describes the shared server, which is precisely what the
+   * publisher does know. Clamped to 5..600 backend-side.
+   */
+  operation_timeout_secs?: number | null;
+  /**
    * Set when this profile came from a shared origin (#108). Such a profile is
    * **read-only in the UI**: it mirrors an entry in a file somebody else
    * curates, so a local edit would be silently undone by the next sync.
@@ -961,6 +977,16 @@ export interface ConnectionPrefs {
   bridgeIdleTtlSecs: number;
   /** Keepalive ping interval in seconds. `0` disables the heartbeat. */
   keepaliveSecs: number;
+  /**
+   * Ceiling, in seconds, for a single read-only introspection call — listing
+   * databases and tables, describing a relation, the keepalive ping. Never a
+   * data query.
+   *
+   * The global fallback; one slow or very large server is better expressed on
+   * its own connection (`ConnectionProfile.operation_timeout_secs`), which
+   * travels with it. Clamped to 5..600 backend-side.
+   */
+  operationTimeoutSecs: number;
 }
 
 /**

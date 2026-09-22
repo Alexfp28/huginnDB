@@ -247,7 +247,10 @@
       "connectionStringWarning": "Editing the connection string by hand can introduce errors — double-check it. Needed for Atlas (mongodb+srv://) and multi-host seed lists; other URI options are carried through by the form on their own.",
       "maxConnections": "Max connections for this server",
       "maxConnectionsHint": "Total connections HuginnDB may hold against this server, shared with every database view on it. Blank uses the global preference. It travels with the connection to exports and to the MCP connector.",
-      "maxConnectionsPlaceholder": "default"
+      "maxConnectionsPlaceholder": "default",
+      "operationTimeout": "Operation timeout for this server",
+      "operationTimeoutHint": "Seconds a single schema read may take against this server — listing databases and tables, describing a relation. Raise it for a server that is simply slow or very large; the default is fine for most. Never bounds a query you run: that runtime is yours. Blank uses the global preference.",
+      "operationTimeoutPlaceholder": "default ({{seconds}}s)"
     },
     "ssh": {
       "enable": "Connect through SSH tunnel",
@@ -1600,6 +1603,10 @@
       "bridgeIdleTtl": {
         "label": "Close idle connector connections after",
         "desc": "Seconds a connection the MCP connector opened may go untouched before it is closed. Nothing in the app shows these, and the connector reopens one by itself on its next call. 0 keeps them until the app exits."
+      },
+      "operationTimeout": {
+        "label": "Operation timeout",
+        "desc": "Seconds a single schema read may take — listing databases and tables, describing a relation, the liveness ping. Never a query you run. A server that needs longer is better set on its own connection, where the value travels with it."
       },
       "keepalive": {
         "label": "Keepalive interval",

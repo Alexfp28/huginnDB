@@ -110,6 +110,7 @@ servidor*, aunque HuginnDB no los vea:
 | Máximo de vistas de base de datos abiertas | Cuántas vistas puede mantener una conexión a la vez; las que llevan más tiempo sin usarse se cierran al pasar de aquí. `0` es sin límite. |
 | Cerrar vistas inactivas tras | Segundos que una vista puede pasar sin usarse antes de cerrar su pool. Se reabre sola la próxima vez. `0` desactiva el cierre. |
 | Intervalo de keepalive | Segundos entre pings de comprobación — ver más abajo. `0` apaga el latido. |
+| Tiempo máximo de operación | Segundos que puede tardar una lectura de esquema — listar bases de datos y tablas, describir una relación, el ping de comprobación. Nunca una consulta que lances tú. |
 
 Los límites se aplican al *abrir* un pool; los ya abiertos conservan lo que se
 les concedió, así que reconecta para aplicar un cambio al momento. Y cuando se
@@ -121,6 +122,23 @@ este servidor**, en el diálogo de conexión, pisa la preferencia global solo pa
 ese perfil. La capacidad de conexiones es un hecho del servidor, no de tu sesión,
 y por eso se guarda en el perfil: así viaja con él a las exportaciones, a los
 orígenes compartidos y al conector MCP.
+
+**Tiempo máximo de operación para este servidor** funciona igual, y existe por lo
+mismo. Una lectura de esquema lleva un tope para que un socket muerto se reporte
+en vez de dejar el árbol girando para siempre, pero ese tope es una suposición
+sobre un servidor que nunca hemos visto — y en uno grande es la suposición
+equivocada. Un SQL Server con varios cientos de bases de datos puede tardar más
+que el valor por defecto solo en listarlas, y entonces el fallo se lee como una
+conexión rota aunque se haya abierto en menos de un segundo. Súbelo en esa
+conexión y deja el resto como está. En blanco significa «usa la preferencia
+global».
+
+Nunca limita una consulta que lances **tú**: ese tiempo es tuyo, y el tope solo
+cubre las lecturas de metadatos que la app hace por su cuenta. Igual que el techo
+de conexiones, viaja con el perfil — y a diferencia de los interruptores de MCP,
+Pulse e IA, la actualización de un origen compartido **sí** lo trae, porque
+cuánto tarda un servidor en responder es algo que quien publica ese servidor sabe
+y que si no habría que redescubrir en cada máquina.
 
 En la misma sección hay otro interruptor: **Compartir pools con el conector MCP**
 permite que un sidecar `huginndb-mcp` en ejecución use las conexiones de esta app

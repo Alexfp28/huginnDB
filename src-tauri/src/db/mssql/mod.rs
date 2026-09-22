@@ -516,10 +516,10 @@ pub fn is_output_clause_conflict(e: &AppError) -> bool {
 /// indefinitely.
 ///
 /// That indefinite hang is invisible everywhere a `list_tables`/`list_columns`
-/// call is itself wrapped in [`crate::error::with_timeout`] — the schema
+/// call is itself wrapped in [`crate::error::with_timeout_for`] — the schema
 /// explorer's per-database view still has to reach this function on its
 /// *first* access, from `commands::connection::ensure_database_view`, which
-/// runs **before** the command layer's `with_timeout` wrapper. With no bound
+/// runs **before** the command layer's `with_timeout_for` wrapper. With no bound
 /// here, opening a per-database view against an unreachable database left the
 /// whole command — and the tree node's loading skeleton — stuck forever,
 /// which is what made SQL Server the one driver whose schema explorer could

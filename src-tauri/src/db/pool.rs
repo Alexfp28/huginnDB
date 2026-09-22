@@ -111,10 +111,55 @@ pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 /// here rather than written down twice.
 pub const MCP_IDLE_TTL: Duration = Duration::from_secs(300);
 
-/// Ceiling for a single read-only introspection call (metadata listing, the
-/// keepalive ping) — never for a data query, whose runtime is the user's own
-/// SQL, not ours to bound. See [`crate::error::with_timeout`].
-pub const OPERATION_TIMEOUT: Duration = Duration::from_secs(20);
+/// Default ceiling for a single read-only introspection call (metadata
+/// listing, the keepalive ping) — never for a data query, whose runtime is the
+/// user's own SQL, not ours to bound. See [`crate::error::with_timeout_for`].
+///
+/// Was a hard constant until a SQL Server holding several hundred databases
+/// took longer than this to answer `list_databases` and the tree reported a
+/// connection that had just opened in under a second as unresponsive. Twenty
+/// is a reasonable guess about a server we have never seen; it is not a fact,
+/// so it is now the *default* behind
+/// [`crate::prefs::ConnectionPrefs::operation_timeout_secs`] and
+/// [`crate::state::ConnectionProfile::operation_timeout_secs`]. Resolve it
+/// with [`operation_timeout`] rather than reading it directly.
+pub const DEFAULT_OPERATION_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Floor for a user-supplied introspection timeout.
+///
+/// Not zero, and not one: below a few seconds the timeout stops describing an
+/// unresponsive connection and starts describing an ordinary round trip to a
+/// server on the other side of a VPN, which turns every tree expansion into a
+/// failure the user cannot diagnose.
+pub const MIN_OPERATION_TIMEOUT_SECS: u32 = 5;
+
+/// Sanity ceiling on a user-supplied introspection timeout.
+///
+/// Ten minutes. The point of the bound is that a genuinely dead socket is
+/// discovered at all; past this the UI is indistinguishable from hung, and the
+/// honest answer is that the server needs looking at rather than a bigger
+/// number here.
+pub const MAX_OPERATION_TIMEOUT_SECS: u32 = 600;
+
+/// The introspection timeout in force for `profile`: its own override when it
+/// has one, else the global preference. Clamped into the supported range, so a
+/// hand-edited `0` in `profiles.json` cannot make every metadata call fail
+/// instantly.
+///
+/// Twin of [`endpoint_budget`], and deliberately shaped the same way: both
+/// answer "what did the user say about *this server*, and what do we do when
+/// they said something impossible".
+pub fn operation_timeout(profile: &ConnectionProfile, preference: u32) -> Duration {
+    preference_timeout(profile.operation_timeout_secs.unwrap_or(preference))
+}
+
+/// The same clamp with no profile to consult — for an ad-hoc CLI connection,
+/// which has no stored profile to carry an override.
+pub fn preference_timeout(secs: u32) -> Duration {
+    Duration::from_secs(u64::from(
+        secs.clamp(MIN_OPERATION_TIMEOUT_SECS, MAX_OPERATION_TIMEOUT_SECS),
+    ))
+}
 
 /// The server budget in force for `profile`: its own override when it has one,
 /// else the global preference. Clamped into the supported range, so a
@@ -699,6 +744,44 @@ mod tests {
         assert_eq!(
             endpoint_budget(&profile(Some(9_000)), 10),
             MAX_MAX_CONNECTIONS
+        );
+    }
+
+    fn timed(secs: Option<u32>) -> ConnectionProfile {
+        ConnectionProfile {
+            operation_timeout_secs: secs,
+            ..crate::testkit::profile("p")
+        }
+    }
+
+    #[test]
+    fn the_profile_timeout_beats_the_global_preference() {
+        // Same precedence as the budget above, for the same reason: how long a
+        // server takes to answer is a fact about that server.
+        assert_eq!(operation_timeout(&timed(Some(90)), 20).as_secs(), 90);
+        assert_eq!(operation_timeout(&timed(None), 45).as_secs(), 45);
+        assert_eq!(
+            operation_timeout(&timed(None), DEFAULT_OPERATION_TIMEOUT.as_secs() as u32),
+            DEFAULT_OPERATION_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn timeouts_are_clamped_into_a_usable_range() {
+        // A hand-edited 0 would fail every metadata call instantly and look
+        // exactly like a dead server, so it is raised rather than honoured.
+        assert_eq!(
+            operation_timeout(&timed(Some(0)), 20).as_secs(),
+            u64::from(MIN_OPERATION_TIMEOUT_SECS)
+        );
+        assert_eq!(
+            operation_timeout(&timed(Some(u32::MAX)), 20).as_secs(),
+            u64::from(MAX_OPERATION_TIMEOUT_SECS)
+        );
+        // The preference is clamped too — it reaches the same function.
+        assert_eq!(
+            operation_timeout(&timed(None), 1).as_secs(),
+            u64::from(MIN_OPERATION_TIMEOUT_SECS)
         );
     }
 

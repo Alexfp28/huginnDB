@@ -53,21 +53,28 @@ pub async fn execute(
             state.connections.read().get(connection_id),
             Some(crate::state::DbPool::Mongo(_))
         )),
-        // Metadata reads get the same `with_timeout` ceiling their GUI command
-        // counterparts do (`commands::schema`/`structure`) — this is the *other*
-        // caller of these `_inner` functions (see the module docs), so without
-        // its own wrap here a half-dead socket would hang an MCP tool call
-        // indefinitely even though the desktop command for the same operation
-        // fails fast.
+        // Metadata reads get the same `with_timeout_for` ceiling their GUI
+        // command counterparts do (`commands::schema`/`structure`) — this is
+        // the *other* caller of these `_inner` functions (see the module docs),
+        // so without its own wrap here a half-dead socket would hang an MCP
+        // tool call indefinitely even though the desktop command for the same
+        // operation fails fast. `_for`, not the bare default: the ceiling is a
+        // per-connection setting on the profile, and `profiles.json` is the one
+        // thing the app and the sidecar genuinely share, so an MCP client
+        // against a slow server inherits the user's answer for free.
         ListDatabases { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "list_databases",
                 crate::commands::schema::list_databases_inner(state, connection_id),
             )
             .await?,
         )?,
         ListTables { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "list_tables",
                 crate::commands::schema::list_tables_inner(state, connection_id),
             )
@@ -84,7 +91,9 @@ pub async fn execute(
             schema,
             table,
         } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "get_table_structure",
                 crate::commands::structure::describe_relation_inner(
                     state,
@@ -100,7 +109,9 @@ pub async fn execute(
             schema,
             table,
         } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "list_indexes",
                 // The detailed reader: this request is reached only by the MCP
                 // connector's `list_indexes` tool (the explorer calls the Tauri
@@ -116,14 +127,18 @@ pub async fn execute(
             .await?,
         )?,
         ServerVersion { connection_id } => Value::String(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "server_version",
                 crate::commands::schema::server_version_inner(state, connection_id),
             )
             .await?,
         ),
         ListUsers { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "list_users",
                 crate::commands::schema::list_users_inner(state, connection_id),
             )
@@ -133,14 +148,18 @@ pub async fn execute(
             connection_id,
             user,
         } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "list_privileges",
                 crate::commands::schema::list_privileges_inner(state, connection_id, user.clone()),
             )
             .await?,
         )?,
         PulseHealth { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_health",
                 crate::commands::pulse::pulse_health_inner(state, connection_id),
             )
@@ -151,7 +170,9 @@ pub async fn execute(
             metric,
             since_ms,
         } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_metrics",
                 crate::commands::pulse::pulse_metrics_inner(
                     state,
@@ -163,7 +184,9 @@ pub async fn execute(
             .await?,
         )?,
         PulseTopQueries { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_top_queries",
                 crate::commands::pulse::pulse_top_queries_inner(state, connection_id),
             )
@@ -173,28 +196,36 @@ pub async fn execute(
             connection_id,
             sample,
         } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_explain",
                 crate::commands::pulse::pulse_explain_inner(state, connection_id, sample),
             )
             .await?,
         )?,
         PulseStorage { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_storage",
                 crate::commands::pulse::pulse_storage_inner(state, connection_id),
             )
             .await?,
         )?,
         PulseSessions { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_sessions",
                 crate::commands::pulse::pulse_sessions_inner(state, connection_id),
             )
             .await?,
         )?,
         PulseIndexUsage { connection_id } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "pulse_index_usage",
                 crate::commands::pulse::pulse_index_usage_inner(state, connection_id),
             )
@@ -300,7 +331,9 @@ pub async fn execute(
             schema,
             view,
         } => serde_json::to_value(
-            crate::error::with_timeout(
+            crate::error::with_timeout_for(
+                state,
+                connection_id,
                 "get_view_definition",
                 crate::commands::view::get_any_view_definition_inner(
                     state,
@@ -316,8 +349,8 @@ pub async fn execute(
         // (see `BridgeRequest::PreviewViewChange`), so it is read from the
         // discriminant here and nowhere else.
         //
-        // No `with_timeout` on the apply, matching every other write arm above:
-        // a DDL statement can legitimately outlast `OPERATION_TIMEOUT`, and
+        // No timeout wrapper on the apply, matching every other write arm above:
+        // a DDL statement can legitimately outlast the introspection ceiling, and
         // timing out a write is the worst available outcome — the statement may
         // already have landed. The preview shares the arm and executes nothing,
         // so it needs none either.

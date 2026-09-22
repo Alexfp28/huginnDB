@@ -6,28 +6,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
-### Fixed
-
-- **A MongoDB filter no longer asks the wrong question about a field whose
-  stored type has changed.** `value <> 5682380` left every row it was meant to
-  exclude on screen, and the console showed why: the value went out as an
-  `Int32` while the grid header above it labelled that column `STRING`.
-
-  A MongoDB column is typed twice, from two different populations. The header
-  types it from the page on screen; the advanced filter was typing it from the
-  catalog's 100-document sample of the whole collection. On a field that used
-  to hold numbers and now holds strings those two disagree — and BSON equality
-  is exact by type, so `$ne` against the wrong one excludes nothing and reports
-  nothing. Every step was correct in isolation; the screen simply could not
-  explain the result.
-
-  The filter now takes the page's answer, the same one the header prints,
-  falling back to the catalog where the page cannot decide (a field that
-  disagreed with itself across rows, or that was null throughout). Nothing
-  changes on PostgreSQL, MySQL, SQLite or SQL Server, whose catalog types are
-  authoritative rather than sampled.
-
 ### Added
+
+- **An operation timeout you can set per connection.** Expanding the tree on a
+  SQL Server holding several hundred databases failed with *"list_databases took
+  longer than 20s — the connection may be unresponsive"* — on a connection that
+  had opened in under a second. The server was not unresponsive; it was large.
+  `sys.databases` filtered by `HAS_DBACCESS` evaluates a permission check per
+  database, and there was no way to tell the app to wait.
+
+  Twenty seconds was a hard constant, which is to say an assertion about a
+  server HuginnDB has never seen. It is now the *default*: **Settings →
+  Connections → Operation timeout** sets it globally, and **Operation timeout
+  for this server** in the connection dialog overrides it for one connection,
+  next to the pool ceiling that answers the same shape of question. Blank means
+  the global preference.
+
+  It bounds only the reads the app issues on its own behalf — listing databases
+  and tables, describing a relation, the liveness ping. A query **you** run has
+  never been bounded and still is not. Like the pool ceiling it travels with the
+  profile, so it reaches exports, shared origins and the MCP connector without
+  any extra setup.
+
+  The error also names the fix now, instead of describing a broken connection
+  the user then goes looking for.
 
 - **A value type per filter condition, on MongoDB.** A better default is still
   a default: a schemaless collection can legitimately hold a `long` in some
@@ -48,6 +50,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   questions and used to print identically, which is what let the original bug
   hide in plain sight. SQL chips are unchanged: there the value is a bound
   parameter coerced against its column, so the distinction does not exist.
+
+### Fixed
+
+- **A MongoDB filter no longer asks the wrong question about a field whose
+  stored type has changed.** `value <> 5682380` left every row it was meant to
+  exclude on screen, and the console showed why: the value went out as an
+  `Int32` while the grid header above it labelled that column `STRING`.
+
+  A MongoDB column is typed twice, from two different populations. The header
+  types it from the page on screen; the advanced filter was typing it from the
+  catalog's 100-document sample of the whole collection. On a field that used
+  to hold numbers and now holds strings those two disagree — and BSON equality
+  is exact by type, so `$ne` against the wrong one excludes nothing and reports
+  nothing. Every step was correct in isolation; the screen simply could not
+  explain the result.
+
+  The filter now takes the page's answer, the same one the header prints,
+  falling back to the catalog where the page cannot decide (a field that
+  disagreed with itself across rows, or that was null throughout). Nothing
+  changes on PostgreSQL, MySQL, SQLite or SQL Server, whose catalog types are
+  authoritative rather than sampled.
 
 ## [1.26.1] — 2026-09-18
 

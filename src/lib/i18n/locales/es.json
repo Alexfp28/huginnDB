@@ -247,7 +247,10 @@
       "connectionStringWarning": "Editar la cadena de conexión a mano puede introducir errores — revísala con cuidado. Hace falta para Atlas (mongodb+srv://) y listas de varios hosts; el resto de opciones de la URI las conserva el formulario por su cuenta.",
       "maxConnections": "Máximo de conexiones para este servidor",
       "maxConnectionsHint": "Total de conexiones que HuginnDB puede mantener contra este servidor, compartido con todas sus vistas de base de datos. En blanco usa la preferencia global. Viaja con la conexión a las exportaciones y al conector MCP.",
-      "maxConnectionsPlaceholder": "por defecto"
+      "maxConnectionsPlaceholder": "por defecto",
+      "operationTimeout": "Tiempo máximo de operación para este servidor",
+      "operationTimeoutHint": "Segundos que puede tardar una lectura de esquema contra este servidor — listar bases de datos y tablas, describir una relación. Súbelo si el servidor es lento o muy grande; el valor por defecto sirve para la mayoría. Nunca limita una consulta que lances tú: ese tiempo es tuyo. En blanco usa la preferencia global.",
+      "operationTimeoutPlaceholder": "por defecto ({{seconds}} s)"
     },
     "ssh": {
       "enable": "Conectar vía túnel SSH",
@@ -1600,6 +1603,10 @@
       "bridgeIdleTtl": {
         "label": "Cerrar conexiones del conector inactivas tras",
         "desc": "Segundos que una conexión abierta por el conector MCP puede estar sin usarse antes de cerrarse. La app no las muestra en ninguna parte, y el conector vuelve a abrirla por su cuenta en la siguiente llamada. 0 las mantiene hasta que cierres la app."
+      },
+      "operationTimeout": {
+        "label": "Tiempo máximo de operación",
+        "desc": "Segundos que puede tardar una lectura de esquema — listar bases de datos y tablas, describir una relación, el ping de comprobación. Nunca una consulta que lances tú. Un servidor que necesite más es mejor ajustarlo en su propia conexión, donde el valor viaja con ella."
       },
       "keepalive": {
         "label": "Intervalo de keepalive",

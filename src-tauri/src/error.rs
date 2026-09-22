@@ -285,22 +285,68 @@ impl Serialize for AppError {
 /// Shorthand for `Result<T, AppError>`.
 pub type AppResult<T> = Result<T, AppError>;
 
-/// Run `fut`, turning a stall past [`crate::db::pool::OPERATION_TIMEOUT`] into
-/// an [`AppError::OperationTimedOut`] instead of hanging forever.
+/// Run `fut`, turning a stall past `limit` into an
+/// [`AppError::OperationTimedOut`] instead of hanging forever.
 ///
 /// Reserved for read-only introspection (metadata listing, the keepalive
 /// ping) that is fast by nature — a data query the user typed can legitimately
 /// run long, so query/bulk/dump paths never wrap their work in this.
-pub async fn with_timeout<T>(
+///
+/// **There is deliberately no default-taking wrapper.** There used to be one,
+/// applying a hard 20 s to every caller, and it was the whole bug: the limit is
+/// a property of the server being called, so a function that cannot see which
+/// server that is cannot choose it correctly. Every caller either knows the
+/// connection ([`with_timeout_for`]) or has resolved the limit already.
+///
+/// The message names the fix, not just the failure. A bare "took longer than
+/// 20s" reads as a broken connection — which is exactly the wrong conclusion
+/// when the connection is fine and the server is merely large — and leaves the
+/// user with nothing to do about it. Same rule as gotcha #77: text a person
+/// acts on has to say what the action is.
+pub async fn with_timeout_secs<T>(
+    limit: std::time::Duration,
     what: &str,
     fut: impl std::future::Future<Output = AppResult<T>>,
 ) -> AppResult<T> {
-    match tokio::time::timeout(crate::db::pool::OPERATION_TIMEOUT, fut).await {
+    match tokio::time::timeout(limit, fut).await {
         Ok(result) => result,
         Err(_) => Err(AppError::OperationTimedOut(format!(
-            "{what} took longer than {}s — the connection may be unresponsive",
-            crate::db::pool::OPERATION_TIMEOUT.as_secs()
+            "{what} took longer than {}s — the connection may be unresponsive.              If this server is simply slow or very large, raise \"Operation timeout\"              in its connection settings.",
+            limit.as_secs()
         ))),
+    }
+}
+
+/// [`with_timeout_secs`] honouring what the user said about *this* connection:
+/// the profile's own `operation_timeout_secs`, else the global preference.
+///
+/// **`connection_id` may be a synthetic per-database view id**
+/// (`<parent>::db::<name>`), which no profile is stored under. It is resolved
+/// through [`crate::state::parent_connection_id`] first, so a database view
+/// inherits its parent's ceiling instead of silently falling back to the
+/// default — the views are where most metadata calls actually happen.
+pub async fn with_timeout_for<T>(
+    state: &crate::state::AppState,
+    connection_id: &str,
+    what: &str,
+    fut: impl std::future::Future<Output = AppResult<T>>,
+) -> AppResult<T> {
+    with_timeout_secs(connection_timeout(state, connection_id), what, fut).await
+}
+
+/// The introspection ceiling in force for `connection_id`. Falls back to the
+/// preference-only value when no profile matches, which is the case for an
+/// ad-hoc CLI connection.
+pub fn connection_timeout(
+    state: &crate::state::AppState,
+    connection_id: &str,
+) -> std::time::Duration {
+    let preference = state.prefs.read().connections.operation_timeout_secs;
+    let root = crate::state::parent_connection_id(connection_id);
+    let profiles = state.profiles.read();
+    match profiles.iter().find(|p| p.id == root) {
+        Some(profile) => crate::db::pool::operation_timeout(profile, preference),
+        None => crate::db::pool::preference_timeout(preference),
     }
 }
 
