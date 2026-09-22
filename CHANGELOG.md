@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **An operation timeout you can set per connection.** Expanding the tree on a
+  SQL Server holding several hundred databases failed with *"list_databases took
+  longer than 20s — the connection may be unresponsive"* — on a connection that
+  had opened in under a second. The server was not unresponsive; it was large.
+  `sys.databases` filtered by `HAS_DBACCESS` evaluates a permission check per
+  database, and there was no way to tell the app to wait.
+
+  Twenty seconds was a hard constant, which is to say an assertion about a
+  server HuginnDB has never seen. It is now the *default*: **Settings →
+  Connections → Operation timeout** sets it globally, and **Operation timeout
+  for this server** in the connection dialog overrides it for one connection,
+  next to the pool ceiling that answers the same shape of question. Blank means
+  the global preference.
+
+  It bounds only the reads the app issues on its own behalf — listing databases
+  and tables, describing a relation, the liveness ping. A query **you** run has
+  never been bounded and still is not. Like the pool ceiling it travels with the
+  profile, so it reaches exports, shared origins and the MCP connector without
+  any extra setup.
+
+  The error also names the fix now, instead of describing a broken connection
+  the user then goes looking for.
+
 ## [1.26.1] — 2026-09-18
 
 ### Added

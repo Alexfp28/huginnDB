@@ -104,6 +104,7 @@ though HuginnDB can't see them:
 | Max open database views | How many database views one connection may keep at once; the longest-unused are closed past this. `0` means unlimited. |
 | Close idle database views after | Seconds a database view may go untouched before its pool is closed. It reopens by itself next time you use it. `0` disables the reaping. |
 | Keepalive interval | Seconds between liveness pings — see below. `0` turns the heartbeat off. |
+| Operation timeout | Seconds a single schema read may take — listing databases and tables, describing a relation, the liveness ping. Never a query you run. |
 
 Limits apply when a pool is *opened*; pools already open keep what they were
 granted, so reconnect to apply a change immediately. And when a server's
@@ -115,6 +116,22 @@ server** in the connection dialog overrides the global preference for that
 profile only. Connection capacity is a fact about a server rather than about
 your session, which is why it is stored on the profile — it travels with it
 into exports, into shared origins, and into the MCP connector.
+
+**Operation timeout for this server** works the same way, and exists for the
+same reason. A schema read is bounded so that a dead socket is reported rather
+than leaving the tree spinning forever, but the bound is a guess about a server
+we have never seen — and on a large one it is the wrong guess. A SQL Server
+holding several hundred databases can take longer than the default just to list
+them, and the failure then reads as a broken connection even though it opened in
+under a second. Raise it on that connection and leave the rest alone. Blank
+means "use the global preference".
+
+It never bounds a query **you** run: that runtime is yours, and only metadata
+reads the app issues on its own behalf are capped. Like the pool ceiling, it
+travels with the profile — and unlike the MCP, Pulse and AI opt-ins, a shared
+origin's refresh *does* update it, because how long a server takes to answer is
+something the person publishing that server knows and you would otherwise have
+to rediscover on every machine.
 
 One more switch lives in the same section: **Share pools with the MCP
 connector** lets a running `huginndb-mcp` sidecar borrow this app's connections

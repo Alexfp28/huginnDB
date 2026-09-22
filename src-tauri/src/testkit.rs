@@ -3,7 +3,7 @@
 //!
 //! Six test modules — `commands::connection`, `store`, `transfer`,
 //! `db::pool`, `db::endpoint` and `pool_reaper` — each carried a private
-//! `fn profile(..)` building the same nineteen-field [`ConnectionProfile`],
+//! `fn profile(..)` building the same twenty-odd-field [`ConnectionProfile`],
 //! varying one to three of them. Every field added to that struct since has
 //! had to be added to all six before the suite compiled again, which is
 //! busywork that also quietly discourages adding a test module.
@@ -40,6 +40,7 @@ pub fn profile(id: &str) -> ConnectionProfile {
         visible_databases: None,
         mcp_write: Default::default(),
         max_connections: None,
+        operation_timeout_secs: None,
         origin_id: None,
         pulse_enabled: false,
         mcp_exposed: false,

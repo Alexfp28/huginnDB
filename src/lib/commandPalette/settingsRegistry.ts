@@ -449,6 +449,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: num((p) => p.connections.maxConnections),
   },
   {
+    prefId: "connections.operationTimeoutSecs",
+    section: "connections",
+    labelKey: "settings.connections.operationTimeout.label",
+    descKey: "settings.connections.operationTimeout.desc",
+    keywords: "timeout tiempo espera esquema metadata introspección lento",
+    value: num((p) => p.connections.operationTimeoutSecs),
+  },
+  {
     prefId: "connections.childMaxConnections",
     section: "connections",
     labelKey: "settings.connections.childMaxConnections.label",

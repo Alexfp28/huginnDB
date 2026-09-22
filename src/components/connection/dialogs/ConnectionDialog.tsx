@@ -84,6 +84,10 @@ import type {
   MsSqlAuth,
 } from "@/types";
 import { useConnections } from "@/stores/session/connections";
+import {
+  selectConnectionPrefs,
+  usePreferences,
+} from "@/stores/preferences/preferences";
 import { useSchema } from "@/stores/session/schema";
 import { isWindows } from "@/lib/platform";
 import { driverMismatchHint, supportsSshTunnel } from "@/lib/db/driver";
@@ -118,6 +122,7 @@ export function ConnectionDialog({
   onConnected,
 }: Props) {
   const { t } = useTranslation();
+  const connectionPrefs = usePreferences(selectConnectionPrefs);
   const save = useConnections((s) => s.save);
   const connect = useConnections((s) => s.connect);
   const profiles = useConnections((s) => s.profiles);
@@ -150,6 +155,8 @@ export function ConnectionDialog({
     ssl,
     setSsl,
     maxConnections,
+    operationTimeout,
+    setOperationTimeout,
     setMaxConnections,
     setConnectionString,
     authSource,
@@ -346,6 +353,7 @@ export function ConnectionDialog({
     // and overriding below fixes that for the existing fields as well as for
     // `max_connections`.
     const parsedMax = Number.parseInt(maxConnections, 10);
+    const parsedTimeout = Number.parseInt(operationTimeout, 10);
     return {
       ...(stored ?? undefined),
       id: editingId ?? draftId,
@@ -368,6 +376,10 @@ export function ConnectionDialog({
           : null,
       max_connections:
         Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null,
+      operation_timeout_secs:
+        Number.isFinite(parsedTimeout) && parsedTimeout > 0
+          ? parsedTimeout
+          : null,
       mssql:
         driver === "sqlserver"
           ? {
@@ -1008,6 +1020,33 @@ export function ConnectionDialog({
                               }
                               placeholder={t(
                                 "connectionDialog.fields.maxConnectionsPlaceholder",
+                              )}
+                            />
+                          </Field>
+                          {/* Sits next to the pool ceiling because both are
+                              statements about this server rather than about the
+                              session: how much of it we may use, and how long
+                              it is allowed to take. Blank means the global
+                              preference, which the placeholder names. */}
+                          <Field
+                            label={t(
+                              "connectionDialog.fields.operationTimeout",
+                            )}
+                            hint={t(
+                              "connectionDialog.fields.operationTimeoutHint",
+                            )}
+                          >
+                            <Input
+                              type="number"
+                              min={5}
+                              max={600}
+                              value={operationTimeout}
+                              onChange={(e) =>
+                                setOperationTimeout(e.target.value)
+                              }
+                              placeholder={t(
+                                "connectionDialog.fields.operationTimeoutPlaceholder",
+                                { seconds: connectionPrefs.operationTimeoutSecs },
                               )}
                             />
                           </Field>

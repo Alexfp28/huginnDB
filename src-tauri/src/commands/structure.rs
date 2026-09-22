@@ -32,7 +32,9 @@ pub async fn get_table_structure(
     table: String,
 ) -> AppResult<TableStructure> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "get_table_structure",
         get_table_structure_inner(state.inner(), &connection_id, schema, table),
     )

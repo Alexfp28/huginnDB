@@ -291,6 +291,37 @@ pub struct ConnectionProfile {
     /// can't produce a pool that deadlocks.
     #[serde(default)]
     pub max_connections: Option<u32>,
+    /// Ceiling, in seconds, for a single read-only introspection call against
+    /// this server — overriding the global `connections.operationTimeoutSecs`
+    /// preference. `None` (the default, and every profile written before this
+    /// field existed) means "use the preference".
+    ///
+    /// It exists because 20 seconds is a guess about *someone else's* server.
+    /// A SQL Server holding several hundred databases answers `list_databases`
+    /// — a `HAS_DBACCESS` per database, possibly after opening a fresh session
+    /// — in well over that, and the failure looks exactly like a broken
+    /// connection to the person trying to expand the tree. Nothing about the
+    /// query can be made faster from here, so the ceiling has to be the user's.
+    ///
+    /// Same placement argument as [`Self::max_connections`], and for the same
+    /// reason: how long a server takes to answer is a fact about the *server*,
+    /// so it belongs next to its host and port. It exports and imports with the
+    /// profile ([`crate::transfer`]), syncs through shared origins, and the
+    /// headless MCP sidecar honours it without any extra plumbing because it
+    /// reads the same `profiles.json`.
+    ///
+    /// **Deliberately absent from the sync's preserve list**
+    /// (`commands::origins::merge_into`), unlike `mcp_write`, `mcp_exposed`,
+    /// `pulse_enabled` and the `ai_*` pair. Those are local decisions about
+    /// trust or about this machine's resources, which a publisher cannot know.
+    /// This one describes the shared server, which is precisely what the
+    /// publisher *does* know — so a refresh is allowed to correct it.
+    ///
+    /// Clamped at use time by [`crate::db::pool::operation_timeout`]; a
+    /// hand-edited `0` is raised to the floor rather than making every
+    /// introspection call fail instantly.
+    #[serde(default)]
+    pub operation_timeout_secs: Option<u32>,
     /// Id of the shared origin this profile was imported from (#108), or `None`
     /// for a profile the user created locally.
     ///

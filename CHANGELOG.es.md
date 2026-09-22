@@ -8,6 +8,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Un tiempo máximo de operación configurable por conexión.** Desplegar el
+  árbol en un SQL Server con varios cientos de bases de datos fallaba con
+  *«list_databases took longer than 20s — the connection may be unresponsive»*,
+  en una conexión que se había abierto en menos de un segundo. El servidor no
+  estaba muerto: era grande. `sys.databases` filtrado por `HAS_DBACCESS` evalúa
+  una comprobación de permisos por base de datos, y no había forma de decirle a
+  la app que esperase.
+
+  Los veinte segundos eran una constante, es decir, una afirmación sobre un
+  servidor que HuginnDB no ha visto nunca. Ahora son el valor *por defecto*:
+  **Ajustes → Conexiones → Tiempo máximo de operación** lo fija globalmente, y
+  **Tiempo máximo de operación para este servidor**, en el diálogo de conexión,
+  lo pisa para una sola conexión, junto al techo de pools que responde a la misma
+  clase de pregunta. En blanco significa la preferencia global.
+
+  Solo acota las lecturas que la app hace por su cuenta — listar bases de datos y
+  tablas, describir una relación, el ping de comprobación. Una consulta que
+  lances **tú** nunca ha tenido tope y sigue sin tenerlo. Igual que el techo de
+  conexiones, viaja con el perfil, así que llega a las exportaciones, a los
+  orígenes compartidos y al conector MCP sin configurar nada más.
+
+  Además, el error ahora nombra la solución en vez de describir una conexión
+  rota que el usuario se pone a buscar.
+
 ## [1.26.1] — 2026-09-18
 
 ### Añadido

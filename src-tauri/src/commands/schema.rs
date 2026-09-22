@@ -24,7 +24,7 @@ pub struct DatabaseInfo {
 /// `calculate_database_size()`, which walks the database's directory calling
 /// `stat` per file — seconds on a server with nineteen large databases, and
 /// `list_databases` sits on the critical path of expanding a connection, under
-/// a 20 s `with_timeout`. Honesty: an `Option<u64>` populated by one driver in
+/// the connection's `with_timeout_for` ceiling. Honesty: an `Option<u64>` populated by one driver in
 /// five is a field that lies by omission. And contract: `list_databases` is
 /// also an MCP tool that travels over the bridge, so a new command touches
 /// nothing that already ships.
@@ -183,7 +183,9 @@ pub async fn list_databases(
     connection_id: String,
 ) -> AppResult<Vec<DatabaseInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "list_databases",
         list_databases_inner(state.inner(), &connection_id),
     )
@@ -219,7 +221,9 @@ pub async fn get_database_sizes(
     connection_id: String,
 ) -> AppResult<Vec<DatabaseSize>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "get_database_sizes",
         get_database_sizes_inner(state.inner(), &connection_id),
     )
@@ -560,7 +564,9 @@ pub async fn list_tables(
     _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "list_tables",
         list_tables_inner(state.inner(), &connection_id),
     )
@@ -600,7 +606,9 @@ pub async fn list_columns(
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "list_columns",
         list_columns_inner(state.inner(), &connection_id, schema, table),
     )
@@ -637,7 +645,9 @@ pub async fn list_indexes(
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "list_indexes",
         list_indexes_inner(state.inner(), &connection_id, schema, table),
     )
@@ -834,7 +844,9 @@ pub async fn server_version(
     connection_id: String,
 ) -> AppResult<String> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "server_version",
         server_version_inner(state.inner(), &connection_id),
     )
@@ -867,7 +879,9 @@ pub async fn list_users(
     connection_id: String,
 ) -> AppResult<Vec<UserInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "list_users",
         list_users_inner(state.inner(), &connection_id),
     )
@@ -899,7 +913,9 @@ pub async fn list_privileges(
     user: String,
 ) -> AppResult<Vec<PrivilegeInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "list_privileges",
         list_privileges_inner(state.inner(), &connection_id, user),
     )

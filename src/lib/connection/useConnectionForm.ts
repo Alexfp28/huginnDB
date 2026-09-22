@@ -84,6 +84,11 @@ export function useConnectionForm(open: boolean) {
    *  preference" state and is not expressible with a number input bound to a
    *  number. Parsed on save; anything unparseable saves as `null`. */
   const [maxConnections, setMaxConnections] = useState("");
+  /** Per-connection introspection ceiling in seconds, as typed. A string for
+   *  the same reason as `maxConnections` above: empty is the meaningful "no
+   *  override — use the global preference" state, which a number-bound input
+   *  cannot express. Parsed on save; anything unparseable saves as `null`. */
+  const [operationTimeout, setOperationTimeout] = useState("");
   /** MongoDB connection URI. In form mode this is the *raw-edit buffer* used
    *  only when `mongoUriManual` is on; otherwise the URI is derived from the
    *  discrete fields via `buildMongoUri`. */
@@ -158,6 +163,9 @@ export function useConnectionForm(open: boolean) {
       setSsl(p.ssl);
       setMaxConnections(
         p.max_connections == null ? "" : String(p.max_connections),
+      );
+      setOperationTimeout(
+        p.operation_timeout_secs == null ? "" : String(p.operation_timeout_secs),
       );
       setConnectionString(p.connection_string ?? "");
       setAuthSource(p.auth_source ?? "");
@@ -240,6 +248,7 @@ export function useConnectionForm(open: boolean) {
       setPassword("");
       setSsl(false);
       setMaxConnections("");
+      setOperationTimeout("");
       setConnectionString("");
       setAuthSource("");
       setMongoUriManual(false);
@@ -416,6 +425,7 @@ export function useConnectionForm(open: boolean) {
     password, setPassword,
     ssl, setSsl,
     maxConnections, setMaxConnections,
+    operationTimeout, setOperationTimeout,
     // MongoDB
     connectionString, setConnectionString,
     authSource, setAuthSource,

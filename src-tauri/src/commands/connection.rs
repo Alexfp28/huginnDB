@@ -89,6 +89,11 @@ struct PoolPolicy {
     /// What a per-database view asks for.
     child_request: u32,
     keepalive: Duration,
+    /// Ceiling for one keepalive ping. Resolved here rather than inside
+    /// `keepalive::spawn` because that function holds a pool and an id, not an
+    /// `AppState` — and the profile is right here, at the one moment the
+    /// connection is being opened.
+    ping_timeout: Duration,
 }
 
 fn pool_policy(state: &AppState, profile: &ConnectionProfile) -> PoolPolicy {
@@ -97,6 +102,10 @@ fn pool_policy(state: &AppState, profile: &ConnectionProfile) -> PoolPolicy {
         budget: endpoint_budget(profile, prefs.connections.max_connections),
         child_request: prefs.connections.child_max_connections,
         keepalive: Duration::from_secs(u64::from(prefs.connections.keepalive_secs)),
+        ping_timeout: crate::db::pool::operation_timeout(
+            profile,
+            prefs.connections.operation_timeout_secs,
+        ),
     }
 }
 
@@ -905,6 +914,7 @@ pub(crate) async fn connect_inner(
                     id.clone(),
                     pool,
                     policy.keepalive,
+                    policy.ping_timeout,
                     last_used,
                 );
                 state.connections.write().attach_keepalive(&id, keepalive);
@@ -1016,6 +1026,7 @@ pub(crate) async fn connect_inner(
                     id.clone(),
                     pool,
                     policy.keepalive,
+                    policy.ping_timeout,
                     active.last_used.clone(),
                 ),
                 PoolOrigin::Bridge => None,
@@ -2177,6 +2188,7 @@ mod tests {
             budget: crate::db::pool::DEFAULT_ENDPOINT_BUDGET,
             child_request: crate::db::pool::DEFAULT_CHILD_MAX_CONNECTIONS,
             keepalive: Duration::from_secs(180),
+            ping_timeout: crate::db::pool::DEFAULT_OPERATION_TIMEOUT,
         };
         assert_eq!(
             top_level_request_for(PoolOrigin::User, &policy),
@@ -2194,6 +2206,7 @@ mod tests {
             budget: crate::db::pool::DEFAULT_ENDPOINT_BUDGET,
             child_request: 1,
             keepalive: Duration::from_secs(0),
+            ping_timeout: crate::db::pool::DEFAULT_OPERATION_TIMEOUT,
         };
         assert_eq!(
             top_level_request_for(PoolOrigin::Bridge, &policy),

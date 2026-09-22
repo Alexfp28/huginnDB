@@ -383,6 +383,19 @@ pub struct ConnectionPrefs {
     /// defensible one-socket-per-open-connection cost, but on a server the user
     /// is rationing it may not be, hence the off switch.
     pub keepalive_secs: u32,
+    /// Ceiling, in seconds, for a single read-only introspection call —
+    /// listing databases and tables, describing a relation, the keepalive
+    /// ping. Never for a data query, whose runtime is the user's own SQL.
+    ///
+    /// The global fallback. A single slow or very large server is better
+    /// expressed per profile
+    /// ([`crate::state::ConnectionProfile::operation_timeout_secs`]), which
+    /// travels with the connection and is also honoured by the headless
+    /// sidecar; this is for a whole workstation that reaches every server the
+    /// slow way, over a VPN. Clamped into
+    /// `[MIN_OPERATION_TIMEOUT_SECS, MAX_OPERATION_TIMEOUT_SECS]` at use time
+    /// by [`crate::db::pool::operation_timeout`].
+    pub operation_timeout_secs: u32,
 }
 
 impl Default for ConnectionPrefs {
@@ -395,6 +408,7 @@ impl Default for ConnectionPrefs {
             max_child_pools: 8,
             bridge_idle_ttl_secs: crate::db::pool::MCP_IDLE_TTL.as_secs() as u32,
             keepalive_secs: crate::keepalive::DEFAULT_KEEPALIVE_INTERVAL.as_secs() as u32,
+            operation_timeout_secs: crate::db::pool::DEFAULT_OPERATION_TIMEOUT.as_secs() as u32,
         }
     }
 }

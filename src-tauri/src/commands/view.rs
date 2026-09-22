@@ -95,7 +95,8 @@ pub async fn get_view_definition(
     view: String,
 ) -> AppResult<ViewDefinition> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout("get_view_definition", async move {
+    let limit = crate::error::connection_timeout(state.inner(), &connection_id);
+    crate::error::with_timeout_secs(limit, "get_view_definition", async move {
         let label = match schema.as_deref() {
             Some(s) if !s.is_empty() => format!("view {s}.{view}"),
             _ => format!("view {view}"),

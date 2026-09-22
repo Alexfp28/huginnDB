@@ -80,6 +80,13 @@ impl Drop for KeepaliveHandle {
 /// that just succeeded is better proof of liveness than a `SELECT 1` and there
 /// is no reason to pay for both.
 ///
+/// `ping_timeout` is the connection's own introspection ceiling, handed in
+/// already resolved: this function has a pool and an id, not an `AppState`, and
+/// the caller is holding the profile at the moment it opens the connection.
+/// Passing it matters because the failure is *reported*, not just logged — a
+/// heartbeat that gives up in 20 s against a server the user has told the app
+/// to wait 90 s for would flag a healthy connection as lost.
+///
 /// Returns `None` when `interval` is zero — the user has turned the heartbeat
 /// off — so no task is spawned at all.
 pub fn spawn(
@@ -87,6 +94,7 @@ pub fn spawn(
     connection_id: String,
     pool: DbPool,
     interval: Duration,
+    ping_timeout: Duration,
     last_used: Arc<AtomicU64>,
 ) -> Option<KeepaliveHandle> {
     if interval.is_zero() {
@@ -104,8 +112,12 @@ pub fn spawn(
             if idle < interval.as_millis() as u64 {
                 continue;
             }
-            if let Err(e) =
-                crate::error::with_timeout("keepalive ping", crate::db::exec::ping(&pool)).await
+            if let Err(e) = crate::error::with_timeout_secs(
+                ping_timeout,
+                "keepalive ping",
+                crate::db::exec::ping(&pool),
+            )
+            .await
             {
                 let msg = e.to_string();
                 log_bus::broadcast(

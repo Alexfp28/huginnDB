@@ -47,7 +47,9 @@ pub async fn pulse_health(
     connection_id: String,
 ) -> AppResult<PulseHealth> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "pulse_health",
         pulse_health_inner(state.inner(), &connection_id),
     )
@@ -154,7 +156,9 @@ pub async fn pulse_top_queries(
     connection_id: String,
 ) -> AppResult<Vec<TopQuery>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "pulse_top_queries",
         pulse_top_queries_inner(state.inner(), &connection_id),
     )
@@ -170,7 +174,9 @@ pub async fn pulse_storage(
     connection_id: String,
 ) -> AppResult<Vec<StorageItem>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "pulse_storage",
         pulse_storage_inner(state.inner(), &connection_id),
     )
@@ -201,7 +207,9 @@ pub async fn pulse_sessions(
     connection_id: String,
 ) -> AppResult<Vec<SessionRow>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "pulse_sessions",
         pulse_sessions_inner(state.inner(), &connection_id),
     )
@@ -234,7 +242,9 @@ pub async fn pulse_index_usage(
     connection_id: String,
 ) -> AppResult<Vec<IndexUsage>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "pulse_index_usage",
         pulse_index_usage_inner(state.inner(), &connection_id),
     )
@@ -256,7 +266,9 @@ pub async fn pulse_explain(
     sample: String,
 ) -> AppResult<ExplainPlan> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout(
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
         "pulse_explain",
         pulse_explain_inner(state.inner(), &connection_id, &sample),
     )

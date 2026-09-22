@@ -1260,6 +1260,28 @@ mod tests {
         assert_eq!(after[0].host, "newhost", "everything else is the file's");
     }
 
+    /// The counterpart to the three above, and the reason the preserve list is
+    /// a list rather than a rule: how long a server takes to answer is a fact
+    /// about the *server*, which is exactly what a publisher does know. It
+    /// follows the file, like `host` and `max_connections` — anything else
+    /// would mean every machine on the team rediscovering the same number.
+    #[test]
+    fn a_sync_brings_the_publishers_operation_timeout() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            operation_timeout_secs: Some(20),
+            ..testkit::profile("shared")
+        };
+        let incoming = published(ConnectionProfile {
+            operation_timeout_secs: Some(120),
+            ..testkit::profile("shared")
+        });
+
+        let after = merge(vec![local], &[incoming]);
+
+        assert_eq!(after[0].operation_timeout_secs, Some(120));
+    }
+
     /// A local password override is local state too, and unlike the three
     /// above it has to survive the merge *in order to be expired by it* — the
     /// landing loop reads it back off the merged pool to compare against the
