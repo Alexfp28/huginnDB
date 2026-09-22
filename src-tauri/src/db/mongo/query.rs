@@ -1344,6 +1344,79 @@ mod tests {
         }]
     }
 
+    /// The frontend decides a filter value's BSON type; this side must not
+    /// second-guess it.
+    ///
+    /// The regression: a `value` field the grid header showed as STRING was
+    /// filtered with `$ne` against an `Int32`, because the *frontend* coerced
+    /// the typed text using a catalog sample that still described older,
+    /// numeric documents. BSON equality is exact by type, so the filter
+    /// excluded nothing and reported no error. Nothing here caused that — and
+    /// nothing here may ever "helpfully" parse a numeric-looking string into a
+    /// number, which would put the same failure back a layer down where no
+    /// value-type control can reach it.
+    #[test]
+    fn a_filter_value_keeps_the_json_type_it_arrived_with() {
+        let f = build_filter(&text_filter(FilterOp::Ne, "value", "5682380"), None, &[]);
+        assert_eq!(
+            f.get_document("value").unwrap().get("$ne"),
+            Some(&Bson::String("5682380".into())),
+            "a JSON string must stay a BSON string"
+        );
+
+        let numeric = vec![ColumnFilter {
+            column: "value".into(),
+            op: FilterOp::Ne,
+            value: serde_json::json!(5682380),
+            value2: serde_json::Value::Null,
+            values: Vec::new(),
+        }];
+        assert_eq!(
+            build_filter(&numeric, None, &[])
+                .get_document("value")
+                .unwrap()
+                .get("$ne"),
+            Some(&Bson::Int32(5682380)),
+            "and a JSON number a BSON number"
+        );
+    }
+
+    /// The Extended JSON the filter row's value-type control emits is decoded
+    /// here, which is why that control needed no backend change at all.
+    #[test]
+    fn extended_json_in_a_filter_value_becomes_its_bson_type() {
+        for (tag, raw, expected) in [
+            (
+                "$numberLong",
+                "9007199254740993",
+                Bson::Int64(9007199254740993),
+            ),
+            (
+                "$oid",
+                "507f1f77bcf86cd799439011",
+                Bson::ObjectId(
+                    mongodb::bson::oid::ObjectId::parse_str("507f1f77bcf86cd799439011").unwrap(),
+                ),
+            ),
+        ] {
+            let f = build_filter(
+                &[ColumnFilter {
+                    // Deliberately not `_id`: that column has its own
+                    // ObjectId-aware path, and `$oid` on any *other* field is
+                    // the only way to reach one.
+                    column: "ref".into(),
+                    op: FilterOp::Eq,
+                    value: serde_json::json!({ tag: raw }),
+                    value2: serde_json::Value::Null,
+                    values: Vec::new(),
+                }],
+                None,
+                &[],
+            );
+            assert_eq!(f.get("ref"), Some(&expected));
+        }
+    }
+
     #[test]
     fn contains_emits_both_an_indexed_and_a_stringifying_branch() {
         // A bare `$regex` never matches a numeric field, and says so by

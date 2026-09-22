@@ -95,6 +95,9 @@ interface GridToolbarProps {
   onGlobalFilterSubmit?: (value: string) => void;
   searchHistory?: string[];
   serverFilters?: ColumnFilter[];
+  /** Render filter values with their BSON type visible (MongoDB) — see
+   *  `ServerFilterChips`' `valueText`. */
+  typedFilterValues?: boolean;
   onRemoveFilter?: (index: number) => void;
   /** Open the advanced filter focused on the condition at this index — the
    *  chip's position in `serverFilters` is the dialog's row index. */
@@ -131,6 +134,7 @@ export function GridToolbar({
   onGlobalFilterSubmit,
   searchHistory,
   serverFilters,
+  typedFilterValues,
   onRemoveFilter,
   onEditFilter,
   onInsertRow,
@@ -351,6 +355,7 @@ export function GridToolbar({
         (density !== "wide" ? (
           <ServerFilterSummary
             filters={serverFilters}
+            typedValues={typedFilterValues}
             onRemove={onRemoveFilter}
           />
         ) : (
@@ -359,6 +364,7 @@ export function GridToolbar({
               key={`${f.column}-${f.op}-${i}`}
               filter={f}
               index={i}
+              typedValues={typedFilterValues}
               onEdit={onEditFilter}
               onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
             />

@@ -225,6 +225,10 @@ interface Props {
 
   /** Server-side column filters; rendered as chips. */
   serverFilters?: ColumnFilter[];
+  /** Render filter-chip values with their BSON type visible — MongoDB only.
+   *  See `ServerFilterChips`' `valueText` for why the distinction matters
+   *  there and is noise on the SQL drivers. */
+  typedFilterValues?: boolean;
   onAddFilter?: (f: ColumnFilter) => void;
   onRemoveFilter?: (index: number) => void;
   /** Open the advanced filter focused on the condition at this index. */
@@ -376,6 +380,7 @@ export function DataGrid({
   onGlobalFilterSubmit,
   searchHistory,
   serverFilters,
+  typedFilterValues,
   onAddFilter,
   onRemoveFilter,
   onEditFilter,
@@ -1138,6 +1143,7 @@ export function DataGrid({
         onGlobalFilterSubmit={onGlobalFilterSubmit}
         searchHistory={searchHistory}
         serverFilters={serverFilters}
+        typedFilterValues={typedFilterValues}
         onRemoveFilter={onRemoveFilter}
         onEditFilter={onEditFilter}
         onInsertRow={onInsertRow}

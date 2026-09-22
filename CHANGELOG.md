@@ -6,6 +6,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **A MongoDB filter no longer asks the wrong question about a field whose
+  stored type has changed.** `value <> 5682380` left every row it was meant to
+  exclude on screen, and the console showed why: the value went out as an
+  `Int32` while the grid header above it labelled that column `STRING`.
+
+  A MongoDB column is typed twice, from two different populations. The header
+  types it from the page on screen; the advanced filter was typing it from the
+  catalog's 100-document sample of the whole collection. On a field that used
+  to hold numbers and now holds strings those two disagree — and BSON equality
+  is exact by type, so `$ne` against the wrong one excludes nothing and reports
+  nothing. Every step was correct in isolation; the screen simply could not
+  explain the result.
+
+  The filter now takes the page's answer, the same one the header prints,
+  falling back to the catalog where the page cannot decide (a field that
+  disagreed with itself across rows, or that was null throughout). Nothing
+  changes on PostgreSQL, MySQL, SQLite or SQL Server, whose catalog types are
+  authoritative rather than sampled.
+
+### Added
+
+- **A value type per filter condition, on MongoDB.** A better default is still
+  a default: a schemaless collection can legitimately hold a `long` in some
+  documents and a string in others, and no sample can settle that. Each
+  condition now carries its own **Auto / String / Number / Long / Boolean /
+  Date / ObjectId**, defaulting to Auto — which is exactly what the filter did
+  before.
+
+  Two of them do something no amount of inference could. **Long** keeps the
+  digits as text, so a value past 2^53 is not silently rounded on its way
+  through JavaScript. **ObjectId** is the only way to filter an ObjectId stored
+  in a field other than `_id`, which was previously unfilterable.
+
+- **Filter chips show what type the value actually is** on MongoDB: a string is
+  quoted, and the typed forms read `ObjectId("…")`, `ISODate("…")`,
+  `NumberLong("…")` — the shell's own spellings, and the ones the console log
+  already uses. `value <> 5682380` and `value <> "5682380"` are different
+  questions and used to print identically, which is what let the original bug
+  hide in plain sight. SQL chips are unchanged: there the value is a bound
+  parameter coerced against its column, so the distinction does not exist.
+
 ## [1.26.1] — 2026-09-18
 
 ### Added
