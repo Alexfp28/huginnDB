@@ -44,6 +44,70 @@ const TEXT_MATCH_OPS: FilterOp[] = [
   "ends_with",
 ];
 
+/** True when `op` matches as text/regex, whatever the field's type is. */
+export function isTextMatchOp(op: FilterOp): boolean {
+  return TEXT_MATCH_OPS.includes(op);
+}
+
+/**
+ * How a filter row's raw text is turned into a typed value.
+ *
+ * `"auto"` is the historical behaviour and the default: the field's type
+ * decides (see {@link coerceFilterValue}). The rest are the user overruling
+ * that, which on MongoDB is not a power-user nicety — see
+ * {@link VALUE_TYPES} for why the inferred answer can be wrong in a way
+ * nothing on screen explains.
+ */
+export type FilterValueType =
+  | "auto"
+  | "string"
+  | "number"
+  | "long"
+  | "boolean"
+  | "date"
+  | "objectId";
+
+/**
+ * The explicit types offered, in the order the control lists them.
+ *
+ * **Why a control at all.** BSON equality is exact by type, and the type a
+ * filter value *should* have is inferred from a sample — the page on screen,
+ * falling back to the catalog's 100-document sample (`lib/grid/fieldPaths.ts`).
+ * A schemaless collection can contradict both: a field stored as a `double` for
+ * two years and as a `string` since last March has no single right answer, and
+ * the failure is silent — `{value: {$ne: 5682380}}` against stored strings
+ * excludes nothing and reports no error. The inference picks the likely answer;
+ * this picks the one the user knows.
+ *
+ * **Why no `int` / `double` split.** MongoDB compares the numeric types against
+ * each other — `{$eq: 900}` matches an `Int32`, an `Int64` and a `Double` 900
+ * alike — so splitting them would offer three ways to ask one question.
+ * `"long"` is here for a different reason: it emits `{"$numberLong": "…"}`,
+ * which survives past 2^53 where `Number()` silently rounds.
+ *
+ * `"date"` and `"objectId"` emit `{"$date": …}` / `{"$oid": …}`. Both are
+ * Extended JSON the backend already decodes (`db::mongo::values::object_to_bson`),
+ * so none of this needs a backend change — and `"objectId"` is the only way to
+ * filter an ObjectId held in a field other than `_id`, which is the one
+ * `build_filter` special-cases.
+ */
+export const VALUE_TYPES: FilterValueType[] = [
+  "auto",
+  "string",
+  "number",
+  "long",
+  "boolean",
+  "date",
+  "objectId",
+];
+
+/** Extended-JSON wrapper keys, by the type that emits one. */
+const EXT_JSON_KEY: Partial<Record<FilterValueType, string>> = {
+  long: "$numberLong",
+  date: "$date",
+  objectId: "$oid",
+};
+
 /**
  * Coerce a draft row's raw text input into a properly-typed value for
  * equality/ordering operators, mirroring what the right-click "Filter by
@@ -54,25 +118,47 @@ const TEXT_MATCH_OPS: FilterOp[] = [
  * MongoDB's equality is exact-BSON-type: a `string` "183" never matches a
  * stored `int32` 183.
  *
- * **Known limit, deliberately not widened here.** The coercion is driven by
- * the column's catalog type, so it only knows the three kinds it classifies:
- * numeric, boolean, everything-else-is-a-string. A MongoDB field whose type
- * the classifier does not recognise — or a heterogeneous field, which Mongo
- * permits — comes out as a string once the user *edits* it, even if the value
- * it replaced was an `Int64`. Values the user did **not** touch never reach
- * this function at all: {@link filterFromDraft} returns the original payload
- * verbatim (see `seed` on {@link FilterConditionDraft}), which is what stops a
- * round trip through the dialog from degrading a type on its own. Fixing the
- * edit case properly needs a per-value type picker of the kind
- * `DocumentListView` gets from `row_types` (gotcha #29), which is a larger
- * surface than a filter row.
+ * `valueType` is the user's own answer and wins outright when it is not
+ * `"auto"`; `"auto"` is the type-driven path this function has always had.
+ *
+ * **What `"auto"` still cannot know**, and why {@link VALUE_TYPES} exists: the
+ * coercion is driven by the field's type, which for MongoDB is inferred from a
+ * sample, and it only knows the three kinds `columnKinds` classifies — numeric,
+ * boolean, everything-else-is-a-string. A heterogeneous field, which Mongo
+ * permits, has no single true answer for the whole collection. Values the user
+ * did **not** touch never reach this function at all: {@link filterFromDraft}
+ * returns the original payload verbatim (see `seed` on
+ * {@link FilterConditionDraft}), which is what stops a round trip through the
+ * dialog from degrading a type on its own.
  */
 export function coerceFilterValue(
   raw: string,
   op: FilterOp,
   dataType: string | undefined,
+  valueType: FilterValueType = "auto",
 ): CellValue {
-  if (!dataType || TEXT_MATCH_OPS.includes(op)) return raw;
+  // A text match is a regex against the field's string form whatever the field
+  // holds (`db::mongo::query::text_match_branches`), so the raw string is right
+  // for it no matter what either side says the type is.
+  if (TEXT_MATCH_OPS.includes(op)) return raw;
+
+  if (valueType !== "auto") {
+    if (raw.trim() === "") return raw;
+    const key = EXT_JSON_KEY[valueType];
+    if (key) return { [key]: raw } as CellValue;
+    if (valueType === "string") return raw;
+    if (valueType === "number") {
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : raw;
+    }
+    // boolean
+    const t = raw.trim().toLowerCase();
+    if (t === "true" || t === "1") return true;
+    if (t === "false" || t === "0") return false;
+    return raw;
+  }
+
+  if (!dataType) return raw;
   if (isNumericType(dataType)) {
     const n = Number(raw);
     if (raw.trim() !== "" && Number.isFinite(n)) return n;
@@ -82,6 +168,57 @@ export function coerceFilterValue(
     if (t === "false" || t === "0") return false;
   }
   return raw;
+}
+
+/**
+ * The explicit type a filter value already carries, for seeding a draft row
+ * from an existing filter.
+ *
+ * Deliberately *not* the inverse of every `"auto"` outcome: a bare JS string
+ * could equally have come from `"auto"` on a text field or from an explicit
+ * `"string"`, and the two are indistinguishable in the payload. Reporting
+ * `"string"` for it is the safe reading, because it is what {@link
+ * filterFromDraft} will re-emit — whereas answering `"auto"` would let a
+ * reopened dialog quietly re-coerce a value the user had already fixed. The
+ * chip's job is to show what will be sent, and this is the same contract.
+ */
+export function valueTypeOf(v: CellValue | undefined): FilterValueType {
+  if (v === null || v === undefined) return "auto";
+  if (typeof v === "string") return "string";
+  if (typeof v === "number") return "number";
+  if (typeof v === "boolean") return "boolean";
+  if (typeof v === "object" && !Array.isArray(v)) {
+    const keys = Object.keys(v as Record<string, unknown>);
+    if (keys.length === 1) {
+      for (const [type, key] of Object.entries(EXT_JSON_KEY)) {
+        if (keys[0] === key) return type as FilterValueType;
+      }
+    }
+  }
+  return "auto";
+}
+
+/**
+ * The text a filter value shows in a draft row's input — the payload's own
+ * text, with an Extended JSON wrapper peeled off so the user edits `5682380`
+ * rather than `{"$numberLong":"5682380"}`.
+ */
+export function valueTextOf(v: CellValue | undefined): string {
+  if (v === null || v === undefined) return "";
+  const inner = extJsonInner(v);
+  if (inner !== null) return inner;
+  return String(v);
+}
+
+/** The single scalar inside a one-key Extended JSON wrapper, or `null`. */
+function extJsonInner(v: CellValue | undefined): string | null {
+  if (v == null || typeof v !== "object" || Array.isArray(v)) return null;
+  const entries = Object.entries(v as Record<string, unknown>);
+  if (entries.length !== 1) return null;
+  const [key, inner] = entries[0];
+  if (!Object.values(EXT_JSON_KEY).includes(key)) return null;
+  if (typeof inner === "string" || typeof inner === "number") return String(inner);
+  return null;
 }
 
 /**
@@ -153,6 +290,12 @@ export interface FilterConditionDraft {
    */
   listHasNull: boolean;
   /**
+   * How `value` / `value2` / the list lines become typed values. `"auto"`
+   * defers to the field's type, which is what every row did before the control
+   * existed. See {@link VALUE_TYPES}.
+   */
+  valueType: FilterValueType;
+  /**
    * The filter this row was seeded from, if any. Kept so
    * {@link filterFromDraft} can hand back the original payload untouched when
    * the row's textual projection is unchanged — see there for why.
@@ -164,6 +307,7 @@ export interface FilterConditionDraft {
 function valueLine(v: CellValue): string {
   if (v === null || v === undefined) return "";
   if (typeof v === "string") return v;
+  if (extJsonInner(v) !== null) return valueTextOf(v);
   return JSON.stringify(v);
 }
 
@@ -198,6 +342,18 @@ export function listHasNullMember(values: CellValue[] | undefined): boolean {
   return (values ?? []).some((v) => v === null || v === undefined);
 }
 
+/**
+ * The one value type a whole filter stands for, read off whichever half it
+ * actually carries. A list op holds its values in `values`, and its `null`
+ * member says nothing about the type, so it is skipped.
+ */
+export function filterValueType(f: ColumnFilter): FilterValueType {
+  if (isListOp(f.op)) {
+    return valueTypeOf((f.values ?? []).find((v) => v != null) ?? null);
+  }
+  return valueTypeOf(f.value);
+}
+
 /** Seed one draft row from an existing filter. */
 export function draftFromFilter(
   f: ColumnFilter,
@@ -207,10 +363,11 @@ export function draftFromFilter(
     key,
     column: f.column,
     op: f.op,
-    value: f.value == null ? "" : String(f.value),
-    value2: f.value2 == null ? "" : String(f.value2),
+    value: valueTextOf(f.value),
+    value2: valueTextOf(f.value2),
     listText: formatValueList(f.values),
     listHasNull: listHasNullMember(f.values),
+    valueType: filterValueType(f),
     seed: f,
   };
 }
@@ -225,6 +382,7 @@ export function emptyDraft(column: string, key: number): FilterConditionDraft {
     value2: "",
     listText: "",
     listHasNull: false,
+    valueType: "auto",
   };
 }
 
@@ -266,7 +424,7 @@ export function filterFromDraft(
 
   if (isListOp(row.op)) {
     const values: CellValue[] = parseValueList(row.listText).map((raw) =>
-      coerceFilterValue(raw, row.op, dataType),
+      coerceFilterValue(raw, row.op, dataType, row.valueType),
     );
     if (row.listHasNull) values.push(null);
     return { column: row.column, op: row.op, values };
@@ -276,10 +434,12 @@ export function filterFromDraft(
   return {
     column: row.column,
     op: row.op,
-    value: valueless ? undefined : coerceFilterValue(row.value, row.op, dataType),
+    value: valueless
+      ? undefined
+      : coerceFilterValue(row.value, row.op, dataType, row.valueType),
     value2:
       row.op === "between"
-        ? coerceFilterValue(row.value2, row.op, dataType)
+        ? coerceFilterValue(row.value2, row.op, dataType, row.valueType)
         : undefined,
   };
 }
@@ -289,22 +449,26 @@ export function filterFromDraft(
  *
  * Compares the *textual* projection rather than the rebuilt payload, because
  * the payload is precisely what cannot be rebuilt faithfully — that is the
- * whole reason the seed is kept.
+ * whole reason the seed is kept. The value type is compared too: changing only
+ * the type, with the text left alone, is a real edit (it is the whole point of
+ * the control) and would otherwise hit the pass-through and be discarded.
  */
 function isDraftUnchanged(
   row: FilterConditionDraft,
   seed: ColumnFilter,
 ): boolean {
   if (row.column !== seed.column || row.op !== seed.op) return false;
+  if (row.valueType !== filterValueType(seed)) return false;
   if (isListOp(row.op)) {
     return (
       row.listText === formatValueList(seed.values) &&
       row.listHasNull === listHasNullMember(seed.values)
     );
   }
-  const seedValue = seed.value == null ? "" : String(seed.value);
-  const seedValue2 = seed.value2 == null ? "" : String(seed.value2);
-  return row.value === seedValue && row.value2 === seedValue2;
+  return (
+    row.value === valueTextOf(seed.value) &&
+    row.value2 === valueTextOf(seed.value2)
+  );
 }
 
 /**

@@ -48,7 +48,8 @@ export interface FilterField {
  */
 export const MAX_FIELD_PATH_DEPTH = 5;
 
-/** Ceiling on how many nested paths one page can contribute. */
+/** Ceiling on how many paths one page can contribute, its own columns
+ *  included — they are recorded here too, for their type. */
 export const MAX_NESTED_FIELD_PATHS = 400;
 
 /**
@@ -62,13 +63,40 @@ const MAX_ARRAY_ELEMENTS = 25;
  *  `infer_column_type` gives on the Rust side for an all-null field. */
 const NULL_ONLY = "null";
 
+/** Merged type meaning "the page disagreed with itself about this field". */
+const MIXED = "mixed";
+
 /**
- * Collect the nested field paths present in a page of documents.
+ * Whether a merged page type is specific enough to coerce a filter value with.
+ *
+ * `"mixed"` says the page contradicted itself and `"null"` says it never saw a
+ * value; neither can decide whether `5682380` is a string or a number, so both
+ * defer to the catalog type rather than to nothing. A guess from a 100-document
+ * sample is still a better default than no type at all — and the filter row's
+ * value-type control is there for when both of them are wrong.
+ */
+function isDecisiveType(type: string | undefined): boolean {
+  return type !== undefined && type !== MIXED && type !== NULL_ONLY;
+}
+
+/**
+ * Collect the field paths present in a page of documents: every **top-level
+ * column**, plus every nested path below one.
  *
  * Types are merged across rows the way the backend merges a column's:
  * the first non-null type wins, a later disagreement makes it `"mixed"` (BSON
  * is schemaless, so that is the honest answer rather than picking one), and a
  * path that was only ever null stays `"null"`.
+ *
+ * **The top-level columns are here for their type, not for their name** — the
+ * catalog already names them. `infer_columns` samples 100 documents of the
+ * *collection*, so on a field whose stored type changed at some point it
+ * describes the old documents while the grid header, fed by this same page,
+ * describes the ones on screen. Two answers, two panels, and the filter was
+ * taking the one the user cannot see: a `value` the header showed as `STRING`
+ * was coerced to an Int32 because the sample still held `double`s, and `$ne`
+ * against the wrong BSON type excludes nothing at all. See
+ * {@link filterFieldsFor} for which of the two wins now.
  */
 export function collectNestedFieldPaths(
   columns: { name: string }[],
@@ -126,22 +154,47 @@ export function collectNestedFieldPaths(
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r];
     for (let c = 0; c < columns.length; c++) {
-      walk(columns[c].name, row?.[c] ?? null, rowTypes?.[r]?.[c], 1);
+      const name = columns[c].name;
+      const value = row?.[c] ?? null;
+      const tree = rowTypes?.[r]?.[c];
+      // The column itself first, so it is in `order` before anything below it
+      // and the picker still lists a parent ahead of its children. It does not
+      // spend a `limit` slot it would not have spent anyway: a column with no
+      // nested fields records one entry instead of zero, which is the point.
+      if (record(name, resolveType(value, tree))) walk(name, value, tree, 1);
     }
   }
 
-  return order.map((path) => ({ path, type: types.get(path), nested: true }));
+  return order.map((path) => ({
+    path,
+    type: types.get(path),
+    nested: path.includes("."),
+  }));
 }
 
 /**
- * Merge the catalog columns with the nested paths found on the page, each
- * nested path sitting directly under the column it belongs to.
+ * Merge the catalog columns with the paths found on the page, each nested path
+ * sitting directly under the column it belongs to.
  *
  * Grouped rather than appended so the picker reads like the document does —
  * `stats`, then `stats.count`, then `stats.avg` — instead of listing every
  * column and then every path again from the top. A path whose root is not a
  * column (possible only if the page and the catalog disagree) is kept at the
  * end rather than dropped: it is still a filterable field.
+ *
+ * **A column's type comes from the page when the page has a decisive one**, and
+ * from the catalog otherwise. Both are samples, but only one of them is the
+ * sample the user is looking at: the grid header renders the page's answer, and
+ * a filter that coerced its value with a *different* answer produced a chip
+ * reading `value <> 5682380` that excluded nothing, because the catalog's
+ * 100-document sample still said `double` while every row on screen held a
+ * string (see {@link collectNestedFieldPaths}). Where the page cannot decide —
+ * `"mixed"`, or all-null — the catalog still answers, so a field absent from
+ * the loaded rows is no worse off than before.
+ *
+ * SQL is untouched by this: its callers pass no page paths at all, so every
+ * column keeps its catalog type, which there is authoritative rather than
+ * sampled.
  */
 export function filterFieldsFor(
   columns: ColumnInfo[],
@@ -158,8 +211,14 @@ export function filterFieldsFor(
 
   const out: FilterField[] = [];
   for (const c of columns) {
-    out.push({ path: c.name, type: c.data_type, nested: false });
-    for (const f of byRoot.get(c.name) ?? []) {
+    const group = byRoot.get(c.name) ?? [];
+    const onPage = group.find((f) => f.path === c.name)?.type;
+    out.push({
+      path: c.name,
+      type: isDecisiveType(onPage) ? onPage : c.data_type,
+      nested: false,
+    });
+    for (const f of group) {
       if (f.path !== c.name) out.push(f);
     }
     byRoot.delete(c.name);

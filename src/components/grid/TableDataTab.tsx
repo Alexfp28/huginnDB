@@ -1547,6 +1547,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onGlobalFilterSubmit={submitFilter}
             searchHistory={filterHistory ?? NO_HISTORY}
             serverFilters={serverFilters}
+            typedFilterValues={isMongo}
             onAddFilter={onAddFilter}
             onRemoveFilter={onRemoveFilter}
             onEditFilter={onEditFilter}

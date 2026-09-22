@@ -13,6 +13,7 @@ import type { ColumnFilter } from "@/types";
 import {
   coerceFilterValue,
   draftFromFilter,
+  filterValueType,
   emptyDraft,
   filterFromDraft,
   formatValueList,
@@ -22,6 +23,8 @@ import {
   overlongListRows,
   parseValueList,
   patchDraft,
+  valueTextOf,
+  valueTypeOf,
 } from "./filterConditions";
 
 describe("opsForColumn", () => {
@@ -102,6 +105,90 @@ describe("coerceFilterValue", () => {
   });
 });
 
+describe("coerceFilterValue — an explicit value type", () => {
+  it("overrules the field's type in both directions", () => {
+    // The bug this exists for: the catalog's 100-document sample said `double`
+    // for a field every row on screen held as a string, so `$ne` was asked
+    // against an Int32 and excluded nothing. Neither sample can settle a
+    // schemaless field; the user can.
+    expect(coerceFilterValue("5682380", "ne", "double", "string")).toBe(
+      "5682380",
+    );
+    expect(coerceFilterValue("5682380", "ne", "string", "number")).toBe(
+      5682380,
+    );
+  });
+
+  it("emits Extended JSON for the types a JSON scalar cannot carry", () => {
+    // All three are wrappers `db::mongo::values::object_to_bson` already
+    // decodes, which is why none of this needed a backend change.
+    expect(coerceFilterValue("900", "eq", "string", "long")).toEqual({
+      $numberLong: "900",
+    });
+    expect(
+      coerceFilterValue("507f1f77bcf86cd799439011", "eq", "string", "objectId"),
+    ).toEqual({ $oid: "507f1f77bcf86cd799439011" });
+    expect(
+      coerceFilterValue("2026-01-01T00:00:00Z", "eq", "string", "date"),
+    ).toEqual({ $date: "2026-01-01T00:00:00Z" });
+  });
+
+  it("keeps a long as text rather than rounding it through Number()", () => {
+    // 9007199254740993 is the first integer a JS number cannot represent; the
+    // whole reason `long` is offered separately from `number`.
+    const big = "9007199254740993";
+    expect(coerceFilterValue(big, "eq", "long", "long")).toEqual({
+      $numberLong: big,
+    });
+    expect(String(coerceFilterValue(big, "eq", "long", "number"))).not.toBe(big);
+  });
+
+  it("still yields the raw string for a text match, whatever the type says", () => {
+    // `contains` is a regex against the field's string form, so a typed value
+    // would be meaningless — see `db::mongo::query::text_match_branches`.
+    expect(coerceFilterValue("900", "contains", "string", "number")).toBe("900");
+    expect(coerceFilterValue("900", "starts_with", "string", "long")).toBe(
+      "900",
+    );
+  });
+
+  it("leaves an empty input alone rather than inventing a value", () => {
+    // Number("") is 0 and { $oid: "" } is a filter that can only error.
+    expect(coerceFilterValue("", "eq", "string", "number")).toBe("");
+    expect(coerceFilterValue("", "eq", "string", "objectId")).toBe("");
+  });
+});
+
+describe("valueTypeOf / valueTextOf", () => {
+  it("reads a type back off the payload so a reopened dialog agrees", () => {
+    expect(valueTypeOf("900")).toBe("string");
+    expect(valueTypeOf(900)).toBe("number");
+    expect(valueTypeOf(true)).toBe("boolean");
+    expect(valueTypeOf({ $numberLong: "900" })).toBe("long");
+    expect(valueTypeOf({ $oid: "507f1f77bcf86cd799439011" })).toBe("objectId");
+    expect(valueTypeOf({ $date: "2026-01-01T00:00:00Z" })).toBe("date");
+  });
+
+  it("falls back to auto for a shape it does not recognise", () => {
+    expect(valueTypeOf(null)).toBe("auto");
+    expect(valueTypeOf(undefined)).toBe("auto");
+    expect(valueTypeOf({ a: 1, b: 2 })).toBe("auto");
+  });
+
+  it("shows the value under the wrapper, not the wrapper", () => {
+    expect(valueTextOf({ $numberLong: "900" })).toBe("900");
+    expect(valueTextOf({ $oid: "abc" })).toBe("abc");
+    expect(valueTextOf(undefined)).toBe("");
+  });
+
+  it("reads a list filter's type off its first non-null member", () => {
+    // The null member says nothing about the type and must not decide it.
+    expect(
+      filterValueType({ column: "c", op: "in", values: [null, 900] }),
+    ).toBe("number");
+  });
+});
+
 describe("parseValueList", () => {
   it("splits on CRLF as well as LF", () => {
     // The highest-value assertion here: anything pasted from Excel or a
@@ -168,6 +255,38 @@ describe("filterFromDraft", () => {
     const out = filterFromDraft(draft, "int");
     expect(out).not.toBe(seed);
     expect(out.values).toEqual([1, 2, 3]);
+  });
+
+  it("round-trips an explicit type through the draft", () => {
+    // Reopening the dialog on a filter the user typed must not silently
+    // re-coerce it: the seed pass-through covers an untouched row, and the
+    // recovered `valueType` covers an edited one.
+    const seed: ColumnFilter = { column: "value", op: "ne", value: "5682380" };
+    const draft = draftFromFilter(seed, 1);
+    expect(draft.valueType).toBe("string");
+    expect(draft.value).toBe("5682380");
+    // `double` is the catalog lying; the recovered type has to beat it.
+    const edited = patchDraft(draft, { value: "5682381" });
+    expect(filterFromDraft(edited, "double").value).toBe("5682381");
+  });
+
+  it("rebuilds when only the type changed", () => {
+    // Changing the type with the text untouched is a real edit — it is the
+    // whole point of the control — and must not hit the seed pass-through.
+    const seed: ColumnFilter = { column: "value", op: "ne", value: "900" };
+    const draft = patchDraft(draftFromFilter(seed, 1), { valueType: "number" });
+    const out = filterFromDraft(draft, "string");
+    expect(out).not.toBe(seed);
+    expect(out.value).toBe(900);
+  });
+
+  it("applies one type to every member of a list", () => {
+    const draft = patchDraft(emptyDraft("code", 1), {
+      op: "in",
+      listText: "1\n2",
+      valueType: "string",
+    });
+    expect(filterFromDraft(draft, "int").values).toEqual(["1", "2"]);
   });
 
   it("appends NULL as a real list member when the checkbox is on", () => {

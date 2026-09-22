@@ -34,6 +34,51 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   Además, el error ahora nombra la solución en vez de describir una conexión
   rota que el usuario se pone a buscar.
 
+- **Un tipo de valor por condición de filtro, en MongoDB.** Un default mejor
+  sigue siendo un default: una colección sin esquema puede guardar legítimamente
+  un `long` en unos documentos y una cadena en otros, y ningún muestreo resuelve
+  eso. Cada condición lleva ahora su propio **Auto / Texto / Número / Long /
+  Booleano / Fecha / ObjectId**, con Auto por defecto — que es exactamente lo
+  que el filtro hacía antes.
+
+  Dos de ellos hacen algo que ninguna inferencia podía. **Long** conserva los
+  dígitos como texto, así que un valor por encima de 2^53 no se redondea en
+  silencio al pasar por JavaScript. **ObjectId** es la única manera de filtrar
+  un ObjectId guardado en un campo que no sea `_id`, que hasta ahora no se podía
+  filtrar.
+
+- **Los chips de filtro muestran de qué tipo es realmente el valor** en MongoDB:
+  una cadena va entrecomillada, y las formas tipadas se leen `ObjectId("…")`,
+  `ISODate("…")`, `NumberLong("…")` — la grafía de la propia shell, y la que ya
+  usa el log de la consola. `value <> 5682380` y `value <> "5682380"` son
+  preguntas distintas y se pintaban igual, que es lo que permitió que el bug
+  original se escondiera a plena vista. Los chips de SQL no cambian: ahí el
+  valor es un parámetro enlazado que se convierte contra su columna, así que la
+  distinción no existe.
+
+### Corregido
+
+- **Un filtro de MongoDB ya no hace la pregunta equivocada sobre un campo cuyo
+  tipo almacenado ha cambiado.** `value <> 5682380` dejaba en pantalla justo las
+  filas que debía excluir, y la consola enseñaba por qué: el valor salía como
+  `Int32` mientras la cabecera del grid, justo encima, etiquetaba esa columna
+  como `STRING`.
+
+  Una columna de MongoDB se tipa dos veces, a partir de dos poblaciones
+  distintas. La cabecera la tipa desde la página que hay en pantalla; el filtro
+  avanzado la tipaba desde el muestreo de 100 documentos que el catálogo hace de
+  la colección entera. En un campo que antes guardaba números y ahora guarda
+  cadenas, esas dos respuestas no coinciden — y la igualdad BSON es exacta por
+  tipo, así que un `$ne` contra la equivocada no excluye nada y no avisa de
+  nada. Cada paso era correcto por separado; simplemente la pantalla no podía
+  explicar el resultado.
+
+  El filtro usa ahora la respuesta de la página, la misma que pinta la
+  cabecera, y recurre al catálogo cuando la página no puede decidir (un campo
+  que se contradice entre filas, o que está a null en todas). No cambia nada en
+  PostgreSQL, MySQL, SQLite ni SQL Server, donde el tipo del catálogo es
+  autoritativo y no un muestreo.
+
 ## [1.26.1] — 2026-09-18
 
 ### Añadido

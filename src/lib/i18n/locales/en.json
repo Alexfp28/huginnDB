@@ -724,6 +724,16 @@
       "fieldPlaceholder": "Field or path",
       "fieldLabel": "Field",
       "fieldNoMatch": "No field matches — the path is used as typed",
+      "valueType": {
+        "label": "Value type",
+        "auto": "Auto",
+        "string": "String",
+        "number": "Number",
+        "long": "Long",
+        "boolean": "Boolean",
+        "date": "Date",
+        "objectId": "ObjectId"
+      },
       "op": {
         "eq": "equals",
         "ne": "not equals",
