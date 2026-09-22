@@ -11,7 +11,9 @@
  * where the driver's catalog enumerates every field (SQL), and
  * {@link FilterFieldPicker} where it does not (MongoDB — its nested paths come
  * from the loaded page and a document may hold fields that page never showed).
- * The operator and value halves are identical either way.
+ * The operator half is identical either way; the value half gains a type
+ * control on MongoDB, for the same reason the field control differs there —
+ * a schemaless collection has no catalog that can settle what a value *is*.
  */
 
 import { forwardRef } from "react";
@@ -33,10 +35,13 @@ import { FilterFieldPicker } from "./FilterFieldPicker";
 import { FilterValueListEditor } from "./FilterValueListEditor";
 import {
   VALUELESS_OPS,
+  VALUE_TYPES,
   isListOp,
+  isTextMatchOp,
   listValueCount,
   opsForColumn,
   type FilterConditionDraft,
+  type FilterValueType,
 } from "./filterConditions";
 
 export const FilterConditionRow = forwardRef<
@@ -102,6 +107,43 @@ export const FilterConditionRow = forwardRef<
     </Select>
   );
 
+  /**
+   * How the row's text becomes a typed value. MongoDB only, and only where the
+   * answer can change the result:
+   *
+   * - **SQL drivers never show it.** They bind the value as a parameter and the
+   *   engine coerces it against the column it is compared to, so there is no
+   *   type decision to overrule — the control would be a knob with no effect.
+   * - **A text match never shows it**, on any driver: `contains` and friends
+   *   are a regex against the field's string form
+   *   (`db::mongo::query::text_match_branches`), so the raw text is already the
+   *   only thing that means anything.
+   * - **A valueless operator never shows it**: `IS NULL` has no value to type.
+   */
+  const showValueType =
+    customFields === true && !valueless && !isTextMatchOp(row.op);
+
+  const valueTypeSelect = showValueType ? (
+    <Select
+      value={row.valueType}
+      onValueChange={(v) => onPatch({ valueType: v as FilterValueType })}
+    >
+      <SelectTrigger
+        className="h-8 w-24 shrink-0 text-xs"
+        aria-label={t("tableData.filter.valueType.label")}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {VALUE_TYPES.map((vt) => (
+          <SelectItem key={vt} value={vt} className="text-xs">
+            {t(`tableData.filter.valueType.${vt}`)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  ) : null;
+
   // Removing one row of a not-yet-applied draft destroys nothing, so `quiet`
   // rather than `destructive` (gotcha #61).
   const removeButton = (
@@ -126,6 +168,7 @@ export const FilterConditionRow = forwardRef<
         <div className="flex items-center gap-1.5">
           {columnSelect}
           {opSelect}
+          {valueTypeSelect}
           {removeButton}
         </div>
         <FilterValueListEditor
@@ -173,6 +216,7 @@ export const FilterConditionRow = forwardRef<
         />
       )}
 
+      {valueTypeSelect}
       {removeButton}
     </div>
   );

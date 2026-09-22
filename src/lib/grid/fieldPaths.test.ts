@@ -30,6 +30,8 @@ describe("collectNestedFieldPaths", () => {
       ["a1", { format: "tile", size: { w: 20, h: 20 } }],
     ];
     expect(paths(collectNestedFieldPaths(COLS, rows))).toEqual([
+      "_id",
+      "customData",
       "customData.format",
       "customData.size",
       "customData.size.w",
@@ -52,6 +54,8 @@ describe("collectNestedFieldPaths", () => {
       ["a1", { items: [{ sku: "A" }, { sku: "B", qty: 2 }] }],
     ];
     expect(paths(collectNestedFieldPaths(COLS, rows))).toEqual([
+      "_id",
+      "customData",
       "customData.items",
       "customData.items.sku",
       "customData.items.qty",
@@ -97,6 +101,8 @@ describe("collectNestedFieldPaths", () => {
     const rows: CellValue[][] = [["a1", { n: 7 }]];
     const types: BsonTypeTree[][] = [["objectId", { n: "long" }]];
     expect(collectNestedFieldPaths(COLS, rows, types)).toEqual([
+      { path: "_id", type: "objectId", nested: false },
+      { path: "customData", type: "object", nested: false },
       { path: "customData.n", type: "long", nested: true },
     ]);
   });
@@ -119,12 +125,29 @@ describe("collectNestedFieldPaths", () => {
 
   it("reports an always-null path as null rather than guessing", () => {
     const rows: CellValue[][] = [["a1", { c: null }]];
-    expect(collectNestedFieldPaths(COLS, rows)[0].type).toBe("null");
+    const byPath = new Map(
+      collectNestedFieldPaths(COLS, rows).map((f) => [f.path, f.type]),
+    );
+    expect(byPath.get("customData.c")).toBe("null");
   });
 
-  it("returns nothing for a page of flat documents", () => {
+  it("records the top-level columns too, for their type", () => {
+    // Flat documents contribute no nested path, but the columns themselves are
+    // still the page's answer about what those fields hold — which is what the
+    // filter coerces its value with (see `filterFieldsFor`).
     const rows: CellValue[][] = [["a1", "tile"], ["a2", null]];
-    expect(collectNestedFieldPaths(COLS, rows)).toEqual([]);
+    expect(collectNestedFieldPaths(COLS, rows)).toEqual([
+      { path: "_id", type: "string", nested: false },
+      { path: "customData", type: "string", nested: false },
+    ]);
+  });
+
+  it("merges a column's own type across rows the way a path's is merged", () => {
+    const rows: CellValue[][] = [["a1", "tile"], ["a2", 3]];
+    const byPath = new Map(
+      collectNestedFieldPaths(COLS, rows).map((f) => [f.path, f.type]),
+    );
+    expect(byPath.get("customData")).toBe("mixed");
   });
 });
 
@@ -164,6 +187,34 @@ describe("filterFieldsFor", () => {
       "customData",
       "extra.thing",
     ]);
+  });
+
+  it("prefers the page's type for a column over the catalog's", () => {
+    // The regression this exists for: `infer_columns` samples 100 documents of
+    // the *collection* and said `double`, while every row on screen held a
+    // string. The filter coerced `5682380` to an Int32, `$ne` excluded nothing,
+    // and the grid header two panels away was showing STRING the whole time.
+    const cols = [col("_id", "objectId"), col("value", "double")];
+    const page: FilterField[] = [
+      { path: "value", type: "string", nested: false },
+    ];
+    expect(filterFieldsFor(cols, page)).toEqual([
+      { path: "_id", type: "objectId", nested: false },
+      { path: "value", type: "string", nested: false },
+    ]);
+  });
+
+  it("falls back to the catalog when the page cannot decide", () => {
+    // "mixed" and "null" are the page saying it does not know. A guess from the
+    // catalog's sample still beats no type at all, and the row's value-type
+    // control is there for when both are wrong.
+    const cols = [col("value", "double")];
+    for (const undecided of ["mixed", "null"]) {
+      const page: FilterField[] = [
+        { path: "value", type: undecided, nested: false },
+      ];
+      expect(filterFieldsFor(cols, page)[0].type).toBe("double");
+    }
   });
 
   it("never lists a column twice", () => {

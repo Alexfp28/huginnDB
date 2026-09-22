@@ -721,6 +721,16 @@
       "fieldPlaceholder": "Campo o ruta",
       "fieldLabel": "Campo",
       "fieldNoMatch": "Ningún campo coincide — se usa la ruta tal cual",
+      "valueType": {
+        "label": "Tipo de valor",
+        "auto": "Auto",
+        "string": "Texto",
+        "number": "Número",
+        "long": "Long",
+        "boolean": "Booleano",
+        "date": "Fecha",
+        "objectId": "ObjectId"
+      },
       "op": {
         "eq": "igual a",
         "ne": "distinto de",
