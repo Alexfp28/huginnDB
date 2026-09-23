@@ -59,3 +59,26 @@ export function prevOffset(offset: number, pageSize: number): number {
 export function nextOffset(offset: number, pageSize: number): number {
   return offset + pageSize;
 }
+
+/**
+ * The offset that puts row `row` (1-based, as the footer's range counts) at
+ * the top of the page — "go to row", the grid's answer to Compass's *Skip*.
+ *
+ * Deliberately not page-aligned: asking for row 250 shows 250–349, which is
+ * what a row number means, and prev/next step by `pageSize` from wherever the
+ * page starts. Past an **exact** total it clamps to the last row; an estimate
+ * can undershoot, so it is not a ceiling (the same reasoning as `canNext`).
+ * `null` for anything that is not a whole number ≥ 1.
+ */
+export function offsetForRow(
+  input: string,
+  total: number | null,
+  totalEstimated: boolean,
+): number | null {
+  const text = input.trim();
+  if (!/^\d+$/.test(text)) return null;
+  let row = Number(text);
+  if (!Number.isSafeInteger(row) || row < 1) return null;
+  if (total !== null && !totalEstimated && total > 0) row = Math.min(row, total);
+  return row - 1;
+}

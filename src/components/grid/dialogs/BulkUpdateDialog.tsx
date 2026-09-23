@@ -71,6 +71,7 @@ export function BulkUpdateDialog({
   nestedFields,
   initialFilters,
   isMongo,
+  expressionIgnored = false,
   onApplied,
   onClose,
 }: {
@@ -88,6 +89,13 @@ export function BulkUpdateDialog({
   nestedFields?: FilterField[];
   initialFilters: ColumnFilter[];
   isMongo: boolean;
+  /**
+   * The browse has a hand-written expression this dialog cannot carry: its
+   * match side is conditions only, seeded from the chips. Said up front,
+   * because without it "update matching rows" would reach rows the grid is
+   * not showing — the preview's count says so too, but only if it is read.
+   */
+  expressionIgnored?: boolean;
   onApplied: () => void;
   onClose: () => void;
 }) {
@@ -251,6 +259,14 @@ export function BulkUpdateDialog({
             <p className="mb-1.5 text-xs font-medium text-muted-foreground">
               {t("tableData.bulkUpdate.matchLabel")}
             </p>
+            {expressionIgnored && (
+              <p
+                role="note"
+                className="mb-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1.5 text-2xs text-foreground"
+              >
+                {t("tableData.bulkUpdate.expressionIgnored")}
+              </p>
+            )}
             <div className="max-h-40 space-y-2 overflow-y-auto">
               {matchRows.length === 0 ? (
                 <p className="py-2 text-xs text-muted-foreground">

@@ -8,6 +8,41 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Write the filter by hand, and see the query it runs.** The query panel's
+  *Filter* row takes an **expression** next to its conditions: a condition as
+  you would write it after `WHERE` on SQL, or a filter document on MongoDB in
+  the query tab's own syntax (unquoted keys, `ObjectId(…)`, `ISODate(…)`,
+  regex literals). It is ANDed with the conditions, the chips and the search
+  rather than replacing them, so nothing has to be converted between the two
+  forms and the chips still map one-to-one to the panel's rows. It shows as an
+  **Expression** chip while it is active, and it is counted, exported and saved
+  with the tab like everything else in the panel.
+
+  A SQL expression has to stay one condition. The panel refuses a `;` outside a
+  string or comment, unbalanced parentheses, and an unterminated string or
+  `/* comment` — the three ways a fragment spliced into the browse's `SELECT`
+  could end it early, escape the `AND` or swallow the `LIMIT`. This is not a
+  security boundary: the query tab next door runs anything at all.
+
+  A new **Result** row shows the statement the panel's draft would run, built by
+  the same backend code the browse uses, so it cannot say something different
+  from what executes. It sits on one line; its expand toggle opens the formatted
+  statement in a bounded box, so a long MongoDB filter does not push the rows
+  out of view. SQL values are shown inline, for reading only. MongoDB is
+  shown as a `db.<collection>.find(…)` in the query tab's grammar. **Copy** and
+  **Open in editor** take it elsewhere; the latter opens a query tab that runs
+  it as written — the way out for anything the panel cannot express. An
+  expression that does not parse shows its error there, and Apply stays
+  disabled until it does.
+
+  *Bulk update* cannot carry an expression (its match side is conditions only),
+  so while one is active it now says so above its conditions.
+
+- **Go to row.** The table footer takes a row number and moves the page to
+  start there — row 250 shows 250–349, the range the footer already counts in.
+  It is the grid's answer to Compass's *Skip*: separate Skip and Limit fields
+  would have fought the pager over the same offset.
+
 - **Projection: choose which fields a table or collection returns.** The
   query panel has a second row. On SQL it is **Columns** (*All* / *Choose*);
   on MongoDB it is **Projection** (*All* / *Include* / *Exclude*). The browse
@@ -79,9 +114,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
   Nothing reaches the server until **Apply** (or Ctrl/⌘+Enter inside the
   panel). If the filters change from outside while it is open (a chip's ✕, a
-  right-click *Filter by this value*), an untouched panel follows them. A panel
-  you have edited keeps your edits and says *Unapplied changes*; **Reset** goes
-  back to what is in force. Closing the panel discards unapplied edits, like
+  right-click *Filter by this value*), a panel that says the same as what is
+  applied follows them. A panel whose draft differs keeps your edits and says
+  *Unapplied changes* — a comparison, so undoing an edit clears it; **Reset**
+  goes back to what is in force. Closing the panel discards unapplied edits, like
   cancelling the dialog did.
 
   This is the surface the rest of the query bar grows into: projection, a raw

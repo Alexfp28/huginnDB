@@ -72,11 +72,13 @@ import {
   DataGrid,
   type GridToolbarItem,
   type InsertAlternative,
+  type QueryChip,
 } from "@/components/grid/DataGrid";
 import {
   QueryPanel,
   type QueryPanelFocus,
 } from "@/components/grid/QueryPanel";
+import { GoToRowInput } from "@/components/grid/GoToRowInput";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
@@ -314,6 +316,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [projection, setProjection] = useState<Projection | undefined>(
     () => restoredViewState?.projection,
   );
+  /**
+   * The query panel's hand-written expression — a `WHERE` fragment on SQL, a
+   * filter document on MongoDB — ANDed with the chips and the search. Applied
+   * state, like `serverFilters`: the panel holds the draft.
+   */
+  const [rawFilter, setRawFilter] = useState<string>(
+    () => restoredViewState?.rawFilter ?? "",
+  );
+  /** The expression as the backend should see it: blank is none. */
+  const raw = rawFilter.trim() ? rawFilter : undefined;
   // Re-apply when a *new* `initialFilters` array arrives — i.e. the user
   // navigated via FK into a table tab that was already open. The initial mount
   // already seeded `serverFilters` above, so the ref starts at that value and
@@ -341,6 +353,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       search: appliedFilter || undefined,
       documentViewMode,
       projection: isNarrowing(projection) ? projection : undefined,
+      rawFilter: raw,
     });
   }, [
     setViewState,
@@ -350,6 +363,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     appliedFilter,
     documentViewMode,
     projection,
+    raw,
   ]);
 
   const pushHistory = useFilterHistory((s) => s.push);
@@ -545,6 +559,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       serverFilters,
       appliedFilter,
       wire,
+      raw,
     });
     if (inflightKeyRef.current === reqKey) return;
     inflightKeyRef.current = reqKey;
@@ -565,6 +580,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         search: appliedFilter || undefined,
         searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
         projection: wire,
+        raw,
         withCount: false,
       });
       setResult(r);
@@ -585,6 +601,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     serverFilters,
     appliedFilter,
     wire,
+    raw,
   ]);
 
   // Fetch the row total independently of the data page. Keyed only on the
@@ -600,6 +617,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       table,
       f: serverFilters,
       s: appliedFilter,
+      r: raw,
     });
     if (countInflightRef.current === countKey) return;
     countInflightRef.current = countKey;
@@ -616,6 +634,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         filters: serverFilters.length ? serverFilters : undefined,
         search: appliedFilter || undefined,
         searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
+        raw,
       });
       setTotal(c.total);
       setTotalEstimated(c.estimated);
@@ -626,7 +645,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       if (countInflightRef.current === countKey)
         countInflightRef.current = null;
     }
-  }, [connectionId, schema, table, serverFilters, appliedFilter]);
+  }, [connectionId, schema, table, serverFilters, appliedFilter, raw]);
 
   /**
    * Reload the page **and** the row total — what "refresh" means to a user.
@@ -965,6 +984,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       searchColumns: appliedFilter ? searchColumns : undefined,
       order: sort.length ? sort : undefined,
       projection: wire,
+      raw,
     };
     return runExport(
       () =>
@@ -990,6 +1010,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     searchColumns,
     sort,
     wire,
+    raw,
     t,
   ]);
 
@@ -1158,6 +1179,48 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // rather than wrapping onto a second row (see `GridToolbarItem`). The menu
   // form is a labelled row — which is also the chance to spell out what an
   // icon-only button only implies in a tooltip.
+  /**
+   * The projection and the expression, as chips under the toolbar — see
+   * `GridToolbarProps.queryChips` for why they must be on screen while on.
+   */
+  const queryChips: QueryChip[] = useMemo(() => {
+    const openPanel = () => {
+      setQueryOpen(true);
+      setQueryFocus(null);
+    };
+    const out: QueryChip[] = [];
+    if (isNarrowing(projection)) {
+      const fields = projection.fields.join(", ");
+      out.push({
+        id: "projection",
+        section: t("dataGrid.chipRow.projection"),
+        label: projection.exclude
+          ? t("dataGrid.chipRow.projectionExcluding", { fields })
+          : fields,
+        editLabel: t("dataGrid.chipRow.editProjection"),
+        removeLabel: t("dataGrid.chipRow.removeProjection"),
+        onEdit: openPanel,
+        onRemove: () => setProjection(undefined),
+      });
+    }
+    if (raw) {
+      out.push({
+        id: "expression",
+        section: t("dataGrid.chipRow.expression"),
+        // One line: a multi-line expression is read in the panel, not here.
+        label: raw.replace(/\s+/g, " ").trim(),
+        editLabel: t("dataGrid.chipRow.editExpression"),
+        removeLabel: t("dataGrid.chipRow.removeExpression"),
+        onEdit: openPanel,
+        onRemove: () => {
+          setRawFilter("");
+          setOffset(0);
+        },
+      });
+    }
+    return out;
+  }, [projection, raw, t]);
+
   const leadingToolbar: GridToolbarItem[] = useMemo(
     () => [
       {
@@ -1582,6 +1645,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               </>
             )}
           </span>
+          <GoToRowInput
+            total={total}
+            totalEstimated={totalEstimated}
+            disabled={loading}
+            onGo={setOffset}
+          />
           <div className="flex items-center">
             <IconButton
               icon={ChevronLeft}
@@ -1695,22 +1764,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             footer={footerContent}
             // The page is the server's answer to the search; see the prop.
             rowsFromServer
-            projectionChip={
-              isNarrowing(projection)
-                ? {
-                    label: projection.exclude
-                      ? t("dataGrid.chipRow.projectionExcluding", {
-                          fields: projection.fields.join(", "),
-                        })
-                      : projection.fields.join(", "),
-                    onEdit: () => {
-                      setQueryOpen(true);
-                      setQueryFocus(null);
-                    },
-                    onRemove: () => setProjection(undefined),
-                  }
-                : undefined
-            }
+            queryChips={queryChips}
             belowToolbar={
               queryOpen && (
                 <QueryPanel
@@ -1719,12 +1773,24 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                   customFields={isMongo}
                   applied={serverFilters}
                   appliedProjection={projection}
+                  appliedRaw={rawFilter}
                   document={isMongo}
                   keyColumns={pkColumnNames}
+                  preview={{
+                    connectionId,
+                    schema,
+                    table,
+                    limit: pageSize,
+                    offset,
+                    order: sort.length ? sort : undefined,
+                    search: appliedFilter || undefined,
+                    searchColumns: appliedFilter ? searchColumns : undefined,
+                  }}
                   focus={queryFocus}
                   onApply={(next) => {
                     setServerFilters(next.filters);
                     setProjection(next.projection);
+                    setRawFilter(next.raw);
                     setOffset(0);
                   }}
                   onClose={() => setQueryOpen(false)}
@@ -1825,6 +1891,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           nestedFields={nestedFields}
           initialFilters={serverFilters}
           isMongo={isMongo}
+          expressionIgnored={!!raw}
           onApplied={() => void fetchData()}
           onClose={() => setBulkUpdateOpen(false)}
         />

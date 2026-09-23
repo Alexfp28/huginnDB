@@ -740,6 +740,16 @@ export interface TabViewState {
   /** The query panel's projection, as the user chose it (before the key
    *  columns are added for the wire). */
   projection?: Projection;
+  /** The query panel's expression — see `TableFilter.raw`. */
+  rawFilter?: string;
+}
+
+/** The statement a browse would run, as the query panel's *Result* line shows
+ *  it. Mirrors Rust `QueryPreview`. */
+export interface QueryPreview {
+  text: string;
+  /** Which editor "Open in editor" hands it to. */
+  language: "sql" | "mongodb";
 }
 
 /**
@@ -797,6 +807,12 @@ export interface TableFilter {
    *  treated as "no needle", not as a match-everything predicate. */
   search?: string;
   searchColumns?: string[];
+  /**
+   * The query panel's hand-written expression, ANDed with everything above:
+   * a `WHERE` fragment on SQL, a filter document (shell grammar) on MongoDB.
+   * Blank is no expression.
+   */
+  raw?: string;
 }
 
 /** A table plus a predicate over it, with no paging — the payload of
@@ -2027,6 +2043,9 @@ export interface PersistedTab {
   /** The query panel's projection. Declared on the Rust side too, or serde
    *  drops it before it reaches disk (gotcha #14). */
   projection: Projection | null;
+  /** The query panel's expression. Declared on the Rust side too (gotcha
+   *  #14). */
+  rawFilter: string | null;
 }
 
 /**

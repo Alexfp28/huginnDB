@@ -699,7 +699,10 @@
       "projection": "Campos",
       "projectionExcluding": "todos menos {{fields}}",
       "editProjection": "Editar la proyección",
-      "removeProjection": "Volver a devolver todos los campos"
+      "removeProjection": "Volver a devolver todos los campos",
+      "expression": "Expresión",
+      "editExpression": "Editar la expresión",
+      "removeExpression": "Quitar la expresión"
     },
     "sort": {
       "button": "Ordenar",
@@ -724,6 +727,7 @@
     "refresh": "Actualizar",
     "perPage": "{{count}}/página",
     "approxTotal": "Total aproximado (estimación del motor). Filtra o busca para obtener el recuento exacto.",
+    "goToRow": "Ir a fila",
     "prevPage": "Página anterior",
     "nextPage": "Página siguiente",
     "loading": "Cargando…",
@@ -757,7 +761,18 @@
       "keyLocked": "La clave primaria se devuelve siempre, para que todas las filas sigan siendo editables.",
       "idLocked": "_id se devuelve siempre: sin él no se puede editar el documento.",
       "idNotExcludable": "_id no se puede excluir: sin él no se puede editar el documento.",
-      "pickHint": "Aún no has elegido nada — hasta que añadas alguno, se devuelven todos."
+      "pickHint": "Aún no has elegido nada — hasta que añadas alguno, se devuelven todos.",
+      "expression": "Expresión",
+      "expressionSqlHint": "Y además — una condición SQL, tal como la escribirías tras el WHERE:",
+      "expressionMongoHint": "Y además — un documento de filtro, con la sintaxis de la pestaña de consulta:",
+      "addExpressionSql": "Expresión SQL",
+      "addExpressionMongo": "Expresión JSON",
+      "removeExpression": "Quitar la expresión",
+      "result": "Resultado",
+      "copy": "Copiar",
+      "openInEditor": "Abrir en el editor",
+      "expandResult": "Ver la sentencia completa",
+      "collapseResult": "Volver a una línea"
     },
     "filter": {
       "loadingSchema": "Consulta — cargando la lista de campos…",
@@ -814,6 +829,7 @@
     "bulkUpdate": {
       "toolbarTitle": "Actualizar varias filas/documentos a la vez",
       "toolbarLabel": "Actualización masiva…",
+      "expressionIgnored": "La expresión escrita a mano de la consulta no se aplica aquí: solo cuentan las condiciones de abajo. Revisa el recuento de la vista previa antes de actualizar.",
       "titleRows": "Actualizar filas que coincidan",
       "titleDocuments": "Actualizar documentos que coincidan",
       "description": "Asigna uno o más valores de columna/campo a cada fila o documento que cumpla las condiciones siguientes.",

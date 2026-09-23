@@ -115,6 +115,18 @@ pub struct TableFilter {
     pub search: Option<String>,
     #[serde(default)]
     pub search_columns: Vec<String>,
+    /// A hand-written predicate, ANDed with everything above — the query
+    /// panel's *expression*. Its language is the connection's: a `WHERE`
+    /// fragment on SQL (see [`validate_raw_where`]), a filter document on
+    /// MongoDB (see `db::mongo::query::predicate_doc`).
+    ///
+    /// ANDed rather than replacing the structured filters on purpose: the
+    /// chips stay a bijection with the panel's condition rows, and nothing has
+    /// to be translated between the two forms — a translation that is lossy in
+    /// both directions (not every document is a flat AND list, and not every
+    /// condition a user can type survives being re-rendered).
+    #[serde(default)]
+    pub raw: Option<String>,
 }
 
 impl TableFilter {
@@ -125,20 +137,300 @@ impl TableFilter {
         self.search.as_deref().filter(|s| !s.is_empty())
     }
 
+    /// The expression, or `None` when it is absent *or blank* — the same
+    /// "an empty string is not a predicate" rule as [`Self::needle`].
+    pub fn raw_text(&self) -> Option<&str> {
+        self.raw.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    }
+
     /// True when this selects the whole relation. Only then may a count be
     /// served from the engine's statistics rather than an exact `COUNT(*)`.
     pub fn is_unfiltered(&self) -> bool {
-        self.filters.is_empty() && self.needle().is_none()
+        self.filters.is_empty() && self.needle().is_none() && self.raw_text().is_none()
     }
 
     fn validate(&self) -> AppResult<()> {
         validate_filters(&self.filters)
     }
 
-    /// The `WHERE` clause and its binds for `dialect`, placeholders from 1.
-    fn clause(&self, dialect: Dialect) -> (String, Vec<Option<String>>) {
-        build_filter_clause(dialect, &self.filters, self.needle(), &self.search_columns)
+    /// The `WHERE` clause and its binds for `dialect`, placeholders from 1,
+    /// with the expression (validated) ANDed on the end.
+    ///
+    /// The expression goes on **its own lines inside its own parentheses**:
+    /// the parentheses keep an `OR` in it from escaping the `AND` that binds it
+    /// to the chips, and the line breaks keep a trailing `-- comment` from
+    /// commenting out the `ORDER BY` / `LIMIT` that follow it.
+    pub(crate) fn clause(&self, dialect: Dialect) -> AppResult<(String, Vec<Option<String>>)> {
+        let (built, binds) =
+            build_filter_clause(dialect, &self.filters, self.needle(), &self.search_columns);
+        let Some(raw) = self.raw_text() else {
+            return Ok((built, binds));
+        };
+        validate_raw_where(raw)?;
+        let expr = format!("(\n{raw}\n)");
+        if built.is_empty() {
+            Ok((format!(" WHERE {expr}"), binds))
+        } else {
+            Ok((format!("{built} AND {expr}"), binds))
+        }
     }
+}
+
+/// Refuse a SQL expression that would not stay *one condition*.
+///
+/// The expression is the user's own text on the user's own connection — the
+/// query editor next door runs anything at all, so this is not a security
+/// boundary and does not pretend to be one. What it guards is the statement
+/// the expression is spliced into. It rejects four shapes, each of which
+/// would turn "filter this browse" into something else:
+///
+/// - a `;` outside a string or comment, which ends the `SELECT` and starts a
+///   second statement;
+/// - unbalanced parentheses, which would let part of the expression escape
+///   the parentheses that AND it to the chips (`a = 1) OR (1 = 1`);
+/// - an unterminated string, quoted identifier or `/* comment`, which would
+///   swallow the `ORDER BY` and `LIMIT` after it.
+///
+/// A `-- comment` is allowed: [`TableFilter::clause`] ends the expression
+/// with a line break.
+pub(crate) fn validate_raw_where(raw: &str) -> AppResult<()> {
+    let bad = |why: &str| Err(AppError::InvalidInput(format!("expression: {why}")));
+    let chars: Vec<char> = raw.chars().collect();
+    let mut i = 0;
+    let mut depth: i64 = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let next = chars.get(i + 1).copied();
+        match c {
+            '\'' | '"' | '`' | '[' => {
+                let close = if c == '[' { ']' } else { c };
+                i += 1;
+                loop {
+                    match chars.get(i) {
+                        None => return bad("a string or quoted name is never closed"),
+                        // A doubled quote is an escaped one, in every dialect.
+                        Some(&ch)
+                            if ch == close && chars.get(i + 1) == Some(&close) && c != '[' =>
+                        {
+                            i += 2;
+                        }
+                        Some(&ch) if ch == close => break,
+                        Some(_) => i += 1,
+                    }
+                }
+            }
+            '-' if next == Some('-') => {
+                while i < chars.len() && chars[i] != '\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            '/' if next == Some('*') => {
+                i += 2;
+                loop {
+                    match (chars.get(i), chars.get(i + 1)) {
+                        (Some('*'), Some('/')) => {
+                            i += 1;
+                            break;
+                        }
+                        (None, _) => return bad("a /* comment is never closed"),
+                        _ => i += 1,
+                    }
+                }
+            }
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth < 0 {
+                    return bad("a ) closes more than was opened");
+                }
+            }
+            ';' => return bad("a ; would end the statement — write one condition"),
+            _ => {}
+        }
+        i += 1;
+    }
+    if depth != 0 {
+        return bad("a ( is never closed");
+    }
+    Ok(())
+}
+
+/// Render `sql` with its bind placeholders replaced by SQL literals, for
+/// **display only** — the query panel's *Result* line and "Open in editor".
+/// What runs is always the parameterised statement.
+///
+/// Placeholders are found by scanning, not by text replacement, so a `?` or a
+/// `$1` inside a quoted identifier or a string literal is left alone. Values
+/// are the binds' text form (every browse bind is a string), quoted with the
+/// dialect's escaping; the engine coerces them against the column exactly as
+/// it coerces the bound parameter.
+pub(crate) fn inline_binds(dialect: Dialect, sql: &str, binds: &[Option<String>]) -> String {
+    let literal = |i: usize| -> String {
+        match binds.get(i) {
+            Some(Some(v)) => {
+                let mut v = v.replace('\'', "''");
+                if matches!(dialect, Dialect::Mysql) {
+                    v = v.replace('\\', "\\\\");
+                }
+                format!("'{v}'")
+            }
+            _ => "NULL".to_string(),
+        }
+    };
+    let chars: Vec<char> = sql.chars().collect();
+    let mut out = String::with_capacity(sql.len());
+    let mut i = 0;
+    let mut sequential = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        match c {
+            '\'' | '"' | '`' | '[' => {
+                let close = if c == '[' { ']' } else { c };
+                out.push(c);
+                i += 1;
+                while i < chars.len() {
+                    out.push(chars[i]);
+                    if chars[i] == close {
+                        break;
+                    }
+                    i += 1;
+                }
+                i += 1;
+            }
+            '?' if matches!(dialect, Dialect::Mysql | Dialect::Sqlite) => {
+                out.push_str(&literal(sequential));
+                sequential += 1;
+                i += 1;
+            }
+            '$' if matches!(dialect, Dialect::Postgres)
+                && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit()) =>
+            {
+                let start = i + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end].is_ascii_digit() {
+                    end += 1;
+                }
+                let n: usize = chars[start..end]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
+                out.push_str(&literal(n.saturating_sub(1)));
+                i = end;
+            }
+            '@' if matches!(dialect, Dialect::MsSql)
+                && chars.get(i + 1) == Some(&'P')
+                && chars.get(i + 2).is_some_and(|d| d.is_ascii_digit()) =>
+            {
+                let start = i + 2;
+                let mut end = start;
+                while end < chars.len() && chars[end].is_ascii_digit() {
+                    end += 1;
+                }
+                let n: usize = chars[start..end]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
+                out.push_str(&literal(n.saturating_sub(1)));
+                i = end;
+            }
+            _ => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+// Eight: the browse's address, predicate, shape and window. Bundling them would
+// only re-split the `TableQuery` both callers just destructured.
+#[allow(clippy::too_many_arguments)]
+/// The page statement a SQL browse runs, and its binds — shared by
+/// [`fetch_table_data_inner`] and [`describe_table_query`], so the query
+/// panel's *Result* line is built by the code that builds what executes and
+/// cannot drift from it.
+fn sql_page_statement(
+    dialect: Dialect,
+    schema: Option<&str>,
+    table: &str,
+    filter: &TableFilter,
+    order: &[SortSpec],
+    projection: Option<&Projection>,
+    limit: i64,
+    offset: i64,
+) -> AppResult<(String, Vec<Option<String>>)> {
+    let order_clause = order_by_clause(dialect, order);
+    let select = select_list(dialect, projection)?;
+    let (where_clause, binds) = filter.clause(dialect)?;
+    let qt = dialect.qualify_defaulted(schema, table);
+    // LIMIT/OFFSET stay inline (they are integers we already parsed), so the
+    // filter binds are the only binds in the statement. The clause itself is
+    // dialect-specific: T-SQL has no LIMIT and its OFFSET/FETCH form requires
+    // an ORDER BY, which `paginate` supplies when the user hasn't sorted.
+    let page = dialect.paginate(limit, offset, !order_clause.is_empty());
+    Ok((
+        format!("SELECT {select} FROM {qt}{where_clause}{order_clause}{page}"),
+        binds,
+    ))
+}
+
+/// What the query panel's *Result* line shows: the statement a browse would
+/// run, in the language of the connection's own editor.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryPreview {
+    pub text: String,
+    /// `"sql"` or `"mongodb"` — which editor "Open in editor" should expect.
+    pub language: &'static str,
+}
+
+/// Describe the browse `query` would run, without running it.
+///
+/// SQL: the page statement with its binds inlined as literals (display only,
+/// see [`inline_binds`]). MongoDB: a `db.<coll>.find(…)` statement in the
+/// shell grammar the query tab parses, so "Open in editor" produces something
+/// that tab runs as written. Either way a bad expression surfaces here, as the
+/// error the browse itself would return — which is how the panel shows it
+/// before the user applies it.
+#[tauri::command]
+pub async fn describe_table_query(
+    state: State<'_, AppState>,
+    query: TableQuery,
+) -> AppResult<QueryPreview> {
+    query.filter.validate()?;
+    let pool = state.pool_for(&query.connection_id)?;
+    if matches!(&pool, DbPool::Mongo(_)) {
+        let text = crate::db::mongo::query::describe_find_shell(
+            &query.table,
+            &query.filter,
+            &query.order,
+            query.projection.as_ref(),
+            query.limit,
+            query.offset,
+        )?;
+        return Ok(QueryPreview {
+            text,
+            language: "mongodb",
+        });
+    }
+    let dialect = Dialect::try_of(&pool)?;
+    let (sql, binds) = sql_page_statement(
+        dialect,
+        query.schema.as_deref(),
+        &query.table,
+        &query.filter,
+        &query.order,
+        query.projection.as_ref(),
+        query.limit,
+        query.offset,
+    )?;
+    Ok(QueryPreview {
+        text: inline_binds(dialect, &sql, &binds),
+        language: "sql",
+    })
 }
 
 /// Which fields a browse returns — the query panel's *Projection* row.
@@ -1542,20 +1834,18 @@ pub(crate) async fn fetch_table_data_inner(
     let driver = pool.driver_name();
     let dialect = Dialect::try_of(&pool)?;
 
-    let order_clause = order_by_clause(dialect, &order);
-    let select = select_list(dialect, projection.as_ref())?;
-
-    let (where_clause, where_binds) = filter.clause(dialect);
-
+    let (data_sql, where_binds) = sql_page_statement(
+        dialect,
+        schema.as_deref(),
+        &table,
+        &filter,
+        &order,
+        projection.as_ref(),
+        limit,
+        offset,
+    )?;
+    let (where_clause, _) = filter.clause(dialect)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
-
-    // LIMIT/OFFSET stay inline (they are integers we already parsed),
-    // so the filter binds are the only binds in the statement. The clause
-    // itself is dialect-specific: T-SQL has no LIMIT and its OFFSET/FETCH
-    // form requires an ORDER BY, which `paginate` supplies when the user
-    // hasn't sorted.
-    let page = dialect.paginate(limit, offset, !order_clause.is_empty());
-    let data_sql = format!("SELECT {select} FROM {qt}{where_clause}{order_clause}{page}");
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
@@ -1755,7 +2045,7 @@ pub(crate) async fn count_table_rows_inner(
     }
 
     // Exact count: predicate present, or no estimate available.
-    let (where_clause, where_binds) = filter.clause(dialect);
+    let (where_clause, where_binds) = filter.clause(dialect)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
@@ -3236,6 +3526,110 @@ mod filter_tests {
             order_by_clause(Dialect::Postgres, &order),
             r#" ORDER BY "ts" DESC, "code" ASC"#
         );
+    }
+
+    // --- The query panel's expression ------------------------------------
+
+    fn with_raw(raw: &str) -> TableFilter {
+        TableFilter {
+            raw: Some(raw.to_string()),
+            ..TableFilter::default()
+        }
+    }
+
+    #[test]
+    fn a_blank_expression_is_not_a_predicate() {
+        assert!(with_raw("   ").is_unfiltered());
+        assert!(!with_raw("qty > 3").is_unfiltered());
+    }
+
+    #[test]
+    fn the_expression_is_anded_on_its_own_lines() {
+        let f = TableFilter {
+            filters: vec![ColumnFilter {
+                column: "code".into(),
+                op: FilterOp::Eq,
+                value: json!("A"),
+                value2: Value::Null,
+                values: Vec::new(),
+            }],
+            raw: Some("qty > 3 OR qty IS NULL -- note".into()),
+            ..TableFilter::default()
+        };
+        let (clause, binds) = f.clause(Dialect::Postgres).unwrap();
+        assert_eq!(
+            clause,
+            " WHERE \"code\" = $1 AND (\nqty > 3 OR qty IS NULL -- note\n)"
+        );
+        assert_eq!(binds.len(), 1);
+
+        let (alone, _) = with_raw("qty > 3").clause(Dialect::Mysql).unwrap();
+        assert_eq!(alone, " WHERE (\nqty > 3\n)");
+    }
+
+    #[test]
+    fn validate_raw_where_rejects_what_would_leave_the_condition() {
+        for bad in [
+            "1 = 1; DROP TABLE t",
+            "a = 1) OR (1 = 1",
+            "(a = 1",
+            "name = 'unterminated",
+            "a = 1 /* never closed",
+            "\"unterminated",
+        ] {
+            assert!(validate_raw_where(bad).is_err(), "accepted: {bad}");
+        }
+    }
+
+    #[test]
+    fn validate_raw_where_accepts_what_only_looks_dangerous() {
+        for good in [
+            "note = 'a; b'",
+            "note = 'it''s (fine'",
+            "\"odd;name\" = 1",
+            "a = 1 -- trailing ; comment",
+            "a = 1 /* ; ( */ AND b = 2",
+            "[weird)name] = 1",
+            "(a = 1 OR b = 2) AND c IN (1, 2)",
+        ] {
+            assert!(validate_raw_where(good).is_ok(), "rejected: {good}");
+        }
+    }
+
+    #[test]
+    fn inline_binds_replaces_placeholders_but_not_inside_quotes() {
+        let binds = vec![Some("it's".to_string()), None];
+        assert_eq!(
+            inline_binds(Dialect::Postgres, "a = $1 AND \"$2x\" = $2", &binds),
+            "a = 'it''s' AND \"$2x\" = NULL"
+        );
+        assert_eq!(
+            inline_binds(Dialect::Sqlite, "a = ? AND b = '?' AND c = ?", &binds),
+            "a = 'it''s' AND b = '?' AND c = NULL"
+        );
+        assert_eq!(
+            inline_binds(Dialect::MsSql, "a = @P1", &binds),
+            "a = 'it''s'"
+        );
+        // MySQL treats a backslash as an escape inside a string literal.
+        let bs = vec![Some("C:\\tmp".to_string())];
+        assert_eq!(
+            inline_binds(Dialect::Mysql, "p = ?", &bs),
+            "p = 'C:\\\\tmp'"
+        );
+    }
+
+    #[test]
+    fn table_query_carries_the_expression() {
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "t",
+            "limit": 10,
+            "offset": 0,
+            "raw": "qty > 3",
+        }))
+        .unwrap();
+        assert_eq!(q.filter.raw_text(), Some("qty > 3"));
     }
 
     #[test]

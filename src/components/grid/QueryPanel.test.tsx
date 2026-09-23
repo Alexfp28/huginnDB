@@ -2,12 +2,27 @@
  * @vitest-environment jsdom
  *
  * The query panel's contract with `serverFilters`: it seeds from them, applies
- * back exactly what it shows, follows them while its draft is untouched and
- * keeps a touched draft when they move underneath it. The last two are the
+ * back exactly what it shows, follows them while its draft says the same and
+ * keeps an edited draft when they move underneath it. The last two are the
  * rule its module header states, and the easiest part to break silently.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+const describeTableQuery = vi.fn();
+const openQueryTab = vi.fn();
+vi.mock("@/lib/tauri", () => ({
+  api: { describeTableQuery: (q: unknown) => describeTableQuery(q) },
+}));
+vi.mock("@/lib/tabs/openQueryTab", () => ({
+  openQueryTab: (id: string, opts: unknown) => openQueryTab(id, opts),
+}));
 
 import "@/lib/i18n";
 import { QueryPanel } from "./QueryPanel";
@@ -47,6 +62,7 @@ describe("QueryPanel", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: byCode,
       projection: undefined,
+      raw: "",
     });
   });
 
@@ -66,6 +82,7 @@ describe("QueryPanel", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: [{ column: "code", op: "eq", value: "IMPCR02" }],
       projection: undefined,
+      raw: "",
     });
   });
 
@@ -177,6 +194,7 @@ describe("QueryPanel projection", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: byCode,
       projection: { fields: ["user"], exclude: false },
+      raw: "",
     });
   });
 
@@ -207,6 +225,7 @@ describe("QueryPanel projection", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: [],
       projection: { fields: ["configuration"], exclude: true },
+      raw: "",
     });
   });
 
@@ -224,6 +243,145 @@ describe("QueryPanel projection", () => {
     );
     fireEvent.click(screen.getByRole("radio", { name: "Choose" }));
     fireEvent.click(screen.getByRole("button", { name: /^Apply/ }));
-    expect(onApply).toHaveBeenCalledWith({ filters: [], projection: undefined });
+    expect(onApply).toHaveBeenCalledWith({
+      filters: [],
+      projection: undefined,
+      raw: "",
+    });
+  });
+});
+
+describe("QueryPanel expression and result", () => {
+  const base = {
+    connectionId: "c1",
+    table: "device",
+    limit: 100,
+    offset: 0,
+  };
+
+  it("applies a hand-written expression alongside the conditions", () => {
+    const onApply = vi.fn();
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={byCode}
+        focus={null}
+        onApply={onApply}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "SQL expression" }));
+    fireEvent.change(screen.getByLabelText("Expression"), {
+      target: { value: "qty > 3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    expect(onApply).toHaveBeenCalledWith({
+      filters: byCode,
+      projection: undefined,
+      raw: "qty > 3",
+    });
+  });
+
+  it("shows the statement the draft would run, and opens it in an editor", async () => {
+    describeTableQuery.mockResolvedValue({
+      text: "SELECT * FROM device WHERE (\nqty > 3\n) LIMIT 100 OFFSET 0",
+      language: "sql",
+    });
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        appliedRaw="qty > 3"
+        preview={base}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/SELECT \* FROM device/)).toBeTruthy(),
+    );
+    // The draft, not just the base, is what was described.
+    expect(describeTableQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ table: "device", raw: "qty > 3" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open in editor" }));
+    expect(openQueryTab).toHaveBeenCalledWith("c1", {
+      sql: expect.stringContaining("SELECT * FROM device"),
+    });
+  });
+
+  it("blocks Apply while the draft does not describe", async () => {
+    describeTableQuery.mockRejectedValue("expression: a ; would end the statement");
+    const onApply = vi.fn();
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        appliedRaw="1 = 1; DROP TABLE t"
+        preview={base}
+        focus={null}
+        onApply={onApply}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(
+      (screen.getByRole("button", { name: /^Apply/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+});
+
+describe("QueryPanel regressions from review", () => {
+  it("does not claim unapplied changes after an edit is undone", () => {
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={byCode}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Choose" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    fireEvent.click(screen.getByRole("button", { name: "SQL expression" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove the expression" }),
+    );
+    expect(screen.queryByText("Unapplied changes")).toBeNull();
+
+    // A real change still says so.
+    fireEvent.change(valueInputs()[0], { target: { value: "IMPCR02" } });
+    expect(screen.getByText("Unapplied changes")).toBeTruthy();
+  });
+
+  it("shows the statement on one line until it is expanded", async () => {
+    describeTableQuery.mockResolvedValue({
+      text: "db.device.find({\n  user: \"itbacking\"\n}).limit(100)",
+      language: "mongodb",
+    });
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        document
+        preview={{ connectionId: "c1", table: "device", limit: 100, offset: 0 }}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const collapsed = await screen.findByText(
+      'db.device.find({ user: "itbacking" }).limit(100)',
+    );
+    expect(collapsed.tagName).toBe("CODE");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the whole statement" }),
+    );
+    const pre = document.querySelector("pre");
+    expect(pre?.textContent).toContain("\n  user:");
   });
 });

@@ -145,6 +145,13 @@ addresses every edit by it — and a **Fields** chip under the toolbar names the
 projection while it is on. *Export query results* writes the projected
 documents, in the grid's order.
 
+**Anything the conditions cannot say goes in the expression.** Below the
+conditions, *JSON expression* takes a filter document in the query tab's own
+syntax — `{ qty: { $gt: 3 }, code: /^IMPCR/ }` — ANDed with the conditions and
+the search. The panel's *Result* row shows the whole `db.<collection>.find(…)`
+the draft would run, projection, sort and page included, and **Open in editor**
+hands it to a query tab that runs it as written.
+
 One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
 the new key plus an `$unset` of the old one, and doing that safely needs one
 atomic document-level update rather than the per-field writes this view uses.

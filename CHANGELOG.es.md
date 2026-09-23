@@ -10,6 +10,48 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Escribe el filtro a mano, y mira la consulta que lanza.** La fila
+  *Filtro* del panel de consulta admite una **expresión** junto a sus
+  condiciones: una condición tal como la escribirías tras el `WHERE` en SQL, o
+  un documento de filtro en MongoDB con la sintaxis de la pestaña de consulta
+  (claves sin comillas, `ObjectId(…)`, `ISODate(…)`, expresiones regulares).
+  Se combina con AND con las condiciones, los chips y la búsqueda en lugar de
+  sustituirlos, así que no hay que convertir nada entre las dos formas y los
+  chips siguen correspondiéndose uno a uno con las filas del panel. Mientras
+  está activa aparece como chip **Expresión**, y cuenta para el recuento, la
+  exportación y la pestaña guardada como todo lo demás del panel.
+
+  Una expresión SQL tiene que seguir siendo una sola condición. El panel
+  rechaza un `;` fuera de una cadena o un comentario, los paréntesis
+  desequilibrados y una cadena o un `/* comentario` sin cerrar: las tres formas
+  en que un fragmento insertado en el `SELECT` de la navegación podría
+  terminarlo antes de tiempo, escaparse del `AND` o tragarse el `LIMIT`. No es
+  una barrera de seguridad: la pestaña de consulta de al lado ejecuta
+  cualquier cosa.
+
+  Una fila nueva, **Resultado**, muestra la sentencia que lanzaría el
+  borrador del panel, construida por el mismo código del backend que usa la
+  navegación, así que no puede decir otra cosa que lo que se ejecuta. Ocupa
+  una sola línea; su botón de desplegar abre la sentencia formateada en un
+  recuadro de altura limitada, para que un filtro largo de MongoDB no empuje
+  las filas fuera de la vista. En SQL
+  los valores aparecen incrustados, solo para leerlos. MongoDB se muestra
+  como un `db.<colección>.find(…)` con la gramática de la pestaña de consulta.
+  **Copiar** y **Abrir en el editor** la llevan a otro sitio; lo segundo abre
+  una pestaña de consulta que la ejecuta tal cual: la salida para todo lo que
+  el panel no sabe expresar. Una expresión que no se puede interpretar
+  muestra ahí su error, y Aplicar queda desactivado hasta que se corrija.
+
+  *Actualización masiva* no puede llevar una expresión (su lado de
+  coincidencia solo admite condiciones), así que mientras hay una activa lo
+  avisa encima de sus condiciones.
+
+- **Ir a fila.** El pie de la tabla admite un número de fila y mueve la página
+  para que empiece ahí: la fila 250 muestra 250–349, el mismo rango en que ya
+  cuenta el pie. Es la respuesta de la tabla al *Skip* de Compass: unos campos
+  Skip y Limit aparte se habrían peleado con el paginador por el mismo
+  desplazamiento.
+
 - **Proyección: elige qué campos devuelve una tabla o una colección.** El
   panel de consulta tiene una segunda fila. En SQL es **Columnas** (*Todas* /
   *Elegir*); en MongoDB es **Proyección** (*Todos* / *Incluir* / *Excluir*).
@@ -84,9 +126,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
   Nada llega al servidor hasta **Aplicar** (o Ctrl/⌘+Enter dentro del panel).
   Si los filtros cambian desde fuera con el panel abierto (la ✕ de un chip, un
-  *Filtrar por este valor* con clic derecho), un panel sin tocar los sigue. Un
-  panel que has editado conserva tus cambios y avisa de *Cambios sin aplicar*;
-  **Restablecer** vuelve a lo que está en vigor. Cerrar el panel descarta los
+  *Filtrar por este valor* con clic derecho), un panel que dice lo mismo que lo
+  aplicado los sigue. Un panel cuyo borrador es distinto conserva tus cambios y
+  avisa de *Cambios sin aplicar* —es una comparación, así que deshacer un
+  cambio lo quita—; **Restablecer** vuelve a lo que está en vigor. Cerrar el panel descarta los
   cambios sin aplicar, como hacía cancelar el diálogo.
 
   Es la superficie donde crecerá el resto de la barra de consulta: la

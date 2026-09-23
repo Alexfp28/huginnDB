@@ -699,7 +699,10 @@
       "projection": "Fields",
       "projectionExcluding": "all but {{fields}}",
       "editProjection": "Edit the projection",
-      "removeProjection": "Return every field again"
+      "removeProjection": "Return every field again",
+      "expression": "Expression",
+      "editExpression": "Edit the expression",
+      "removeExpression": "Remove the expression"
     },
     "sort": {
       "button": "Sort",
@@ -724,6 +727,7 @@
     "refresh": "Refresh",
     "perPage": "{{count}}/page",
     "approxTotal": "Approximate total (engine estimate). Filter or search for the exact count.",
+    "goToRow": "Go to row",
     "prevPage": "Previous page",
     "nextPage": "Next page",
     "loading": "Loading…",
@@ -757,7 +761,18 @@
       "keyLocked": "The primary key is always returned, so every row stays editable.",
       "idLocked": "_id is always returned: without it a document cannot be edited.",
       "idNotExcludable": "_id cannot be excluded: without it a document cannot be edited.",
-      "pickHint": "Nothing picked yet — until you add one, every field comes back."
+      "pickHint": "Nothing picked yet — until you add one, every field comes back.",
+      "expression": "Expression",
+      "expressionSqlHint": "And also — a SQL condition, as you would write it after WHERE:",
+      "expressionMongoHint": "And also — a filter document, in the query tab's syntax:",
+      "addExpressionSql": "SQL expression",
+      "addExpressionMongo": "JSON expression",
+      "removeExpression": "Remove the expression",
+      "result": "Result",
+      "copy": "Copy",
+      "openInEditor": "Open in editor",
+      "expandResult": "Show the whole statement",
+      "collapseResult": "Back to one line"
     },
     "filter": {
       "loadingSchema": "Query — loading the field list…",
@@ -814,6 +829,7 @@
     "bulkUpdate": {
       "toolbarTitle": "Update multiple rows/documents at once",
       "toolbarLabel": "Bulk update…",
+      "expressionIgnored": "The query's hand-written expression is not applied here — only the conditions below are. Check the preview's count before updating.",
       "titleRows": "Update matching rows",
       "titleDocuments": "Update matching documents",
       "description": "Set one or more columns/fields on every row or document that matches the conditions below.",
