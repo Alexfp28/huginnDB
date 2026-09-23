@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Explain, from the query panel.** The *Result* line has an **Explain**
+  button: the plan the panel's draft would use, read without running it, in a
+  box of bounded height under the statement. It is the engine's own answer —
+  `EXPLAIN (FORMAT JSON)` on PostgreSQL, `EXPLAIN FORMAT=JSON` on MySQL,
+  `EXPLAIN QUERY PLAN` on SQLite, and MongoDB's `explain` at `queryPlanner`
+  verbosity — shown as JSON the way Pulse already shows it. The SQL plan is read
+  from the very page statement the browse runs, with its real bound values, so
+  it is the plan of what executes; collation, hint and projection included. A
+  plan read for one draft is dropped as soon as the draft changes. SQL Server is
+  refused with the reason: its plan needs `SHOWPLAN` in a batch of its own,
+  which the panel cannot issue yet.
+
 - **Collation and an index hint, per browse.** The query panel's **Advanced**
   row — folded to one line until opened — sets two things the planner and the
   sort normally decide on their own:

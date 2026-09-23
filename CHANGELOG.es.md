@@ -10,6 +10,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Explicar, desde el panel de consulta.** La línea *Resultado* tiene un
+  botón **Explicar**: el plan que usaría el borrador del panel, leído sin
+  ejecutarlo, en un recuadro de altura limitada bajo la sentencia. Es la
+  respuesta del propio motor —`EXPLAIN (FORMAT JSON)` en PostgreSQL,
+  `EXPLAIN FORMAT=JSON` en MySQL, `EXPLAIN QUERY PLAN` en SQLite y el `explain`
+  de MongoDB con verbosidad `queryPlanner`—, mostrada como JSON igual que ya lo
+  hace Pulse. El plan SQL se lee de la misma sentencia de página que ejecuta la
+  navegación, con sus valores enlazados reales, así que es el plan de lo que se
+  ejecuta, con collation, hint y proyección incluidos. Un plan leído para un
+  borrador se descarta en cuanto el borrador cambia. SQL Server se rechaza con
+  el motivo: su plan necesita `SHOWPLAN` en un lote propio, que el panel aún no
+  puede emitir.
+
 - **Collation e índice (hint), por navegación.** La fila **Avanzado** del
   panel de consulta —plegada a una línea hasta que se abre— fija dos cosas que
   el planificador y el orden deciden normalmente por su cuenta:

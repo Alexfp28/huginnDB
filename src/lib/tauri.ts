@@ -746,6 +746,14 @@ export const api = {
     invoke<QueryPreview>("describe_table_query", { query }),
 
   /**
+   * The plan the browse `query` would use, without running it — the query
+   * panel's *Explain*. Engine-native JSON, the same shape `pulseExplain`
+   * returns; rejects on SQL Server, whose plan needs a batch of its own.
+   */
+  explainTableQuery: (query: TableQuery) =>
+    invoke<PulseExplainPlan>("explain_table_query", { query }),
+
+  /**
    * UPDATE one column of one row addressed by its (possibly composite)
    * primary key. `pkColumns` carries every column that participates in
    * the PK, with `pkValues` holding the parallel tuple of values for the

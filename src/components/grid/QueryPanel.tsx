@@ -76,6 +76,7 @@ import {
   Code2,
   Copy,
   KeyRound,
+  ListTree,
   Lock,
   Plus,
   X,
@@ -778,10 +779,14 @@ function ProjectionEditor({
 }
 
 /** What the *Result* line is showing: the statement, the error that stops
- *  it, or neither while the first answer is on its way. */
+ *  it, or neither while the first answer is on its way — plus the draft query
+ *  itself, which *Explain* sends as is. */
 interface PreviewState {
   preview: QueryPreview | null;
   error: string | null;
+  query: TableQuery | null;
+  /** The draft's identity: a plan read for another key is stale. */
+  key: string;
 }
 
 /**
@@ -793,7 +798,7 @@ function useQueryPreview(
   base: QueryPanelPreviewBase | undefined,
   draft: Pick<TableQuery, "filters" | "raw" | "projection" | "collation" | "hint">,
 ): PreviewState {
-  const [state, setState] = useState<PreviewState>({
+  const [state, setState] = useState<Pick<PreviewState, "preview" | "error">>({
     preview: null,
     error: null,
   });
@@ -826,7 +831,7 @@ function useQueryPreview(
     );
   }, []);
   useDebouncedPreview(key, run);
-  return state;
+  return { ...state, query, key };
 }
 
 /**
@@ -849,6 +854,23 @@ function ResultLine({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const [plan, setPlan] = useState<PlanState | null>(null);
+  // A plan read for an earlier draft describes a different query: drop it
+  // rather than show it next to a statement it does not belong to.
+  const current = plan && plan.key === result.key ? plan : null;
+
+  function explain() {
+    const q = result.query;
+    if (!q) return;
+    const key = result.key;
+    setPlan({ key, loading: true });
+    api.explainTableQuery(q).then(
+      (p) => setPlan((s) => (s?.key === key ? { key, raw: p.raw } : s)),
+      (e: unknown) =>
+        setPlan((s) => (s?.key === key ? { key, error: String(e) } : s)),
+    );
+  }
+
   if (result.error) {
     return (
       <p
@@ -862,44 +884,100 @@ function ResultLine({
   const text = result.preview?.text ?? "";
   const oneLine = text.replace(/\s*\n\s*/g, " ");
   return (
-    <div className="flex items-start gap-1 rounded-md border border-border bg-background py-0.5 pl-2 pr-0.5">
-      {expanded ? (
-        <pre className="max-h-32 min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-all py-1 font-mono text-2xs">
-          {text || "…"}
-        </pre>
-      ) : (
-        <code className="min-w-0 flex-1 truncate py-1 font-mono text-2xs leading-4">
-          {oneLine || "…"}
-        </code>
-      )}
-      <div className="flex shrink-0 items-center">
+    <div className="space-y-1.5">
+      <div className="flex items-start gap-1 rounded-md border border-border bg-background py-0.5 pl-2 pr-0.5">
+        {expanded ? (
+          <pre className="max-h-32 min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-all py-1 font-mono text-2xs">
+            {text || "…"}
+          </pre>
+        ) : (
+          <code className="min-w-0 flex-1 truncate py-1 font-mono text-2xs leading-4">
+            {oneLine || "…"}
+          </code>
+        )}
+        <div className="flex shrink-0 items-center">
+          <IconButton
+            size="xs"
+            icon={expanded ? ChevronsDownUp : ChevronsUpDown}
+            label={
+              expanded
+                ? t("tableData.query.collapseResult")
+                : t("tableData.query.expandResult")
+            }
+            aria-expanded={expanded}
+            disabled={!text}
+            onClick={() => setExpanded((e) => !e)}
+          />
+          <IconButton
+            size="xs"
+            icon={Copy}
+            label={t("tableData.query.copy")}
+            disabled={!text}
+            onClick={() => void copyToClipboard(text)}
+          />
+          <IconButton
+            size="xs"
+            icon={Code2}
+            label={t("tableData.query.openInEditor")}
+            disabled={!text}
+            onClick={() => openQueryTab(connectionId, { sql: text })}
+          />
+          <IconButton
+            size="xs"
+            icon={ListTree}
+            label={t("tableData.query.explain")}
+            disabled={!text || !result.query}
+            loading={current?.loading}
+            onClick={explain}
+          />
+        </div>
+      </div>
+      {current && <PlanBox plan={current} onClose={() => setPlan(null)} />}
+    </div>
+  );
+}
+
+/** A plan request for one draft (`key`): in flight, answered, or failed. */
+interface PlanState {
+  key: string;
+  loading?: boolean;
+  raw?: unknown;
+  error?: string;
+}
+
+/**
+ * The plan under the *Result* line — engine-native JSON, as Pulse shows it,
+ * in a box of bounded height for the same reason the Result line folds: the
+ * panel must not push the rows out of view.
+ */
+function PlanBox({ plan, onClose }: { plan: PlanState; onClose: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-md border border-border bg-background">
+      <div className="flex items-center justify-between gap-2 border-b border-border/60 py-0.5 pl-2 pr-0.5">
+        <span className="text-2xs font-medium text-muted-foreground">
+          {t("tableData.query.plan")}
+        </span>
         <IconButton
           size="xs"
-          icon={expanded ? ChevronsDownUp : ChevronsUpDown}
-          label={
-            expanded
-              ? t("tableData.query.collapseResult")
-              : t("tableData.query.expandResult")
-          }
-          aria-expanded={expanded}
-          disabled={!text}
-          onClick={() => setExpanded((e) => !e)}
-        />
-        <IconButton
-          size="xs"
-          icon={Copy}
-          label={t("tableData.query.copy")}
-          disabled={!text}
-          onClick={() => void copyToClipboard(text)}
-        />
-        <IconButton
-          size="xs"
-          icon={Code2}
-          label={t("tableData.query.openInEditor")}
-          disabled={!text}
-          onClick={() => openQueryTab(connectionId, { sql: text })}
+          icon={X}
+          label={t("tableData.query.closePlan")}
+          onClick={onClose}
         />
       </div>
+      {plan.loading ? (
+        <p className="px-2 py-1.5 text-2xs text-muted-foreground">
+          {t("pulse.explain.loading")}
+        </p>
+      ) : plan.error ? (
+        <p role="alert" className="px-2 py-1.5 font-mono text-2xs text-destructive">
+          {t("pulse.explain.error")} {plan.error}
+        </p>
+      ) : (
+        <pre className="max-h-48 overflow-auto px-2 py-1.5 font-mono text-3xs leading-relaxed">
+          {JSON.stringify(plan.raw, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }

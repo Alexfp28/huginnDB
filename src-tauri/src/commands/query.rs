@@ -369,6 +369,88 @@ fn sql_page_statement(
     ))
 }
 
+/// The `EXPLAIN` form each SQL engine reads a plan with **without running the
+/// statement**. SQL Server's plan needs `SET SHOWPLAN_XML ON` in a batch of its
+/// own, which the single-statement executor cannot issue, so it is refused with
+/// that reason rather than approximated.
+fn explain_prefix(dialect: Dialect) -> AppResult<&'static str> {
+    match dialect {
+        Dialect::Postgres => Ok("EXPLAIN (FORMAT JSON) "),
+        Dialect::Mysql => Ok("EXPLAIN FORMAT=JSON "),
+        Dialect::Sqlite => Ok("EXPLAIN QUERY PLAN "),
+        Dialect::MsSql => Err(AppError::UnsupportedDriver(
+            "explain: SQL Server's plan needs SHOWPLAN in a batch of its own, which the \
+             query panel cannot issue yet"
+                .into(),
+        )),
+    }
+}
+
+/// Turn the rows an `EXPLAIN` returned into the plan the panel renders.
+///
+/// PostgreSQL and MySQL answer with one JSON document in one cell — decoded
+/// already on PostgreSQL (`json` column), as text on MySQL — so that cell *is*
+/// the plan. SQLite's `EXPLAIN QUERY PLAN` answers with rows
+/// (`id, parent, notused, detail`), kept as one object per step, which is the
+/// tree the sqlite3 shell draws.
+fn plan_from_rows(
+    dialect: Dialect,
+    columns: &[(String, String)],
+    rows: Vec<Vec<serde_json::Value>>,
+) -> serde_json::Value {
+    use serde_json::Value;
+    match dialect {
+        Dialect::Sqlite => Value::Array(
+            rows.into_iter()
+                .map(|r| {
+                    let mut step = serde_json::Map::new();
+                    for (i, (name, _)) in columns.iter().enumerate() {
+                        if name == "notused" {
+                            continue;
+                        }
+                        step.insert(name.clone(), r.get(i).cloned().unwrap_or(Value::Null));
+                    }
+                    Value::Object(step)
+                })
+                .collect(),
+        ),
+        _ => match rows.into_iter().next().and_then(|r| r.into_iter().next()) {
+            Some(Value::String(text)) => serde_json::from_str(&text).unwrap_or(Value::String(text)),
+            Some(v) => v,
+            None => Value::Null,
+        },
+    }
+}
+
+/// Read the plan the browse `query` would use, without running it — the
+/// query panel's *Explain*.
+///
+/// SQL: the page statement [`sql_page_statement`] builds for the browse itself,
+/// prefixed by [`explain_prefix`] and run with its **real binds** (not the
+/// Result line's inlined literals), so the plan is the plan of what executes.
+/// MongoDB: Pulse's `explain` over the Result line's shell statement, at
+/// `queryPlanner` verbosity, which plans and does not execute.
+#[tauri::command]
+pub async fn explain_table_query(
+    state: State<'_, AppState>,
+    query: TableQuery,
+) -> AppResult<crate::pulse::ExplainPlan> {
+    query.filter.validate()?;
+    let pool = state.pool_for(&query.connection_id)?;
+    if let DbPool::Mongo(conn) = &pool {
+        let text = crate::db::mongo::query::describe_find_shell(&query)?;
+        return crate::db::mongo::pulse::explain(conn, &text).await;
+    }
+    let dialect = Dialect::try_of(&pool)?;
+    let prefix = explain_prefix(dialect)?;
+    let (sql, binds) = sql_page_statement(dialect, &query)?;
+    let (columns, rows) =
+        crate::db::exec::query_rows(&pool, &format!("{prefix}{sql}"), &binds).await?;
+    Ok(crate::pulse::ExplainPlan {
+        raw: plan_from_rows(dialect, &columns, rows),
+    })
+}
+
 /// What the query panel's *Result* line shows: the statement a browse would
 /// run, in the language of the connection's own editor.
 #[derive(Debug, Serialize)]
@@ -3634,6 +3716,47 @@ mod filter_tests {
         .unwrap();
         assert_eq!(nonblank(&q.collation), Some("utf8mb4_bin"));
         assert_eq!(nonblank(&q.hint), Some("idx_code"));
+    }
+
+    // --- The query panel's Explain -----------------------------------------
+
+    #[test]
+    fn explain_never_runs_the_statement_and_refuses_sql_server() {
+        // None of the three prefixes executes: ANALYZE is what would.
+        for d in [Dialect::Postgres, Dialect::Mysql, Dialect::Sqlite] {
+            let p = explain_prefix(d).unwrap();
+            assert!(p.starts_with("EXPLAIN"), "{p}");
+            assert!(!p.contains("ANALYZE"), "{p}");
+        }
+        assert!(explain_prefix(Dialect::MsSql).is_err());
+    }
+
+    #[test]
+    fn plan_from_rows_reads_each_engine_s_answer() {
+        let one = |v: serde_json::Value| vec![vec![v]];
+        let col = vec![("QUERY PLAN".to_string(), "json".to_string())];
+        // PostgreSQL: the json cell, decoded or not.
+        assert_eq!(
+            plan_from_rows(Dialect::Postgres, &col, one(json!([{ "Plan": {} }]))),
+            json!([{ "Plan": {} }])
+        );
+        // MySQL: JSON as text.
+        assert_eq!(
+            plan_from_rows(Dialect::Mysql, &col, one(json!("{\"query_block\":{}}"))),
+            json!({ "query_block": {} })
+        );
+        // SQLite: one step per row, without the unused column.
+        let cols = vec![
+            ("id".to_string(), "int".to_string()),
+            ("parent".to_string(), "int".to_string()),
+            ("notused".to_string(), "int".to_string()),
+            ("detail".to_string(), "text".to_string()),
+        ];
+        let rows = vec![vec![json!(2), json!(0), json!(0), json!("SCAN t")]];
+        assert_eq!(
+            plan_from_rows(Dialect::Sqlite, &cols, rows),
+            json!([{ "id": 2, "parent": 0, "detail": "SCAN t" }])
+        );
     }
 
     // --- The query panel's expression ------------------------------------
