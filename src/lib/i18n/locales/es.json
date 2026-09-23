@@ -2286,6 +2286,27 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_27_0": {
+        "tagline": "El CREATE de la tabla a un clic, un diálogo de borrado que te dice qué depende de ella y un timeout que espera lo que tu servidor necesite.",
+        "items": {
+          "createStatement": {
+            "title": "Copia el CREATE de una tabla",
+            "body": "El editor de estructura tiene una nueva sección CREATE con la definición tal como la guarda el servidor — motor, charset, comentarios y particiones en MySQL/MariaDB; índices y triggers en SQLite — y un botón Copiar. En PostgreSQL y SQL Server no aparece, en vez de reconstruirla incompleta."
+          },
+          "dropTableReferences": {
+            "title": "Mira qué referencia una tabla antes de borrarla",
+            "body": "El diálogo de borrado lista ahora cada clave foránea de otra tabla que apunta a esta, como tabla (columnas) → restricción, antes de confirmar — en lugar de que el servidor rechace el borrado con un error que muchas veces no nombra ninguna tabla."
+          },
+          "operationTimeout": {
+            "title": "Un timeout de operación que puedes ajustar",
+            "body": "El límite de 20 segundos al listar bases de datos y tablas es ahora un valor por defecto: cámbialo en Ajustes → Conexiones o sobrescríbelo por conexión para ese servidor con cientos de bases de datos. Las consultas que lanzas tú siguen sin límite, como antes."
+          },
+          "mongoFilterTypes": {
+            "title": "Los filtros de MongoDB dicen qué tipo comparan",
+            "body": "Cada condición puede fijar el tipo de su valor — Auto, String, Number, Long, Boolean, Date u ObjectId — y los chips lo muestran a la manera del shell. Además, el filtro toma el tipo del campo de la página en pantalla, así que ya no deja de filtrar en silencio cuando el tipo guardado de un campo ha cambiado."
+          }
+        }
+      },
       "1_26_0": {
         "tagline": "Explora Open VSX en busca de un tema sin salir de la ventana, o dale a la app un .vsix y recupera tanto los colores exactos de tu editor como una paleta de la app derivada de ellos.",
         "items": {

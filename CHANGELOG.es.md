@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.27.0] — 2026-09-23
+
 ### Añadido
 
 - **La sentencia `CREATE` de la tabla, lista para copiar, en el editor de

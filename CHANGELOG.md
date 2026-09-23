@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.27.0] — 2026-09-23
+
 ### Added
 
 - **The table's `CREATE` statement, ready to copy, in the structure editor.**

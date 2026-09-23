@@ -2286,6 +2286,27 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_27_0": {
+        "tagline": "The table's own CREATE statement one click away, a drop dialog that tells you what depends on the table, and a timeout that waits as long as your server needs.",
+        "items": {
+          "createStatement": {
+            "title": "Copy a table's CREATE statement",
+            "body": "The structure editor has a new CREATE section showing the definition exactly as the server stores it — engine, charset, comments and partitions on MySQL/MariaDB; indexes and triggers on SQLite — with a Copy button. It is left out on PostgreSQL and SQL Server rather than rebuilt incompletely."
+          },
+          "dropTableReferences": {
+            "title": "See what references a table before dropping it",
+            "body": "The drop dialog now lists every foreign key on another table that points at this one, as table (columns) → constraint, before you confirm — instead of the server refusing the drop with an error that often names no table at all."
+          },
+          "operationTimeout": {
+            "title": "An operation timeout you can set",
+            "body": "The 20-second limit on listing databases and tables is now a default: change it in Settings → Connections, or override it per connection for that server with hundreds of databases. Queries you run yourself stay unbounded, as before."
+          },
+          "mongoFilterTypes": {
+            "title": "MongoDB filters say which type they compare",
+            "body": "Each condition can pin its value type — Auto, String, Number, Long, Boolean, Date or ObjectId — and chips print it the shell's way. The filter also takes a field's type from the page on screen, so it no longer silently matches nothing when a field's stored type has changed."
+          }
+        }
+      },
       "1_26_0": {
         "tagline": "Browse Open VSX for a theme without leaving the window, or hand the app a .vsix and get back both your editor's exact colours and an app palette derived from them.",
         "items": {

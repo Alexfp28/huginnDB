@@ -89,6 +89,33 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.27.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_27_0.tagline",
+    highlights: [
+      {
+        icon: SquareTerminal,
+        titleKey: "whatsNew.releases.1_27_0.items.createStatement.title",
+        bodyKey: "whatsNew.releases.1_27_0.items.createStatement.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_27_0.items.dropTableReferences.title",
+        bodyKey: "whatsNew.releases.1_27_0.items.dropTableReferences.body",
+      },
+      {
+        icon: Timer,
+        titleKey: "whatsNew.releases.1_27_0.items.operationTimeout.title",
+        bodyKey: "whatsNew.releases.1_27_0.items.operationTimeout.body",
+      },
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_27_0.items.mongoFilterTypes.title",
+        bodyKey: "whatsNew.releases.1_27_0.items.mongoFilterTypes.body",
+      },
+    ],
+  },
+  {
     version: "1.26.0",
     major: true,
     taglineKey: "whatsNew.releases.1_26_0.tagline",
