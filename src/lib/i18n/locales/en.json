@@ -800,7 +800,15 @@
     "section": {
       "columns": "Columns",
       "indexes": "Indexes",
-      "fks": "Foreign keys"
+      "fks": "Foreign keys",
+      "ddl": "CREATE"
+    },
+    "createDdl": {
+      "hint": "The table's definition as the server stores it — read-only.",
+      "copy": "Copy",
+      "copied": "CREATE statement copied",
+      "loading": "Loading CREATE statement…",
+      "failed": "Could not read the CREATE statement: {{message}}"
     },
     "col": {
       "name": "Name",

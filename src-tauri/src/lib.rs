@@ -357,6 +357,7 @@ pub fn run() {
             commands::pulse::pulse_sessions,
             commands::pulse::pulse_index_usage,
             commands::structure::get_table_structure,
+            commands::structure::get_table_create_ddl,
             commands::structure::preview_structure_change,
             commands::structure::apply_structure_change,
             commands::themes::read_vsix,
