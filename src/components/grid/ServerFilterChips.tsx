@@ -113,7 +113,7 @@ function filterValuesTooltip(f: ColumnFilter, typed: boolean): string | undefine
 }
 
 /**
- * One active server-side filter: a chip whose body opens the advanced filter
+ * One active server-side filter: a chip whose body opens the query panel
  * focused on this condition, plus a ✕ that removes it.
  *
  * **The body is the button, and the ✕ is its sibling — never its child.** A
@@ -121,8 +121,8 @@ function filterValuesTooltip(f: ColumnFilter, typed: boolean): string | undefine
  * un-nest them, so the ✕ would stop being inside the chip at all.
  *
  * Editing works by *index*: the chip's position in `serverFilters` is the row
- * index in `AdvancedFilterDialog`. That holds only because the dialog now
- * renders every filter shape, `in`/`not_in` included — see its docstring
+ * index in `QueryPanel`. That holds only because the panel renders every
+ * filter shape, `in`/`not_in` included — see its docstring
  * before changing either side.
  */
 export function ServerFilterChip({

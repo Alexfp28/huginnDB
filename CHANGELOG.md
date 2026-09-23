@@ -44,6 +44,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   in later releases). The backend is unchanged: it already accepted everything
   these controls send.
 
+### Changed
+
+- **The advanced filter is now a panel under the toolbar, not a dialog.** The
+  filter button (same place, same count badge) opens and closes a **Query**
+  section between the toolbar and the rows. It holds the same AND list of
+  conditions the dialog did, with the same field picker, operators and MongoDB
+  value types. The rows it shapes now stay visible under it instead of behind a
+  modal. Clicking a filter chip opens it on that chip's condition, as before.
+
+  Nothing reaches the server until **Apply** (or Ctrl/⌘+Enter inside the
+  panel). If the filters change from outside while it is open (a chip's ✕, a
+  right-click *Filter by this value*), an untouched panel follows them. A panel
+  you have edited keeps your edits and says *Unapplied changes*; **Reset** goes
+  back to what is in force. Closing the panel discards unapplied edits, like
+  cancelling the dialog did.
+
+  This is the surface the rest of the query bar grows into: projection, a raw
+  filter and a preview of the query that will run. The dialog is removed
+  rather than kept alongside it, so there is only ever one place that edits the
+  active filters.
+
 ## [1.27.0] — 2026-09-23
 
 ### Added

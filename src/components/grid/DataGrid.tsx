@@ -240,7 +240,7 @@ interface Props {
   typedFilterValues?: boolean;
   onAddFilter?: (f: ColumnFilter) => void;
   onRemoveFilter?: (index: number) => void;
-  /** Open the advanced filter focused on the condition at this index. */
+  /** Open the query panel focused on the condition at this index. */
   onEditFilter?: (index: number) => void;
 
   /**
@@ -317,6 +317,13 @@ interface Props {
    * that don't paginate see no change.
    */
   footer?: ReactNode;
+  /**
+   * Content rendered between the toolbar and the grid body — TableDataTab's
+   * query panel. Outside the scroll container on purpose: it must not scroll
+   * away with the rows it shapes, and its keys must not reach the grid's
+   * keyboard navigation (`data-kb-scope="grid"` is on the scroller).
+   */
+  belowToolbar?: ReactNode;
   /**
    * Whether to render the built-in "N rows of M" count in the toolbar
    * (default true). TableDataTab sets this false because its trailing slot
@@ -412,6 +419,7 @@ export function DataGrid({
   insertAlternatives,
   toolbarTrailing,
   footer,
+  belowToolbar,
   showRowCount = true,
   loading,
   viewMode = "table",
@@ -1172,6 +1180,7 @@ export function DataGrid({
         elapsedMs={result.elapsed_ms}
         truncated={result.truncated}
       />
+      {belowToolbar}
 
       {/* Scrollable data table, wrapped so the refetch overlay covers only the
           grid body (not the toolbar). */}

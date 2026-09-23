@@ -83,7 +83,7 @@ export interface GridToolbarItem {
 }
 
 interface GridToolbarProps {
-  /** Parent-supplied leading cluster (refresh, advanced filter). */
+  /** Parent-supplied leading cluster (refresh, query panel, sort). */
   toolbarLeading?: GridToolbarItem[];
   /** Parent-supplied cluster beside Insert (import/export, bulk update). */
   insertExtra?: GridToolbarItem[];
@@ -100,8 +100,8 @@ interface GridToolbarProps {
    *  `ServerFilterChips`' `valueText`. */
   typedFilterValues?: boolean;
   onRemoveFilter?: (index: number) => void;
-  /** Open the advanced filter focused on the condition at this index — the
-   *  chip's position in `serverFilters` is the dialog's row index. */
+  /** Open the query panel focused on the condition at this index — the
+   *  chip's position in `serverFilters` is the panel's row index. */
   onEditFilter?: (index: number) => void;
   /** The active sort, drawn as chips after the filter chips — in both view
    *  modes, because the list view has no headers to show it on. Absent (a
@@ -172,7 +172,7 @@ export function GridToolbar({
    *   things in the bar, and they're deliberate operations nobody triggers
    *   twice a minute.
    * - `collapseChrome` — the icon-only controls: the parent's leading cluster
-   *   (refresh, advanced filter) and the view controls (the table/list
+   *   (refresh, query panel, sort) and the view controls (the table/list
    *   toggle). Cheap in pixels, frequently used, so they only go when the pane
    *   is genuinely too narrow for anything but the search box.
    */
@@ -321,7 +321,7 @@ export function GridToolbar({
   const rowCountInBar = density !== "narrow" || !hasOverflow;
   const elapsedInBar = density === "wide" || !hasOverflow;
 
-  /* Toolbar layout: leading actions (refresh · advanced filter) · growing
+  /* Toolbar layout: leading actions (refresh · query · sort) · growing
         search box · filter chips  ——  then, right-aligned via the cluster's
         `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
         data/Bulk update, grouped right beside Insert) · optional row count ·

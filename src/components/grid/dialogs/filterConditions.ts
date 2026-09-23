@@ -1,9 +1,9 @@
 /**
  * Shared helpers for a single AND-composed column-filter condition —
- * column → operator → value — used by both {@link AdvancedFilterDialog}
- * (the DataGrid's advanced filter) and `BulkUpdateDialog` (the "match"
- * half of a bulk update). Extracted so the two dialogs can't drift on how
- * an operator maps to its allowed value shape or how a raw text input gets
+ * column → operator → value — used by both `QueryPanel` (the table
+ * browse's filter, which replaced the advanced filter dialog) and
+ * `BulkUpdateDialog` (the "match" half of a bulk update). Extracted so the
+ * two can't drift on how an operator maps to its allowed value shape or how a raw text input gets
  * coerced to a typed `ColumnFilter` value.
  *
  * Everything here is pure and covered by `filterConditions.test.ts`; the two
@@ -21,8 +21,8 @@ export const VALUELESS_OPS: FilterOp[] = ["is_null", "is_not_null"];
  * Operators whose payload is a value *list* (`values`) rather than
  * `value`/`value2`.
  *
- * Used to live — twice, independently — inside `AdvancedFilterDialog` and
- * `BulkUpdateDialog`, in both cases as the set of filters to *discard* when
+ * Used to live — twice, independently — inside the old advanced filter dialog
+ * and `BulkUpdateDialog`, in both cases as the set of filters to *discard* when
  * seeding a row, because neither row editor had a field for `values`. Both now
  * render them through {@link FilterValueListEditor}, so the constant's job is
  * the opposite one: telling the row which value control to show.
@@ -389,7 +389,7 @@ export function emptyDraft(column: string, key: number): FilterConditionDraft {
 /**
  * Apply a patch to a draft row.
  *
- * Shared so the two dialogs can't drift: `AdvancedFilterDialog` used to snap
+ * Shared so the two can't drift: the old advanced filter dialog used to snap
  * the operator when the column changed and `BulkUpdateDialog` did not, a
  * divergence with no reason behind it. That rule is gone entirely now that
  * {@link opsForColumn} offers every operator for every column — there is no

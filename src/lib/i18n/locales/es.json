@@ -728,11 +728,18 @@
     "deleteBodyWhere": "donde",
     "deleteBodyTrail": ". Esto no se puede deshacer.",
     "delete": "Eliminar",
+    "query": {
+      "title": "Consulta",
+      "open": "Mostrar la consulta",
+      "close": "Ocultar la consulta",
+      "filter": "Filtro",
+      "matchAll": "Deben cumplirse todas las condiciones (AND).",
+      "unapplied": "Cambios sin aplicar",
+      "reset": "Restablecer"
+    },
     "filter": {
-      "title": "Filtro avanzado",
-      "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
-      "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
-      "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
+      "loadingSchema": "Consulta — cargando la lista de campos…",
+      "schemaFailed": "La consulta necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
       "empty": "Aún no hay condiciones — añade una abajo.",
       "addRow": "Añadir condición",
       "removeRow": "Quitar condición",

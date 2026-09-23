@@ -46,6 +46,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   el resto llegan en versiones posteriores). El backend no cambia: ya aceptaba
   todo lo que envían estos controles.
 
+### Cambiado
+
+- **El filtro avanzado es ahora un panel bajo la barra, no un diálogo.** El
+  botón de filtro (en el mismo sitio y con el mismo contador) abre y cierra una
+  sección **Consulta** entre la barra y las filas. Tiene la misma lista de
+  condiciones en AND que el diálogo, con el mismo selector de campo, los mismos
+  operadores y los mismos tipos de valor de MongoDB. Las filas que filtra siguen
+  a la vista debajo, en lugar de quedar detrás de un modal. Hacer clic en un
+  chip de filtro lo abre en la condición de ese chip, como antes.
+
+  Nada llega al servidor hasta **Aplicar** (o Ctrl/⌘+Enter dentro del panel).
+  Si los filtros cambian desde fuera con el panel abierto (la ✕ de un chip, un
+  *Filtrar por este valor* con clic derecho), un panel sin tocar los sigue. Un
+  panel que has editado conserva tus cambios y avisa de *Cambios sin aplicar*;
+  **Restablecer** vuelve a lo que está en vigor. Cerrar el panel descarta los
+  cambios sin aplicar, como hacía cancelar el diálogo.
+
+  Es la superficie donde crecerá el resto de la barra de consulta: la
+  proyección, un filtro en bruto y una vista previa de la consulta que se va a
+  lanzar. El diálogo se retira en lugar de convivir con el panel, para que
+  haya un único sitio que edite los filtros activos.
+
 ## [1.27.0] — 2026-09-23
 
 ### Añadido
