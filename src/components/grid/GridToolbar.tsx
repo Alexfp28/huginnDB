@@ -32,11 +32,8 @@ import { IconButton } from "@/components/ui/icon-button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { GridSearchInput } from "@/components/grid/GridSearchInput";
-import {
-  ServerFilterChip,
-  ServerFilterSummary,
-} from "@/components/grid/ServerFilterChips";
-import { SortChip, SortSummary } from "@/components/grid/SortControls";
+import { ServerFilterChip } from "@/components/grid/ServerFilterChips";
+import { SortChip } from "@/components/grid/SortControls";
 import { useToolbarDensity } from "@/lib/grid/toolbarDensity";
 import { cn, formatNumber } from "@/lib/utils";
 import type { ColumnFilter, SortSpec } from "@/types";
@@ -83,7 +80,7 @@ export interface GridToolbarItem {
 }
 
 interface GridToolbarProps {
-  /** Parent-supplied leading cluster (refresh, advanced filter). */
+  /** Parent-supplied leading cluster (refresh, query panel, sort). */
   toolbarLeading?: GridToolbarItem[];
   /** Parent-supplied cluster beside Insert (import/export, bulk update). */
   insertExtra?: GridToolbarItem[];
@@ -100,8 +97,8 @@ interface GridToolbarProps {
    *  `ServerFilterChips`' `valueText`. */
   typedFilterValues?: boolean;
   onRemoveFilter?: (index: number) => void;
-  /** Open the advanced filter focused on the condition at this index — the
-   *  chip's position in `serverFilters` is the dialog's row index. */
+  /** Open the query panel focused on the condition at this index — the
+   *  chip's position in `serverFilters` is the panel's row index. */
   onEditFilter?: (index: number) => void;
   /** The active sort, drawn as chips after the filter chips — in both view
    *  modes, because the list view has no headers to show it on. Absent (a
@@ -172,7 +169,7 @@ export function GridToolbar({
    *   things in the bar, and they're deliberate operations nobody triggers
    *   twice a minute.
    * - `collapseChrome` — the icon-only controls: the parent's leading cluster
-   *   (refresh, advanced filter) and the view controls (the table/list
+   *   (refresh, query panel, sort) and the view controls (the table/list
    *   toggle). Cheap in pixels, frequently used, so they only go when the pane
    *   is genuinely too narrow for anything but the search box.
    */
@@ -321,8 +318,8 @@ export function GridToolbar({
   const rowCountInBar = density !== "narrow" || !hasOverflow;
   const elapsedInBar = density === "wide" || !hasOverflow;
 
-  /* Toolbar layout: leading actions (refresh · advanced filter) · growing
-        search box · filter chips  ——  then, right-aligned via the cluster's
+  /* Toolbar layout: leading actions (refresh · query · sort) · growing
+        search box  ——  then, right-aligned via the cluster's
         `ml-auto`: Insert · insertExtra (TableDataTab's Add/Export
         data/Bulk update, grouped right beside Insert) · optional row count ·
         trailing slot (view toggle) · elapsed time · overflow
@@ -334,180 +331,189 @@ export function GridToolbar({
         instead of wrapping onto a second row (`density`, measured on this
         element): at `compact` the labelled data actions go, at `narrow`
         everything but the search box does. `flex-wrap` is kept as a safety
-        net for the cases the breakpoints can't predict (a very long filter
-        chip, a future action), not as the normal behaviour. */
+        net for the cases the breakpoints can't predict (a future action),
+        not as the normal behaviour. The filter and sort chips are not in this
+        row at all: they get one of their own underneath (see below). */
+  const filterChips = serverFilters ?? [];
+  const sortChips = sort && onToggleSort && onRemoveSort ? sort : [];
+  const hasChipRow = filterChips.length > 0 || sortChips.length > 0;
+
   return (
-    <div
-      ref={toolbarRef}
-      className="flex flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-1.5 text-xs"
-    >
-      {!collapseChrome &&
-        toolbarLeading?.map((item) => (
-          <Fragment key={item.id}>{item.bar}</Fragment>
-        ))}
-      {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
-        <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
-      )}
-      <GridSearchInput
-        value={filterInput ?? globalFilter ?? ""}
-        onChange={onGlobalFilterChange}
-        onSubmit={onGlobalFilterSubmit}
-        history={searchHistory ?? []}
-      />
-      {/* Active server-side filters. They're content, not actions, so they
-          don't take part in the overflow-menu collapse above — but N chips
-          are the single widest thing in the bar (each one spells out
-          `column op value`), so from `compact` down they fold into one
-          summary chip whose dropdown still removes them individually.
-          Collapsing them only at `narrow` was measured and wasn't enough:
-          two chips still pushed a 700 px pane onto a second row, which is
-          the exact wrap this whole mechanism exists to prevent. */}
-      {serverFilters &&
-        serverFilters.length > 0 &&
-        (density !== "wide" ? (
-          <ServerFilterSummary
-            filters={serverFilters}
-            typedValues={typedFilterValues}
-            onRemove={onRemoveFilter}
-          />
-        ) : (
-          serverFilters.map((f, i) => (
-            <ServerFilterChip
-              key={`${f.column}-${f.op}-${i}`}
-              filter={f}
-              index={i}
-              typedValues={typedFilterValues}
-              onEdit={onEditFilter}
-              onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
-            />
-          ))
-        ))}
-      {/* The sort, as chips — same collapse rule as the filters beside it,
-          for the same reason: from `compact` down, one summary chip. */}
-      {sort &&
-        sort.length > 0 &&
-        onToggleSort &&
-        onRemoveSort &&
-        (density !== "wide" ? (
-          <SortSummary sort={sort} onRemove={onRemoveSort} />
-        ) : (
-          sort.map((s, i) => (
-            <SortChip
-              key={s.column}
-              spec={s}
-              rank={i + 1}
-              showRank={sort.length > 1}
-              onToggle={() => onToggleSort(s.column)}
-              onRemove={() => onRemoveSort(s.column)}
-            />
-          ))
-        ))}
-      {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
-          search box (+ filter chips) on the left and this group. Contents:
-          Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
-          · optional row count (query/view tabs) · trailing slot (view
-          toggle) · elapsed time. Wrapped so the whole group wraps as a unit
-          on narrow panes. */}
-      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-        {!collapseData && insertItem?.bar}
-        {!collapseData &&
-          insertExtra?.map((item) => (
-            <Fragment key={item.id}>{item.bar}</Fragment>
-          ))}
-        {showRowCount && rowCountInBar && (
-          <span className="tabular-nums text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {formatNumber(visibleRowCount)}
-            </span>{" "}
-            {t("dataGrid.rows")}
-            {total !== null && total !== undefined && (
-              <>
-                {" "}
-                {t("dataGrid.of")}{" "}
-                <span className="font-medium text-foreground">
-                  {formatNumber(total)}
-                </span>
-              </>
-            )}
-          </span>
-        )}
-        {/* Never gated by `showRowCount`/collapse — this is a warning about
-            missing data, not a "nice to have" readout, so it stays visible
-            even when the toolbar is squeezed. See `MAX_ADHOC_QUERY_ROWS`
-            in `src-tauri/src/commands/query.rs`. */}
-        {truncated && (
-          <span
-            className="flex items-center gap-1 rounded-sm border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning"
-            title={t("dataGrid.truncatedHint")}
-          >
-            <AlertTriangle className="h-3 w-3 shrink-0" />
-            {t("dataGrid.truncated")}
-          </span>
-        )}
+    <div className="border-b border-border bg-background text-xs">
+      <div
+        ref={toolbarRef}
+        className="flex flex-wrap items-center gap-2 px-3 py-1.5"
+      >
         {!collapseChrome &&
-          toolbarTrailing?.map((item) => (
+          toolbarLeading?.map((item) => (
             <Fragment key={item.id}>{item.bar}</Fragment>
           ))}
-        {/* The timing is the first thing to go: it's a readout nobody acts
-            on, and the overflow menu keeps showing it (with the row count)
-            once either is squeezed out of the bar. */}
-        {elapsedInBar && (
-          <span
-            className={cn(
-              "tabular-nums",
-              // Draw attention only when a query is slow; fast queries stay
-              // muted (colouring every timing green/amber would be noise).
-              elapsedMs > 2000
-                ? "text-destructive"
-                : elapsedMs > 500
-                  ? "text-warning"
-                  : "text-muted-foreground",
-            )}
-          >
-            {elapsedMs} ms
-          </span>
+        {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
+          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
         )}
-        {overflowGroups.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton
-                icon={MoreHorizontal}
-                label={t("dataGrid.moreActions")}
-              />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[13rem]">
-              {overflowGroups.map((group, gi) => (
-                <Fragment key={group.id}>
-                  {gi > 0 && <DropdownMenuSeparator />}
-                  {group.items.map((item) => (
-                    <Fragment key={item.id}>{item.menu}</Fragment>
-                  ))}
-                </Fragment>
-              ))}
-              {/* Readouts the bar no longer has room for. Not menu items —
-                  there's nothing to select — just the numbers, so collapsing
-                  the toolbar never hides information outright. */}
-              {(!elapsedInBar || (showRowCount && !rowCountInBar)) && (
+        <GridSearchInput
+          value={filterInput ?? globalFilter ?? ""}
+          onChange={onGlobalFilterChange}
+          onSubmit={onGlobalFilterSubmit}
+          history={searchHistory ?? []}
+        />
+        {/* Right-aligned cluster. `ml-auto` opens the gap between the growing
+            search box (+ filter chips) on the left and this group. Contents:
+            Insert · insertExtra (TableDataTab's Add/Export data/Bulk update)
+            · optional row count (query/view tabs) · trailing slot (view
+            toggle) · elapsed time. Wrapped so the whole group wraps as a unit
+            on narrow panes. */}
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          {!collapseData && insertItem?.bar}
+          {!collapseData &&
+            insertExtra?.map((item) => (
+              <Fragment key={item.id}>{item.bar}</Fragment>
+            ))}
+          {showRowCount && rowCountInBar && (
+            <span className="tabular-nums text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {formatNumber(visibleRowCount)}
+              </span>{" "}
+              {t("dataGrid.rows")}
+              {total !== null && total !== undefined && (
                 <>
-                  <DropdownMenuSeparator />
-                  <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
-                    {showRowCount && !rowCountInBar && (
-                      <>
-                        {formatNumber(visibleRowCount)} {t("dataGrid.rows")}
-                        {total !== null &&
-                          total !== undefined &&
-                          ` ${t("dataGrid.of")} ${formatNumber(total)}`}
-                        {!elapsedInBar && " · "}
-                      </>
-                    )}
-                    {!elapsedInBar && `${elapsedMs} ms`}
-                  </div>
+                  {" "}
+                  {t("dataGrid.of")}{" "}
+                  <span className="font-medium text-foreground">
+                    {formatNumber(total)}
+                  </span>
                 </>
               )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+            </span>
+          )}
+          {/* Never gated by `showRowCount`/collapse — this is a warning about
+              missing data, not a "nice to have" readout, so it stays visible
+              even when the toolbar is squeezed. See `MAX_ADHOC_QUERY_ROWS`
+              in `src-tauri/src/commands/query.rs`. */}
+          {truncated && (
+            <span
+              className="flex items-center gap-1 rounded-sm border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning"
+              title={t("dataGrid.truncatedHint")}
+            >
+              <AlertTriangle className="h-3 w-3 shrink-0" />
+              {t("dataGrid.truncated")}
+            </span>
+          )}
+          {!collapseChrome &&
+            toolbarTrailing?.map((item) => (
+              <Fragment key={item.id}>{item.bar}</Fragment>
+            ))}
+          {/* The timing is the first thing to go: it's a readout nobody acts
+              on, and the overflow menu keeps showing it (with the row count)
+              once either is squeezed out of the bar. */}
+          {elapsedInBar && (
+            <span
+              className={cn(
+                "tabular-nums",
+                // Draw attention only when a query is slow; fast queries stay
+                // muted (colouring every timing green/amber would be noise).
+                elapsedMs > 2000
+                  ? "text-destructive"
+                  : elapsedMs > 500
+                    ? "text-warning"
+                    : "text-muted-foreground",
+              )}
+            >
+              {elapsedMs} ms
+            </span>
+          )}
+          {overflowGroups.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton
+                  icon={MoreHorizontal}
+                  label={t("dataGrid.moreActions")}
+                />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[13rem]">
+                {overflowGroups.map((group, gi) => (
+                  <Fragment key={group.id}>
+                    {gi > 0 && <DropdownMenuSeparator />}
+                    {group.items.map((item) => (
+                      <Fragment key={item.id}>{item.menu}</Fragment>
+                    ))}
+                  </Fragment>
+                ))}
+                {/* Readouts the bar no longer has room for. Not menu items —
+                    there's nothing to select — just the numbers, so collapsing
+                    the toolbar never hides information outright. */}
+                {(!elapsedInBar || (showRowCount && !rowCountInBar)) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-1 text-xs tabular-nums text-muted-foreground">
+                      {showRowCount && !rowCountInBar && (
+                        <>
+                          {formatNumber(visibleRowCount)} {t("dataGrid.rows")}
+                          {total !== null &&
+                            total !== undefined &&
+                            ` ${t("dataGrid.of")} ${formatNumber(total)}`}
+                          {!elapsedInBar && " · "}
+                        </>
+                      )}
+                      {!elapsedInBar && `${elapsedMs} ms`}
+                    </div>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
+      {/* The active filters and sort, on a row of their own. They used to sit
+          inline after the search box, where they were the widest thing in
+          the bar (each filter chip spells out `column op value`) and shared
+          it with the search and every action. The cure then was folding them
+          into one summary chip from `compact` down, which hid the conditions
+          exactly when there were enough of them to matter. A row of their
+          own can simply wrap. It is content, not an action, so it takes no
+          part in the overflow-menu collapse, and it is absent when there is
+          nothing to show. */}
+      {hasChipRow && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/60 bg-muted/20 px-3 py-1">
+          {filterChips.length > 0 && (
+            <>
+              <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("dataGrid.chipRow.filters")}
+              </span>
+              {filterChips.map((f, i) => (
+                <ServerFilterChip
+                  key={`${f.column}-${f.op}-${i}`}
+                  filter={f}
+                  index={i}
+                  typedValues={typedFilterValues}
+                  onEdit={onEditFilter}
+                  onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
+                />
+              ))}
+            </>
+          )}
+          {filterChips.length > 0 && sortChips.length > 0 && (
+            <span aria-hidden className="mx-1 h-3.5 w-px shrink-0 bg-border" />
+          )}
+          {sortChips.length > 0 && onToggleSort && onRemoveSort && (
+            <>
+              <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("dataGrid.chipRow.sort")}
+              </span>
+              {sortChips.map((s, i) => (
+                <SortChip
+                  key={s.column}
+                  spec={s}
+                  rank={i + 1}
+                  showRank={sortChips.length > 1}
+                  onToggle={() => onToggleSort(s.column)}
+                  onRemove={() => onRemoveSort(s.column)}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -631,7 +631,6 @@
       "failed": "Could not insert: {{message}}"
     },
     "moreActions": "More actions",
-    "activeFilterCount": "{{count}} filters",
     "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",
@@ -694,6 +693,10 @@
       "insertHint": "Enter inserts · Esc discards",
       "changeType": "Change type"
     },
+    "chipRow": {
+      "filters": "Filters",
+      "sort": "Sort"
+    },
     "sort": {
       "button": "Sort",
       "menuTitle": "Sort by",
@@ -705,7 +708,6 @@
       "chipAsc": "{{field}}, ascending — click to reverse",
       "chipDesc": "{{field}}, descending — click to reverse",
       "chipRemove": "Remove {{field}} from the sort",
-      "activeCount": "{{count}} sort levels",
       "byAsc": "Sort ascending by {{field}}",
       "byDesc": "Sort descending by {{field}}",
       "removeField": "Remove {{field}} from the sort"
@@ -728,11 +730,18 @@
     "deleteBodyWhere": "where",
     "deleteBodyTrail": ". This cannot be undone.",
     "delete": "Delete",
+    "query": {
+      "title": "Query",
+      "open": "Show the query",
+      "close": "Hide the query",
+      "filter": "Filter",
+      "matchAll": "Every condition must hold (AND).",
+      "unapplied": "Unapplied changes",
+      "reset": "Reset"
+    },
     "filter": {
-      "title": "Advanced filter",
-      "loadingSchema": "Advanced filter — loading the field list…",
-      "schemaFailed": "Advanced filter needs the field list, which failed to load ({{message}}) — press refresh to try again",
-      "description": "Filter rows by one or more columns. All conditions must match (AND).",
+      "loadingSchema": "Query — loading the field list…",
+      "schemaFailed": "The query needs the field list, which failed to load ({{message}}) — press refresh to try again",
       "empty": "No conditions yet — add one below.",
       "addRow": "Add condition",
       "removeRow": "Remove condition",

@@ -660,7 +660,6 @@
       "failed": "No se pudo insertar: {{message}}"
     },
     "moreActions": "Más acciones",
-    "activeFilterCount": "{{count}} filtros",
     "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
@@ -694,6 +693,10 @@
       "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
     },
+    "chipRow": {
+      "filters": "Filtros",
+      "sort": "Orden"
+    },
     "sort": {
       "button": "Ordenar",
       "menuTitle": "Ordenar por",
@@ -705,7 +708,6 @@
       "chipAsc": "{{field}}, ascendente — clic para invertir",
       "chipDesc": "{{field}}, descendente — clic para invertir",
       "chipRemove": "Quitar {{field}} del orden",
-      "activeCount": "{{count}} criterios de orden",
       "byAsc": "Ordenar ascendente por {{field}}",
       "byDesc": "Ordenar descendente por {{field}}",
       "removeField": "Quitar {{field}} del orden"
@@ -728,11 +730,18 @@
     "deleteBodyWhere": "donde",
     "deleteBodyTrail": ". Esto no se puede deshacer.",
     "delete": "Eliminar",
+    "query": {
+      "title": "Consulta",
+      "open": "Mostrar la consulta",
+      "close": "Ocultar la consulta",
+      "filter": "Filtro",
+      "matchAll": "Deben cumplirse todas las condiciones (AND).",
+      "unapplied": "Cambios sin aplicar",
+      "reset": "Restablecer"
+    },
     "filter": {
-      "title": "Filtro avanzado",
-      "loadingSchema": "Filtro avanzado — cargando la lista de campos…",
-      "schemaFailed": "El filtro avanzado necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
-      "description": "Filtra filas por una o más columnas. Todas las condiciones deben cumplirse (AND).",
+      "loadingSchema": "Consulta — cargando la lista de campos…",
+      "schemaFailed": "La consulta necesita la lista de campos, que no se pudo cargar ({{message}}) — pulsa recargar para reintentarlo",
       "empty": "Aún no hay condiciones — añade una abajo.",
       "addRow": "Añadir condición",
       "removeRow": "Quitar condición",

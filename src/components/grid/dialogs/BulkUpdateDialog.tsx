@@ -2,8 +2,8 @@
  * Bulk update: apply a `$set`-shaped change to every row/document matching a
  * filter, in one round trip. The "match" half reuses the same
  * {@link FilterConditionRow} + `filterConditions.ts` helpers as
- * {@link AdvancedFilterDialog} — MongoDB's nested field paths included, so the
- * two dialogs can't disagree about what is filterable; the "set" half reuses the same `RowValue`
+ * the table browse's `QueryPanel` — MongoDB's nested field paths included, so
+ * the two can't disagree about what is filterable; the "set" half reuses the same `RowValue`
  * shape the inline insert draft row already sends to `insert_row`.
  *
  * Every match/set change re-runs `previewBulkUpdate` (debounced) so the

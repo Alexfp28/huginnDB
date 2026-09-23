@@ -180,8 +180,8 @@ four look like styling problems while having nothing to do with styling.
 
 ### Open
 
-**Adoption debt.** 134 raw `<button>` elements across 72 files and 68 native
-`title=` attributes across 40, both counted and ratcheted by
+**Adoption debt.** 133 raw `<button>` elements across 72 files and 67 native
+`title=` attributes across 39, both counted and ratcheted by
 `src/components/ui/uiAdoption.test.ts`. The budgets can only shrink, so this
 entry needs no separate tracking — read the maps. **They are not all
 migratable, and the target is not zero**: working `DocumentListView` established

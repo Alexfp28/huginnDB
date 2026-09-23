@@ -1,6 +1,6 @@
 /**
- * The sort as something you can *see* — chips beside the filter chips, and the
- * toolbar's "Sort by" menu.
+ * The sort as something you can *see* — chips beside the filter chips (on the
+ * toolbar's chip row), and the toolbar's "Sort by" menu.
  *
  * Why this exists: the sort used to be reachable only through the table's
  * column headers. It was always server-side (it becomes the browse's
@@ -17,20 +17,17 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, X } from "lucide-react";
+import { ArrowDown, ArrowUp, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
   DropdownMenuCheckboxItem,
-  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { IconButton } from "@/components/ui/icon-button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
@@ -99,61 +96,6 @@ export function SortChip({
         onClick={onRemove}
       />
     </span>
-  );
-}
-
-/**
- * The narrow-pane form of the sort chips: one chip with the level count whose
- * dropdown still drops levels one by one. Same shape and same reasoning as
- * `ServerFilterSummary` — the menu stays open after a removal because
- * clearing several in a row is the common case.
- */
-export function SortSummary({
-  sort,
-  onRemove,
-}: {
-  sort: SortSpec[];
-  onRemove: (column: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="xs"
-          className="h-5 shrink-0 gap-1 rounded-full border border-brand/40 bg-brand/10 px-2 text-2xs text-muted-foreground hover:text-foreground"
-        >
-          <ArrowUpDown className="h-3 w-3 text-brand" />
-          {t("dataGrid.sort.activeCount", { count: sort.length })}
-          <ChevronDown className="h-3 w-3 opacity-60" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        {sort.map((s, i) => {
-          const Arrow = s.desc ? ArrowDown : ArrowUp;
-          return (
-            <DropdownMenuItem
-              key={s.column}
-              className="gap-2 font-mono text-xs"
-              onSelect={(e) => {
-                e.preventDefault();
-                onRemove(s.column);
-              }}
-            >
-              <Arrow className="h-3 w-3 shrink-0 text-brand" />
-              <span className="max-w-[14rem] truncate">{s.column}</span>
-              {sort.length > 1 && (
-                <span className="text-3xs font-semibold text-brand">
-                  {i + 1}
-                </span>
-              )}
-              <X className="ml-auto h-3 w-3 shrink-0 text-muted-foreground/60" />
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

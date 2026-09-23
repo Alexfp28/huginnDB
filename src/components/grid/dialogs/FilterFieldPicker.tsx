@@ -223,7 +223,7 @@ export function FilterFieldPicker({
           aria-expanded={open}
           value={value}
           // Opened by a click, a keystroke or ArrowDown — deliberately not by
-          // focus alone: `AdvancedFilterDialog` focuses the first control of
+          // focus alone: `QueryPanel` focuses the first control of
           // the row a toolbar chip named, and an "edit this chip" click that
           // greeted the user with a suggestion list over the row they came to
           // edit would be answering a question nobody asked.

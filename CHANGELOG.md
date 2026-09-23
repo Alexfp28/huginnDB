@@ -24,10 +24,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     paths included) and builds a multi-level sort one field at a time. It
     carries the same count badge as the filter button.
   - **Sort chips** beside the filter chips. Click one to reverse its direction,
-    ✕ to drop it. When there is more than one level they show their rank, and
-    in a narrow pane they fold into one summary chip, the same way the filter
-    chips do. In table mode they also keep a sort visible after its column has
-    scrolled out of view.
+    ✕ to drop it. When there is more than one level they show their rank. In
+    table mode they also keep a sort visible after its column has scrolled out
+    of view.
   - A **context menu on every field** of the list view: *Sort ascending /
     descending by …* (this replaces the sort, like a plain header click; the
     toolbar menu is the one that adds levels), *Remove … from the sort*,
@@ -43,6 +42,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   query bar users asked for (projection, a raw filter and the rest come
   in later releases). The backend is unchanged: it already accepted everything
   these controls send.
+
+### Changed
+
+- **The advanced filter is now a panel under the toolbar, not a dialog.** The
+  filter button (same place, same count badge) opens and closes a **Query**
+  section between the toolbar and the rows. It holds the same AND list of
+  conditions the dialog did, with the same field picker, operators and MongoDB
+  value types. The rows it shapes now stay visible under it instead of behind a
+  modal. Clicking a filter chip opens it on that chip's condition, as before.
+
+  Nothing reaches the server until **Apply** (or Ctrl/⌘+Enter inside the
+  panel). If the filters change from outside while it is open (a chip's ✕, a
+  right-click *Filter by this value*), an untouched panel follows them. A panel
+  you have edited keeps your edits and says *Unapplied changes*; **Reset** goes
+  back to what is in force. Closing the panel discards unapplied edits, like
+  cancelling the dialog did.
+
+  This is the surface the rest of the query bar grows into: projection, a raw
+  filter and a preview of the query that will run. The dialog is removed
+  rather than kept alongside it, so there is only ever one place that edits the
+  active filters.
+
+- **The filter and sort chips have a row of their own under the toolbar.**
+  They used to sit inline after the search box, where they competed with the
+  search and every action for the same line. From a medium pane width down
+  they folded into a single "N filters" chip, which hid the conditions exactly
+  when there were enough of them to matter. The new row is labelled
+  *Filters · Sort*, only appears when there is something to show, and wraps
+  instead of folding. The summary chips are gone.
 
 ## [1.27.0] — 2026-09-23
 

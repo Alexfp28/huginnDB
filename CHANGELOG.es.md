@@ -26,10 +26,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     incluidas las rutas anidadas) y construye un orden de varios niveles campo a
     campo. Lleva el mismo contador que el botón de filtro.
   - **Chips de orden** junto a los de filtro. Un clic invierte la dirección y
-    la ✕ lo quita. Si hay más de un nivel muestran su posición, y en un panel
-    estrecho se pliegan en un único chip de resumen, igual que los de filtro.
-    En modo tabla también mantienen visible un orden cuando su columna se ha
-    desplazado fuera de la vista.
+    la ✕ lo quita. Si hay más de un nivel muestran su posición. En modo tabla
+    también mantienen visible un orden cuando su columna se ha desplazado fuera
+    de la vista.
   - Un **menú contextual en cada campo** de la vista de lista: *Ordenar
     ascendente / descendente por …* (sustituye el orden, como un clic normal en
     la cabecera; el menú de la barra es el que añade niveles), *Quitar … del
@@ -45,6 +44,36 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   de la barra de consulta que pidieron los usuarios (la proyección, el filtro en bruto y
   el resto llegan en versiones posteriores). El backend no cambia: ya aceptaba
   todo lo que envían estos controles.
+
+### Cambiado
+
+- **El filtro avanzado es ahora un panel bajo la barra, no un diálogo.** El
+  botón de filtro (en el mismo sitio y con el mismo contador) abre y cierra una
+  sección **Consulta** entre la barra y las filas. Tiene la misma lista de
+  condiciones en AND que el diálogo, con el mismo selector de campo, los mismos
+  operadores y los mismos tipos de valor de MongoDB. Las filas que filtra siguen
+  a la vista debajo, en lugar de quedar detrás de un modal. Hacer clic en un
+  chip de filtro lo abre en la condición de ese chip, como antes.
+
+  Nada llega al servidor hasta **Aplicar** (o Ctrl/⌘+Enter dentro del panel).
+  Si los filtros cambian desde fuera con el panel abierto (la ✕ de un chip, un
+  *Filtrar por este valor* con clic derecho), un panel sin tocar los sigue. Un
+  panel que has editado conserva tus cambios y avisa de *Cambios sin aplicar*;
+  **Restablecer** vuelve a lo que está en vigor. Cerrar el panel descarta los
+  cambios sin aplicar, como hacía cancelar el diálogo.
+
+  Es la superficie donde crecerá el resto de la barra de consulta: la
+  proyección, un filtro en bruto y una vista previa de la consulta que se va a
+  lanzar. El diálogo se retira en lugar de convivir con el panel, para que
+  haya un único sitio que edite los filtros activos.
+
+- **Los chips de filtro y de orden tienen una fila propia bajo la barra.**
+  Antes iban en línea tras el buscador, compitiendo por la misma línea con la
+  búsqueda y con todas las acciones. A partir de un ancho medio de panel se
+  plegaban en un único chip «N filtros», que ocultaba las condiciones justo
+  cuando había suficientes como para importar. La fila nueva lleva la etiqueta
+  *Filtros · Orden*, solo aparece cuando hay algo que mostrar y hace salto de
+  línea en vez de plegarse. Los chips de resumen desaparecen.
 
 ## [1.27.0] — 2026-09-23
 

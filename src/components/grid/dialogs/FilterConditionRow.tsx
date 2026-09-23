@@ -1,6 +1,6 @@
 /**
- * One column → operator → value row, shared by {@link AdvancedFilterDialog}
- * and `BulkUpdateDialog`'s "match" section. See `filterConditions.ts` for
+ * One column → operator → value row, shared by the table browse's
+ * `QueryPanel` and `BulkUpdateDialog`'s "match" section. See `filterConditions.ts` for
  * the operator/coercion helpers this renders around.
  *
  * The row is single-line for every operator except `in`/`not_in`, whose value

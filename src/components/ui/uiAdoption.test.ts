@@ -179,7 +179,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/connection/ConnectionsTree.tsx": 2,
     "src/components/connection/TreeFilterBox.tsx": 2,
     "src/components/grid/GridSearchInput.tsx": 2,
-    "src/components/grid/ServerFilterChips.tsx": 2,
     "src/components/indexes/dialogs/IndexEditorDialog.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
     "src/components/schema/dialogs/DatabaseVisibilityDialog.tsx": 2,
@@ -217,6 +216,9 @@ describe("raw <button> outside ui/", () => {
     "src/components/grid/DataGrid.tsx": 1,
     "src/components/grid/dialogs/CellEditor.tsx": 1,
     "src/components/grid/DraftRowView.tsx": 1,
+    // Was 2. The "N filters" summary chip went when the chips moved to a row
+    // of their own under the toolbar, which can wrap instead of folding.
+    "src/components/grid/ServerFilterChips.tsx": 1,
     "src/components/jsonSchema/SchemaBindingBadge.tsx": 1,
     "src/components/origins/OriginEditorHeader.tsx": 1,
     "src/components/origins/OriginEditorOverlay.tsx": 1,
@@ -238,7 +240,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${134} in ${72} files`, () => {
+  it(`is down to ${133} in ${72} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -246,7 +248,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(134);
+    expect(total(BUDGET)).toBeLessThanOrEqual(133);
   });
 });
 
@@ -289,7 +291,6 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/connection/ConnectionTreeRow.tsx": 3,
     "src/components/aggregation/StageCard.tsx": 4,
     "src/components/connection/EnvironmentSwitcher.tsx": 4,
-    "src/components/grid/ServerFilterChips.tsx": 1,
     "src/components/pulse/PulseWindow.tsx": 4,
     "src/components/settings/sections/JsonSchemasSection.tsx": 4,
     "src/components/connection/StatusConnections.tsx": 3,
@@ -328,7 +329,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${68} in ${40} files`, () => {
+  it(`is down to ${67} in ${39} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -342,7 +343,7 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(68);
+    expect(total(BUDGET)).toBeLessThanOrEqual(67);
   });
 });
 

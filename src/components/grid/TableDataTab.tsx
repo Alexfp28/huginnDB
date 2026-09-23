@@ -72,7 +72,10 @@ import {
   type GridToolbarItem,
   type InsertAlternative,
 } from "@/components/grid/DataGrid";
-import { AdvancedFilterDialog } from "@/components/grid/dialogs/AdvancedFilterDialog";
+import {
+  QueryPanel,
+  type QueryPanelFocus,
+} from "@/components/grid/QueryPanel";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
@@ -281,14 +284,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   /** Free-text search bound to the toolbar input (uncommitted draft). */
   const [filter, setFilter] = useState(() => restoredViewState?.search ?? "");
   /**
-   * Advanced per-column filter builder dialog (#66). `null` when closed;
-   * `focusIndex` names the `serverFilters` entry the dialog should open on,
-   * set when the user clicked a toolbar chip rather than the filter button.
-   * A boolean would have been enough for the button, but not for the chip.
+   * The query panel under the toolbar (it replaced the advanced filter dialog
+   * of #66). `queryFocus` is the chip the user clicked to open it, as an event
+   * — see `QueryPanelFocus` — or `null` when it was opened from its button.
    */
-  const [advanced, setAdvanced] = useState<{
-    focusIndex: number | null;
-  } | null>(null);
+  const [queryOpen, setQueryOpen] = useState(false);
+  const [queryFocus, setQueryFocus] = useState<QueryPanelFocus | null>(null);
   /** What was actually committed via Enter — drives the backend fetch. */
   const [appliedFilter, setAppliedFilter] = useState(
     () => restoredViewState?.search ?? "",
@@ -410,7 +411,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * otherwise re-run on every fetch for a list nobody is looking at.
    */
   const nestedFieldsWanted =
-    isMongo && (advanced !== null || bulkUpdateOpen || sortMenuOpen);
+    isMongo && (queryOpen || bulkUpdateOpen || sortMenuOpen);
   const nestedFields = useMemo(
     () =>
       nestedFieldsWanted && result
@@ -830,16 +831,24 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     setOffset(0);
   }
 
+  /** The toolbar button: open the panel blank-focused, or close it (which
+   *  discards an unapplied draft — see `QueryPanel`). */
+  const toggleQueryPanel = useCallback(() => {
+    setQueryOpen((open) => !open);
+    setQueryFocus(null);
+  }, []);
+
   /**
-   * Open the advanced builder on the condition a chip stands for.
+   * Open the query panel on the condition a chip stands for.
    *
-   * No id is needed and none exists: `AdvancedFilterDialog` renders one row
-   * per `serverFilters` entry, in order, for every filter shape — so the
-   * chip's index *is* the row's. That correspondence is the whole mechanism,
-   * and it is stated in that dialog's docstring too.
+   * No id is needed and none exists: `QueryPanel` renders one row per
+   * `serverFilters` entry, in order, for every filter shape — so the chip's
+   * index *is* the row's. That correspondence is the whole mechanism, and it
+   * is stated in the panel's docstring too.
    */
   function onEditFilter(index: number) {
-    setAdvanced({ focusIndex: index });
+    setQueryOpen(true);
+    setQueryFocus((prev) => ({ index, epoch: (prev?.epoch ?? 0) + 1 }));
   }
 
   /** Stage rows for deletion. With `ui.confirmDestructive` on (default) this
@@ -1110,7 +1119,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // stacked ones. The schema › table breadcrumb used to live here, but the
   // tab title already shows `database.table` (#57) — repeating it next to the
   // filter was pure redundancy, so the leading area is just the two
-  // filter-related actions: refresh and the advanced-filter dialog. Every
+  // filter-related actions: refresh, the query panel and the sort. Every
   // other action (add/export/bulk data, pagination, zoom, view toggle) lives
   // in the header's right cluster or the footer instead — see `insertExtra`/
   // `footerContent` below — so this left side stays a small, stable cluster.
@@ -1144,9 +1153,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         ),
       },
       {
-        id: "advanced-filter",
+        id: "query-panel",
         bar: (
-          // Three states, not two. The dialog is built entirely from the field
+          // Three states, not two. The panel is built entirely from the field
           // list, so without one it is an empty form — but "still loading" and
           // "failed" are different answers and a disabled button says neither.
           // Inference can take a couple of seconds on a large collection (see
@@ -1155,7 +1164,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <SimpleTooltip
             label={
               cols
-                ? t("tableData.filter.title")
+                ? queryOpen
+                  ? t("tableData.query.close")
+                  : t("tableData.query.open")
                 : colError
                   ? t("tableData.filter.schemaFailed", { message: colError })
                   : t("tableData.filter.loadingSchema")
@@ -1165,10 +1176,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               variant="ghost"
               size="icon"
               disabled={!cols}
-              onClick={() => setAdvanced({ focusIndex: null })}
+              onClick={toggleQueryPanel}
+              aria-label={t("tableData.query.title")}
+              aria-expanded={queryOpen}
               // Brand-tint the icon while filters are active so it reads as "on"
               // and doubles as an at-a-glance indicator, with the count as a badge.
-              className="relative"
+              // The accent fill says the panel itself is open.
+              className={cn("relative", queryOpen && "bg-accent")}
             >
               {colsLoading ? (
                 <Spinner size="sm" />
@@ -1191,7 +1205,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         menu: (
           <DropdownMenuItem
             className="text-xs"
-            onSelect={() => setAdvanced({ focusIndex: null })}
+            onSelect={toggleQueryPanel}
           >
             <ListFilter
               className={cn(
@@ -1199,7 +1213,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                 serverFilters.length ? "text-brand" : "",
               )}
             />
-            {t("tableData.filter.title")}
+            {queryOpen ? t("tableData.query.close") : t("tableData.query.open")}
             {serverFilters.length > 0 && (
               <span className="ml-auto pl-3 tabular-nums text-muted-foreground">
                 {serverFilters.length}
@@ -1292,6 +1306,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       sort,
       sortFields,
       replaceSort,
+      queryOpen,
+      toggleQueryPanel,
     ],
   );
 
@@ -1646,6 +1662,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             insertAlternatives={insertAlternatives}
             toolbarTrailing={trailingToolbar}
             footer={footerContent}
+            belowToolbar={
+              queryOpen && (
+                <QueryPanel
+                  columns={cols ?? []}
+                  nestedFields={nestedFields}
+                  customFields={isMongo}
+                  applied={serverFilters}
+                  focus={queryFocus}
+                  onApply={(filters) => {
+                    setServerFilters(filters);
+                    setOffset(0);
+                  }}
+                  onClose={() => setQueryOpen(false)}
+                />
+              )
+            }
             showRowCount={false}
             viewMode={documentViewMode}
           />
@@ -1730,21 +1762,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {advanced && (
-        <AdvancedFilterDialog
-          columns={cols ?? []}
-          nestedFields={nestedFields}
-          customFields={isMongo}
-          initial={serverFilters}
-          focusIndex={advanced.focusIndex}
-          onApply={(filters) => {
-            setServerFilters(filters);
-            setOffset(0);
-          }}
-          onClose={() => setAdvanced(null)}
-        />
-      )}
 
       {bulkUpdateOpen && (
         <BulkUpdateDialog
