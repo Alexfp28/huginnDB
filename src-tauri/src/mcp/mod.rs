@@ -2929,6 +2929,8 @@ mod tests {
                 order: Vec::new(),
                 filter: Default::default(),
                 projection: None,
+                collation: None,
+                hint: None,
                 with_count: true,
             },
         )
@@ -3032,6 +3034,8 @@ mod tests {
                 order: Vec::new(),
                 filter: Default::default(),
                 projection: None,
+                collation: None,
+                hint: None,
                 with_count: true,
             },
         )

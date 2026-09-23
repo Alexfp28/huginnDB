@@ -13,6 +13,9 @@
  *   ways;
  * - **Projection** — which fields come back (`lib/grid/projection.ts` adds the
  *   key columns on the way to the wire);
+ * - **Advanced** — collation and an index hint, folded to one line until
+ *   opened, because most browses never need them and the panel already
+ *   competes with the rows for height;
  * - **Result** — the statement the draft would run, built by the backend with
  *   the code the browse uses, so it cannot drift from what executes. It is
  *   also where a bad expression shows up, before it is applied; and "Open in
@@ -57,6 +60,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -65,6 +69,8 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ChevronDown,
+  ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Code2,
@@ -83,7 +89,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { IconButton } from "@/components/ui/icon-button";
+import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/tauri";
@@ -100,6 +108,7 @@ import { formatForDisplay } from "@/lib/keybindings/chord";
 import type {
   ColumnFilter,
   ColumnInfo,
+  Driver,
   Projection,
   QueryPreview,
   TableQuery,
@@ -150,6 +159,9 @@ export interface QueryPanelApply {
   projection: Projection | undefined;
   /** The expression as typed; `""` is none. */
   raw: string;
+  /** Collation and index hint as typed; `""` is none. */
+  collation: string;
+  hint: string;
 }
 
 /**
@@ -160,7 +172,7 @@ export interface QueryPanelApply {
  */
 export type QueryPanelPreviewBase = Omit<
   TableQuery,
-  "filters" | "raw" | "projection" | "withCount"
+  "filters" | "raw" | "projection" | "collation" | "hint" | "withCount"
 >;
 
 /**
@@ -181,6 +193,10 @@ export function QueryPanel({
   applied,
   appliedProjection,
   appliedRaw = "",
+  appliedCollation = "",
+  appliedHint = "",
+  driver,
+  indexNames = null,
   document = false,
   keyColumns = NO_KEYS,
   preview,
@@ -200,6 +216,13 @@ export function QueryPanel({
   appliedProjection?: Projection;
   /** The expression in force, as typed. */
   appliedRaw?: string;
+  /** Collation and index hint in force, as typed. */
+  appliedCollation?: string;
+  appliedHint?: string;
+  /** Which engine — the *Advanced* row's controls differ per dialect. */
+  driver?: Driver;
+  /** The table's index names, for the hint picker; `null` while unknown. */
+  indexNames?: string[] | null;
   /** See {@link QueryPanelPreviewBase}. */
   preview?: QueryPanelPreviewBase;
   /** MongoDB: the projection can exclude, and `_id` is the locked key. */
@@ -218,6 +241,8 @@ export function QueryPanel({
     seedProjection(appliedProjection),
   );
   const [raw, setRaw] = useState(appliedRaw);
+  const [collation, setCollation] = useState(appliedCollation);
+  const [hint, setHint] = useState(appliedHint);
   /** The expression editor is shown: something typed, or asked for. */
   const [rawOpen, setRawOpen] = useState(() => appliedRaw.trim() !== "");
   /** Set by Apply: the next applied state is this draft, so re-seed from it
@@ -250,6 +275,8 @@ export function QueryPanel({
   const [seenApplied, setSeenApplied] = useState(applied);
   const [seenProjection, setSeenProjection] = useState(appliedProjection);
   const [seenRaw, setSeenRaw] = useState(appliedRaw);
+  const [seenCollation, setSeenCollation] = useState(appliedCollation);
+  const [seenHint, setSeenHint] = useState(appliedHint);
   const baseline = useMemo(
     () => ({
       filters: JSON.stringify(
@@ -261,14 +288,18 @@ export function QueryPanel({
         projectionFromDraft(seedProjection(seenProjection)) ?? null,
       ),
       raw: seenRaw.trim(),
+      collation: seenCollation.trim(),
+      hint: seenHint.trim(),
     }),
-    [seenApplied, seenProjection, seenRaw, typeByColumn],
+    [seenApplied, seenProjection, seenRaw, seenCollation, seenHint, typeByColumn],
   );
   const dirty =
     JSON.stringify(draftFilters) !== baseline.filters ||
     JSON.stringify(projectionFromDraft(projection) ?? null) !==
       baseline.projection ||
-    raw.trim() !== baseline.raw;
+    raw.trim() !== baseline.raw ||
+    collation.trim() !== baseline.collation ||
+    hint.trim() !== baseline.hint;
 
   // Follow the applied state while the draft says the same — see the module
   // header. React's "adjust state when a prop changes" pattern, set during
@@ -277,17 +308,23 @@ export function QueryPanel({
   if (
     seenApplied !== applied ||
     seenProjection !== appliedProjection ||
-    seenRaw !== appliedRaw
+    seenRaw !== appliedRaw ||
+    seenCollation !== appliedCollation ||
+    seenHint !== appliedHint
   ) {
     setSeenApplied(applied);
     setSeenProjection(appliedProjection);
     setSeenRaw(appliedRaw);
+    setSeenCollation(appliedCollation);
+    setSeenHint(appliedHint);
     if (!dirty || followNext) {
       setFollowNext(false);
       setDraft(seed(applied));
       setProjection(seedProjection(appliedProjection));
       setRaw(appliedRaw);
       setRawOpen(appliedRaw.trim() !== "");
+      setCollation(appliedCollation);
+      setHint(appliedHint);
     }
   }
 
@@ -338,6 +375,8 @@ export function QueryPanel({
       document,
       keyColumns,
     }),
+    collation,
+    hint,
   });
 
   function apply() {
@@ -346,6 +385,8 @@ export function QueryPanel({
       filters: draftFilters,
       projection: projectionFromDraft(projection),
       raw: raw.trim() ? raw : "",
+      collation: collation.trim(),
+      hint: hint.trim(),
     });
     // The applied filters are about to become exactly this draft; re-seeding
     // from them when the new array arrives keeps the chip → row map honest.
@@ -358,6 +399,8 @@ export function QueryPanel({
     setProjection(seedProjection(appliedProjection));
     setRaw(appliedRaw);
     setRawOpen(appliedRaw.trim() !== "");
+    setCollation(appliedCollation);
+    setHint(appliedHint);
     setFocusedKey(null);
   }
 
@@ -478,6 +521,16 @@ export function QueryPanel({
               keyColumns={keyColumns}
             />
           </PanelRow>
+          <PanelRow label={t("tableData.query.advanced")}>
+            <AdvancedOptions
+              driver={driver}
+              collation={collation}
+              hint={hint}
+              indexNames={indexNames}
+              onCollation={setCollation}
+              onHint={setHint}
+            />
+          </PanelRow>
           {preview && (
             <PanelRow label={t("tableData.query.result")}>
               <ResultLine
@@ -495,13 +548,19 @@ export function QueryPanel({
           variant="ghost"
           size="xs"
           disabled={
-            rows.length === 0 && projection.mode === "all" && raw === ""
+            rows.length === 0 &&
+            projection.mode === "all" &&
+            raw === "" &&
+            collation === "" &&
+            hint === ""
           }
           onClick={() => {
             edit(() => []);
             editProjection({ mode: "all", fields: [] });
             editRaw("");
             setRawOpen(false);
+            setCollation("");
+            setHint("");
           }}
         >
           {t("tableData.filter.clearAll")}
@@ -732,7 +791,7 @@ interface PreviewState {
  */
 function useQueryPreview(
   base: QueryPanelPreviewBase | undefined,
-  draft: Pick<TableQuery, "filters" | "raw" | "projection">,
+  draft: Pick<TableQuery, "filters" | "raw" | "projection" | "collation" | "hint">,
 ): PreviewState {
   const [state, setState] = useState<PreviewState>({
     preview: null,
@@ -745,6 +804,8 @@ function useQueryPreview(
         filters: draft.filters?.length ? draft.filters : undefined,
         raw: draft.raw?.trim() ? draft.raw : undefined,
         projection: draft.projection,
+        collation: draft.collation?.trim() || undefined,
+        hint: draft.hint?.trim() || undefined,
         withCount: false,
       }
     : null;
@@ -838,6 +899,175 @@ function ResultLine({
           disabled={!text}
           onClick={() => openQueryTab(connectionId, { sql: text })}
         />
+      </div>
+    </div>
+  );
+}
+
+/** Per-dialect example for the collation field — the spelling each engine
+ *  names one with, so the placeholder doubles as the syntax hint. */
+const COLLATION_PLACEHOLDER: Partial<Record<Driver, string>> = {
+  postgres: "es-ES-x-icu",
+  mysql: "utf8mb4_spanish_ci",
+  sqlserver: "Latin1_General_CI_AS",
+  mongodb: "{ locale: 'es', strength: 1 }",
+};
+
+/**
+ * The *Advanced* row: collation and index hint.
+ *
+ * Folded to a one-line summary until opened, and opened already when either
+ * is set, so a tab restored with a hint shows it. The controls are the
+ * dialect's: SQLite has three collations and gets a picker; PostgreSQL has no
+ * index hints and gets the picker disabled with that reason, rather than a
+ * field that could only fail — the matrix the design settled on.
+ */
+function AdvancedOptions({
+  driver,
+  collation,
+  hint,
+  indexNames,
+  onCollation,
+  onHint,
+}: {
+  driver?: Driver;
+  collation: string;
+  hint: string;
+  indexNames: string[] | null;
+  onCollation: (v: string) => void;
+  onHint: (v: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(() => collation !== "" || hint !== "");
+  const id = useId();
+  const isMongo = driver === "mongodb";
+  const noHints = driver === "postgres";
+
+  const summary =
+    [
+      collation.trim() &&
+        t("tableData.query.collationSummary", { value: collation.trim() }),
+      hint.trim() && t("tableData.query.hintSummary", { value: hint.trim() }),
+    ]
+      .filter(Boolean)
+      .join(" · ") || t("tableData.query.advancedNone");
+
+  if (!open) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        icon={ChevronRight}
+        aria-expanded={false}
+        className="max-w-full"
+        onClick={() => setOpen(true)}
+      >
+        <span className="truncate font-normal text-muted-foreground">
+          {summary}
+        </span>
+      </Button>
+    );
+  }
+
+  const options = indexNames ?? [];
+  // A saved hint whose index is gone still shows, so it can be seen and
+  // cleared rather than silently dropped from the picker.
+  const hintChoices =
+    hint && !options.includes(hint) ? [hint, ...options] : options;
+
+  return (
+    <div className="space-y-2">
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        icon={ChevronDown}
+        aria-expanded
+        onClick={() => setOpen(false)}
+      >
+        {t("tableData.query.advancedHide")}
+      </Button>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        {/* The name is the <label>; the explanation is a description. Wrapping
+            both in the label made the control's accessible name the whole
+            paragraph. */}
+        <div className="flex min-w-0 flex-col gap-1">
+          <label
+            htmlFor={`${id}-collation`}
+            className="text-2xs font-medium text-muted-foreground"
+          >
+            {t("tableData.query.collation")}
+          </label>
+          {driver === "sqlite" ? (
+            <NativeSelect
+              id={`${id}-collation`}
+              aria-describedby={`${id}-collation-help`}
+              size="xs"
+              value={collation.toUpperCase()}
+              onChange={(e) => onCollation(e.target.value)}
+            >
+              <option value="">{t("tableData.query.none")}</option>
+              <option value="BINARY">BINARY</option>
+              <option value="NOCASE">NOCASE</option>
+              <option value="RTRIM">RTRIM</option>
+            </NativeSelect>
+          ) : (
+            <Input
+              id={`${id}-collation`}
+              aria-describedby={`${id}-collation-help`}
+              size="xs"
+              spellCheck={false}
+              className="font-mono"
+              placeholder={driver ? COLLATION_PLACEHOLDER[driver] : undefined}
+              value={collation}
+              onChange={(e) => onCollation(e.target.value)}
+            />
+          )}
+          <span
+            id={`${id}-collation-help`}
+            className="text-2xs text-muted-foreground"
+          >
+            {isMongo
+              ? t("tableData.query.collationMongoHint")
+              : t("tableData.query.collationSqlHint")}
+          </span>
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label
+            htmlFor={`${id}-hint`}
+            className="text-2xs font-medium text-muted-foreground"
+          >
+            {t("tableData.query.hint")}
+          </label>
+          <NativeSelect
+            id={`${id}-hint`}
+            aria-describedby={`${id}-hint-help`}
+            size="xs"
+            disabled={noHints || indexNames === null}
+            value={noHints ? "" : hint}
+            onChange={(e) => onHint(e.target.value)}
+          >
+            <option value="">
+              {noHints
+                ? t("tableData.query.hintUnavailable")
+                : indexNames === null
+                  ? t("tableData.query.hintLoading")
+                  : t("tableData.query.none")}
+            </option>
+            {!noHints &&
+              hintChoices.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+          </NativeSelect>
+          <span id={`${id}-hint-help`} className="text-2xs text-muted-foreground">
+            {noHints
+              ? t("tableData.query.hintPostgres")
+              : t("tableData.query.hintHelp")}
+          </span>
+        </div>
       </div>
     </div>
   );

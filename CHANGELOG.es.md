@@ -10,6 +10,31 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Collation e índice (hint), por navegación.** La fila **Avanzado** del
+  panel de consulta —plegada a una línea hasta que se abre— fija dos cosas que
+  el planificador y el orden deciden normalmente por su cuenta:
+
+  - **Collation.** En SQL se aplica a cada clave del orden, escrita como la
+    nombra cada motor (`COLLATE "es-ES-x-icu"` en PostgreSQL,
+    `utf8mb4_spanish_ci` en MySQL, `Latin1_General_CI_AS` en SQL Server, y un
+    selector con las tres de SQLite). En MongoDB es un documento de collation
+    (`{ locale: 'es', strength: 1 }`) que el servidor aplica al filtro *y* al
+    orden, así que también lo lleva el recuento: con `strength: 1`, «a» y «A»
+    son el mismo valor. Una collation no puede ir como parámetro enlazado, así
+    que los nombres se validan antes de insertarlos.
+  - **Índice (hint).** Un selector con los índices de la propia tabla. La
+    navegación lo fuerza (`FORCE INDEX` en MySQL, `INDEXED BY` en SQLite,
+    `WITH (INDEX(…))` en SQL Server, `hint()` en MongoDB), y todos fallan en
+    lugar de ignorar un índice que ya no existe: lo honesto para algo que se ha
+    fijado a propósito. PostgreSQL no admite hints de índice, así que ahí el
+    selector aparece desactivado y lo explica.
+
+  Los dos aparecen en la línea *Resultado*, se exportan, se guardan con la
+  pestaña y se muestran como chip **Avanzado** mientras están activos. La
+  gramática de la pestaña de consulta de MongoDB aprendió también
+  `.collation(…)` y `.hint(…)`, así que *Abrir en el editor* sigue entregando
+  algo que se ejecuta tal cual, y el `explain` de Pulse los incluye.
+
 - **Escribe el filtro a mano, y mira la consulta que lanza.** La fila
   *Filtro* del panel de consulta admite una **expresión** junto a sus
   condiciones: una condición tal como la escribirías tras el `WHERE` en SQL, o

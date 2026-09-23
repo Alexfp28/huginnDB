@@ -702,7 +702,10 @@
       "removeProjection": "Return every field again",
       "expression": "Expression",
       "editExpression": "Edit the expression",
-      "removeExpression": "Remove the expression"
+      "removeExpression": "Remove the expression",
+      "advanced": "Advanced",
+      "editAdvanced": "Edit collation and index hint",
+      "removeAdvanced": "Clear collation and index hint"
     },
     "sort": {
       "button": "Sort",
@@ -772,7 +775,21 @@
       "copy": "Copy",
       "openInEditor": "Open in editor",
       "expandResult": "Show the whole statement",
-      "collapseResult": "Back to one line"
+      "collapseResult": "Back to one line",
+      "advanced": "Advanced",
+      "advancedNone": "Collation and index hint — none set",
+      "advancedHide": "Hide collation and index hint",
+      "collation": "Collation",
+      "collationSummary": "collation {{value}}",
+      "hintSummary": "index {{value}}",
+      "collationSqlHint": "Applied to the sort (every ORDER BY key).",
+      "collationMongoHint": "Applied to the filter and the sort.",
+      "hint": "Index (hint)",
+      "none": "None",
+      "hintUnavailable": "Not available",
+      "hintLoading": "Loading indexes…",
+      "hintPostgres": "PostgreSQL has no index hints; its planner chooses on its own.",
+      "hintHelp": "Forces the planner to use this index; the query fails if it no longer exists."
     },
     "filter": {
       "loadingSchema": "Query — loading the field list…",

@@ -20,7 +20,7 @@
 //! etc.) bracketed by `PRAGMA foreign_keys=OFF/ON`, since SQLite inlines FKs
 //! into `CREATE TABLE` text that isn't worth re-parsing to split.
 
-use crate::commands::query::{order_by_clause, select_list, TableScan};
+use crate::commands::query::{from_clause, nonblank, order_by_clause, select_list, TableScan};
 use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
 use crate::db::ddl::{build_create, TableStructure};
@@ -401,6 +401,8 @@ pub async fn export_table_rows(
         filter,
         order,
         projection,
+        collation,
+        hint,
     } = query;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
@@ -420,8 +422,9 @@ pub async fn export_table_rows(
     let (where_clause, binds) = filter.clause(dialect)?;
     let qt = dialect.qualify(schema.as_deref(), &table);
     let select = select_list(dialect, projection.as_ref())?;
-    let order_clause = order_by_clause(dialect, &order);
-    let select_sql = format!("SELECT {select} FROM {qt}{where_clause}{order_clause}");
+    let order_clause = order_by_clause(dialect, &order, nonblank(&collation))?;
+    let from = from_clause(dialect, &qt, nonblank(&hint))?;
+    let select_sql = format!("SELECT {select} FROM {from}{where_clause}{order_clause}");
 
     use tauri_plugin_dialog::DialogExt;
     let suggested = format!("{table}_rows.sql");

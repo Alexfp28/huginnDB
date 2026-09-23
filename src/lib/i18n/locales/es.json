@@ -702,7 +702,10 @@
       "removeProjection": "Volver a devolver todos los campos",
       "expression": "Expresión",
       "editExpression": "Editar la expresión",
-      "removeExpression": "Quitar la expresión"
+      "removeExpression": "Quitar la expresión",
+      "advanced": "Avanzado",
+      "editAdvanced": "Editar collation e índice",
+      "removeAdvanced": "Quitar collation e índice"
     },
     "sort": {
       "button": "Ordenar",
@@ -772,7 +775,21 @@
       "copy": "Copiar",
       "openInEditor": "Abrir en el editor",
       "expandResult": "Ver la sentencia completa",
-      "collapseResult": "Volver a una línea"
+      "collapseResult": "Volver a una línea",
+      "advanced": "Avanzado",
+      "advancedNone": "Collation e índice — sin definir",
+      "advancedHide": "Ocultar collation e índice",
+      "collation": "Collation",
+      "collationSummary": "collation {{value}}",
+      "hintSummary": "índice {{value}}",
+      "collationSqlHint": "Se aplica al orden (a cada clave del ORDER BY).",
+      "collationMongoHint": "Se aplica al filtro y al orden.",
+      "hint": "Índice (hint)",
+      "none": "Ninguno",
+      "hintUnavailable": "No disponible",
+      "hintLoading": "Cargando índices…",
+      "hintPostgres": "PostgreSQL no admite hints de índice; su planificador elige solo.",
+      "hintHelp": "Obliga al planificador a usar este índice; la consulta falla si ya no existe."
     },
     "filter": {
       "loadingSchema": "Consulta — cargando la lista de campos…",

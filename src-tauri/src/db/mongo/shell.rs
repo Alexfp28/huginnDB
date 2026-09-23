@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! db.<collection>.<method>(<args>) [.sort({…})] [.limit(n)] [.skip(n)] [.projection({…})]
+//!     [.collation({…})] [.hint("name" | {…})]
 //! ```
 //!
 //! It is deliberately *not* a JavaScript engine — it understands a fixed set of
@@ -31,6 +32,15 @@ pub enum MongoOp {
         sort: Option<Document>,
         limit: Option<i64>,
         skip: Option<i64>,
+        /// `.collation({ locale: …, strength: … })` — changes how strings
+        /// compare in the filter *and* the sort. See `query::collation_from_doc`.
+        ///
+        /// Boxed, like `hint`: both are rare, and inline they made `Find` more
+        /// than twice the size of every other variant (clippy's
+        /// `large_enum_variant`), which every `MongoOp` would then carry.
+        collation: Option<Box<Document>>,
+        /// `.hint("index_name")` or `.hint({ field: 1 })`.
+        hint: Option<Box<Bson>>,
         /// `findOne` — caps the result at a single document.
         one: bool,
     },
@@ -330,10 +340,8 @@ fn finish(collection: String, method: &str, args_and_tail: &str) -> AppResult<Pa
     let args = p.parse_arg_list()?; // consumes through the matching ')'
 
     // Collect chained modifiers: .sort(...) .limit(n) .skip(n) .projection(...)
-    let mut sort = None;
-    let mut limit = None;
-    let mut skip = None;
-    let mut projection = None;
+    // .collation(...) .hint(...)
+    let mut mods = CursorModifiers::default();
     loop {
         p.skip_ws();
         if !p.eat('.') {
@@ -344,31 +352,56 @@ fn finish(collection: String, method: &str, args_and_tail: &str) -> AppResult<Pa
         p.expect('(')?;
         let margs = p.parse_arg_list()?;
         match m.as_str() {
-            "sort" => sort = Some(first_doc(&margs, "sort")?),
-            "limit" => limit = Some(first_int(&margs, "limit")?),
-            "skip" => skip = Some(first_int(&margs, "skip")?),
-            "projection" | "project" => projection = Some(first_doc(&margs, "projection")?),
+            "sort" => mods.sort = Some(first_doc(&margs, "sort")?),
+            "limit" => mods.limit = Some(first_int(&margs, "limit")?),
+            "skip" => mods.skip = Some(first_int(&margs, "skip")?),
+            "projection" | "project" => mods.projection = Some(first_doc(&margs, "projection")?),
+            "collation" => mods.collation = Some(first_doc(&margs, "collation")?),
+            "hint" => {
+                mods.hint = Some(match margs.first() {
+                    Some(b @ (Bson::String(_) | Bson::Document(_))) => b.clone(),
+                    _ => {
+                        return Err(AppError::InvalidInput(
+                            "hint() expects an index name or a key document".into(),
+                        ))
+                    }
+                })
+            }
             other => {
                 return Err(AppError::InvalidInput(format!(
-                "unsupported cursor modifier `.{other}()` (allowed: sort, limit, skip, projection)"
-            )))
+                    "unsupported cursor modifier `.{other}()` (allowed: sort, limit, skip, \
+                     projection, collation, hint)"
+                )))
             }
         }
     }
 
-    let op = build_op(method, args, projection, sort, limit, skip)?;
+    let op = build_op(method, args, mods)?;
     Ok(ParsedCommand { collection, op })
 }
 
-/// Assemble a [`MongoOp`] from the method name and its parsed arguments.
-fn build_op(
-    method: &str,
-    mut args: Vec<Bson>,
+/// The chained cursor modifiers of a statement, collected before the method
+/// they apply to is known. Only `find`/`findOne` reads them.
+#[derive(Default)]
+struct CursorModifiers {
     projection: Option<Document>,
     sort: Option<Document>,
     limit: Option<i64>,
     skip: Option<i64>,
-) -> AppResult<MongoOp> {
+    collation: Option<Document>,
+    hint: Option<Bson>,
+}
+
+/// Assemble a [`MongoOp`] from the method name and its parsed arguments.
+fn build_op(method: &str, mut args: Vec<Bson>, mods: CursorModifiers) -> AppResult<MongoOp> {
+    let CursorModifiers {
+        projection,
+        sort,
+        limit,
+        skip,
+        collation,
+        hint,
+    } = mods;
     let take_doc = |args: &mut Vec<Bson>, idx: usize, what: &str| -> AppResult<Document> {
         match args.get(idx) {
             Some(Bson::Document(d)) => Ok(d.clone()),
@@ -417,6 +450,8 @@ fn build_op(
                 sort,
                 limit,
                 skip,
+                collation: collation.map(Box::new),
+                hint: hint.map(Box::new),
                 one: method == "findOne",
             })
         }
@@ -1014,6 +1049,27 @@ mod tests {
             }
             other => panic!("expected Find, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_collation_and_hint_modifiers() {
+        let cmd = parse(
+            "db.users.find({ name: 'ana' }).collation({ locale: 'es', strength: 1 }).hint({ name: 1 })",
+        )
+        .unwrap();
+        match cmd.op {
+            MongoOp::Find {
+                collation, hint, ..
+            } => {
+                assert_eq!(
+                    collation.as_deref(),
+                    Some(&doc! { "locale": "es", "strength": 1 })
+                );
+                assert_eq!(hint.as_deref(), Some(&Bson::Document(doc! { "name": 1 })));
+            }
+            other => panic!("expected Find, got {other:?}"),
+        }
+        assert!(parse("db.users.find().hint(3)").is_err());
     }
 
     #[test]

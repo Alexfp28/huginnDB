@@ -345,34 +345,26 @@ pub(crate) fn inline_binds(dialect: Dialect, sql: &str, binds: &[Option<String>]
     out
 }
 
-// Eight: the browse's address, predicate, shape and window. Bundling them would
-// only re-split the `TableQuery` both callers just destructured.
-#[allow(clippy::too_many_arguments)]
 /// The page statement a SQL browse runs, and its binds — shared by
 /// [`fetch_table_data_inner`] and [`describe_table_query`], so the query
 /// panel's *Result* line is built by the code that builds what executes and
 /// cannot drift from it.
 fn sql_page_statement(
     dialect: Dialect,
-    schema: Option<&str>,
-    table: &str,
-    filter: &TableFilter,
-    order: &[SortSpec],
-    projection: Option<&Projection>,
-    limit: i64,
-    offset: i64,
+    q: &TableQuery,
 ) -> AppResult<(String, Vec<Option<String>>)> {
-    let order_clause = order_by_clause(dialect, order);
-    let select = select_list(dialect, projection)?;
-    let (where_clause, binds) = filter.clause(dialect)?;
-    let qt = dialect.qualify_defaulted(schema, table);
+    let order_clause = order_by_clause(dialect, &q.order, nonblank(&q.collation))?;
+    let select = select_list(dialect, q.projection.as_ref())?;
+    let (where_clause, binds) = q.filter.clause(dialect)?;
+    let qt = dialect.qualify_defaulted(q.schema.as_deref(), &q.table);
+    let from = from_clause(dialect, &qt, nonblank(&q.hint))?;
     // LIMIT/OFFSET stay inline (they are integers we already parsed), so the
     // filter binds are the only binds in the statement. The clause itself is
     // dialect-specific: T-SQL has no LIMIT and its OFFSET/FETCH form requires
     // an ORDER BY, which `paginate` supplies when the user hasn't sorted.
-    let page = dialect.paginate(limit, offset, !order_clause.is_empty());
+    let page = dialect.paginate(q.limit, q.offset, !order_clause.is_empty());
     Ok((
-        format!("SELECT {select} FROM {qt}{where_clause}{order_clause}{page}"),
+        format!("SELECT {select} FROM {from}{where_clause}{order_clause}{page}"),
         binds,
     ))
 }
@@ -403,30 +395,14 @@ pub async fn describe_table_query(
     query.filter.validate()?;
     let pool = state.pool_for(&query.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
-        let text = crate::db::mongo::query::describe_find_shell(
-            &query.table,
-            &query.filter,
-            &query.order,
-            query.projection.as_ref(),
-            query.limit,
-            query.offset,
-        )?;
+        let text = crate::db::mongo::query::describe_find_shell(&query)?;
         return Ok(QueryPreview {
             text,
             language: "mongodb",
         });
     }
     let dialect = Dialect::try_of(&pool)?;
-    let (sql, binds) = sql_page_statement(
-        dialect,
-        query.schema.as_deref(),
-        &query.table,
-        &query.filter,
-        &query.order,
-        query.projection.as_ref(),
-        query.limit,
-        query.offset,
-    )?;
+    let (sql, binds) = sql_page_statement(dialect, &query)?;
     Ok(QueryPreview {
         text: inline_binds(dialect, &sql, &binds),
         language: "sql",
@@ -483,20 +459,86 @@ pub(crate) fn select_list(dialect: Dialect, projection: Option<&Projection>) -> 
     }
 }
 
-/// The multi-level `ORDER BY` for a SQL browse, or `""` when unsorted.
-/// Identifiers are quoted; only the ASC/DESC keyword is interpolated.
-pub(crate) fn order_by_clause(dialect: Dialect, order: &[SortSpec]) -> String {
-    if order.is_empty() {
-        return String::new();
+/// An optional text field of the browse, trimmed, or `None` when blank.
+pub(crate) fn nonblank(o: &Option<String>) -> Option<&str> {
+    o.as_deref().map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// ` COLLATE <name>` for a SQL sort key, or `""` for none.
+///
+/// A collation cannot be a bind parameter in any of the four dialects, so the
+/// name is interpolated — which is why each dialect gets the narrowest spelling
+/// it accepts. PostgreSQL names are identifiers (`"es-ES-x-icu"`, `"C"`) and go
+/// through [`Dialect::quote_ident`]; MySQL and SQL Server names are bare words
+/// (`utf8mb4_spanish_ci`, `Latin1_General_CI_AS`) and must be exactly that;
+/// SQLite has three built-in collations and nothing else to name.
+pub(crate) fn collate_clause(dialect: Dialect, collation: Option<&str>) -> AppResult<String> {
+    let Some(name) = collation else {
+        return Ok(String::new());
+    };
+    let word = |n: &str| n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+    match dialect {
+        Dialect::Postgres => Ok(format!(" COLLATE {}", dialect.quote_ident(name))),
+        Dialect::Sqlite => {
+            let upper = name.to_ascii_uppercase();
+            if matches!(upper.as_str(), "BINARY" | "NOCASE" | "RTRIM") {
+                Ok(format!(" COLLATE {upper}"))
+            } else {
+                Err(AppError::InvalidInput(
+                    "collation: SQLite has BINARY, NOCASE and RTRIM".into(),
+                ))
+            }
+        }
+        Dialect::Mysql | Dialect::MsSql if word(name) => Ok(format!(" COLLATE {name}")),
+        Dialect::Mysql | Dialect::MsSql => Err(AppError::InvalidInput(format!(
+            "collation: `{name}` is not a collation name (letters, digits and _ only)"
+        ))),
     }
+}
+
+/// The `FROM` target of a SQL browse, with the index hint when there is one.
+///
+/// Every engine but PostgreSQL has a syntax for it — MySQL's `FORCE INDEX`,
+/// SQLite's `INDEXED BY`, SQL Server's `WITH (INDEX(…))` — and each makes the
+/// statement **fail** rather than silently ignore a missing index, which is
+/// the honest behaviour for a control the user set on purpose. PostgreSQL's
+/// planner takes no hints without an extension, so a hint there is refused
+/// with that reason instead of being dropped.
+pub(crate) fn from_clause(dialect: Dialect, qt: &str, hint: Option<&str>) -> AppResult<String> {
+    let Some(index) = hint else {
+        return Ok(qt.to_string());
+    };
+    let q = dialect.quote_ident(index);
+    match dialect {
+        Dialect::Postgres => Err(AppError::InvalidInput(
+            "index hint: PostgreSQL has no index hints; its planner chooses on its own".into(),
+        )),
+        Dialect::Mysql => Ok(format!("{qt} FORCE INDEX ({q})")),
+        Dialect::Sqlite => Ok(format!("{qt} INDEXED BY {q}")),
+        Dialect::MsSql => Ok(format!("{qt} WITH (INDEX({q}))")),
+    }
+}
+
+/// The multi-level `ORDER BY` for a SQL browse, or `""` when unsorted.
+/// Identifiers are quoted; only the ASC/DESC keyword and the validated
+/// collation (see [`collate_clause`]) are interpolated.
+pub(crate) fn order_by_clause(
+    dialect: Dialect,
+    order: &[SortSpec],
+    collation: Option<&str>,
+) -> AppResult<String> {
+    if order.is_empty() {
+        return Ok(String::new());
+    }
+    let collate = collate_clause(dialect, collation)?;
     let parts: Vec<String> = order
         .iter()
         .map(|s| {
             let dir = if s.desc { "DESC" } else { "ASC" };
-            format!("{} {}", dialect.quote_ident(&s.column), dir)
+            format!("{}{collate} {dir}", dialect.quote_ident(&s.column))
         })
         .collect();
-    format!(" ORDER BY {}", parts.join(", "))
+    Ok(format!(" ORDER BY {}", parts.join(", ")))
 }
 
 /// A table plus a predicate over it, with no paging — what
@@ -522,6 +564,13 @@ pub struct TableScan {
     pub order: Vec<SortSpec>,
     #[serde(default)]
     pub projection: Option<Projection>,
+    /// See [`TableQuery::collation`]. Read by the export (its order) and by the
+    /// MongoDB count, where a collation changes which documents match.
+    #[serde(default)]
+    pub collation: Option<String>,
+    /// See [`TableQuery::hint`]. Read by the export.
+    #[serde(default)]
+    pub hint: Option<String>,
 }
 
 /// One page of a table browse: a [`TableScan`]'s address and predicate, plus
@@ -550,6 +599,17 @@ pub struct TableQuery {
     /// Fields to return; `None` is every field. See [`Projection`].
     #[serde(default)]
     pub projection: Option<Projection>,
+    /// The query panel's *Collation*. SQL: a collation **name**, applied to
+    /// every `ORDER BY` key (see [`collate_clause`]). MongoDB: a collation
+    /// **document** (`{ locale: 'es', strength: 1 }`), which the server applies
+    /// to the filter and the sort alike. Blank is none.
+    #[serde(default)]
+    pub collation: Option<String>,
+    /// The query panel's *Index (hint)*: the name of an index the planner must
+    /// use. See [`from_clause`] for the per-dialect syntax, and for PostgreSQL,
+    /// which has none. Blank is none.
+    #[serde(default)]
+    pub hint: Option<String>,
     /// Whether to run the companion `SELECT COUNT(*)`. The GUI passes `false`
     /// when only the sort/offset/page changed (the total cannot have moved)
     /// and reuses its cached total, saving a round trip per interaction; the
@@ -1774,44 +1834,17 @@ pub(crate) async fn fetch_table_data_inner(
     query: TableQuery,
 ) -> AppResult<QueryResult> {
     query.filter.validate()?;
-    let TableQuery {
-        connection_id,
-        schema,
-        table,
-        limit,
-        offset,
-        order,
-        filter,
-        projection,
-        with_count,
-    } = query;
-    let pool = state.pool_for(&connection_id)?;
+    let pool = state.pool_for(&query.connection_id)?;
 
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
-        let result = crate::db::mongo::query::fetch_collection_data(
-            conn,
-            &table,
-            limit,
-            offset,
-            &order,
-            &filter,
-            projection.as_ref(),
-            with_count,
-        )
-        .await;
-        let sql_text = crate::db::mongo::query::describe_find(
-            &table,
-            &filter,
-            &order,
-            projection.as_ref(),
-            limit,
-            offset,
-        );
+        let result = crate::db::mongo::query::fetch_collection_data(conn, &query).await;
+        let sql_text = crate::db::mongo::query::describe_find(&query);
+        let connection_id = &query.connection_id;
         match &result {
             Ok(r) => log_sql_sink(
                 sink,
-                &connection_id,
+                connection_id,
                 "mongodb",
                 &sql_text,
                 start,
@@ -1820,7 +1853,7 @@ pub(crate) async fn fetch_table_data_inner(
             ),
             Err(e) => log_sql_sink(
                 sink,
-                &connection_id,
+                connection_id,
                 "mongodb",
                 &sql_text,
                 start,
@@ -1834,16 +1867,16 @@ pub(crate) async fn fetch_table_data_inner(
     let driver = pool.driver_name();
     let dialect = Dialect::try_of(&pool)?;
 
-    let (data_sql, where_binds) = sql_page_statement(
-        dialect,
-        schema.as_deref(),
-        &table,
-        &filter,
-        &order,
-        projection.as_ref(),
-        limit,
-        offset,
-    )?;
+    let (data_sql, where_binds) = sql_page_statement(dialect, &query)?;
+    let TableQuery {
+        connection_id,
+        schema,
+        table,
+        filter,
+        projection,
+        with_count,
+        ..
+    } = query;
     let (where_clause, _) = filter.clause(dialect)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
@@ -1970,12 +2003,15 @@ pub(crate) async fn count_table_rows_inner(
     state: &AppState,
     query: TableScan,
 ) -> AppResult<CountResult> {
-    // `order` and `projection` do not change how many rows match.
+    // `order`, `projection` and `hint` do not change how many rows match. A
+    // collation does on MongoDB (it is part of the match there); on SQL it
+    // only ever reaches the ORDER BY, so the SQL count ignores it.
     let TableScan {
         connection_id,
         schema,
         table,
         filter,
+        collation,
         ..
     } = query;
     let pool = state.pool_for(&connection_id)?;
@@ -1990,8 +2026,14 @@ pub(crate) async fn count_table_rows_inner(
     // exact countDocuments over the filter otherwise.
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
-        let res =
-            crate::db::mongo::query::count_collection(conn, &table, &filter, unfiltered).await;
+        let res = crate::db::mongo::query::count_collection(
+            conn,
+            &table,
+            &filter,
+            nonblank(&collation),
+            unfiltered,
+        )
+        .await;
         let label = if unfiltered {
             "(mongo estimatedDocumentCount)"
         } else {
@@ -3511,7 +3553,7 @@ mod filter_tests {
 
     #[test]
     fn order_by_clause_keeps_precedence_and_quotes() {
-        assert_eq!(order_by_clause(Dialect::Postgres, &[]), "");
+        assert_eq!(order_by_clause(Dialect::Postgres, &[], None).unwrap(), "");
         let order = vec![
             SortSpec {
                 column: "ts".into(),
@@ -3523,9 +3565,75 @@ mod filter_tests {
             },
         ];
         assert_eq!(
-            order_by_clause(Dialect::Postgres, &order),
+            order_by_clause(Dialect::Postgres, &order, None).unwrap(),
             r#" ORDER BY "ts" DESC, "code" ASC"#
         );
+        // A collation lands on every key, in the dialect's spelling.
+        assert_eq!(
+            order_by_clause(Dialect::Postgres, &order, Some("es-ES-x-icu")).unwrap(),
+            r#" ORDER BY "ts" COLLATE "es-ES-x-icu" DESC, "code" COLLATE "es-ES-x-icu" ASC"#
+        );
+    }
+
+    #[test]
+    fn collate_clause_takes_only_what_each_dialect_can_name() {
+        assert_eq!(
+            collate_clause(Dialect::Mysql, Some("utf8mb4_spanish_ci")).unwrap(),
+            " COLLATE utf8mb4_spanish_ci"
+        );
+        assert_eq!(
+            collate_clause(Dialect::MsSql, Some("Latin1_General_CI_AS")).unwrap(),
+            " COLLATE Latin1_General_CI_AS"
+        );
+        assert_eq!(
+            collate_clause(Dialect::Sqlite, Some("nocase")).unwrap(),
+            " COLLATE NOCASE"
+        );
+        // Interpolated, so anything that is not a bare name is refused.
+        assert!(collate_clause(Dialect::Mysql, Some("utf8mb4_bin; DROP")).is_err());
+        assert!(collate_clause(Dialect::Sqlite, Some("es_ES")).is_err());
+        // PostgreSQL names are identifiers, so quoting makes any of them safe.
+        assert_eq!(
+            collate_clause(Dialect::Postgres, Some("a\"b")).unwrap(),
+            r#" COLLATE "a""b""#
+        );
+        assert_eq!(collate_clause(Dialect::Postgres, None).unwrap(), "");
+    }
+
+    #[test]
+    fn from_clause_spells_the_hint_per_dialect_and_refuses_it_on_postgres() {
+        assert_eq!(
+            from_clause(Dialect::Mysql, "`t`", Some("idx_code")).unwrap(),
+            "`t` FORCE INDEX (`idx_code`)"
+        );
+        assert_eq!(
+            from_clause(Dialect::Sqlite, "\"t\"", Some("idx_code")).unwrap(),
+            "\"t\" INDEXED BY \"idx_code\""
+        );
+        assert_eq!(
+            from_clause(Dialect::MsSql, "[t]", Some("idx_code")).unwrap(),
+            "[t] WITH (INDEX([idx_code]))"
+        );
+        assert!(from_clause(Dialect::Postgres, "\"t\"", Some("idx_code")).is_err());
+        assert_eq!(
+            from_clause(Dialect::Postgres, "\"t\"", None).unwrap(),
+            "\"t\""
+        );
+    }
+
+    #[test]
+    fn table_query_carries_collation_and_hint() {
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "t",
+            "limit": 10,
+            "offset": 0,
+            "collation": "utf8mb4_bin",
+            "hint": " idx_code ",
+        }))
+        .unwrap();
+        assert_eq!(nonblank(&q.collation), Some("utf8mb4_bin"));
+        assert_eq!(nonblank(&q.hint), Some("idx_code"));
     }
 
     // --- The query panel's expression ------------------------------------

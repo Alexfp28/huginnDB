@@ -533,6 +533,10 @@ pub struct PersistedTab {
     /// The query panel's hand-written expression (a `WHERE` fragment or a
     /// MongoDB filter document), as text. Same IPC-boundary rule (gotcha #14).
     pub raw_filter: Option<String>,
+    /// The query panel's *Advanced* row: collation (a name on SQL, a document
+    /// on MongoDB) and index hint, as typed. Same IPC-boundary rule.
+    pub collation: Option<String>,
+    pub hint: Option<String>,
 }
 
 impl Environment {
@@ -574,6 +578,8 @@ impl Default for PersistedTab {
             document_view_mode: None,
             projection: None,
             raw_filter: None,
+            collation: None,
+            hint: None,
         }
     }
 }
@@ -1243,18 +1249,18 @@ mod tests {
     #[test]
     fn raw_filter_round_trips() {
         let with = r#"{ "version": 4, "environments": [ { "id": "a", "connections": {
-            "c1": { "tabs": [ { "id": "t1", "kind": "table", "rawFilter": "qty > 3" } ] }
+            "c1": { "tabs": [ { "id": "t1", "kind": "table", "rawFilter": "qty > 3",
+              "collation": "utf8mb4_bin", "hint": "idx_code" } ] }
         } } ] }"#;
         let raw: RawState = serde_json::from_str(with).unwrap();
         let state = raw.into_state();
         let json = serde_json::to_string(&state).unwrap();
         let reparsed: RawState = serde_json::from_str(&json).unwrap();
-        assert_eq!(
-            sole_env(&reparsed.into_state()).connections["c1"].tabs[0]
-                .raw_filter
-                .as_deref(),
-            Some("qty > 3")
-        );
+        let restored = reparsed.into_state();
+        let tab = &sole_env(&restored).connections["c1"].tabs[0];
+        assert_eq!(tab.raw_filter.as_deref(), Some("qty > 3"));
+        assert_eq!(tab.collation.as_deref(), Some("utf8mb4_bin"));
+        assert_eq!(tab.hint.as_deref(), Some("idx_code"));
     }
 
     #[test]

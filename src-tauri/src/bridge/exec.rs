@@ -257,6 +257,8 @@ pub async fn execute(
                     order: Vec::new(),
                     filter: Default::default(),
                     projection: None,
+                    collation: None,
+                    hint: None,
                     // The bridge's own `with_count` is an `Option<bool>` on
                     // the wire; `None` kept the pre-struct default of "count".
                     with_count: with_count.unwrap_or(true),

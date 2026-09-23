@@ -224,6 +224,8 @@ pub async fn preview_bulk_update(
             },
             order: Vec::new(),
             projection: None,
+            collation: None,
+            hint: None,
         },
     )
     .await?

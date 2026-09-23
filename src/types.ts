@@ -742,6 +742,9 @@ export interface TabViewState {
   projection?: Projection;
   /** The query panel's expression — see `TableFilter.raw`. */
   rawFilter?: string;
+  /** The query panel's *Advanced* row — see `TableScan.collation` / `hint`. */
+  collation?: string;
+  hint?: string;
 }
 
 /** The statement a browse would run, as the query panel's *Result* line shows
@@ -826,6 +829,16 @@ export interface TableScan extends TableFilter {
   order?: SortSpec[];
   /** Fields to return (export and browse); ignored by the count. */
   projection?: Projection;
+  /**
+   * The query panel's *Collation*. SQL: a collation name applied to every
+   * sort key. MongoDB: a collation document (`{ locale: 'es', strength: 1 }`),
+   * which also changes what the filter matches — so the MongoDB count reads it
+   * too. Blank is none.
+   */
+  collation?: string;
+  /** The query panel's *Index (hint)*: an index name the planner must use.
+   *  Refused on PostgreSQL, which has no hints. Blank is none. */
+  hint?: string;
 }
 
 /**
@@ -848,6 +861,8 @@ export interface Projection {
 export interface CollectionScan extends TableFilter {
   order?: SortSpec[];
   projection?: Projection;
+  collation?: string;
+  hint?: string;
 }
 
 /** One page of a table browse — the payload of `fetchTableData`. Mirrors Rust
@@ -2046,6 +2061,8 @@ export interface PersistedTab {
   /** The query panel's expression. Declared on the Rust side too (gotcha
    *  #14). */
   rawFilter: string | null;
+  collation: string | null;
+  hint: string | null;
 }
 
 /**
