@@ -2928,6 +2928,7 @@ mod tests {
                 offset: 0,
                 order: Vec::new(),
                 filter: Default::default(),
+                projection: None,
                 with_count: true,
             },
         )
@@ -3030,6 +3031,7 @@ mod tests {
                 offset: 0,
                 order: Vec::new(),
                 filter: Default::default(),
+                projection: None,
                 with_count: true,
             },
         )

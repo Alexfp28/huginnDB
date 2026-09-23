@@ -12,12 +12,13 @@
 //! the `bson` crate (see `Cargo.toml`), so fidelity matches MongoDB's spec for
 //! every BSON type — not just the common tags the grid's own converter handles.
 
-use crate::commands::query::ColumnFilter;
-use crate::db::mongo::query::build_filter;
+use crate::commands::query::{Projection, SortSpec, TableFilter};
+use crate::db::mongo::query::{build_filter, projection_doc, sort_doc};
 use crate::db::mongo::schema::resolve_db;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
 use mongodb::bson::{doc, Bson, Document};
+use serde::Deserialize;
 use serde_json::Value;
 use std::convert::TryFrom;
 use std::io::Write;
@@ -32,16 +33,31 @@ fn mongo_conn(pool: &DbPool) -> AppResult<&crate::state::MongoConn> {
     }
 }
 
-/// Export the documents of `collection` matching `filters` (all of them when
-/// empty) to a user-chosen `.json` file as a canonical Extended JSON array.
-/// Streams straight from the cursor to the file so a large collection isn't
-/// fully buffered in memory. Returns the written path; rejects if the user
-/// cancels the save dialog.
+/// What "export query results" narrows a collection to: the browse's
+/// predicate (its chips *and* its free-text search), sort and projection,
+/// without its paging. Flattened like `TableScan`, so the payload is the same
+/// flat shape the grid already sends for a SQL export.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionScan {
+    #[serde(flatten)]
+    pub filter: TableFilter,
+    #[serde(default)]
+    pub order: Vec<SortSpec>,
+    #[serde(default)]
+    pub projection: Option<Projection>,
+}
+
+/// Export the documents of `collection` to a user-chosen `.json` file as a
+/// canonical Extended JSON array. Streams straight from the cursor to the file
+/// so a large collection isn't fully buffered in memory. Returns the written
+/// path; rejects if the user cancels the save dialog.
 ///
-/// `filters` reuses the same [`ColumnFilter`] shape the DataGrid's advanced
-/// filter already builds for `fetch_collection_data` — an empty list keeps
-/// today's "export the full collection" behaviour, a non-empty one scopes the
-/// export to "export query results" instead, via [`build_filter`].
+/// `scan` absent is "export the full collection". Present, it is "export query
+/// results", and it writes what the grid shows: the same filter
+/// `fetch_collection_data` builds (the free-text search included — it used to
+/// be dropped here, so an export under a search wrote documents the grid was
+/// not showing), in the grid's order, with the grid's projection.
 #[tauri::command]
 pub async fn export_collection(
     app: AppHandle,
@@ -49,13 +65,13 @@ pub async fn export_collection(
     state: State<'_, AppState>,
     connection_id: String,
     collection: String,
-    filters: Option<Vec<ColumnFilter>>,
+    scan: Option<CollectionScan>,
 ) -> AppResult<String> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
-    let filters = filters.unwrap_or_default();
+    let scan = scan.unwrap_or_default();
 
     use tauri_plugin_dialog::DialogExt;
     let suggested = format!("{collection}.json");
@@ -70,12 +86,19 @@ pub async fn export_collection(
     let dest = path.to_string();
 
     let coll = db.collection::<Document>(&collection);
-    let query_filter = if filters.is_empty() {
-        doc! {}
-    } else {
-        build_filter(&filters, None, &[])
-    };
-    let mut cursor = coll.find(query_filter).await?;
+    let query_filter = build_filter(
+        &scan.filter.filters,
+        scan.filter.needle(),
+        &scan.filter.search_columns,
+    );
+    let mut find = coll.find(query_filter);
+    if let Some(sort) = sort_doc(&scan.order) {
+        find = find.sort(sort);
+    }
+    if let Some(projection) = projection_doc(scan.projection.as_ref()) {
+        find = find.projection(projection);
+    }
+    let mut cursor = find.await?;
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
     write!(w, "[")?;
     let mut first = true;

@@ -76,6 +76,7 @@ import {
   GridToolbar,
   type GridToolbarItem,
   type InsertAlternative,
+  type ProjectionChip,
 } from "@/components/grid/GridToolbar";
 import { GridRow, type GridRowCallbacks } from "@/components/grid/GridRow";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -317,6 +318,19 @@ interface Props {
    * that don't paginate see no change.
    */
   footer?: ReactNode;
+  /** The active projection's chip, forwarded to the toolbar's chip row. */
+  projectionChip?: ProjectionChip;
+  /**
+   * The rows are already the server's answer to `globalFilter`, so the
+   * client-side text pass below must not run over them again.
+   *
+   * That pass only ever sees the columns on screen, and the server searched
+   * every column of the table. The two agreed as long as every column was on
+   * screen; a projection breaks that, and a row the server matched on a hidden
+   * column would vanish here with nothing saying why. Table tabs set this;
+   * query results, which have no server to ask, keep the pass.
+   */
+  rowsFromServer?: boolean;
   /**
    * Content rendered between the toolbar and the grid body — TableDataTab's
    * query panel. Outside the scroll container on purpose: it must not scroll
@@ -361,7 +375,7 @@ interface Props {
  * `TableDataTab` builds its three slot arrays against it, and the type now
  * lives with the bar that consumes it.
  */
-export type { GridToolbarItem, InsertAlternative };
+export type { GridToolbarItem, InsertAlternative, ProjectionChip };
 
 export interface SelectedCell {
   /**
@@ -420,6 +434,8 @@ export function DataGrid({
   toolbarTrailing,
   footer,
   belowToolbar,
+  projectionChip,
+  rowsFromServer = false,
   showRowCount = true,
   loading,
   viewMode = "table",
@@ -493,12 +509,12 @@ export function DataGrid({
    * value to the backend, so a second pass here is a harmless no-op.
    */
   const visibleRows = useMemo(() => {
-    if (!globalFilter) return result.rows;
+    if (!globalFilter || rowsFromServer) return result.rows;
     const q = globalFilter.toLowerCase();
     return result.rows.filter((r) =>
       r.some((c) => formatValue(c).toLowerCase().includes(q)),
     );
-  }, [result.rows, globalFilter]);
+  }, [result.rows, globalFilter, rowsFromServer]);
 
   // Row selection — keys, clicks, select-all and the derived answers the
   // toolbar and context menus need. See the hook for the invariants (identity
@@ -1173,6 +1189,7 @@ export function DataGrid({
           onSortSpecsChange &&
           ((column) => onSortSpecsChange(removeSortLevel(sort ?? [], column)))
         }
+        projectionChip={projectionChip}
         onInsertRow={onInsertRow}
         showRowCount={showRowCount}
         visibleRowCount={visibleRows.length}

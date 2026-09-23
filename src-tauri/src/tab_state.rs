@@ -525,6 +525,11 @@ pub struct PersistedTab {
     /// `documentViewMode` default preference used only to seed a newly opened
     /// tab. Same IPC-boundary rule as the three fields above (gotcha #14).
     pub document_view_mode: Option<String>,
+    /// The query panel's projection — which fields the browse returns. Opaque
+    /// for the same reason as `filters`: the backend's `Projection` is a
+    /// command input, and this module never interprets view state. Declared
+    /// so it survives the IPC boundary (gotcha #14).
+    pub projection: Option<serde_json::Value>,
 }
 
 impl Environment {
@@ -564,6 +569,7 @@ impl Default for PersistedTab {
             sort: None,
             search: None,
             document_view_mode: None,
+            projection: None,
         }
     }
 }
@@ -1199,6 +1205,34 @@ mod tests {
                 .document_view_mode
                 .as_deref(),
             Some("list")
+        );
+    }
+
+    #[test]
+    fn projection_round_trips_as_an_opaque_blob() {
+        // The query panel's projection. Same gotcha #14 guard as the view mode
+        // above: undeclared, it would vanish between the frontend and disk.
+        let with = r#"{ "version": 4, "environments": [ { "id": "a", "connections": {
+            "c1": { "tabs": [ { "id": "t1", "kind": "table",
+              "projection": { "fields": ["ts", "code"], "exclude": false } } ] }
+        } } ] }"#;
+        let raw: RawState = serde_json::from_str(with).unwrap();
+        let state = raw.into_state();
+        let expected = serde_json::json!({ "fields": ["ts", "code"], "exclude": false });
+        assert_eq!(
+            sole_env(&state).connections["c1"].tabs[0]
+                .projection
+                .as_ref(),
+            Some(&expected)
+        );
+
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            sole_env(&reparsed.into_state()).connections["c1"].tabs[0]
+                .projection
+                .as_ref(),
+            Some(&expected)
         );
     }
 

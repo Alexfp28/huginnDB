@@ -145,6 +145,14 @@ pide los documentos cuyo `tags` *contiene* ese valor, y ordenar por
 `items.0.sku` ordena por `items.sku`, porque `sort()` no entiende un índice
 posicional.
 
+**La proyección devuelve solo los campos que pides.** La fila *Proyección* del
+panel de consulta incluye o excluye campos (también rutas anidadas), y la
+navegación la envía como documento de proyección de `find()`, así que un
+subdocumento grande deja de viajar con cada página. `_id` siempre vuelve —la
+vista de lista localiza cada edición por él— y un chip **Campos** bajo la barra
+nombra la proyección mientras está activa. *Exportar resultados* escribe los
+documentos proyectados, en el orden de la tabla.
+
 Un límite: **la clave de un campo no se puede renombrar en el sitio**. Renombrar
 es un `$set` de la clave nueva más un `$unset` de la vieja, y hacerlo con
 seguridad exige una única actualización atómica a nivel de documento, no las

@@ -10,6 +10,33 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Proyección: elige qué campos devuelve una tabla o una colección.** El
+  panel de consulta tiene una segunda fila. En SQL es **Columnas** (*Todas* /
+  *Elegir*); en MongoDB es **Proyección** (*Todos* / *Incluir* / *Excluir*).
+  La navegación pide entonces al servidor solo esos campos —una lista en el
+  `SELECT`, o el documento de proyección de `find()`—, así que una tabla con
+  una columna JSON o de texto muy ancha, o una colección cuyos documentos
+  llevan un subdocumento grande, deja de traerlo en cada página.
+
+  La clave siempre vuelve. Toda edición localiza una fila por su clave
+  primaria y un documento por su `_id`, así que el panel los muestra
+  bloqueados en lugar de ofrecer una elección que dejaría las filas en solo
+  lectura, y `_id` no se puede excluir. Las rutas que MongoDB no acepta juntas
+  (`meta` con `meta.plant`) dejan de ofrecerse en cuanto se elige una de
+  ellas. Mientras hay una proyección activa, un chip **Campos** en la fila de
+  chips la nombra, abre el panel, y su ✕ vuelve a devolver todos los campos
+  —una columna que falta sin motivo visible parece un fallo—. *Duplicar fila*
+  no está disponible mientras tanto, porque la copia perdería sin avisar los
+  valores de las columnas ocultas. La proyección se guarda con la pestaña,
+  como sus filtros y su orden.
+
+- **«Exportar resultados» escribe lo que muestra la tabla.** Ya respetaba los
+  filtros. Ahora respeta también el orden (el fichero sale en el orden de la
+  tabla) y la proyección. Los `INSERT` de una exportación SQL nombran solo las
+  columnas proyectadas, así que las demás toman su valor por defecto al
+  volver a cargarse; una exportación de MongoDB escribe los documentos
+  proyectados.
+
 - **Ordenar en la vista de lista, y un orden que se ve en los dos modos.** El
   orden de la navegación siempre se aplicó en el servidor y seguía aplicándose
   en la vista de lista, pero la única forma de ponerlo era hacer clic en la
@@ -74,6 +101,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cuando había suficientes como para importar. La fila nueva lleva la etiqueta
   *Filtros · Orden*, solo aparece cuando hay algo que mostrar y hace salto de
   línea en vez de plegarse. Los chips de resumen desaparecen.
+
+### Corregido
+
+- **«Exportar resultados» en MongoDB ignoraba la búsqueda de texto libre.**
+  Aplicaba los chips de filtro pero se saltaba el buscador, así que una
+  exportación hecha mientras se buscaba escribía documentos que la tabla no
+  estaba mostrando. Ahora usa el mismo filtro que la navegación.
 
 ## [1.27.0] — 2026-09-23
 

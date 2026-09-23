@@ -141,8 +141,78 @@ impl TableFilter {
     }
 }
 
+/// Which fields a browse returns — the query panel's *Projection* row.
+///
+/// `None`, or an empty `fields` list, means every field: the absent value is
+/// the one every caller that predates projection sends, so it must keep meaning
+/// what `SELECT *` meant.
+///
+/// `exclude` is MongoDB's: `{ a: 0 }` leaves `a` out and keeps the rest. SQL
+/// has no `SELECT * EXCEPT` in any of the four dialects, and rewriting one into
+/// a column list needs the catalog, which the frontend already holds — so a SQL
+/// browse only ever receives an inclusion list, and an exclusion reaching it is
+/// rejected rather than guessed at (see [`select_list`]).
+///
+/// The key columns are the caller's business, not this type's. The grid
+/// addresses a row by its primary key (and a document by its `_id`) for every
+/// edit, so the frontend always includes them; a headless caller asking for a
+/// partial row it will not edit is entitled to one.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Projection {
+    #[serde(default)]
+    pub fields: Vec<String>,
+    #[serde(default)]
+    pub exclude: bool,
+}
+
+impl Projection {
+    /// The projection that actually narrows anything, or `None` for "all
+    /// fields" however it was spelled.
+    pub fn narrowing(p: Option<&Projection>) -> Option<&Projection> {
+        p.filter(|p| !p.fields.is_empty())
+    }
+}
+
+/// The `SELECT` list for a SQL browse: the quoted projected columns, or `*`.
+pub(crate) fn select_list(dialect: Dialect, projection: Option<&Projection>) -> AppResult<String> {
+    match Projection::narrowing(projection) {
+        None => Ok("*".to_string()),
+        Some(p) if p.exclude => Err(AppError::InvalidInput(
+            "an exclusion projection is MongoDB-only; a SQL browse takes the list of columns to return"
+                .into(),
+        )),
+        Some(p) => Ok(p
+            .fields
+            .iter()
+            .map(|c| dialect.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ")),
+    }
+}
+
+/// The multi-level `ORDER BY` for a SQL browse, or `""` when unsorted.
+/// Identifiers are quoted; only the ASC/DESC keyword is interpolated.
+pub(crate) fn order_by_clause(dialect: Dialect, order: &[SortSpec]) -> String {
+    if order.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = order
+        .iter()
+        .map(|s| {
+            let dir = if s.desc { "DESC" } else { "ASC" };
+            format!("{} {}", dialect.quote_ident(&s.column), dir)
+        })
+        .collect();
+    format!(" ORDER BY {}", parts.join(", "))
+}
+
 /// A table plus a predicate over it, with no paging — what
 /// [`count_table_rows`] and `export_table_rows` address.
+///
+/// `order` and `projection` are the browse's *shape*. The export reads them so
+/// "export query results" writes what the grid shows, in the order it shows
+/// it; the count ignores both, since neither changes how many rows match.
 ///
 /// `filter` is `#[serde(flatten)]`ed, so the IPC payload stays the flat object
 /// the frontend already sent (`{ connectionId, schema, table, filters, search,
@@ -156,6 +226,10 @@ pub struct TableScan {
     pub table: String,
     #[serde(flatten)]
     pub filter: TableFilter,
+    #[serde(default)]
+    pub order: Vec<SortSpec>,
+    #[serde(default)]
+    pub projection: Option<Projection>,
 }
 
 /// One page of a table browse: a [`TableScan`]'s address and predicate, plus
@@ -181,6 +255,9 @@ pub struct TableQuery {
     pub order: Vec<SortSpec>,
     #[serde(flatten)]
     pub filter: TableFilter,
+    /// Fields to return; `None` is every field. See [`Projection`].
+    #[serde(default)]
+    pub projection: Option<Projection>,
     /// Whether to run the companion `SELECT COUNT(*)`. The GUI passes `false`
     /// when only the sort/offset/page changed (the total cannot have moved)
     /// and reuses its cached total, saving a round trip per interaction; the
@@ -1413,6 +1490,7 @@ pub(crate) async fn fetch_table_data_inner(
         offset,
         order,
         filter,
+        projection,
         with_count,
     } = query;
     let pool = state.pool_for(&connection_id)?;
@@ -1420,11 +1498,24 @@ pub(crate) async fn fetch_table_data_inner(
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
         let result = crate::db::mongo::query::fetch_collection_data(
-            conn, &table, limit, offset, &order, &filter, with_count,
+            conn,
+            &table,
+            limit,
+            offset,
+            &order,
+            &filter,
+            projection.as_ref(),
+            with_count,
         )
         .await;
-        let sql_text =
-            crate::db::mongo::query::describe_find(&table, &filter, &order, limit, offset);
+        let sql_text = crate::db::mongo::query::describe_find(
+            &table,
+            &filter,
+            &order,
+            projection.as_ref(),
+            limit,
+            offset,
+        );
         match &result {
             Ok(r) => log_sql_sink(
                 sink,
@@ -1451,20 +1542,8 @@ pub(crate) async fn fetch_table_data_inner(
     let driver = pool.driver_name();
     let dialect = Dialect::try_of(&pool)?;
 
-    // Build a multi-level `ORDER BY c1 ASC, c2 DESC, …`. Identifiers are
-    // quoted; only the ASC/DESC keyword is interpolated (from the bool).
-    let order_clause = if order.is_empty() {
-        String::new()
-    } else {
-        let parts: Vec<String> = order
-            .iter()
-            .map(|s| {
-                let dir = if s.desc { "DESC" } else { "ASC" };
-                format!("{} {}", dialect.quote_ident(&s.column), dir)
-            })
-            .collect();
-        format!(" ORDER BY {}", parts.join(", "))
-    };
+    let order_clause = order_by_clause(dialect, &order);
+    let select = select_list(dialect, projection.as_ref())?;
 
     let (where_clause, where_binds) = filter.clause(dialect);
 
@@ -1476,7 +1555,7 @@ pub(crate) async fn fetch_table_data_inner(
     // form requires an ORDER BY, which `paginate` supplies when the user
     // hasn't sorted.
     let page = dialect.paginate(limit, offset, !order_clause.is_empty());
-    let data_sql = format!("SELECT * FROM {qt}{where_clause}{order_clause}{page}");
+    let data_sql = format!("SELECT {select} FROM {qt}{where_clause}{order_clause}{page}");
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
@@ -1536,16 +1615,37 @@ pub(crate) async fn fetch_table_data_inner(
     // #27). Fall back to the catalog definition so an empty table still shows
     // its full structure. Only pays the extra introspection query when the
     // page is genuinely empty; a failed lookup degrades to the old empty list.
+    //
+    // Under a projection the fallback is narrowed to it, in the projection's
+    // order — an empty page must still show the columns the user asked for,
+    // not the whole table.
     let columns = if columns.is_empty() {
         list_columns_inner(state, &connection_id, schema, table)
             .await
             .map(|cols| {
-                cols.into_iter()
-                    .map(|c| ColumnMeta {
-                        name: c.name,
-                        data_type: c.data_type,
+                // Slots, so each projected column can be taken by value in
+                // the projection's order without cloning the catalog.
+                let mut all: Vec<Option<ColumnMeta>> = cols
+                    .into_iter()
+                    .map(|c| {
+                        Some(ColumnMeta {
+                            name: c.name,
+                            data_type: c.data_type,
+                        })
                     })
-                    .collect::<Vec<_>>()
+                    .collect();
+                match Projection::narrowing(projection.as_ref()) {
+                    Some(p) => p
+                        .fields
+                        .iter()
+                        .filter_map(|f| {
+                            all.iter_mut()
+                                .find(|c| c.as_ref().is_some_and(|c| &c.name == f))
+                                .and_then(Option::take)
+                        })
+                        .collect(),
+                    None => all.into_iter().flatten().collect(),
+                }
             })
             .unwrap_or_default()
     } else {
@@ -1580,11 +1680,13 @@ pub(crate) async fn count_table_rows_inner(
     state: &AppState,
     query: TableScan,
 ) -> AppResult<CountResult> {
+    // `order` and `projection` do not change how many rows match.
     let TableScan {
         connection_id,
         schema,
         table,
         filter,
+        ..
     } = query;
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
@@ -3045,6 +3147,95 @@ mod filter_tests {
 
         assert_eq!(q.table, "album");
         assert!(q.filter.is_unfiltered());
+    }
+
+    #[test]
+    fn table_query_carries_the_projection_the_grid_sends() {
+        let q: TableQuery = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "device",
+            "limit": 100,
+            "offset": 0,
+            "projection": { "fields": ["id", "code"] },
+        }))
+        .unwrap();
+        let p = q
+            .projection
+            .expect("projection dropped at the IPC boundary");
+        assert_eq!(p.fields, vec!["id", "code"]);
+        // `exclude` absent is an inclusion — the only kind SQL takes.
+        assert!(!p.exclude);
+    }
+
+    #[test]
+    fn table_scan_carries_the_export_s_order_and_projection() {
+        let q: TableScan = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "device",
+            "order": [{ "column": "ts", "desc": true }],
+            "projection": { "fields": ["ts"], "exclude": false },
+        }))
+        .unwrap();
+        assert_eq!(q.order.len(), 1);
+        assert_eq!(q.projection.unwrap().fields, vec!["ts"]);
+
+        // The count payload, which sends neither, still parses.
+        let count: TableScan = serde_json::from_value(json!({
+            "connectionId": "c1",
+            "table": "device",
+        }))
+        .unwrap();
+        assert!(count.order.is_empty());
+        assert!(count.projection.is_none());
+    }
+
+    #[test]
+    fn select_list_quotes_projected_columns_and_defaults_to_star() {
+        assert_eq!(select_list(Dialect::Postgres, None).unwrap(), "*");
+        assert_eq!(
+            select_list(Dialect::Postgres, Some(&Projection::default())).unwrap(),
+            "*"
+        );
+        let p = Projection {
+            fields: vec!["id".into(), "atn id".into()],
+            exclude: false,
+        };
+        assert_eq!(
+            select_list(Dialect::Postgres, Some(&p)).unwrap(),
+            r#""id", "atn id""#
+        );
+        assert_eq!(
+            select_list(Dialect::Mysql, Some(&p)).unwrap(),
+            "`id`, `atn id`"
+        );
+    }
+
+    #[test]
+    fn select_list_rejects_an_exclusion_rather_than_guessing() {
+        let p = Projection {
+            fields: vec!["configuration".into()],
+            exclude: true,
+        };
+        assert!(select_list(Dialect::Sqlite, Some(&p)).is_err());
+    }
+
+    #[test]
+    fn order_by_clause_keeps_precedence_and_quotes() {
+        assert_eq!(order_by_clause(Dialect::Postgres, &[]), "");
+        let order = vec![
+            SortSpec {
+                column: "ts".into(),
+                desc: true,
+            },
+            SortSpec {
+                column: "code".into(),
+                desc: false,
+            },
+        ];
+        assert_eq!(
+            order_by_clause(Dialect::Postgres, &order),
+            r#" ORDER BY "ts" DESC, "code" ASC"#
+        );
     }
 
     #[test]

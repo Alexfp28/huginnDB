@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Projection: choose which fields a table or collection returns.** The
+  query panel has a second row. On SQL it is **Columns** (*All* / *Choose*);
+  on MongoDB it is **Projection** (*All* / *Include* / *Exclude*). The browse
+  then asks the server only for those fields — a `SELECT` list, or `find()`'s
+  projection document — so a table with a wide JSON or text column, or a
+  collection whose documents carry a large sub-document, stops shipping it on
+  every page.
+
+  The key always comes back. Every edit addresses a row by its primary key and
+  a document by its `_id`, so the panel shows them as locked instead of
+  offering a choice that would leave the rows read-only, and `_id` cannot be
+  excluded. Paths MongoDB refuses together (`meta` with `meta.plant`) are not
+  offered once one of them is picked. While a projection is on, a **Fields**
+  chip on the chip row names it, opens the panel, and its ✕ returns every
+  field again — a column that is missing for no visible reason reads as a
+  bug. *Duplicate row* is unavailable meanwhile, because the copy would drop
+  the hidden columns' values without saying so. The projection is saved with
+  the tab, like its filters and sort.
+
+- **"Export query results" writes what the grid shows.** It already honoured
+  the filters. It now also honours the sort (the file is in the grid's order)
+  and the projection. A SQL export's `INSERT`s name only the projected
+  columns, so the others take their defaults on the way back in; a MongoDB
+  export writes the projected documents.
+
 - **Sorting in the list view, and a sort you can see in both modes.** The
   browse sort was always server-side and it kept applying in the list view, but
   the only way to set it was clicking a column header, and the list view has no
@@ -71,6 +96,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   when there were enough of them to matter. The new row is labelled
   *Filters · Sort*, only appears when there is something to show, and wraps
   instead of folding. The summary chips are gone.
+
+### Fixed
+
+- **A MongoDB "Export query results" ignored the free-text search.** It
+  applied the filter chips but dropped the search box, so an export made while
+  searching wrote documents the grid was not showing. It now uses the same
+  filter the browse does.
 
 ## [1.27.0] — 2026-09-23
 
