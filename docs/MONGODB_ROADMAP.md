@@ -20,7 +20,8 @@ Verified against the 1.8.0 tree; grouped by the version that shipped it.
   (`db/mongo/mod.rs`, `schema.rs`).
 - `mongosh`-style editor: `find` / `findOne` / `aggregate` / `countDocuments` /
   `distinct` + the write methods (`insertOne/Many`, `updateOne/Many`,
-  `replaceOne`, `deleteOne/Many`), chained `.sort()/.limit()/.skip()/.projection()`,
+  `replaceOne`, `deleteOne/Many`), chained `.sort()/.limit()/.skip()/.projection()`
+  and, since the query panel, `.collation()/.hint()`,
   relaxed JSON and common BSON constructors (`shell.rs`, `query.rs`).
 - Edit / insert / delete by `_id`; field-type-aware value coercion (`query.rs`,
   `values.rs`).
@@ -276,8 +277,13 @@ schema-variance analysis (type distribution across a sample).
   designed to reject unknown methods with a clear error, so additions are
   additive.
 - The **visual aggregation builder** that used to be listed here is ✅ **done** —
-  see item #12 below. `explain` is the one piece of that idea still open: the
-  editor previews output but shows no plan.
+  see item #12 below.
+- `explain` is ✅ **done for `find`**: the grid's query panel reads the plan of
+  its own draft (`explain_table_query`, through Pulse's `explain` at
+  `queryPlanner` verbosity, collation and hint included). The **aggregation
+  editor** still previews output but shows no plan. Hook: the same Pulse reader
+  already accepts an `aggregate` statement, so the editor only needs the button
+  and a statement to hand it.
 
 ### 12. View editing / aggregation builder
 ✅ **Shipped.** A MongoDB view is a stored aggregation pipeline, which is why
@@ -317,7 +323,8 @@ Known limits, deliberate:
   `MinKey`/`MaxKey`) render as Extended JSON and re-save as plain documents.
   Pipelines carry filters and field paths rather than stored data, so this is
   rare; the fix is the same one item #8 needs — a non-lossy display form.
-- **No `explain`.** See item #9.
+- **No `explain` in the aggregation editor.** `find` has one now (the query
+  panel); see item #9 for the hook that would give the editor one too.
 
 ### 13. Rename a collection
 ✅ **Shipped.** `renameCollection` is a run-command on the `admin` database

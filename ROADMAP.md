@@ -42,6 +42,7 @@ in a roadmap and now don't:
 | **AI panel** — an in-app, local-first assistant | 1.22.0 | Docked beside Pulse, off by default. Two independently declared axes (where inference runs, whether rows may enter the context) gate everything; four assisted actions run on one model call each, agent mode drives the read-only tool catalogue and is gated on a measured tool-capable endpoint, and no write tool exists at all. Conversations are memory-only. See `docs/AI.md` for what exists, `docs/AI_ROADMAP.md` for the design rationale and the questions deferred past v1, and gotchas #71–#74 for the invariants. |
 | Open VSX theme browser | 1.26.0 | An **Extensions** panel in the right dock: search the registry, install a theme, apply it, and update the installed ones. Icon themes are filtered out by reading each candidate's manifest (1–11 KB) rather than its package, downloads are verified against the registry's published `sha256`, and the destination is read from preferences inside the backend so the kill-switch cannot be bypassed. An update never overwrites a palette the user has edited. See `CLAUDE.md` gotcha #88. |
 | VS Code theme import | 1.26.0 | `Import theme…` in Settings → Appearance accepts a `.vsix` or a bare `*-color-theme.json`. One file yields two things of different kinds: the editor gets a **translation** (Monaco *is* VS Code's editor), the chrome gets a **derivation** — ~230 widget-named keys read into 30 role-named tokens — which lands as an editable custom family rather than being presented as "your theme". Built against five real open-vsx themes kept as fixtures. Browsing the registry in-app is still open, see below. See `CLAUDE.md` gotcha #87. |
+| **Query panel** — a Compass-style query bar for every driver | Unreleased (next minor) | Started from a user comparing the list view with MongoDB Compass: the list view could not be sorted at all, and there was no projection. Shipped in six PRs (#177–#182), one design, one panel under the grid toolbar that replaced the advanced filter dialog: sort chips and a field context menu that work in both view modes; conditions plus a hand-written **expression** ANDed with them (a `WHERE` fragment on SQL, a filter document on MongoDB) rather than a lossy "conditions ⇄ JSON" toggle; **projection** with the key columns always kept; **collation** and an **index hint** in each engine's own spelling (PostgreSQL's missing hints are disabled with the reason); a **Result** line built by the code the browse runs, with *Copy*, *Open in editor* and **Explain** (SQL Server refused: its plan needs `SHOWPLAN` in a batch of its own); **Go to row** in place of Compass's Skip/Limit; and an export that writes what the grid shows. Deliberately *not* copied: a per-query `maxTimeMS` (the browse stays unbounded, gotcha #92) and free Skip/Limit fields, which would fight the pager. Everything is saved with the tab. |
 | Bulk row insert | 1.25.0 | "Paste rows as JSON…", behind the grid's Insert button, on all four SQL drivers: an object is one row, an array is many, and the backend turns either into one multi-row `INSERT` per bind-ceiling chunk inside a single transaction. Bulk *delete* had shipped in 1.0.2 and MongoDB had been covered since its document dialog accepted an array; this is the SQL half. Keys are validated against the catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted. See `CLAUDE.md` gotcha #84. |
 
 ## Open (priority order)
@@ -126,7 +127,12 @@ in a roadmap and now don't:
    unverified, and there's no Apple Developer signing/notarization yet
    (parallels the Windows SmartScreen situation documented in the README).
 9. **Visual query builder** — low priority. Monaco is fast enough that most
-   users probably don't want one; only pursue if there's real demand.
+   users probably don't want one; only pursue if there's real demand. The query
+   panel (see *Shipped milestones*) already covers the single-relation case —
+   conditions, projection, sort, collation, hint — so what is left for a
+   builder is what the panel deliberately does not model: OR groups (today an
+   expression), joins, and aggregation. Its *Open in editor* is the intended
+   way out for those, which is another reason this stays low.
 10. **Keyset (seek) pagination for deep table navigation** — low priority.
    The data browser paginates with `LIMIT/OFFSET` (and `.skip()` on MongoDB),
    which is O(offset): jumping deep into a multi-million-row table makes the
@@ -137,7 +143,12 @@ in a roadmap and now don't:
    the 1.11.0 row-count decoupling + whole-table estimate (issue #77)
    already removed the *actual* first-paint stall, so the offset cost only
    bites a user who pages very deep, which is rare in practice. Revisit only
-   if a real deep-navigation complaint appears.
+   if a real deep-navigation complaint appears. **One thing changed the odds:**
+   the footer's *Go to row* makes an offset of millions one keystroke away,
+   where it used to take a thousand clicks on *Next*. It is still O(offset)
+   underneath, so a deep jump on a big table is exactly the slow case this item
+   describes — the first complaint is now more likely to arrive, and this is
+   the item it belongs to.
 
 ## Fit and finish
 
