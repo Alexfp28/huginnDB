@@ -660,7 +660,6 @@
       "failed": "No se pudo insertar: {{message}}"
     },
     "moreActions": "Más acciones",
-    "activeFilterCount": "{{count}} filtros",
     "openInSideEditor": "Abrir en el editor lateral",
     "zoomIn": "Filas más grandes (Ctrl + +)",
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
@@ -694,6 +693,10 @@
       "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
     },
+    "chipRow": {
+      "filters": "Filtros",
+      "sort": "Orden"
+    },
     "sort": {
       "button": "Ordenar",
       "menuTitle": "Ordenar por",
@@ -705,7 +708,6 @@
       "chipAsc": "{{field}}, ascendente — clic para invertir",
       "chipDesc": "{{field}}, descendente — clic para invertir",
       "chipRemove": "Quitar {{field}} del orden",
-      "activeCount": "{{count}} criterios de orden",
       "byAsc": "Ordenar ascendente por {{field}}",
       "byDesc": "Ordenar descendente por {{field}}",
       "removeField": "Quitar {{field}} del orden"

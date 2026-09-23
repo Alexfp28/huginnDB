@@ -26,10 +26,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     incluidas las rutas anidadas) y construye un orden de varios niveles campo a
     campo. Lleva el mismo contador que el botón de filtro.
   - **Chips de orden** junto a los de filtro. Un clic invierte la dirección y
-    la ✕ lo quita. Si hay más de un nivel muestran su posición, y en un panel
-    estrecho se pliegan en un único chip de resumen, igual que los de filtro.
-    En modo tabla también mantienen visible un orden cuando su columna se ha
-    desplazado fuera de la vista.
+    la ✕ lo quita. Si hay más de un nivel muestran su posición. En modo tabla
+    también mantienen visible un orden cuando su columna se ha desplazado fuera
+    de la vista.
   - Un **menú contextual en cada campo** de la vista de lista: *Ordenar
     ascendente / descendente por …* (sustituye el orden, como un clic normal en
     la cabecera; el menú de la barra es el que añade niveles), *Quitar … del
@@ -67,6 +66,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   proyección, un filtro en bruto y una vista previa de la consulta que se va a
   lanzar. El diálogo se retira en lugar de convivir con el panel, para que
   haya un único sitio que edite los filtros activos.
+
+- **Los chips de filtro y de orden tienen una fila propia bajo la barra.**
+  Antes iban en línea tras el buscador, compitiendo por la misma línea con la
+  búsqueda y con todas las acciones. A partir de un ancho medio de panel se
+  plegaban en un único chip «N filtros», que ocultaba las condiciones justo
+  cuando había suficientes como para importar. La fila nueva lleva la etiqueta
+  *Filtros · Orden*, solo aparece cuando hay algo que mostrar y hace salto de
+  línea en vez de plegarse. Los chips de resumen desaparecen.
 
 ## [1.27.0] — 2026-09-23
 

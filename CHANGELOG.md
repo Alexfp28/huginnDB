@@ -24,10 +24,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     paths included) and builds a multi-level sort one field at a time. It
     carries the same count badge as the filter button.
   - **Sort chips** beside the filter chips. Click one to reverse its direction,
-    ✕ to drop it. When there is more than one level they show their rank, and
-    in a narrow pane they fold into one summary chip, the same way the filter
-    chips do. In table mode they also keep a sort visible after its column has
-    scrolled out of view.
+    ✕ to drop it. When there is more than one level they show their rank. In
+    table mode they also keep a sort visible after its column has scrolled out
+    of view.
   - A **context menu on every field** of the list view: *Sort ascending /
     descending by …* (this replaces the sort, like a plain header click; the
     toolbar menu is the one that adds levels), *Remove … from the sort*,
@@ -64,6 +63,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   filter and a preview of the query that will run. The dialog is removed
   rather than kept alongside it, so there is only ever one place that edits the
   active filters.
+
+- **The filter and sort chips have a row of their own under the toolbar.**
+  They used to sit inline after the search box, where they competed with the
+  search and every action for the same line. From a medium pane width down
+  they folded into a single "N filters" chip, which hid the conditions exactly
+  when there were enough of them to matter. The new row is labelled
+  *Filters · Sort*, only appears when there is something to show, and wraps
+  instead of folding. The summary chips are gone.
 
 ## [1.27.0] — 2026-09-23
 

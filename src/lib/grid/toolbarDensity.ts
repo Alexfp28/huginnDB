@@ -19,8 +19,10 @@ import { useEffect, useState } from "react";
  * - `wide` — every control inline, the historical layout.
  * - `compact` — the labelled data actions (insert / import / export / bulk
  *   update) move into the toolbar's overflow menu; icon-only controls stay.
- * - `narrow` — everything but the search box moves into the overflow menu,
- *   and the server-filter chips collapse to a single summary chip.
+ * - `narrow` — everything but the search box moves into the overflow menu.
+ *
+ * The filter and sort chips are not governed by this: they live on a row of
+ * their own under the toolbar, which wraps.
  */
 export type ToolbarDensity = "wide" | "compact" | "narrow";
 

@@ -631,7 +631,6 @@
       "failed": "Could not insert: {{message}}"
     },
     "moreActions": "More actions",
-    "activeFilterCount": "{{count}} filters",
     "openInSideEditor": "Open in side editor",
     "zoomIn": "Larger rows (Ctrl + +)",
     "zoomOut": "Smaller rows (Ctrl + −)",
@@ -694,6 +693,10 @@
       "insertHint": "Enter inserts · Esc discards",
       "changeType": "Change type"
     },
+    "chipRow": {
+      "filters": "Filters",
+      "sort": "Sort"
+    },
     "sort": {
       "button": "Sort",
       "menuTitle": "Sort by",
@@ -705,7 +708,6 @@
       "chipAsc": "{{field}}, ascending — click to reverse",
       "chipDesc": "{{field}}, descending — click to reverse",
       "chipRemove": "Remove {{field}} from the sort",
-      "activeCount": "{{count}} sort levels",
       "byAsc": "Sort ascending by {{field}}",
       "byDesc": "Sort descending by {{field}}",
       "removeField": "Remove {{field}} from the sort"

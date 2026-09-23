@@ -271,16 +271,23 @@ export function QueryPanel({
           >
             {t("tableData.query.reset")}
           </Button>
+          {/* The shortcut sits beside the button, never inside it: a key cap
+              is drawn on the neutral surfaces (`bg-muted`), and on a
+              primary-filled button that box reads as a dark patch stuck on
+              top of the theme's colour. A local key handler rather than a
+              catalogue action: it only ever means "apply this panel", and
+              only while focus is in it. */}
+          <span className="text-2xs text-muted-foreground" aria-hidden>
+            <Kbd>{formatForDisplay("Mod+Enter")}</Kbd>
+          </span>
           <Button
             type="button"
             size="xs"
             disabled={overlong.size > 0}
+            aria-keyshortcuts="Control+Enter Meta+Enter"
             onClick={apply}
           >
             {t("tableData.filter.apply")}
-            {/* A local key handler rather than a catalogue action: it only
-                ever means "apply this panel", and only while focus is in it. */}
-            <Kbd className="ml-1">{formatForDisplay("Mod+Enter")}</Kbd>
           </Button>
         </div>
       </div>
