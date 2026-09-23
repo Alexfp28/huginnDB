@@ -38,12 +38,18 @@
  * is open — a chip's ✕, a right-click "Filter by this value" — and the rule for
  * that is the one that loses nothing the user can see:
  *
- * - an **untouched** draft follows the applied filters, so the panel always
- *   shows what is in force;
- * - a **touched** draft is kept, and says it has unapplied changes. It is on
- *   screen, so the user can see both it and the chips it would replace.
+ * - a draft that **says the same** as the applied state follows it, so the
+ *   panel always shows what is in force;
+ * - a draft that **differs** is kept, and says it has unapplied changes. It is
+ *   on screen, so the user can see both it and the chips it would replace.
  *
- * Closing the panel discards a touched draft, the way cancelling the dialog
+ * "Differs" is a comparison, not a "was anything touched?" flag: the draft and
+ * the applied state are both put through the same `filterFromDraft` and
+ * compared as the wire would see them. A flag claimed unapplied changes after
+ * any interaction at all — switching the projection mode and back, opening the
+ * expression editor and closing it — which is a notice that stops being read.
+ *
+ * Closing the panel discards an edited draft, the way cancelling the dialog
  * did. A draft that outlives the panel showing it would be applied later by
  * someone who no longer remembers typing it.
  */
@@ -58,7 +64,16 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { Code2, Copy, KeyRound, Lock, Plus, X } from "lucide-react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Code2,
+  Copy,
+  KeyRound,
+  Lock,
+  Plus,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -205,15 +220,60 @@ export function QueryPanel({
   const [raw, setRaw] = useState(appliedRaw);
   /** The expression editor is shown: something typed, or asked for. */
   const [rawOpen, setRawOpen] = useState(() => appliedRaw.trim() !== "");
-  const [touched, setTouched] = useState(false);
+  /** Set by Apply: the next applied state is this draft, so re-seed from it
+   *  (which is what keeps the chip → row map honest) even though the draft
+   *  differs from the state it is replacing. */
+  const [followNext, setFollowNext] = useState(false);
 
-  // Follow the applied state while the draft is untouched — see the module
-  // header. React's "adjust state when a prop changes" pattern, set during
-  // render and tracked in state (not a ref) so StrictMode's discarded first
-  // pass cannot swallow the update; `DocumentCard` documents that trap.
+  const fields = useMemo(
+    () => filterFieldsFor(columns, nestedFields ?? []),
+    [columns, nestedFields],
+  );
+  const typeByColumn = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of fields) if (f.type) m.set(f.path, f.type);
+    return m;
+  }, [fields]);
+
+  const rows = draft.rows;
+  /** The draft's conditions as the wire takes them. */
+  const draftFilters = useMemo(
+    () =>
+      rows
+        .filter((r) => r.column)
+        .map((r) => filterFromDraft(r, typeByColumn.get(r.column))),
+    [rows, typeByColumn],
+  );
+
+  // What the draft is compared against: the applied state this panel last
+  // saw, put through the very conversion the draft goes through.
   const [seenApplied, setSeenApplied] = useState(applied);
   const [seenProjection, setSeenProjection] = useState(appliedProjection);
   const [seenRaw, setSeenRaw] = useState(appliedRaw);
+  const baseline = useMemo(
+    () => ({
+      filters: JSON.stringify(
+        seenApplied.map((f) =>
+          filterFromDraft(draftFromFilter(f, 0), typeByColumn.get(f.column)),
+        ),
+      ),
+      projection: JSON.stringify(
+        projectionFromDraft(seedProjection(seenProjection)) ?? null,
+      ),
+      raw: seenRaw.trim(),
+    }),
+    [seenApplied, seenProjection, seenRaw, typeByColumn],
+  );
+  const dirty =
+    JSON.stringify(draftFilters) !== baseline.filters ||
+    JSON.stringify(projectionFromDraft(projection) ?? null) !==
+      baseline.projection ||
+    raw.trim() !== baseline.raw;
+
+  // Follow the applied state while the draft says the same — see the module
+  // header. React's "adjust state when a prop changes" pattern, set during
+  // render and tracked in state (not a ref) so StrictMode's discarded first
+  // pass cannot swallow the update; `DocumentCard` documents that trap.
   if (
     seenApplied !== applied ||
     seenProjection !== appliedProjection ||
@@ -222,7 +282,8 @@ export function QueryPanel({
     setSeenApplied(applied);
     setSeenProjection(appliedProjection);
     setSeenRaw(appliedRaw);
-    if (!touched) {
+    if (!dirty || followNext) {
+      setFollowNext(false);
       setDraft(seed(applied));
       setProjection(seedProjection(appliedProjection));
       setRaw(appliedRaw);
@@ -247,24 +308,12 @@ export function QueryPanel({
     // `focus` in the deps: the same row asked for twice is focused twice.
   }, [focusedKey, focus]);
 
-  const fields = useMemo(
-    () => filterFieldsFor(columns, nestedFields ?? []),
-    [columns, nestedFields],
-  );
-  const typeByColumn = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const f of fields) if (f.type) m.set(f.path, f.type);
-    return m;
-  }, [fields]);
-
-  const rows = draft.rows;
   /** Rows whose value list is over the backend's cap — Apply is blocked while
    *  any exists, rather than truncating or letting the call fail. */
   const overlong = useMemo(() => overlongListRows(rows), [rows]);
 
   function edit(next: (prev: FilterConditionDraft[]) => FilterConditionDraft[]) {
     setDraft((prev) => ({ ...prev, rows: next(prev.rows) }));
-    setTouched(true);
   }
 
   const addRow = () =>
@@ -276,22 +325,11 @@ export function QueryPanel({
 
   function editProjection(next: ProjectionDraft) {
     setProjection(next);
-    setTouched(true);
   }
 
   function editRaw(next: string) {
     setRaw(next);
-    setTouched(true);
   }
-
-  /** The draft's conditions as the wire takes them. */
-  const draftFilters = useMemo(
-    () =>
-      rows
-        .filter((r) => r.column)
-        .map((r) => filterFromDraft(r, typeByColumn.get(r.column))),
-    [rows, typeByColumn],
-  );
 
   const result = useQueryPreview(preview, {
     filters: draftFilters,
@@ -310,9 +348,8 @@ export function QueryPanel({
       raw: raw.trim() ? raw : "",
     });
     // The applied filters are about to become exactly this draft; re-seeding
-    // from them (below, when the new array arrives) keeps the chip → row map
-    // honest, and an untouched draft is what lets that happen.
-    setTouched(false);
+    // from them when the new array arrives keeps the chip → row map honest.
+    setFollowNext(true);
     setFocusedKey(null);
   }
 
@@ -321,7 +358,6 @@ export function QueryPanel({
     setProjection(seedProjection(appliedProjection));
     setRaw(appliedRaw);
     setRawOpen(appliedRaw.trim() !== "");
-    setTouched(false);
     setFocusedKey(null);
   }
 
@@ -470,7 +506,7 @@ export function QueryPanel({
         >
           {t("tableData.filter.clearAll")}
         </Button>
-        {touched && (
+        {dirty && (
           <span className="text-2xs text-warning">
             {t("tableData.query.unapplied")}
           </span>
@@ -480,7 +516,7 @@ export function QueryPanel({
             type="button"
             variant="ghost"
             size="xs"
-            disabled={!touched}
+            disabled={!dirty}
             onClick={reset}
           >
             {t("tableData.query.reset")}
@@ -732,7 +768,17 @@ function useQueryPreview(
   return state;
 }
 
-/** The *Result* row: the statement, and the two ways to take it elsewhere. */
+/**
+ * The *Result* row: the statement, and the two ways to take it elsewhere.
+ *
+ * **One line unless asked.** The statement is formatted for reading — MongoDB's
+ * shell text puts every key on its own line — and drawn as-is it made the panel
+ * half the height of the tab, pushing the rows it shapes out of view. The row
+ * shows it collapsed onto one line, truncated, and the expand toggle opens the
+ * formatted text in a bounded box. The collapsing is display-only: Copy and
+ * Open in editor always take the statement exactly as the backend wrote it, so
+ * a `-- comment` in a SQL expression still ends at its line break there.
+ */
 function ResultLine({
   connectionId,
   result,
@@ -741,43 +787,57 @@ function ResultLine({
   result: PreviewState;
 }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   if (result.error) {
     return (
       <p
         role="alert"
-        className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 font-mono text-2xs text-destructive"
+        className="max-h-20 overflow-auto rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 font-mono text-2xs text-destructive"
       >
         {result.error}
       </p>
     );
   }
   const text = result.preview?.text ?? "";
+  const oneLine = text.replace(/\s*\n\s*/g, " ");
   return (
-    <div className="space-y-1.5">
-      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-background px-2 py-1.5 font-mono text-2xs">
-        {text || "…"}
-      </pre>
-      <div className="flex items-center gap-1.5">
-        <Button
-          type="button"
-          variant="ghost"
+    <div className="flex items-start gap-1 rounded-md border border-border bg-background py-0.5 pl-2 pr-0.5">
+      {expanded ? (
+        <pre className="max-h-32 min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-all py-1 font-mono text-2xs">
+          {text || "…"}
+        </pre>
+      ) : (
+        <code className="min-w-0 flex-1 truncate py-1 font-mono text-2xs leading-4">
+          {oneLine || "…"}
+        </code>
+      )}
+      <div className="flex shrink-0 items-center">
+        <IconButton
+          size="xs"
+          icon={expanded ? ChevronsDownUp : ChevronsUpDown}
+          label={
+            expanded
+              ? t("tableData.query.collapseResult")
+              : t("tableData.query.expandResult")
+          }
+          aria-expanded={expanded}
+          disabled={!text}
+          onClick={() => setExpanded((e) => !e)}
+        />
+        <IconButton
           size="xs"
           icon={Copy}
+          label={t("tableData.query.copy")}
           disabled={!text}
           onClick={() => void copyToClipboard(text)}
-        >
-          {t("tableData.query.copy")}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
+        />
+        <IconButton
           size="xs"
           icon={Code2}
+          label={t("tableData.query.openInEditor")}
           disabled={!text}
           onClick={() => openQueryTab(connectionId, { sql: text })}
-        >
-          {t("tableData.query.openInEditor")}
-        </Button>
+        />
       </div>
     </div>
   );

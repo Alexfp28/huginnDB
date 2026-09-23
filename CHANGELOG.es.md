@@ -31,7 +31,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
   Una fila nueva, **Resultado**, muestra la sentencia que lanzaría el
   borrador del panel, construida por el mismo código del backend que usa la
-  navegación, así que no puede decir otra cosa que lo que se ejecuta. En SQL
+  navegación, así que no puede decir otra cosa que lo que se ejecuta. Ocupa
+  una sola línea; su botón de desplegar abre la sentencia formateada en un
+  recuadro de altura limitada, para que un filtro largo de MongoDB no empuje
+  las filas fuera de la vista. En SQL
   los valores aparecen incrustados, solo para leerlos. MongoDB se muestra
   como un `db.<colección>.find(…)` con la gramática de la pestaña de consulta.
   **Copiar** y **Abrir en el editor** la llevan a otro sitio; lo segundo abre
@@ -123,9 +126,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
   Nada llega al servidor hasta **Aplicar** (o Ctrl/⌘+Enter dentro del panel).
   Si los filtros cambian desde fuera con el panel abierto (la ✕ de un chip, un
-  *Filtrar por este valor* con clic derecho), un panel sin tocar los sigue. Un
-  panel que has editado conserva tus cambios y avisa de *Cambios sin aplicar*;
-  **Restablecer** vuelve a lo que está en vigor. Cerrar el panel descarta los
+  *Filtrar por este valor* con clic derecho), un panel que dice lo mismo que lo
+  aplicado los sigue. Un panel cuyo borrador es distinto conserva tus cambios y
+  avisa de *Cambios sin aplicar* —es una comparación, así que deshacer un
+  cambio lo quita—; **Restablecer** vuelve a lo que está en vigor. Cerrar el panel descarta los
   cambios sin aplicar, como hacía cancelar el diálogo.
 
   Es la superficie donde crecerá el resto de la barra de consulta: la

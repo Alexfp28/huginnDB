@@ -770,7 +770,9 @@
       "removeExpression": "Remove the expression",
       "result": "Result",
       "copy": "Copy",
-      "openInEditor": "Open in editor"
+      "openInEditor": "Open in editor",
+      "expandResult": "Show the whole statement",
+      "collapseResult": "Back to one line"
     },
     "filter": {
       "loadingSchema": "Query — loading the field list…",

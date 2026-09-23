@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  *
  * The query panel's contract with `serverFilters`: it seeds from them, applies
- * back exactly what it shows, follows them while its draft is untouched and
- * keeps a touched draft when they move underneath it. The last two are the
+ * back exactly what it shows, follows them while its draft says the same and
+ * keeps an edited draft when they move underneath it. The last two are the
  * rule its module header states, and the easiest part to break silently.
  */
 import {
@@ -330,5 +330,58 @@ describe("QueryPanel expression and result", () => {
       (screen.getByRole("button", { name: /^Apply/ }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+});
+
+describe("QueryPanel regressions from review", () => {
+  it("does not claim unapplied changes after an edit is undone", () => {
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={byCode}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Choose" }));
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    fireEvent.click(screen.getByRole("button", { name: "SQL expression" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove the expression" }),
+    );
+    expect(screen.queryByText("Unapplied changes")).toBeNull();
+
+    // A real change still says so.
+    fireEvent.change(valueInputs()[0], { target: { value: "IMPCR02" } });
+    expect(screen.getByText("Unapplied changes")).toBeTruthy();
+  });
+
+  it("shows the statement on one line until it is expanded", async () => {
+    describeTableQuery.mockResolvedValue({
+      text: "db.device.find({\n  user: \"itbacking\"\n}).limit(100)",
+      language: "mongodb",
+    });
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        document
+        preview={{ connectionId: "c1", table: "device", limit: 100, offset: 0 }}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const collapsed = await screen.findByText(
+      'db.device.find({ user: "itbacking" }).limit(100)',
+    );
+    expect(collapsed.tagName).toBe("CODE");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the whole statement" }),
+    );
+    const pre = document.querySelector("pre");
+    expect(pre?.textContent).toContain("\n  user:");
   });
 });

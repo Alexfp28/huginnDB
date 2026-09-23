@@ -770,7 +770,9 @@
       "removeExpression": "Quitar la expresión",
       "result": "Resultado",
       "copy": "Copiar",
-      "openInEditor": "Abrir en el editor"
+      "openInEditor": "Abrir en el editor",
+      "expandResult": "Ver la sentencia completa",
+      "collapseResult": "Volver a una línea"
     },
     "filter": {
       "loadingSchema": "Consulta — cargando la lista de campos…",

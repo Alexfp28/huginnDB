@@ -26,7 +26,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
   A new **Result** row shows the statement the panel's draft would run, built by
   the same backend code the browse uses, so it cannot say something different
-  from what executes. SQL values are shown inline, for reading only. MongoDB is
+  from what executes. It sits on one line; its expand toggle opens the formatted
+  statement in a bounded box, so a long MongoDB filter does not push the rows
+  out of view. SQL values are shown inline, for reading only. MongoDB is
   shown as a `db.<collection>.find(…)` in the query tab's grammar. **Copy** and
   **Open in editor** take it elsewhere; the latter opens a query tab that runs
   it as written — the way out for anything the panel cannot express. An
@@ -112,9 +114,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
   Nothing reaches the server until **Apply** (or Ctrl/⌘+Enter inside the
   panel). If the filters change from outside while it is open (a chip's ✕, a
-  right-click *Filter by this value*), an untouched panel follows them. A panel
-  you have edited keeps your edits and says *Unapplied changes*; **Reset** goes
-  back to what is in force. Closing the panel discards unapplied edits, like
+  right-click *Filter by this value*), a panel that says the same as what is
+  applied follows them. A panel whose draft differs keeps your edits and says
+  *Unapplied changes* — a comparison, so undoing an edit clears it; **Reset**
+  goes back to what is in force. Closing the panel discards unapplied edits, like
   cancelling the dialog did.
 
   This is the surface the rest of the query bar grows into: projection, a raw
