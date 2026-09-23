@@ -10,6 +10,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **La sentencia `CREATE` de la tabla, lista para copiar, en el editor de
+  estructura.** Quien venía de HeidiSQL buscaba su pestaña de *código CREATE* y
+  no encontraba nada equivalente: el único SQL en pantalla era la vista previa
+  DDL, que es el *diff* de los cambios pendientes, no lo que la tabla es. El
+  editor de estructura tiene ahora una cuarta sección, **CREATE**, con la
+  definición tal cual la guarda el servidor —el `SHOW CREATE TABLE` de
+  MySQL/MariaDB (motor, charset, collation, comentarios y particiones
+  incluidos) y el texto de `sqlite_master` en SQLite, seguido de los índices y
+  triggers de la propia tabla— con un botón **Copiar**. Se refresca al recargar
+  y tras un Aplicar con éxito, nunca a partir de cambios sin guardar.
+
+  En PostgreSQL y SQL Server no aparece, a propósito. Ninguno de los dos guarda
+  la sentencia, así que habría que reconstruirla desde el catálogo, y el
+  constructor que usa el editor pierde lo que `TableStructure` no lleva
+  (comentarios, `CHECK`s, opciones de tabla). Una sentencia «lista para pegar»
+  que está incompleta sin avisar es peor que no tener ninguna.
+
 - **Un tiempo máximo de operación configurable por conexión.** Desplegar el
   árbol en un SQL Server con varios cientos de bases de datos fallaba con
   *«list_databases took longer than 20s — the connection may be unresponsive»*,

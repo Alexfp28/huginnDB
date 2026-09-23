@@ -448,6 +448,16 @@ export const api = {
       table,
     }),
 
+  /** The table's `CREATE` statement exactly as the server stores it
+   *  (MySQL `SHOW CREATE TABLE`, SQLite `sqlite_master`). Other drivers
+   *  refuse — gate on `supportsNativeCreateDdl`. */
+  getTableCreateDdl: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) =>
+    invoke<string>("get_table_create_ddl", { connectionId, schema, table }),
+
   /** Generate (but do not run) the DDL to take `original` → `desired`. */
   previewStructureChange: (args: {
     connectionId: string;

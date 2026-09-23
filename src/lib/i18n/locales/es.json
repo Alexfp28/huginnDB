@@ -800,7 +800,15 @@
     "section": {
       "columns": "Columnas",
       "indexes": "Índices",
-      "fks": "Claves foráneas"
+      "fks": "Claves foráneas",
+      "ddl": "CREATE"
+    },
+    "createDdl": {
+      "hint": "La definición de la tabla tal como la guarda el servidor — solo lectura.",
+      "copy": "Copiar",
+      "copied": "Sentencia CREATE copiada",
+      "loading": "Cargando la sentencia CREATE…",
+      "failed": "No se pudo leer la sentencia CREATE: {{message}}"
     },
     "col": {
       "name": "Nombre",
