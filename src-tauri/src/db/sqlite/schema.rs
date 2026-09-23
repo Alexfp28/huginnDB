@@ -259,6 +259,40 @@ pub async fn view_definition(
         .map(|sql| crate::db::view_ddl::strip_view_header(&sql)))
 }
 
+/// A table's full definition as SQLite stored it: the `CREATE TABLE` from
+/// `sqlite_master`, followed by the table's explicit indexes and triggers.
+///
+/// Unlike MySQL's `SHOW CREATE TABLE`, SQLite's table row does not mention the
+/// table's indexes — they are separate `sqlite_master` rows — so copying only
+/// the first statement would recreate the table without them. Auto-indexes
+/// (for `UNIQUE`/`PRIMARY KEY` constraints) have a `NULL` `sql` and are already
+/// implied by the table statement, so they are skipped.
+pub async fn create_table_sql(p: &sqlx::SqlitePool, table: &str) -> AppResult<String> {
+    let table_sql: Option<Option<String>> =
+        sqlx::query_scalar("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+            .bind(table)
+            .fetch_optional(p)
+            .await?;
+    let Some(Some(table_sql)) = table_sql else {
+        return Err(crate::error::AppError::NotFound(format!("table {table}")));
+    };
+    let extras: Vec<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master \
+         WHERE type IN ('index', 'trigger') AND tbl_name = ? AND sql IS NOT NULL \
+         ORDER BY type, name",
+    )
+    .bind(table)
+    .fetch_all(p)
+    .await?;
+    let mut out = format!("{};", table_sql.trim_end());
+    for sql in extras {
+        out.push_str("\n\n");
+        out.push_str(sql.trim_end());
+        out.push(';');
+    }
+    Ok(out)
+}
+
 /// Foreign keys on other tables that reference `table`, for the drop dialog.
 /// See [`crate::commands::schema::list_referencing_foreign_keys`].
 ///
@@ -368,5 +402,36 @@ mod tests {
         assert_eq!(pages_to_bytes(-1, 4_096), None);
         assert_eq!(pages_to_bytes(4_096, -1), None);
         assert_eq!(pages_to_bytes(i64::MAX, i64::MAX), None);
+    }
+
+    #[tokio::test]
+    async fn create_table_sql_includes_the_tables_indexes_and_triggers() {
+        let p = pool("create_ddl").await;
+        for sql in [
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, email TEXT UNIQUE, name TEXT)",
+            "CREATE INDEX t_name ON t (name)",
+            "CREATE TRIGGER t_ai AFTER INSERT ON t BEGIN SELECT 1; END",
+            // Another table's index must not leak into `t`'s definition.
+            "CREATE TABLE other (x INTEGER)",
+            "CREATE INDEX other_x ON other (x)",
+        ] {
+            sqlx::query(sql).execute(&p).await.unwrap();
+        }
+
+        let ddl = create_table_sql(&p, "t").await.unwrap();
+
+        assert!(ddl.starts_with("CREATE TABLE t (id INTEGER PRIMARY KEY"));
+        assert!(ddl.contains("CREATE INDEX t_name ON t (name);"));
+        assert!(ddl.contains("CREATE TRIGGER t_ai AFTER INSERT ON t"));
+        // The UNIQUE auto-index has no `sql` and is implied by the table.
+        assert!(!ddl.contains("sqlite_autoindex"));
+        assert!(!ddl.contains("other"));
+    }
+
+    #[tokio::test]
+    async fn create_table_sql_reports_a_missing_table_as_not_found() {
+        let p = pool("create_ddl_missing").await;
+        let err = create_table_sql(&p, "nope").await.unwrap_err();
+        assert!(matches!(err, crate::error::AppError::NotFound(_)));
     }
 }

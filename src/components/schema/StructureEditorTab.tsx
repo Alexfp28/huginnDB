@@ -51,6 +51,7 @@ import {
 } from "@/stores/preferences/preferences";
 import { useReloadable } from "@/lib/useReloadable";
 import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
+import { TableCreateDdlView } from "@/components/schema/TableCreateDdlView";
 import { joinStatements } from "@/lib/sql/formatStatements";
 import {
   columnCategoriesFor,
@@ -63,6 +64,7 @@ import {
   supportsColumnReorder,
   supportsDdlEditing,
   supportsIndexManager,
+  supportsNativeCreateDdl,
   supportsUnsignedIntegers,
 } from "@/lib/db/driver";
 import type {
@@ -179,9 +181,12 @@ export function StructureEditorTab({
   );
   const [indexes, setIndexes] = useState<StructureIndexDef[]>([]);
   const [foreignKeys, setForeignKeys] = useState<ForeignKeyDef[]>([]);
-  const [section, setSection] = useState<"columns" | "indexes" | "fks">(
-    "columns",
-  );
+  const [section, setSection] = useState<
+    "columns" | "indexes" | "fks" | "ddl"
+  >("columns");
+  // The server's own CREATE statement, next to the sections that edit it.
+  // Edit mode only — a table being created has no server text yet.
+  const showCreateDdl = mode === "edit" && supportsNativeCreateDdl(driver);
 
   const [ddl, setDdl] = useState<string>("");
   const [rebuild, setRebuild] = useState(false);
@@ -468,92 +473,109 @@ export function StructureEditorTab({
           value={section}
           onValueChange={setSection}
           aria-label={t("structure.sectionsLabel")}
-          options={(["columns", "indexes", "fks"] as const).map((s) => ({
+          options={(showCreateDdl
+            ? (["columns", "indexes", "fks", "ddl"] as const)
+            : (["columns", "indexes", "fks"] as const)
+          ).map((s) => ({
             value: s,
             label: t(`structure.section.${s}`),
           }))}
         />
       </div>
 
-      {/* Body: editor grids on top, DDL preview at the bottom */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 overflow-auto p-2">
-          {section === "columns" && (
-            <ColumnsEditor
-              columns={columns}
-              driver={driver}
-              typeCategories={typeCategories}
-              // Reordering a not-yet-created table is just column array
-              // order feeding one CREATE TABLE statement — every dialect
-              // supports that for free. Editing a *live* table needs an
-              // actual ALTER to reposition a column, which only MySQL's
-              // MODIFY/ADD COLUMN … FIRST|AFTER can express.
-              canReorder={mode === "new" || supportsColumnReorder(driver)}
-              onPatch={patchColumn}
-              onRemove={removeColumn}
-              onMove={moveColumn}
-              onAdd={addColumn}
-              bindingContext={
-                mode === "edit"
-                  ? { connectionId, dbSchema: schema, table: name }
-                  : undefined
-              }
-            />
-          )}
-          {section === "indexes" && (
-            <>
-              {/* MongoDB indexes are editable — just not here. This editor
-                  diffs a `TableStructure` into DDL, and its `IndexDef` (name +
-                  column names + unique) can't carry a per-key direction, a
-                  TTL or a partial filter. The index manager is that surface;
-                  pointing at it beats leaving the section looking inert. */}
-              {supportsIndexManager(driver) && table && (
-                <div className="mb-3 flex items-center justify-between gap-3 rounded-sm border border-border/50 bg-muted/30 px-3 py-2 text-xs">
-                  <span className="text-muted-foreground">
-                    {t("structure.indexManagerHint")}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      useTabs.getState().open({
-                        kind: "indexes",
-                        title: `${table} (${t("tabs.indexesSuffix")})`,
-                        connectionId,
-                        schema,
-                        table,
-                      })
-                    }
-                  >
-                    <KeyRound className="mr-1 h-3.5 w-3.5" />
-                    {t("structure.openIndexManager")}
-                  </Button>
-                </div>
-              )}
-              <IndexesEditor
-                indexes={indexes}
-                columns={columns}
-                onChange={setIndexes}
-              />
-            </>
-          )}
-          {section === "fks" && (
-            <ForeignKeysEditor
-              fks={foreignKeys}
-              columns={columns}
-              onChange={setForeignKeys}
-            />
-          )}
-        </div>
-
-        <DdlPreviewPane
-          title={t("structure.ddlPreview")}
-          ddl={ddl}
-          error={previewError}
-          warning={rebuild ? t("structure.rebuildWarning") : null}
+      {/* Body: editor grids on top, DDL preview at the bottom — or, in the
+          CREATE section, the server's statement on its own (the preview is a
+          diff and would read as a second, contradicting definition). */}
+      {section === "ddl" && showCreateDdl && original ? (
+        <TableCreateDdlView
+          connectionId={connectionId}
+          schema={schema}
+          table={original.name}
+          // `original` is replaced on every reload and every successful
+          // Apply, which are exactly the moments the server text can change.
+          revision={original}
           prefs={editorPrefs}
         />
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-auto p-2">
+            {section === "columns" && (
+              <ColumnsEditor
+                columns={columns}
+                driver={driver}
+                typeCategories={typeCategories}
+                // Reordering a not-yet-created table is just column array
+                // order feeding one CREATE TABLE statement — every dialect
+                // supports that for free. Editing a *live* table needs an
+                // actual ALTER to reposition a column, which only MySQL's
+                // MODIFY/ADD COLUMN … FIRST|AFTER can express.
+                canReorder={mode === "new" || supportsColumnReorder(driver)}
+                onPatch={patchColumn}
+                onRemove={removeColumn}
+                onMove={moveColumn}
+                onAdd={addColumn}
+                bindingContext={
+                  mode === "edit"
+                    ? { connectionId, dbSchema: schema, table: name }
+                    : undefined
+                }
+              />
+            )}
+            {section === "indexes" && (
+              <>
+                {/* MongoDB indexes are editable — just not here. This editor
+                    diffs a `TableStructure` into DDL, and its `IndexDef` (name +
+                    column names + unique) can't carry a per-key direction, a
+                    TTL or a partial filter. The index manager is that surface;
+                    pointing at it beats leaving the section looking inert. */}
+                {supportsIndexManager(driver) && table && (
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-sm border border-border/50 bg-muted/30 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">
+                      {t("structure.indexManagerHint")}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        useTabs.getState().open({
+                          kind: "indexes",
+                          title: `${table} (${t("tabs.indexesSuffix")})`,
+                          connectionId,
+                          schema,
+                          table,
+                        })
+                      }
+                    >
+                      <KeyRound className="mr-1 h-3.5 w-3.5" />
+                      {t("structure.openIndexManager")}
+                    </Button>
+                  </div>
+                )}
+                <IndexesEditor
+                  indexes={indexes}
+                  columns={columns}
+                  onChange={setIndexes}
+                />
+              </>
+            )}
+            {section === "fks" && (
+              <ForeignKeysEditor
+                fks={foreignKeys}
+                columns={columns}
+                onChange={setForeignKeys}
+              />
+            )}
+          </div>
+
+          <DdlPreviewPane
+            title={t("structure.ddlPreview")}
+            ddl={ddl}
+            error={previewError}
+            warning={rebuild ? t("structure.rebuildWarning") : null}
+            prefs={editorPrefs}
+          />
+        </div>
+      )}
 
       {/* SQLite rebuild confirmation */}
       <Dialog open={confirmRebuild} onOpenChange={setConfirmRebuild}>

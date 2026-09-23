@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **The table's `CREATE` statement, ready to copy, in the structure editor.**
+  Users coming from HeidiSQL reached for its *CREATE code* tab and found nothing
+  equivalent: the only SQL on screen was the DDL preview, which is the *diff*
+  for pending edits, not what the table is. The structure editor now has a
+  fourth section, **CREATE**, showing the definition exactly as the server
+  stores it — MySQL/MariaDB's `SHOW CREATE TABLE` (engine, charset, collation,
+  comments, partitions included) and SQLite's `sqlite_master` text followed by
+  the table's own indexes and triggers — with a **Copy** button. It refreshes on
+  reload and after a successful Apply, never from unsaved edits.
+
+  It is deliberately absent on PostgreSQL and SQL Server. Neither stores the
+  statement, so it would have to be rebuilt from the catalog, and the builder
+  the editor uses drops what `TableStructure` does not carry (comments,
+  `CHECK`s, table options). A "ready to paste" statement that is quietly
+  incomplete is worse than no statement at all.
+
 - **An operation timeout you can set per connection.** Expanding the tree on a
   SQL Server holding several hundred databases failed with *"list_databases took
   longer than 20s — the connection may be unresponsive"* — on a connection that

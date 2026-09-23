@@ -70,6 +70,16 @@ export function supportsDdlEditing(driver: Driver | undefined): boolean {
   return driver !== "mongodb" && driver !== "sqlserver";
 }
 
+/** The structure editor's "CREATE" section: the table's definition as the
+ *  server itself stores it. Only MySQL/MariaDB (`SHOW CREATE TABLE`) and
+ *  SQLite (`sqlite_master.sql`) keep that text. Postgres and SQL Server would
+ *  need it rebuilt from the catalog, and our builder drops comments, `CHECK`s
+ *  and table options — not something to offer as "ready to paste". The
+ *  backend (`get_table_create_ddl`) refuses the same set. */
+export function supportsNativeCreateDdl(driver: Driver | undefined): boolean {
+  return driver === "mysql" || driver === "sqlite";
+}
+
 /** Whole-database / per-table `.sql` export and import. Needs a per-driver
  *  literal encoder (`db/dump.rs`), which SQL Server doesn't have yet;
  *  MongoDB uses the per-collection JSON path instead. */

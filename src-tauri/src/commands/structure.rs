@@ -65,6 +65,55 @@ pub async fn get_table_structure_inner(
     }
 }
 
+/// The table's `CREATE` statement exactly as the server stores it, for the
+/// structure editor's copy-ready "CREATE" section.
+///
+/// Only the engines that keep the literal text answer: MySQL/MariaDB through
+/// `SHOW CREATE TABLE`, SQLite through `sqlite_master`. Postgres and SQL
+/// Server have no such statement — a `CREATE` there would have to be rebuilt
+/// from the catalog, and [`crate::db::ddl::build_create`] drops everything
+/// `TableStructure` does not carry (comments, `CHECK`s, table options), which
+/// is not something to hand over as "ready to paste". The frontend gate
+/// `supportsNativeCreateDdl` mirrors this refusal.
+#[tauri::command]
+pub async fn get_table_create_ddl(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<String> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
+        "get_table_create_ddl",
+        get_table_create_ddl_inner(state.inner(), &connection_id, schema, table),
+    )
+    .await
+}
+
+async fn get_table_create_ddl_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<String> {
+    match state.pool_for(connection_id)? {
+        DbPool::Mysql(p) => {
+            crate::db::mysql::schema::show_create_table(&p, schema.as_deref(), &table).await
+        }
+        // SQLite has one schema (`main`), the same assumption `sqlite_structure` makes.
+        DbPool::Sqlite(p) => crate::db::sqlite::schema::create_table_sql(&p, &table).await,
+        DbPool::Postgres(_) | DbPool::MsSql(_) | DbPool::Mongo(_) => {
+            Err(AppError::UnsupportedDriver(
+                "the server's own CREATE statement is only available for MySQL and SQLite".into(),
+            ))
+        }
+    }
+}
+
 /// A relation's structure, plus its view body when it turns out to be a view.
 ///
 /// `#[serde(flatten)]` keeps every key `get_table_structure_inner` already

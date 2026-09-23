@@ -492,6 +492,35 @@ pub async fn view_definition(
     Ok(def.map(|q| q.trim().to_string()))
 }
 
+/// The server's own `CREATE TABLE` for `schema.table`, exactly as
+/// `SHOW CREATE TABLE` prints it — engine, charset, collation, comments,
+/// partitions and all.
+///
+/// Verbatim rather than rebuilt from [`crate::db::ddl::build_create`]: that
+/// builder only knows what `TableStructure` carries, so it would silently drop
+/// the table options, `CHECK`s and generated columns, and a "ready to copy"
+/// statement that is quietly incomplete is worse than none.
+///
+/// Column 1 is read as text with a byte fallback. The name column is plain
+/// `VARCHAR`, but some MySQL/MariaDB builds report the statement column with a
+/// binary collation, and sqlx refuses to decode that as `String` (the same
+/// family of surprise as gotcha #17).
+pub async fn show_create_table(
+    p: &sqlx::MySqlPool,
+    schema: Option<&str>,
+    table: &str,
+) -> AppResult<String> {
+    let qt = Dialect::Mysql.qualify_defaulted(schema, table);
+    let row = sqlx::query(&format!("SHOW CREATE TABLE {qt}"))
+        .fetch_one(p)
+        .await?;
+    let ddl = row.try_get::<String, _>(1).or_else(|_| {
+        row.try_get::<Vec<u8>, _>(1)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+    })?;
+    Ok(format!("{};", ddl.trim_end()))
+}
+
 /// Foreign keys on other tables that reference `schema.table`, for the drop
 /// dialog. See [`crate::commands::schema::list_referencing_foreign_keys`].
 ///
