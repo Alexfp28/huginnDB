@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.28.0] — 2026-09-23
+
 ### Added
 
 - **Explain, from the query panel.** The *Result* line has an **Explain**

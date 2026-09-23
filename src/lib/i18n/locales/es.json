@@ -2367,6 +2367,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_28_0": {
+        "tagline": "El filtro avanzado se convierte en un panel de consulta bajo la barra: elige los campos, escribe el filtro a mano, ordena, fuerza un índice y lee el plan, todo sin perder de vista las filas.",
+        "items": {
+          "queryPanel": {
+            "title": "El filtro avanzado es ahora un panel de consulta",
+            "body": "El botón de filtro abre una sección Consulta entre la barra y las filas en vez de un diálogo, así que los datos siguen a la vista mientras los ajustas. Nada llega al servidor hasta Aplicar (o Ctrl/⌘+Enter), y un borrador distinto de lo aplicado lo avisa. Los chips de filtro y orden tienen su propia fila, que se ajusta en vez de plegarse."
+          },
+          "handWrittenFilter": {
+            "title": "Escribe el filtro a mano, y mira la consulta que lanza",
+            "body": "Junto a las condiciones, escribe una expresión — una condición WHERE en SQL, un documento de filtro en MongoDB — y se combina con AND con el resto. Una línea Resultado muestra la sentencia exacta que lanzará la navegación, con Copiar y Abrir en el editor para llevártela a otra parte."
+          },
+          "projection": {
+            "title": "Elige qué campos vuelven",
+            "body": "Columnas en SQL, Proyección (Incluir / Excluir) en MongoDB: el servidor solo envía lo que eliges, así que las columnas JSON o de texto anchas dejan de viajar en cada página. La clave siempre vuelve para que las filas sigan siendo editables, y Exportar resultados escribe ahora exactamente lo que muestra la tabla: filtros, orden y proyección."
+          },
+          "sortEverywhere": {
+            "title": "Ordena desde cualquier sitio, en los dos modos de vista",
+            "body": "Un botón Ordenar en la barra construye un orden de varios niveles, los chips de orden lo muestran y le dan la vuelta, y cada campo de la vista de lista tiene un menú para ordenar o filtrar por él, rutas anidadas de MongoDB incluidas. El pie de la tabla estrena además Ir a fila."
+          },
+          "explainAndHints": {
+            "title": "Explain, collation e índices forzados",
+            "body": "La fila Avanzado del panel fija una collation y fuerza un índice por navegación, con la sintaxis propia de cada motor. Explicar lee el plan del borrador sin ejecutarlo: el EXPLAIN del propio motor, o el queryPlanner de MongoDB."
+          },
+          "fkPickerRefresh": {
+            "title": "El selector de clave foránea se mantiene al día",
+            "body": "Renombrar una clave en la tabla referenciada ya no deja al selector ofreciendo el valor antiguo hasta reiniciar: sigue abriéndose al instante con la lista que tenía, luego vuelve a leer la tabla referenciada y la sustituye por la nueva."
+          }
+        }
+      },
       "1_27_0": {
         "tagline": "El CREATE de la tabla a un clic, un diálogo de borrado que te dice qué depende de ella y un timeout que espera lo que tu servidor necesite.",
         "items": {

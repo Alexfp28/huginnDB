@@ -2367,6 +2367,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_28_0": {
+        "tagline": "The advanced filter grows into a query panel under the toolbar — choose the fields, write the filter by hand, sort, force an index and read the plan, all with the rows still in view.",
+        "items": {
+          "queryPanel": {
+            "title": "The advanced filter is now a query panel",
+            "body": "The filter button opens a Query section between the toolbar and the rows instead of a dialog, so the data stays visible while you shape it. Nothing reaches the server until Apply (or Ctrl/⌘+Enter), and a draft that differs from what is applied says so. Filter and sort chips get a row of their own that wraps instead of folding."
+          },
+          "handWrittenFilter": {
+            "title": "Write the filter by hand, and see the query it runs",
+            "body": "Next to the conditions, type an expression — a WHERE condition on SQL, a filter document on MongoDB — and it is ANDed with the rest. A Result line shows the exact statement the browse will run, with Copy and Open in editor to take it elsewhere."
+          },
+          "projection": {
+            "title": "Choose which fields come back",
+            "body": "Columns on SQL, Projection (Include / Exclude) on MongoDB: the server only sends what you pick, so wide JSON or text columns stop travelling on every page. The key always comes back so rows stay editable, and Export query results now writes exactly what the grid shows — filters, sort and projection."
+          },
+          "sortEverywhere": {
+            "title": "Sort from anywhere, in both view modes",
+            "body": "A Sort button in the toolbar builds a multi-level sort, sort chips show it and flip its direction, and every field in the list view has a menu to sort or filter by it — nested MongoDB paths included. The footer also gained Go to row."
+          },
+          "explainAndHints": {
+            "title": "Explain, collation and index hints",
+            "body": "The panel's Advanced row sets a collation and forces an index per browse, in each engine's own syntax. Explain reads the plan of the draft without running it — the engine's own EXPLAIN, or MongoDB's queryPlanner."
+          },
+          "fkPickerRefresh": {
+            "title": "The foreign-key picker stays current",
+            "body": "Renaming a key in the referenced table no longer leaves the picker offering the old value until restart: it still opens instantly with the list it had, then re-reads the referenced table and swaps in the fresh one."
+          }
+        }
+      },
       "1_27_0": {
         "tagline": "The table's own CREATE statement one click away, a drop dialog that tells you what depends on the table, and a timeout that waits as long as your server needs.",
         "items": {

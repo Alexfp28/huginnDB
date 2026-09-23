@@ -23,11 +23,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  ArrowUpDown,
   Bell,
   Bot,
   Braces,
   Bug,
   BookOpen,
+  Columns3,
   Copy,
   Database,
   Download,
@@ -48,6 +50,7 @@ import {
   Pencil,
   Plug,
   Power,
+  RefreshCw,
   Server,
   Share2,
   ShieldCheck,
@@ -88,6 +91,43 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.28.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_28_0.tagline",
+    highlights: [
+      {
+        icon: ListFilter,
+        titleKey: "whatsNew.releases.1_28_0.items.queryPanel.title",
+        bodyKey: "whatsNew.releases.1_28_0.items.queryPanel.body",
+      },
+      {
+        icon: Braces,
+        titleKey: "whatsNew.releases.1_28_0.items.handWrittenFilter.title",
+        bodyKey: "whatsNew.releases.1_28_0.items.handWrittenFilter.body",
+      },
+      {
+        icon: Columns3,
+        titleKey: "whatsNew.releases.1_28_0.items.projection.title",
+        bodyKey: "whatsNew.releases.1_28_0.items.projection.body",
+      },
+      {
+        icon: ArrowUpDown,
+        titleKey: "whatsNew.releases.1_28_0.items.sortEverywhere.title",
+        bodyKey: "whatsNew.releases.1_28_0.items.sortEverywhere.body",
+      },
+      {
+        icon: Gauge,
+        titleKey: "whatsNew.releases.1_28_0.items.explainAndHints.title",
+        bodyKey: "whatsNew.releases.1_28_0.items.explainAndHints.body",
+      },
+      {
+        icon: RefreshCw,
+        titleKey: "whatsNew.releases.1_28_0.items.fkPickerRefresh.title",
+        bodyKey: "whatsNew.releases.1_28_0.items.fkPickerRefresh.body",
+      },
+    ],
+  },
   {
     version: "1.27.0",
     major: true,

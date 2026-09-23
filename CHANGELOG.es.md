@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.28.0] — 2026-09-23
+
 ### Añadido
 
 - **Explicar, desde el panel de consulta.** La línea *Resultado* tiene un
