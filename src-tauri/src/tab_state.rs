@@ -530,6 +530,9 @@ pub struct PersistedTab {
     /// command input, and this module never interprets view state. Declared
     /// so it survives the IPC boundary (gotcha #14).
     pub projection: Option<serde_json::Value>,
+    /// The query panel's hand-written expression (a `WHERE` fragment or a
+    /// MongoDB filter document), as text. Same IPC-boundary rule (gotcha #14).
+    pub raw_filter: Option<String>,
 }
 
 impl Environment {
@@ -570,6 +573,7 @@ impl Default for PersistedTab {
             search: None,
             document_view_mode: None,
             projection: None,
+            raw_filter: None,
         }
     }
 }
@@ -1233,6 +1237,23 @@ mod tests {
                 .projection
                 .as_ref(),
             Some(&expected)
+        );
+    }
+
+    #[test]
+    fn raw_filter_round_trips() {
+        let with = r#"{ "version": 4, "environments": [ { "id": "a", "connections": {
+            "c1": { "tabs": [ { "id": "t1", "kind": "table", "rawFilter": "qty > 3" } ] }
+        } } ] }"#;
+        let raw: RawState = serde_json::from_str(with).unwrap();
+        let state = raw.into_state();
+        let json = serde_json::to_string(&state).unwrap();
+        let reparsed: RawState = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            sole_env(&reparsed.into_state()).connections["c1"].tabs[0]
+                .raw_filter
+                .as_deref(),
+            Some("qty > 3")
         );
     }
 

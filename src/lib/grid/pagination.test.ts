@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { nextOffset, pageWindow, prevOffset } from "./pagination";
+import {
+  nextOffset,
+  offsetForRow,
+  pageWindow,
+  prevOffset,
+} from "./pagination";
 
 const base = { offset: 0, pageSize: 100, total: 250, totalEstimated: false, rowsOnPage: 100 };
 
@@ -45,5 +50,23 @@ describe("offsets", () => {
     expect(prevOffset(50, 100)).toBe(0);
     expect(prevOffset(100, 100)).toBe(0);
     expect(nextOffset(100, 100)).toBe(200);
+  });
+});
+
+describe("offsetForRow", () => {
+  it("puts the asked-for row at the top of the page", () => {
+    expect(offsetForRow("250", 19759, false)).toBe(249);
+    expect(offsetForRow(" 1 ", null, false)).toBe(0);
+  });
+
+  it("clamps past an exact total, but not past an estimate", () => {
+    expect(offsetForRow("999", 17, false)).toBe(16);
+    expect(offsetForRow("999", 17, true)).toBe(998);
+  });
+
+  it("refuses anything that is not a row number", () => {
+    for (const bad of ["", "0", "-3", "2.5", "abc", "1e3"]) {
+      expect(offsetForRow(bad, 100, false)).toBeNull();
+    }
   });
 });

@@ -30,6 +30,7 @@ import type {
   CellValue,
   CollectionScan,
   ColumnFilter,
+  QueryPreview,
   ColumnInfo,
   IncomingForeignKey,
   ConflictResolution,
@@ -734,6 +735,15 @@ export const api = {
    */
   countTableRows: (query: TableScan) =>
     invoke<CountResult>("count_table_rows", { query }),
+
+  /**
+   * The statement a browse would run, without running it — the query panel's
+   * *Result* line. Built by the same code the browse uses, so it cannot drift
+   * from what executes; a bad expression rejects here with the error the
+   * browse itself would return.
+   */
+  describeTableQuery: (query: TableQuery) =>
+    invoke<QueryPreview>("describe_table_query", { query }),
 
   /**
    * UPDATE one column of one row addressed by its (possibly composite)

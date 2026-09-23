@@ -76,7 +76,7 @@ import {
   GridToolbar,
   type GridToolbarItem,
   type InsertAlternative,
-  type ProjectionChip,
+  type QueryChip,
 } from "@/components/grid/GridToolbar";
 import { GridRow, type GridRowCallbacks } from "@/components/grid/GridRow";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -318,8 +318,8 @@ interface Props {
    * that don't paginate see no change.
    */
   footer?: ReactNode;
-  /** The active projection's chip, forwarded to the toolbar's chip row. */
-  projectionChip?: ProjectionChip;
+  /** The projection / expression chips, forwarded to the toolbar's chip row. */
+  queryChips?: QueryChip[];
   /**
    * The rows are already the server's answer to `globalFilter`, so the
    * client-side text pass below must not run over them again.
@@ -375,7 +375,7 @@ interface Props {
  * `TableDataTab` builds its three slot arrays against it, and the type now
  * lives with the bar that consumes it.
  */
-export type { GridToolbarItem, InsertAlternative, ProjectionChip };
+export type { GridToolbarItem, InsertAlternative, QueryChip };
 
 export interface SelectedCell {
   /**
@@ -434,7 +434,7 @@ export function DataGrid({
   toolbarTrailing,
   footer,
   belowToolbar,
-  projectionChip,
+  queryChips,
   rowsFromServer = false,
   showRowCount = true,
   loading,
@@ -1189,7 +1189,7 @@ export function DataGrid({
           onSortSpecsChange &&
           ((column) => onSortSpecsChange(removeSortLevel(sort ?? [], column)))
         }
-        projectionChip={projectionChip}
+        queryChips={queryChips}
         onInsertRow={onInsertRow}
         showRowCount={showRowCount}
         visibleRowCount={visibleRows.length}

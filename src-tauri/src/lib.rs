@@ -398,6 +398,7 @@ pub fn run() {
             commands::query::execute_batch,
             commands::query::fetch_table_data,
             commands::query::count_table_rows,
+            commands::query::describe_table_query,
             commands::query::update_cell,
             commands::query::unset_field,
             commands::query::delete_rows,

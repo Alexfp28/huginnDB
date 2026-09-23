@@ -6,8 +6,23 @@
  * keeps a touched draft when they move underneath it. The last two are the
  * rule its module header states, and the easiest part to break silently.
  */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+const describeTableQuery = vi.fn();
+const openQueryTab = vi.fn();
+vi.mock("@/lib/tauri", () => ({
+  api: { describeTableQuery: (q: unknown) => describeTableQuery(q) },
+}));
+vi.mock("@/lib/tabs/openQueryTab", () => ({
+  openQueryTab: (id: string, opts: unknown) => openQueryTab(id, opts),
+}));
 
 import "@/lib/i18n";
 import { QueryPanel } from "./QueryPanel";
@@ -47,6 +62,7 @@ describe("QueryPanel", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: byCode,
       projection: undefined,
+      raw: "",
     });
   });
 
@@ -66,6 +82,7 @@ describe("QueryPanel", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: [{ column: "code", op: "eq", value: "IMPCR02" }],
       projection: undefined,
+      raw: "",
     });
   });
 
@@ -177,6 +194,7 @@ describe("QueryPanel projection", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: byCode,
       projection: { fields: ["user"], exclude: false },
+      raw: "",
     });
   });
 
@@ -207,6 +225,7 @@ describe("QueryPanel projection", () => {
     expect(onApply).toHaveBeenCalledWith({
       filters: [],
       projection: { fields: ["configuration"], exclude: true },
+      raw: "",
     });
   });
 
@@ -224,6 +243,92 @@ describe("QueryPanel projection", () => {
     );
     fireEvent.click(screen.getByRole("radio", { name: "Choose" }));
     fireEvent.click(screen.getByRole("button", { name: /^Apply/ }));
-    expect(onApply).toHaveBeenCalledWith({ filters: [], projection: undefined });
+    expect(onApply).toHaveBeenCalledWith({
+      filters: [],
+      projection: undefined,
+      raw: "",
+    });
+  });
+});
+
+describe("QueryPanel expression and result", () => {
+  const base = {
+    connectionId: "c1",
+    table: "device",
+    limit: 100,
+    offset: 0,
+  };
+
+  it("applies a hand-written expression alongside the conditions", () => {
+    const onApply = vi.fn();
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={byCode}
+        focus={null}
+        onApply={onApply}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "SQL expression" }));
+    fireEvent.change(screen.getByLabelText("Expression"), {
+      target: { value: "qty > 3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    expect(onApply).toHaveBeenCalledWith({
+      filters: byCode,
+      projection: undefined,
+      raw: "qty > 3",
+    });
+  });
+
+  it("shows the statement the draft would run, and opens it in an editor", async () => {
+    describeTableQuery.mockResolvedValue({
+      text: "SELECT * FROM device WHERE (\nqty > 3\n) LIMIT 100 OFFSET 0",
+      language: "sql",
+    });
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        appliedRaw="qty > 3"
+        preview={base}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/SELECT \* FROM device/)).toBeTruthy(),
+    );
+    // The draft, not just the base, is what was described.
+    expect(describeTableQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ table: "device", raw: "qty > 3" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open in editor" }));
+    expect(openQueryTab).toHaveBeenCalledWith("c1", {
+      sql: expect.stringContaining("SELECT * FROM device"),
+    });
+  });
+
+  it("blocks Apply while the draft does not describe", async () => {
+    describeTableQuery.mockRejectedValue("expression: a ; would end the statement");
+    const onApply = vi.fn();
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        appliedRaw="1 = 1; DROP TABLE t"
+        preview={base}
+        focus={null}
+        onApply={onApply}
+        onClose={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(
+      (screen.getByRole("button", { name: /^Apply/ }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

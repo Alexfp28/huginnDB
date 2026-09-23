@@ -153,6 +153,14 @@ vista de lista localiza cada edición por él— y un chip **Campos** bajo la ba
 nombra la proyección mientras está activa. *Exportar resultados* escribe los
 documentos proyectados, en el orden de la tabla.
 
+**Lo que las condiciones no pueden decir va en la expresión.** Bajo las
+condiciones, *Expresión JSON* admite un documento de filtro con la sintaxis de
+la pestaña de consulta —`{ qty: { $gt: 3 }, code: /^IMPCR/ }`—, combinado con
+AND con las condiciones y la búsqueda. La fila *Resultado* del panel muestra el
+`db.<colección>.find(…)` completo que lanzaría el borrador, con proyección,
+orden y página, y **Abrir en el editor** lo pasa a una pestaña de consulta que
+lo ejecuta tal cual.
+
 Un límite: **la clave de un campo no se puede renombrar en el sitio**. Renombrar
 es un `$set` de la clave nueva más un `$unset` de la vieja, y hacerlo con
 seguridad exige una única actualización atómica a nivel de documento, no las

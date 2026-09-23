@@ -3,10 +3,20 @@
  * toolbar, opened from its "Query" button, that edits what the browse asks the
  * server for.
  *
- * It replaced `AdvancedFilterDialog` and holds two rows: the flat AND list of
- * column → operator → value conditions the dialog held, and the projection
- * (which fields the browse returns — see `lib/grid/projection.ts` for how the
- * key columns are added on the way to the wire).
+ * It replaced `AdvancedFilterDialog` and holds three rows:
+ *
+ * - **Filter** — the flat AND list of column → operator → value conditions the
+ *   dialog held, plus an optional hand-written **expression** (a `WHERE`
+ *   fragment on SQL, a filter document on MongoDB) ANDed with them. ANDed, not
+ *   an alternative mode: the conditions stay a bijection with the chips, and
+ *   nothing has to be translated between the two forms, which is lossy both
+ *   ways;
+ * - **Projection** — which fields come back (`lib/grid/projection.ts` adds the
+ *   key columns on the way to the wire);
+ * - **Result** — the statement the draft would run, built by the backend with
+ *   the code the browse uses, so it cannot drift from what executes. It is
+ *   also where a bad expression shows up, before it is applied; and "Open in
+ *   editor" is the way out for anything the panel cannot express.
  * It is a panel rather than a modal because it is meant to grow into the rest
  * of the query (projection, a raw filter, the query it produces) without
  * turning into a stack of dialogs, and because a modal hides the rows you are
@@ -39,6 +49,7 @@
  */
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -47,7 +58,7 @@ import {
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyRound, Lock, Plus, X } from "lucide-react";
+import { Code2, Copy, KeyRound, Lock, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -59,10 +70,25 @@ import {
 import { IconButton } from "@/components/ui/icon-button";
 import { Kbd } from "@/components/ui/kbd";
 import { Segmented } from "@/components/ui/segmented";
+import { Textarea } from "@/components/ui/textarea";
+import { api } from "@/lib/tauri";
+import { copyToClipboard } from "@/lib/clipboard";
+import { openQueryTab } from "@/lib/tabs/openQueryTab";
+import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { filterFieldsFor, type FilterField } from "@/lib/grid/fieldPaths";
-import { DOCUMENT_ID, isLockedField } from "@/lib/grid/projection";
+import {
+  DOCUMENT_ID,
+  isLockedField,
+  wireProjection,
+} from "@/lib/grid/projection";
 import { formatForDisplay } from "@/lib/keybindings/chord";
-import type { ColumnFilter, ColumnInfo, Projection } from "@/types";
+import type {
+  ColumnFilter,
+  ColumnInfo,
+  Projection,
+  QueryPreview,
+  TableQuery,
+} from "@/types";
 import { FilterConditionRow } from "@/components/grid/dialogs/FilterConditionRow";
 import {
   draftFromFilter,
@@ -107,7 +133,20 @@ function projectionFromDraft(d: ProjectionDraft): Projection | undefined {
 export interface QueryPanelApply {
   filters: ColumnFilter[];
   projection: Projection | undefined;
+  /** The expression as typed; `""` is none. */
+  raw: string;
 }
+
+/**
+ * Everything the *Result* line needs besides the draft: where the browse
+ * points and how it is sorted, searched and paged. The panel fills in the
+ * draft's conditions, expression and projection. Absent → no Result row
+ * (a surface with nothing to ask).
+ */
+export type QueryPanelPreviewBase = Omit<
+  TableQuery,
+  "filters" | "raw" | "projection" | "withCount"
+>;
 
 /**
  * "Open the panel on this chip's row", as an event rather than a state: the
@@ -126,8 +165,10 @@ export function QueryPanel({
   customFields,
   applied,
   appliedProjection,
+  appliedRaw = "",
   document = false,
   keyColumns = NO_KEYS,
+  preview,
   focus,
   onApply,
   onClose,
@@ -142,6 +183,10 @@ export function QueryPanel({
   applied: ColumnFilter[];
   /** The projection in force, as the user chose it (no key columns added). */
   appliedProjection?: Projection;
+  /** The expression in force, as typed. */
+  appliedRaw?: string;
+  /** See {@link QueryPanelPreviewBase}. */
+  preview?: QueryPanelPreviewBase;
   /** MongoDB: the projection can exclude, and `_id` is the locked key. */
   document?: boolean;
   /** SQL: the primary key's columns, shown locked in the projection. */
@@ -157,6 +202,9 @@ export function QueryPanel({
   const [projection, setProjection] = useState(() =>
     seedProjection(appliedProjection),
   );
+  const [raw, setRaw] = useState(appliedRaw);
+  /** The expression editor is shown: something typed, or asked for. */
+  const [rawOpen, setRawOpen] = useState(() => appliedRaw.trim() !== "");
   const [touched, setTouched] = useState(false);
 
   // Follow the applied state while the draft is untouched — see the module
@@ -165,12 +213,20 @@ export function QueryPanel({
   // pass cannot swallow the update; `DocumentCard` documents that trap.
   const [seenApplied, setSeenApplied] = useState(applied);
   const [seenProjection, setSeenProjection] = useState(appliedProjection);
-  if (seenApplied !== applied || seenProjection !== appliedProjection) {
+  const [seenRaw, setSeenRaw] = useState(appliedRaw);
+  if (
+    seenApplied !== applied ||
+    seenProjection !== appliedProjection ||
+    seenRaw !== appliedRaw
+  ) {
     setSeenApplied(applied);
     setSeenProjection(appliedProjection);
+    setSeenRaw(appliedRaw);
     if (!touched) {
       setDraft(seed(applied));
       setProjection(seedProjection(appliedProjection));
+      setRaw(appliedRaw);
+      setRawOpen(appliedRaw.trim() !== "");
     }
   }
 
@@ -223,12 +279,36 @@ export function QueryPanel({
     setTouched(true);
   }
 
+  function editRaw(next: string) {
+    setRaw(next);
+    setTouched(true);
+  }
+
+  /** The draft's conditions as the wire takes them. */
+  const draftFilters = useMemo(
+    () =>
+      rows
+        .filter((r) => r.column)
+        .map((r) => filterFromDraft(r, typeByColumn.get(r.column))),
+    [rows, typeByColumn],
+  );
+
+  const result = useQueryPreview(preview, {
+    filters: draftFilters,
+    raw,
+    projection: wireProjection(projectionFromDraft(projection), {
+      document,
+      keyColumns,
+    }),
+  });
+
   function apply() {
-    if (overlong.size > 0) return;
-    const filters = rows
-      .filter((r) => r.column)
-      .map((r) => filterFromDraft(r, typeByColumn.get(r.column)));
-    onApply({ filters, projection: projectionFromDraft(projection) });
+    if (overlong.size > 0 || result.error) return;
+    onApply({
+      filters: draftFilters,
+      projection: projectionFromDraft(projection),
+      raw: raw.trim() ? raw : "",
+    });
     // The applied filters are about to become exactly this draft; re-seeding
     // from them (below, when the new array arrives) keeps the chip → row map
     // honest, and an untouched draft is what lets that happen.
@@ -239,6 +319,8 @@ export function QueryPanel({
   function reset() {
     setDraft(seed(applied));
     setProjection(seedProjection(appliedProjection));
+    setRaw(appliedRaw);
+    setRawOpen(appliedRaw.trim() !== "");
     setTouched(false);
     setFocusedKey(null);
   }
@@ -298,6 +380,52 @@ export function QueryPanel({
             >
               {t("tableData.filter.addRow")}
             </Button>
+            {rawOpen ? (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xs text-muted-foreground">
+                    {document
+                      ? t("tableData.query.expressionMongoHint")
+                      : t("tableData.query.expressionSqlHint")}
+                  </span>
+                  <IconButton
+                    size="xs"
+                    icon={X}
+                    label={t("tableData.query.removeExpression")}
+                    onClick={() => {
+                      editRaw("");
+                      setRawOpen(false);
+                    }}
+                  />
+                </div>
+                <Textarea
+                  autoFocus={raw === ""}
+                  aria-label={t("tableData.query.expression")}
+                  spellCheck={false}
+                  rows={Math.min(6, Math.max(2, raw.split("\n").length))}
+                  className="font-mono text-xs"
+                  placeholder={
+                    document
+                      ? "{ qty: { $gt: 3 }, code: /^IMPCR/ }"
+                      : "qty > 3 OR notes IS NULL"
+                  }
+                  value={raw}
+                  onChange={(e) => editRaw(e.target.value)}
+                />
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                icon={Plus}
+                onClick={() => setRawOpen(true)}
+              >
+                {document
+                  ? t("tableData.query.addExpressionMongo")
+                  : t("tableData.query.addExpressionSql")}
+              </Button>
+            )}
           </PanelRow>
           <PanelRow
             label={
@@ -314,6 +442,14 @@ export function QueryPanel({
               keyColumns={keyColumns}
             />
           </PanelRow>
+          {preview && (
+            <PanelRow label={t("tableData.query.result")}>
+              <ResultLine
+                connectionId={preview.connectionId}
+                result={result}
+              />
+            </PanelRow>
+          )}
         </div>
       </div>
 
@@ -322,10 +458,14 @@ export function QueryPanel({
           type="button"
           variant="ghost"
           size="xs"
-          disabled={rows.length === 0 && projection.mode === "all"}
+          disabled={
+            rows.length === 0 && projection.mode === "all" && raw === ""
+          }
           onClick={() => {
             edit(() => []);
             editProjection({ mode: "all", fields: [] });
+            editRaw("");
+            setRawOpen(false);
           }}
         >
           {t("tableData.filter.clearAll")}
@@ -357,7 +497,7 @@ export function QueryPanel({
           <Button
             type="button"
             size="xs"
-            disabled={overlong.size > 0}
+            disabled={overlong.size > 0 || !!result.error}
             aria-keyshortcuts="Control+Enter Meta+Enter"
             onClick={apply}
           >
@@ -539,5 +679,106 @@ function ProjectionEditor({
         </p>
       )}
     </>
+  );
+}
+
+/** What the *Result* line is showing: the statement, the error that stops
+ *  it, or neither while the first answer is on its way. */
+interface PreviewState {
+  preview: QueryPreview | null;
+  error: string | null;
+}
+
+/**
+ * Ask the backend for the statement the draft would run, a beat after the
+ * draft last changed (`useDebouncedPreview`). A slower, older answer never
+ * overwrites a newer one. `base` absent → nothing is asked.
+ */
+function useQueryPreview(
+  base: QueryPanelPreviewBase | undefined,
+  draft: Pick<TableQuery, "filters" | "raw" | "projection">,
+): PreviewState {
+  const [state, setState] = useState<PreviewState>({
+    preview: null,
+    error: null,
+  });
+  const latest = useRef(0);
+  const query: TableQuery | null = base
+    ? {
+        ...base,
+        filters: draft.filters?.length ? draft.filters : undefined,
+        raw: draft.raw?.trim() ? draft.raw : undefined,
+        projection: draft.projection,
+        withCount: false,
+      }
+    : null;
+  const key = query ? JSON.stringify(query) : "";
+  const queryRef = useRef(query);
+  queryRef.current = query;
+  const run = useCallback(() => {
+    const q = queryRef.current;
+    if (!q) return;
+    const id = ++latest.current;
+    api.describeTableQuery(q).then(
+      (preview) => {
+        if (id === latest.current) setState({ preview, error: null });
+      },
+      (e: unknown) => {
+        if (id === latest.current) setState({ preview: null, error: String(e) });
+      },
+    );
+  }, []);
+  useDebouncedPreview(key, run);
+  return state;
+}
+
+/** The *Result* row: the statement, and the two ways to take it elsewhere. */
+function ResultLine({
+  connectionId,
+  result,
+}: {
+  connectionId: string;
+  result: PreviewState;
+}) {
+  const { t } = useTranslation();
+  if (result.error) {
+    return (
+      <p
+        role="alert"
+        className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 font-mono text-2xs text-destructive"
+      >
+        {result.error}
+      </p>
+    );
+  }
+  const text = result.preview?.text ?? "";
+  return (
+    <div className="space-y-1.5">
+      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-background px-2 py-1.5 font-mono text-2xs">
+        {text || "…"}
+      </pre>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          icon={Copy}
+          disabled={!text}
+          onClick={() => void copyToClipboard(text)}
+        >
+          {t("tableData.query.copy")}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          icon={Code2}
+          disabled={!text}
+          onClick={() => openQueryTab(connectionId, { sql: text })}
+        >
+          {t("tableData.query.openInEditor")}
+        </Button>
+      </div>
+    </div>
   );
 }

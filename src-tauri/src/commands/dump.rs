@@ -20,7 +20,7 @@
 //! etc.) bracketed by `PRAGMA foreign_keys=OFF/ON`, since SQLite inlines FKs
 //! into `CREATE TABLE` text that isn't worth re-parsing to split.
 
-use crate::commands::query::{build_filter_clause_at, order_by_clause, select_list, TableScan};
+use crate::commands::query::{order_by_clause, select_list, TableScan};
 use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
 use crate::db::ddl::{build_create, TableStructure};
@@ -416,13 +416,8 @@ pub async fn export_table_rows(
         ));
     }
     let dialect = Dialect::try_of(&pool)?;
-    let (where_clause, binds, _) = build_filter_clause_at(
-        1,
-        dialect,
-        &filter.filters,
-        filter.needle(),
-        &filter.search_columns,
-    );
+    // The same clause the browse runs, the expression included.
+    let (where_clause, binds) = filter.clause(dialect)?;
     let qt = dialect.qualify(schema.as_deref(), &table);
     let select = select_list(dialect, projection.as_ref())?;
     let order_clause = order_by_clause(dialect, &order);

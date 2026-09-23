@@ -13,7 +13,7 @@
 //! every BSON type — not just the common tags the grid's own converter handles.
 
 use crate::commands::query::{Projection, SortSpec, TableFilter};
-use crate::db::mongo::query::{build_filter, projection_doc, sort_doc};
+use crate::db::mongo::query::{predicate_doc, projection_doc, sort_doc};
 use crate::db::mongo::schema::resolve_db;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -86,11 +86,7 @@ pub async fn export_collection(
     let dest = path.to_string();
 
     let coll = db.collection::<Document>(&collection);
-    let query_filter = build_filter(
-        &scan.filter.filters,
-        scan.filter.needle(),
-        &scan.filter.search_columns,
-    );
+    let query_filter = predicate_doc(&scan.filter)?;
     let mut find = coll.find(query_filter);
     if let Some(sort) = sort_doc(&scan.order) {
         find = find.sort(sort);

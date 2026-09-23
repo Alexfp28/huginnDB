@@ -69,10 +69,15 @@ export interface InsertAlternative {
   onSelect: () => void;
 }
 
-/** See `GridToolbarProps.projectionChip`. */
-export interface ProjectionChip {
-  /** Already phrased: `ts, code` or `all but configuration`. */
+/** See `GridToolbarProps.queryChips`. */
+export interface QueryChip {
+  id: string;
+  /** The chip row's section label ("Fields", "Expression"). */
+  section: string;
+  /** Already phrased: `ts, code`, `all but configuration`, `qty > 3`. */
   label: string;
+  editLabel: string;
+  removeLabel: string;
   onEdit: () => void;
   onRemove: () => void;
 }
@@ -118,12 +123,13 @@ interface GridToolbarProps {
   /** Drop one level (chip ✕, summary row). */
   onRemoveSort?: (column: string) => void;
   /**
-   * The active projection, as one chip on the chip row: the fields it keeps
-   * (or drops), a body that opens the query panel and a ✕ that returns every
-   * field again. A projection hides columns, and a column that is missing for
-   * no visible reason reads as a bug — so while one is on it is on screen.
+   * The rest of the active query, one chip each after the filters and the
+   * sort: the projection and the hand-written expression. Each opens the query
+   * panel and its ✕ clears that part. Both change what the grid shows without
+   * a column header or a condition row to say so — a column missing, rows
+   * gone — so while one is on it is on screen.
    */
-  projectionChip?: ProjectionChip;
+  queryChips?: QueryChip[];
   onInsertRow?: () => void;
   /** Fit every column to its widest visible value. */
   /**
@@ -162,7 +168,7 @@ export function GridToolbar({
   sort,
   onToggleSort,
   onRemoveSort,
-  projectionChip,
+  queryChips,
   onInsertRow,
   insertAlternatives,
   showRowCount,
@@ -354,7 +360,9 @@ export function GridToolbar({
   const filterChips = serverFilters ?? [];
   const sortChips = sort && onToggleSort && onRemoveSort ? sort : [];
   const hasChipRow =
-    filterChips.length > 0 || sortChips.length > 0 || !!projectionChip;
+    filterChips.length > 0 ||
+    sortChips.length > 0 ||
+    (queryChips?.length ?? 0) > 0;
 
   return (
     <div className="border-b border-border bg-background text-xs">
@@ -530,37 +538,37 @@ export function GridToolbar({
               ))}
             </>
           )}
-          {projectionChip && (
-            <>
-              {(filterChips.length > 0 || sortChips.length > 0) && (
+          {queryChips?.map((c, i) => (
+            <Fragment key={c.id}>
+              {(i > 0 || filterChips.length > 0 || sortChips.length > 0) && (
                 <span
                   aria-hidden
                   className="mx-1 h-3.5 w-px shrink-0 bg-border"
                 />
               )}
               <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {t("dataGrid.chipRow.projection")}
+                {c.section}
               </span>
               <span className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 py-0.5 pl-1 pr-1 font-mono text-2xs">
-                <SimpleTooltip label={t("dataGrid.chipRow.editProjection")}>
+                <SimpleTooltip label={c.editLabel}>
                   <Button
                     variant="ghost"
                     size="xs"
                     className="h-4 max-w-[24rem] rounded-full px-1 font-mono text-2xs hover:bg-transparent hover:text-foreground"
-                    onClick={projectionChip.onEdit}
+                    onClick={c.onEdit}
                   >
-                    <span className="truncate">{projectionChip.label}</span>
+                    <span className="truncate">{c.label}</span>
                   </Button>
                 </SimpleTooltip>
                 <IconButton
                   size="xs"
                   icon={X}
-                  label={t("dataGrid.chipRow.removeProjection")}
-                  onClick={projectionChip.onRemove}
+                  label={c.removeLabel}
+                  onClick={c.onRemove}
                 />
               </span>
-            </>
-          )}
+            </Fragment>
+          ))}
         </div>
       )}
     </div>

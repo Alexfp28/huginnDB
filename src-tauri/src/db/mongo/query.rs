@@ -413,11 +413,16 @@ pub(crate) fn describe_find(
     limit: i64,
     offset: i64,
 ) -> String {
-    let filter = build_filter(
-        &predicate.filters,
-        predicate.needle(),
-        &predicate.search_columns,
-    );
+    // Infallible on purpose: this is the Console's record of what ran, and the
+    // run itself has already reported a bad expression. Without one it is the
+    // same document `predicate_doc` builds.
+    let filter = predicate_doc(predicate).unwrap_or_else(|_| {
+        build_filter(
+            &predicate.filters,
+            predicate.needle(),
+            &predicate.search_columns,
+        )
+    });
     let filter = Bson::Document(filter).into_canonical_extjson();
     let mut s = match projection_doc(projection) {
         Some(p) => format!(
@@ -439,6 +444,106 @@ pub(crate) fn describe_find(
         s.push_str(&format!(".limit({limit})"));
     }
     s
+}
+
+/// The whole filter document of a browse: the chips and the free-text search
+/// ([`build_filter`]) ANDed with the query panel's expression.
+///
+/// The expression is read by [`shell::parse_relaxed_value`], the grammar the
+/// query tab and the aggregation editor already speak — unquoted keys,
+/// `ObjectId(…)`, `ISODate(…)`, regex literals — so a filter typed here means
+/// what it would mean there. It has to be a document: `find()` takes nothing
+/// else, and saying so beats the driver's error for an array.
+pub(crate) fn predicate_doc(predicate: &TableFilter) -> AppResult<Document> {
+    let built = build_filter(
+        &predicate.filters,
+        predicate.needle(),
+        &predicate.search_columns,
+    );
+    let Some(raw) = predicate.raw_text() else {
+        return Ok(built);
+    };
+    let expr = match shell::parse_relaxed_value(raw)
+        .map_err(|e| AppError::InvalidInput(format!("expression: {e}")))?
+    {
+        Bson::Document(d) => d,
+        _ => {
+            return Err(AppError::InvalidInput(
+                "expression: a filter is a document, like { field: value }".into(),
+            ))
+        }
+    };
+    if built.is_empty() {
+        return Ok(expr);
+    }
+    if expr.is_empty() {
+        return Ok(built);
+    }
+    Ok(doc! { "$and": [built, expr] })
+}
+
+/// A collection name the shell grammar reads as `db.<name>`; anything else
+/// goes through `db.getCollection("…")`.
+fn shell_collection(collection: &str) -> String {
+    let plain = collection
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && collection
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_');
+    if plain {
+        format!("db.{collection}")
+    } else {
+        format!(
+            "db.getCollection({})",
+            serde_json::to_string(collection).unwrap_or_default()
+        )
+    }
+}
+
+/// The browse as a statement the query tab runs — the query panel's *Result*
+/// line and its "Open in editor".
+///
+/// Unlike [`describe_find`] (the Console's record, canonical Extended JSON)
+/// this writes the shell grammar through
+/// [`super::values::bson_to_shell_text`], which [`shell::parse`] reads back:
+/// `ObjectId("…")` rather than `{"$oid": "…"}`. The projection is a chained
+/// `.projection(…)`, the form that grammar documents.
+pub(crate) fn describe_find_shell(
+    collection: &str,
+    predicate: &TableFilter,
+    order: &[SortSpec],
+    projection: Option<&Projection>,
+    limit: i64,
+    offset: i64,
+) -> AppResult<String> {
+    use super::values::bson_to_shell_text;
+    let filter = predicate_doc(predicate)?;
+    let mut s = format!(
+        "{}.find({})",
+        shell_collection(collection),
+        bson_to_shell_text(&Bson::Document(filter))
+    );
+    if let Some(p) = projection_doc(projection) {
+        s.push_str(&format!(
+            ".projection({})",
+            bson_to_shell_text(&Bson::Document(p))
+        ));
+    }
+    if let Some(sort) = sort_doc(order) {
+        s.push_str(&format!(
+            ".sort({})",
+            bson_to_shell_text(&Bson::Document(sort))
+        ));
+    }
+    if offset > 0 {
+        s.push_str(&format!(".skip({offset})"));
+    }
+    if limit > 0 {
+        s.push_str(&format!(".limit({limit})"));
+    }
+    Ok(s)
 }
 
 /// Build a Mongo filter document from the grid's column filters + free-text
@@ -696,11 +801,7 @@ pub async fn fetch_collection_data(
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
 
-    let filter = build_filter(
-        &predicate.filters,
-        predicate.needle(),
-        &predicate.search_columns,
-    );
+    let filter = predicate_doc(predicate)?;
 
     // Skip the count when the caller already knows the total (sort/page-only
     // change); `count_documents` over a filter is the slow part on big
@@ -753,11 +854,7 @@ pub async fn count_collection(
             estimated: true,
         })
     } else {
-        let filter = build_filter(
-            &predicate.filters,
-            predicate.needle(),
-            &predicate.search_columns,
-        );
+        let filter = predicate_doc(predicate)?;
         // Bounded, unlike the estimate above, because this one is a scan. A
         // filtered count has no index to answer it from in the general case, so
         // on a collection of tens of millions it runs for minutes — holding a
@@ -1243,6 +1340,75 @@ mod tests {
         assert!(s.contains(".sort("));
         assert!(s.contains(".skip(100)"));
         assert!(s.contains(".limit(50)"));
+    }
+
+    fn raw(text: &str) -> TableFilter {
+        TableFilter {
+            raw: Some(text.to_string()),
+            ..TableFilter::default()
+        }
+    }
+
+    #[test]
+    fn predicate_doc_reads_the_shell_grammar() {
+        let d = predicate_doc(&raw("{ qty: { $gt: 3 }, code: 'A' }")).unwrap();
+        assert_eq!(d, doc! { "qty": { "$gt": 3 }, "code": "A" });
+    }
+
+    #[test]
+    fn predicate_doc_ands_the_expression_with_the_chips() {
+        let p = TableFilter {
+            filters: vec![ColumnFilter {
+                column: "code".into(),
+                op: FilterOp::Eq,
+                value: serde_json::json!("A"),
+                value2: Value::Null,
+                values: Vec::new(),
+            }],
+            raw: Some("{ qty: 1 }".into()),
+            ..TableFilter::default()
+        };
+        let d = predicate_doc(&p).unwrap();
+        let and = d.get_array("$and").expect("chips and expression are ANDed");
+        assert_eq!(and.len(), 2);
+    }
+
+    #[test]
+    fn predicate_doc_refuses_what_is_not_a_document() {
+        assert!(predicate_doc(&raw("[1, 2]")).is_err());
+        assert!(predicate_doc(&raw("{ qty: ")).is_err());
+    }
+
+    #[test]
+    fn describe_find_shell_round_trips_through_the_query_tab_parser() {
+        let order = vec![SortSpec {
+            column: "ts".into(),
+            desc: true,
+        }];
+        let p = Projection {
+            fields: vec!["code".into()],
+            exclude: false,
+        };
+        let text = describe_find_shell(
+            "device",
+            &raw("{ qty: { $gt: 3 } }"),
+            &order,
+            Some(&p),
+            100,
+            200,
+        )
+        .unwrap();
+        assert!(text.starts_with("db.device.find("), "{text}");
+        // What "Open in editor" writes is something the query tab runs.
+        assert!(shell::parse(&text).is_ok(), "the shell cannot read: {text}");
+    }
+
+    #[test]
+    fn describe_find_shell_quotes_an_unusual_collection_name() {
+        let text =
+            describe_find_shell("my-coll", &TableFilter::default(), &[], None, 0, 0).unwrap();
+        assert!(text.starts_with("db.getCollection(\"my-coll\")"), "{text}");
+        assert!(shell::parse(&text).is_ok(), "the shell cannot read: {text}");
     }
 
     #[test]

@@ -8,6 +8,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Write the filter by hand, and see the query it runs.** The query panel's
+  *Filter* row takes an **expression** next to its conditions: a condition as
+  you would write it after `WHERE` on SQL, or a filter document on MongoDB in
+  the query tab's own syntax (unquoted keys, `ObjectId(…)`, `ISODate(…)`,
+  regex literals). It is ANDed with the conditions, the chips and the search
+  rather than replacing them, so nothing has to be converted between the two
+  forms and the chips still map one-to-one to the panel's rows. It shows as an
+  **Expression** chip while it is active, and it is counted, exported and saved
+  with the tab like everything else in the panel.
+
+  A SQL expression has to stay one condition. The panel refuses a `;` outside a
+  string or comment, unbalanced parentheses, and an unterminated string or
+  `/* comment` — the three ways a fragment spliced into the browse's `SELECT`
+  could end it early, escape the `AND` or swallow the `LIMIT`. This is not a
+  security boundary: the query tab next door runs anything at all.
+
+  A new **Result** row shows the statement the panel's draft would run, built by
+  the same backend code the browse uses, so it cannot say something different
+  from what executes. SQL values are shown inline, for reading only. MongoDB is
+  shown as a `db.<collection>.find(…)` in the query tab's grammar. **Copy** and
+  **Open in editor** take it elsewhere; the latter opens a query tab that runs
+  it as written — the way out for anything the panel cannot express. An
+  expression that does not parse shows its error there, and Apply stays
+  disabled until it does.
+
+  *Bulk update* cannot carry an expression (its match side is conditions only),
+  so while one is active it now says so above its conditions.
+
+- **Go to row.** The table footer takes a row number and moves the page to
+  start there — row 250 shows 250–349, the range the footer already counts in.
+  It is the grid's answer to Compass's *Skip*: separate Skip and Limit fields
+  would have fought the pager over the same offset.
+
 - **Projection: choose which fields a table or collection returns.** The
   query panel has a second row. On SQL it is **Columns** (*All* / *Choose*);
   on MongoDB it is **Projection** (*All* / *Include* / *Exclude*). The browse
