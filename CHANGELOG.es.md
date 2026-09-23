@@ -190,6 +190,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   exportación hecha mientras se buscaba escribía documentos que la tabla no
   estaba mostrando. Ahora usa el mismo filtro que la navegación.
 
+- **El selector de clave foránea seguía ofreciendo una clave que ya no
+  existía.** Si cambiabas una clave primaria (`5` → `50`) y luego editabas una
+  celda que la referencia, el selector seguía mostrando `5` y el `50` no
+  aparecía por ningún lado. Ni F5 ni volver a abrir la tabla lo arreglaban. El
+  selector guardaba en caché los valores referenciados la primera vez que se
+  abría y no volvía a pedirlos en toda la sesión. Ahora sigue mostrando al
+  instante la lista en caché, pero cada vez que se abre vuelve a leer la tabla
+  referenciada y la sustituye por la lista nueva, así que un cambio hecho desde
+  la tabla, el editor SQL u otro cliente aparece en la siguiente apertura. Si
+  esa lectura falla, te quedas con la lista que tenías en vez de un cuadro de
+  texto libre. Las opciones en caché también se descartan ahora al
+  desconectar, incluidas las de las bases de datos que abrió una sesión
+  multi-BD. Esa limpieza ya existía; simplemente nadie la llamaba.
+
 ## [1.27.0] — 2026-09-23
 
 ### Añadido
