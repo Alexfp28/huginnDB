@@ -137,6 +137,14 @@ element of `tags` asks for documents whose `tags` *contains* that value, and
 sorting on `items.0.sku` sorts on `items.sku`, since `sort()` does not read a
 positional index.
 
+**Projection returns only the fields you ask for.** The query panel's
+*Projection* row includes or excludes fields (nested paths too), and the
+browse sends it as `find()`'s projection document, so a large sub-document
+stops travelling with every page. `_id` always comes back — the list view
+addresses every edit by it — and a **Fields** chip under the toolbar names the
+projection while it is on. *Export query results* writes the projected
+documents, in the grid's order.
+
 One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
 the new key plus an `$unset` of the old one, and doing that safely needs one
 atomic document-level update rather than the per-field writes this view uses.

@@ -63,6 +63,7 @@ import type {
   ColumnFilter,
   DraftCell,
   DraftRow,
+  Projection,
   QueryResult,
   RowValue,
   SortSpec,
@@ -105,6 +106,7 @@ import { clampRowHeight } from "@/lib/grid/rowHeight";
 import { nextOffset, pageWindow, prevOffset } from "@/lib/grid/pagination";
 import { collectNestedFieldPaths } from "@/lib/grid/fieldPaths";
 import { nextSort } from "@/lib/grid/sortSpec";
+import { isNarrowing, wireProjection } from "@/lib/grid/projection";
 import { SortByMenuItems, type SortField } from "@/components/grid/SortControls";
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
@@ -304,6 +306,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     // user just made, while the restored filters are last session's leftovers.
     () => tabInitialFilters ?? restoredViewState?.filters ?? [],
   );
+  /**
+   * The query panel's projection, as the user chose it — the key columns are
+   * added only on the way to the wire (`wireProjection`, below), so this is
+   * also what persists with the tab and what the panel shows.
+   */
+  const [projection, setProjection] = useState<Projection | undefined>(
+    () => restoredViewState?.projection,
+  );
   // Re-apply when a *new* `initialFilters` array arrives — i.e. the user
   // navigated via FK into a table tab that was already open. The initial mount
   // already seeded `serverFilters` above, so the ref starts at that value and
@@ -330,6 +340,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       sort: sort.length > 0 ? sort : undefined,
       search: appliedFilter || undefined,
       documentViewMode,
+      projection: isNarrowing(projection) ? projection : undefined,
     });
   }, [
     setViewState,
@@ -338,6 +349,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     sort,
     appliedFilter,
     documentViewMode,
+    projection,
   ]);
 
   const pushHistory = useFilterHistory((s) => s.push);
@@ -463,6 +475,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     () => pkColumns.map((c) => c.name),
     [pkColumns],
   );
+
+  /** What the browse and the export send for `projection` — the key columns
+   *  added, so a projected row is still one the grid can write to. */
+  const wire = useMemo(
+    () =>
+      wireProjection(projection, {
+        document: isMongo,
+        keyColumns: pkColumnNames,
+      }),
+    [projection, isMongo, pkColumnNames],
+  );
+  const projected = wire !== undefined;
   /** Single-column FK columns, for the grid header key icon (presentational). */
   const fkColumnNames = useMemo(
     () => cols?.filter((c) => c.referenced_table).map((c) => c.name) ?? [],
@@ -520,6 +544,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       sort,
       serverFilters,
       appliedFilter,
+      wire,
     });
     if (inflightKeyRef.current === reqKey) return;
     inflightKeyRef.current = reqKey;
@@ -539,6 +564,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         filters: serverFilters.length ? serverFilters : undefined,
         search: appliedFilter || undefined,
         searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
+        projection: wire,
         withCount: false,
       });
       setResult(r);
@@ -558,6 +584,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     sort,
     serverFilters,
     appliedFilter,
+    wire,
   ]);
 
   // Fetch the row total independently of the data page. Keyed only on the
@@ -927,23 +954,23 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   }, [isMongo, connectionId, schema, table, t]);
 
   /**
-   * "Export query results" — scoped to the grid's current advanced filter
-   * (`serverFilters`) and committed search, without any pagination limit.
-   * Identical to `exportFull` when no filter is active.
+   * "Export query results" — what the grid shows, without its paging: the
+   * query panel's conditions (`serverFilters`), the committed search, the
+   * sort and the projection. Identical to `exportFull` when none is active.
    */
   const exportFiltered = useCallback(() => {
+    const scan = {
+      filters: serverFilters,
+      search: appliedFilter || undefined,
+      searchColumns: appliedFilter ? searchColumns : undefined,
+      order: sort.length ? sort : undefined,
+      projection: wire,
+    };
     return runExport(
       () =>
         isMongo
-          ? api.exportCollection(connectionId, table, serverFilters)
-          : api.exportTableRows({
-              connectionId,
-              schema,
-              table,
-              filters: serverFilters,
-              search: appliedFilter || undefined,
-              searchColumns: appliedFilter ? searchColumns : undefined,
-            }),
+          ? api.exportCollection(connectionId, table, scan)
+          : api.exportTableRows({ connectionId, schema, table, ...scan }),
       (path) =>
         notify.file(
           isMongo
@@ -961,6 +988,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     serverFilters,
     appliedFilter,
     searchColumns,
+    sort,
+    wire,
     t,
   ]);
 
@@ -1646,7 +1675,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onRemoveFilter={onRemoveFilter}
             onEditFilter={onEditFilter}
             onInsertRow={hasPk ? onInsertRow : undefined}
-            onDuplicateRow={hasPk ? onDuplicateRow : undefined}
+            // A duplicate copies the row as the page holds it, so under a
+            // projection it would silently drop every hidden column's value.
+            onDuplicateRow={hasPk && !projected ? onDuplicateRow : undefined}
             onDeleteRow={hasPk ? onDeleteRow : undefined}
             onBulkDelete={hasPk ? onBulkDelete : undefined}
             getRowKey={getRowKey}
@@ -1662,6 +1693,24 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             insertAlternatives={insertAlternatives}
             toolbarTrailing={trailingToolbar}
             footer={footerContent}
+            // The page is the server's answer to the search; see the prop.
+            rowsFromServer
+            projectionChip={
+              isNarrowing(projection)
+                ? {
+                    label: projection.exclude
+                      ? t("dataGrid.chipRow.projectionExcluding", {
+                          fields: projection.fields.join(", "),
+                        })
+                      : projection.fields.join(", "),
+                    onEdit: () => {
+                      setQueryOpen(true);
+                      setQueryFocus(null);
+                    },
+                    onRemove: () => setProjection(undefined),
+                  }
+                : undefined
+            }
             belowToolbar={
               queryOpen && (
                 <QueryPanel
@@ -1669,9 +1718,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                   nestedFields={nestedFields}
                   customFields={isMongo}
                   applied={serverFilters}
+                  appliedProjection={projection}
+                  document={isMongo}
+                  keyColumns={pkColumnNames}
                   focus={queryFocus}
-                  onApply={(filters) => {
-                    setServerFilters(filters);
+                  onApply={(next) => {
+                    setServerFilters(next.filters);
+                    setProjection(next.projection);
                     setOffset(0);
                   }}
                   onClose={() => setQueryOpen(false)}

@@ -28,6 +28,7 @@ import type {
   AppTab,
   BulkUpdatePreview,
   CellValue,
+  CollectionScan,
   ColumnFilter,
   ColumnInfo,
   IncomingForeignKey,
@@ -1457,9 +1458,8 @@ export const api = {
   exportCollection: (
     connectionId: string,
     collection: string,
-    filters?: ColumnFilter[],
-  ) =>
-    invoke<string>("export_collection", { connectionId, collection, filters }),
+    scan?: CollectionScan,
+  ) => invoke<string>("export_collection", { connectionId, collection, scan }),
 
   /** Import documents from `filePath` (JSON array / object / JSONL) into a
    *  MongoDB collection (#65). Returns the number of inserted documents. */

@@ -168,6 +168,7 @@ function snapshotFor(connectionId: string): ConnectionTabState {
       sort: t.viewState?.sort ?? null,
       search: t.viewState?.search ?? null,
       documentViewMode: t.viewState?.documentViewMode ?? null,
+      projection: t.viewState?.projection ?? null,
     }));
   const activeId = tabs.find((t) => t.id === tabsState.activeId)?.id ?? null;
   const expandedSchemaNodes = schemaSlice
@@ -326,12 +327,17 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
         // `undefined` when the tab carried none, so `TableDataTab` falls back to
         // its own defaults rather than starting from empty-but-present state.
         viewState:
-          p.filters || p.sort || p.search || p.documentViewMode
+          p.filters ||
+          p.sort ||
+          p.search ||
+          p.documentViewMode ||
+          p.projection
             ? {
                 filters: p.filters ?? undefined,
                 sort: p.sort ?? undefined,
                 search: p.search ?? undefined,
                 documentViewMode: p.documentViewMode ?? undefined,
+                projection: p.projection ?? undefined,
               }
             : undefined,
       }));

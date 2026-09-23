@@ -737,6 +737,9 @@ export interface TabViewState {
    * default for a newly opened tab) when absent. See `TableDataTab`.
    */
   documentViewMode?: "table" | "list";
+  /** The query panel's projection, as the user chose it (before the key
+   *  columns are added for the wire). */
+  projection?: Projection;
 }
 
 /**
@@ -802,6 +805,33 @@ export interface TableScan extends TableFilter {
   connectionId: string;
   schema?: string;
   table: string;
+  /** The browse's sort — read by the export so "export query results" is in
+   *  the grid's order; ignored by the count. */
+  order?: SortSpec[];
+  /** Fields to return (export and browse); ignored by the count. */
+  projection?: Projection;
+}
+
+/**
+ * Which fields a browse returns — the query panel's *Projection* row. Mirrors
+ * Rust `Projection`. Absent, or an empty `fields`, is every field.
+ *
+ * `exclude` is MongoDB-only (`{ a: 0 }`). A SQL browse only ever sends an
+ * inclusion list and the backend rejects an exclusion there; the frontend is
+ * also where the key columns are added, because the grid needs them to address
+ * a row for every edit.
+ */
+export interface Projection {
+  fields: string[];
+  exclude?: boolean;
+}
+
+/** "Export query results" for a collection: the browse's predicate, sort and
+ *  projection without its paging. Mirrors Rust `CollectionScan` (flattened, so
+ *  one flat object like `TableScan`). */
+export interface CollectionScan extends TableFilter {
+  order?: SortSpec[];
+  projection?: Projection;
 }
 
 /** One page of a table browse — the payload of `fetchTableData`. Mirrors Rust
@@ -810,8 +840,6 @@ export interface TableScan extends TableFilter {
 export interface TableQuery extends TableScan {
   limit: number;
   offset: number;
-  /** Ordered multi-column sort; `order[0]` is the primary key. */
-  order?: SortSpec[];
   /** Run the companion `COUNT(*)`. The GUI always passes `false` (the total is
    *  fetched out-of-band via `countTableRows` so it never gates the first row
    *  render); the headless MCP `browse_table` tool uses the inline count.
@@ -1996,6 +2024,9 @@ export interface PersistedTab {
    *  "table" vs "list" choice, independent of `GridPrefs.documentViewMode`
    *  (which only seeds a newly opened tab's default). `null` on a query tab. */
   documentViewMode: "table" | "list" | null;
+  /** The query panel's projection. Declared on the Rust side too, or serde
+   *  drops it before it reaches disk (gotcha #14). */
+  projection: Projection | null;
 }
 
 /**

@@ -695,7 +695,11 @@
     },
     "chipRow": {
       "filters": "Filters",
-      "sort": "Sort"
+      "sort": "Sort",
+      "projection": "Fields",
+      "projectionExcluding": "all but {{fields}}",
+      "editProjection": "Edit the projection",
+      "removeProjection": "Return every field again"
     },
     "sort": {
       "button": "Sort",
@@ -737,7 +741,23 @@
       "filter": "Filter",
       "matchAll": "Every condition must hold (AND).",
       "unapplied": "Unapplied changes",
-      "reset": "Reset"
+      "reset": "Reset",
+      "projection": "Projection",
+      "columns": "Columns",
+      "projectionMode": "What the query returns",
+      "projAll": "All",
+      "projPick": "Choose",
+      "projAllFields": "All",
+      "projInclude": "Include",
+      "projExclude": "Exclude",
+      "addColumn": "Column",
+      "addField": "Field",
+      "removeField": "Remove {{field}}",
+      "noMoreFields": "No fields left to add",
+      "keyLocked": "The primary key is always returned, so every row stays editable.",
+      "idLocked": "_id is always returned: without it a document cannot be edited.",
+      "idNotExcludable": "_id cannot be excluded: without it a document cannot be edited.",
+      "pickHint": "Nothing picked yet — until you add one, every field comes back."
     },
     "filter": {
       "loadingSchema": "Query — loading the field list…",

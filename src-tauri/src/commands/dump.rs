@@ -20,7 +20,7 @@
 //! etc.) bracketed by `PRAGMA foreign_keys=OFF/ON`, since SQLite inlines FKs
 //! into `CREATE TABLE` text that isn't worth re-parsing to split.
 
-use crate::commands::query::{build_filter_clause_at, TableScan};
+use crate::commands::query::{build_filter_clause_at, order_by_clause, select_list, TableScan};
 use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
 use crate::db::ddl::{build_create, TableStructure};
@@ -379,9 +379,14 @@ pub async fn export_table(
 
 /// Export the rows of `schema.table` matching `filters`/`search` as `INSERT`
 /// statements, without any DDL — the filtered-data counterpart of
-/// [`export_table`], driven by the same [`ColumnFilter`] shape the DataGrid's
-/// advanced filter already builds. No pagination limit: every matching row
-/// is written, not just the current page. Rejects MongoDB.
+/// [`export_table`], driven by the same [`ColumnFilter`] shape the grid's
+/// query panel builds. No pagination limit: every matching row is written,
+/// not just the current page. Rejects MongoDB.
+///
+/// **It writes what the grid shows**: the browse's projection becomes the
+/// `SELECT` list (so each `INSERT` names only those columns, and a column left
+/// out takes its default on the way back in) and its sort becomes the
+/// `ORDER BY`, so the file reads in the order the grid did.
 #[tauri::command]
 pub async fn export_table_rows(
     app: AppHandle,
@@ -394,6 +399,8 @@ pub async fn export_table_rows(
         schema,
         table,
         filter,
+        order,
+        projection,
     } = query;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     let pool = state.pool_for(&connection_id)?;
@@ -417,7 +424,9 @@ pub async fn export_table_rows(
         &filter.search_columns,
     );
     let qt = dialect.qualify(schema.as_deref(), &table);
-    let select_sql = format!("SELECT * FROM {qt}{where_clause}");
+    let select = select_list(dialect, projection.as_ref())?;
+    let order_clause = order_by_clause(dialect, &order);
+    let select_sql = format!("SELECT {select} FROM {qt}{where_clause}{order_clause}");
 
     use tauri_plugin_dialog::DialogExt;
     let suggested = format!("{table}_rows.sql");
@@ -439,7 +448,7 @@ pub async fn export_table_rows(
     )?;
 
     // No `TableStructure` is available here (this is a plain filtered
-    // `SELECT *`, not a table dump), so the quoted column list comes from the
+    // `SELECT`, not a table dump), so the quoted column list comes from the
     // fetched rows' own metadata — the same technique `export_sqlite` already
     // uses for its per-row dump.
     match &pool {

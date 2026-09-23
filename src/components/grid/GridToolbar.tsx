@@ -19,6 +19,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   Plus,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -68,6 +69,14 @@ export interface InsertAlternative {
   onSelect: () => void;
 }
 
+/** See `GridToolbarProps.projectionChip`. */
+export interface ProjectionChip {
+  /** Already phrased: `ts, code` or `all but configuration`. */
+  label: string;
+  onEdit: () => void;
+  onRemove: () => void;
+}
+
 export interface GridToolbarItem {
   id: string;
   /** Rendered inline in the toolbar row. */
@@ -108,6 +117,13 @@ interface GridToolbarProps {
   onToggleSort?: (column: string) => void;
   /** Drop one level (chip ✕, summary row). */
   onRemoveSort?: (column: string) => void;
+  /**
+   * The active projection, as one chip on the chip row: the fields it keeps
+   * (or drops), a body that opens the query panel and a ✕ that returns every
+   * field again. A projection hides columns, and a column that is missing for
+   * no visible reason reads as a bug — so while one is on it is on screen.
+   */
+  projectionChip?: ProjectionChip;
   onInsertRow?: () => void;
   /** Fit every column to its widest visible value. */
   /**
@@ -146,6 +162,7 @@ export function GridToolbar({
   sort,
   onToggleSort,
   onRemoveSort,
+  projectionChip,
   onInsertRow,
   insertAlternatives,
   showRowCount,
@@ -336,7 +353,8 @@ export function GridToolbar({
         row at all: they get one of their own underneath (see below). */
   const filterChips = serverFilters ?? [];
   const sortChips = sort && onToggleSort && onRemoveSort ? sort : [];
-  const hasChipRow = filterChips.length > 0 || sortChips.length > 0;
+  const hasChipRow =
+    filterChips.length > 0 || sortChips.length > 0 || !!projectionChip;
 
   return (
     <div className="border-b border-border bg-background text-xs">
@@ -510,6 +528,37 @@ export function GridToolbar({
                   onRemove={() => onRemoveSort(s.column)}
                 />
               ))}
+            </>
+          )}
+          {projectionChip && (
+            <>
+              {(filterChips.length > 0 || sortChips.length > 0) && (
+                <span
+                  aria-hidden
+                  className="mx-1 h-3.5 w-px shrink-0 bg-border"
+                />
+              )}
+              <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {t("dataGrid.chipRow.projection")}
+              </span>
+              <span className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 py-0.5 pl-1 pr-1 font-mono text-2xs">
+                <SimpleTooltip label={t("dataGrid.chipRow.editProjection")}>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="h-4 max-w-[24rem] rounded-full px-1 font-mono text-2xs hover:bg-transparent hover:text-foreground"
+                    onClick={projectionChip.onEdit}
+                  >
+                    <span className="truncate">{projectionChip.label}</span>
+                  </Button>
+                </SimpleTooltip>
+                <IconButton
+                  size="xs"
+                  icon={X}
+                  label={t("dataGrid.chipRow.removeProjection")}
+                  onClick={projectionChip.onRemove}
+                />
+              </span>
             </>
           )}
         </div>

@@ -222,6 +222,8 @@ pub async fn preview_bulk_update(
                 filters: args.filters.clone(),
                 ..TableFilter::default()
             },
+            order: Vec::new(),
+            projection: None,
         },
     )
     .await?

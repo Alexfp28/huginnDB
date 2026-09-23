@@ -8,7 +8,7 @@
 //! affected-document count in `rows_affected` and carry no rows.
 
 use crate::commands::query::{
-    shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp,
+    shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, Projection,
     QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::{AppError, AppResult};
@@ -409,6 +409,7 @@ pub(crate) fn describe_find(
     collection: &str,
     predicate: &TableFilter,
     order: &[SortSpec],
+    projection: Option<&Projection>,
     limit: i64,
     offset: i64,
 ) -> String {
@@ -417,18 +418,18 @@ pub(crate) fn describe_find(
         predicate.needle(),
         &predicate.search_columns,
     );
-    let mut s = format!(
-        "db.{collection}.find({})",
-        Bson::Document(filter).into_canonical_extjson()
-    );
-    if !order.is_empty() {
-        let mut sort_doc = Document::new();
-        for o in order {
-            sort_doc.insert(o.column.clone(), if o.desc { -1 } else { 1 });
-        }
+    let filter = Bson::Document(filter).into_canonical_extjson();
+    let mut s = match projection_doc(projection) {
+        Some(p) => format!(
+            "db.{collection}.find({filter}, {})",
+            Bson::Document(p).into_canonical_extjson()
+        ),
+        None => format!("db.{collection}.find({filter})"),
+    };
+    if let Some(sort) = sort_doc(order) {
         s.push_str(&format!(
             ".sort({})",
-            Bson::Document(sort_doc).into_canonical_extjson()
+            Bson::Document(sort).into_canonical_extjson()
         ));
     }
     if offset > 0 {
@@ -645,7 +646,42 @@ fn regex_escape(input: &str) -> String {
     out
 }
 
+/// The `sort()` document for a browse, or `None` when unsorted. BSON documents
+/// preserve insertion order, so a multi-key sort doc honours the requested
+/// precedence (`order[0]` is the primary key).
+pub(crate) fn sort_doc(order: &[SortSpec]) -> Option<Document> {
+    if order.is_empty() {
+        return None;
+    }
+    let mut out = Document::new();
+    for s in order {
+        out.insert(s.column.clone(), if s.desc { -1 } else { 1 });
+    }
+    Some(out)
+}
+
+/// The `find()` projection document for a browse: `{ a: 1, b: 1 }` to keep
+/// fields, `{ a: 0 }` to drop them, or `None` for the whole document.
+///
+/// Every value is the same `1` or `0`, never mixed: MongoDB rejects a mix
+/// except for `_id`, and `_id` needs no entry in either direction. An
+/// inclusion keeps it by default, which is what the grid needs to address the
+/// document for an edit, and the grid never offers it for exclusion.
+pub(crate) fn projection_doc(projection: Option<&Projection>) -> Option<Document> {
+    let p = Projection::narrowing(projection)?;
+    let flag = if p.exclude { 0 } else { 1 };
+    let mut out = Document::new();
+    for f in &p.fields {
+        out.insert(f.clone(), flag);
+    }
+    Some(out)
+}
+
 /// Paginated collection browse — the MongoDB analogue of `fetch_table_data`.
+// One argument over clippy's default: the browse's own shape (window, order,
+// predicate, projection, count) is what this takes, and bundling it would only
+// re-split the `TableQuery` the caller just destructured.
+#[allow(clippy::too_many_arguments)]
 pub async fn fetch_collection_data(
     conn: &MongoConn,
     collection: &str,
@@ -653,6 +689,7 @@ pub async fn fetch_collection_data(
     offset: i64,
     order: &[SortSpec],
     predicate: &TableFilter,
+    projection: Option<&Projection>,
     with_count: bool,
 ) -> AppResult<QueryResult> {
     let start = Instant::now();
@@ -678,14 +715,11 @@ pub async fn fetch_collection_data(
         .find(filter)
         .limit(limit.max(0))
         .skip(offset.max(0) as u64);
-    if !order.is_empty() {
-        // BSON documents preserve insertion order, so a multi-key sort doc
-        // honours the requested precedence (order[0] is the primary key).
-        let mut sort_doc = Document::new();
-        for s in order {
-            sort_doc.insert(s.column.clone(), if s.desc { -1 } else { 1 });
-        }
-        action = action.sort(sort_doc);
+    if let Some(p) = projection_doc(projection) {
+        action = action.projection(p);
+    }
+    if let Some(sort) = sort_doc(order) {
+        action = action.sort(sort);
     }
     let mut cursor = action.await?;
     let docs = collect(&mut cursor).await?;
@@ -1203,12 +1237,51 @@ mod tests {
             filters,
             ..TableFilter::default()
         };
-        let s = describe_find("events", &predicate, &order, 50, 100);
+        let s = describe_find("events", &predicate, &order, None, 50, 100);
         assert!(s.starts_with("db.events.find("));
         assert!(s.contains("\"atnId\""));
         assert!(s.contains(".sort("));
         assert!(s.contains(".skip(100)"));
         assert!(s.contains(".limit(50)"));
+    }
+
+    #[test]
+    fn projection_doc_includes_or_excludes_and_never_mixes() {
+        let include = Projection {
+            fields: vec!["ts".into(), "code".into()],
+            exclude: false,
+        };
+        assert_eq!(
+            projection_doc(Some(&include)),
+            Some(doc! { "ts": 1, "code": 1 })
+        );
+
+        let exclude = Projection {
+            fields: vec!["configuration".into()],
+            exclude: true,
+        };
+        assert_eq!(
+            projection_doc(Some(&exclude)),
+            Some(doc! { "configuration": 0 })
+        );
+    }
+
+    #[test]
+    fn an_empty_projection_is_the_whole_document() {
+        // What every caller that predates projection sends, spelled two ways.
+        assert_eq!(projection_doc(None), None);
+        assert_eq!(projection_doc(Some(&Projection::default())), None);
+    }
+
+    #[test]
+    fn describe_find_shows_the_projection_as_find_s_second_argument() {
+        let p = Projection {
+            fields: vec!["code".into()],
+            exclude: false,
+        };
+        let s = describe_find("device", &TableFilter::default(), &[], Some(&p), 0, 0);
+        assert!(s.starts_with("db.device.find({}, {"), "{s}");
+        assert!(s.contains("\"code\""), "{s}");
     }
 
     #[test]
@@ -1273,7 +1346,7 @@ mod tests {
 
     #[test]
     fn describe_find_omits_skip_and_limit_when_zero() {
-        let s = describe_find("events", &TableFilter::default(), &[], 0, 0);
+        let s = describe_find("events", &TableFilter::default(), &[], None, 0, 0);
         assert_eq!(s, "db.events.find({})");
     }
 

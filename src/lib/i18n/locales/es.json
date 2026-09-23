@@ -695,7 +695,11 @@
     },
     "chipRow": {
       "filters": "Filtros",
-      "sort": "Orden"
+      "sort": "Orden",
+      "projection": "Campos",
+      "projectionExcluding": "todos menos {{fields}}",
+      "editProjection": "Editar la proyección",
+      "removeProjection": "Volver a devolver todos los campos"
     },
     "sort": {
       "button": "Ordenar",
@@ -737,7 +741,23 @@
       "filter": "Filtro",
       "matchAll": "Deben cumplirse todas las condiciones (AND).",
       "unapplied": "Cambios sin aplicar",
-      "reset": "Restablecer"
+      "reset": "Restablecer",
+      "projection": "Proyección",
+      "columns": "Columnas",
+      "projectionMode": "Qué devuelve la consulta",
+      "projAll": "Todas",
+      "projPick": "Elegir",
+      "projAllFields": "Todos",
+      "projInclude": "Incluir",
+      "projExclude": "Excluir",
+      "addColumn": "Columna",
+      "addField": "Campo",
+      "removeField": "Quitar {{field}}",
+      "noMoreFields": "No quedan campos por añadir",
+      "keyLocked": "La clave primaria se devuelve siempre, para que todas las filas sigan siendo editables.",
+      "idLocked": "_id se devuelve siempre: sin él no se puede editar el documento.",
+      "idNotExcludable": "_id no se puede excluir: sin él no se puede editar el documento.",
+      "pickHint": "Aún no has elegido nada — hasta que añadas alguno, se devuelven todos."
     },
     "filter": {
       "loadingSchema": "Consulta — cargando la lista de campos…",
