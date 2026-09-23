@@ -16,6 +16,7 @@ import { api } from "@/lib/tauri";
 import i18n from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { useFilterHistory } from "@/stores/grid/filterHistory";
+import { fkOptionsCache } from "@/stores/grid/fkOptions";
 import {
   flushTabState,
   hydrateTabState,
@@ -233,6 +234,9 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // The user asked for filter history to be tied to the connection
     // lifetime; wipe it when the pool closes.
     useFilterHistory.getState().clearForConnection(id);
+    // FK picker options belong to the pool too (children included — see
+    // `clearConnection`); a reconnect may well land on different data.
+    fkOptionsCache.clearConnection(id);
     // Drop the schema cache so a subsequent reconnect (possibly to a
     // different database on the same host) always fetches fresh metadata
     // instead of showing the stale tree from the previous session.

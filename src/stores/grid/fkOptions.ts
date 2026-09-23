@@ -1,18 +1,26 @@
 /**
  * Session-scoped cache for foreign-key dropdown options.
  *
- * The FK combobox prefetches up to `PREFETCH_LIMIT` rows the first time a
- * given target is opened. Subsequent opens within the same session hit
- * this cache and skip the round-trip. The cache is intentionally NOT a
- * Zustand store: nothing in the UI needs to subscribe to changes, and the
- * project banner in `src/stores/theme.ts` reminds us that derived
- * collections from a store break reference equality.
+ * The FK combobox prefetches up to `PREFETCH_LIMIT` rows whenever it mounts.
+ * This cache only decides what it can paint *before* that answer arrives:
+ * it is a first frame, never the answer. Serving it as the answer is what
+ * used to hide a referenced key the user had just renamed — the cache had
+ * no invalidation at all, so neither F5 nor an edit to the referenced table
+ * reached it, and it held whatever the first open saw until the app
+ * restarted. Invalidating on writes instead would still miss a change made
+ * from the SQL editor or from another client, which revalidating on every
+ * open covers for the price of one bounded query.
  *
- * Entries are dropped when they report `has_more`: in that case the
- * combobox switches to server-side ILIKE search and the prefetched slice
- * would be misleading.
+ * The cache is intentionally NOT a Zustand store: nothing in the UI needs to
+ * subscribe to changes, and the project banner in `src/stores/theme.ts`
+ * reminds us that derived collections from a store break reference equality.
+ *
+ * A target that reports `has_more` is kept, flagged `TOO_LARGE`: its first
+ * page still serves as a preview, and the flag switches the combobox to
+ * server-side ILIKE search as soon as the user types.
  */
 
+import { isDatabaseViewOf } from "@/lib/connectionLabel";
 import type { FkOption } from "@/types";
 
 /** Sentinel value for a target whose row count exceeds the prefetch limit. */
@@ -63,11 +71,19 @@ export const fkOptionsCache = {
     cache.set(keyOf(connectionId, schema, table, keyColumn), entry);
   },
 
-  /** Drop every entry for a connection. Call on disconnect. */
+  /**
+   * Drop every entry for a connection and for the `<id>::db::<db>` children
+   * a multi-DB session opened under it — the backend closes those pools with
+   * the parent, so their options are just as dead. Called from
+   * `markDisconnected`.
+   */
   clearConnection(connectionId: string): void {
-    const prefix = `${connectionId}|`;
+    const own = `${connectionId}|`;
     for (const k of cache.keys()) {
-      if (k.startsWith(prefix)) cache.delete(k);
+      const id = k.slice(0, k.indexOf("|"));
+      if (k.startsWith(own) || isDatabaseViewOf(id, connectionId)) {
+        cache.delete(k);
+      }
     }
   },
 };

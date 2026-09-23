@@ -176,6 +176,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   searching wrote documents the grid was not showing. It now uses the same
   filter the browse does.
 
+- **The foreign-key picker kept offering a key that no longer existed.**
+  Rename a primary key (`5` → `50`) and then edit a cell that references it:
+  the picker still listed `5`, and `50` was nowhere to be found. F5 didn't
+  help, and neither did reopening the table. The picker cached the
+  referenced values the first time it opened and never asked again for the
+  rest of the session. Now it still shows the cached list straight away, but
+  it re-reads the referenced table every time it opens and swaps in the fresh
+  list, so a change made from the grid, the SQL editor or another client
+  shows up on the next open. If that re-read fails, you keep the list you
+  had, rather than getting a free-text box. The cached options are also
+  dropped on disconnect now, including those of the databases a multi-DB
+  session opened. That cleanup already existed; nothing ever called it.
+
 ## [1.27.0] — 2026-09-23
 
 ### Added

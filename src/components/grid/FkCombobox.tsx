@@ -7,8 +7,10 @@
  *
  * Behaviour:
  *
- *  - On mount, prefetches `PREFETCH_LIMIT` rows. Result is cached in
- *    `fkOptionsCache` so subsequent opens of the same target are instant.
+ *  - On mount, prefetches `PREFETCH_LIMIT` rows — every mount, not just the
+ *    first. The result is cached in `fkOptionsCache` so a later open paints
+ *    instantly, but that open still refetches and replaces what it painted:
+ *    the referenced table may have changed since (see `fkOptions.ts`).
  *  - When the target has more rows than the prefetch limit, the cache is
  *    flagged `too-large` and the combobox switches to server-side ILIKE
  *    search (debounced) on every keystroke.
@@ -89,7 +91,10 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
       () => triggerRef.current as HTMLButtonElement,
     );
 
-    // Initial prefetch (cache-first).
+    // Prefetch: paint the cached page at once, then fetch it again anyway.
+    // The cache is a first frame, not the answer — it has no way to learn
+    // that the referenced table changed, so returning early on a hit is what
+    // kept a just-renamed key out of this list until the app restarted.
     React.useEffect(() => {
       const cached = fkOptionsCache.get(
         connectionId,
@@ -103,7 +108,6 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
         // having to type a query first.
         setPrefetched(cached.options);
         setTooLarge(cached.kind === TOO_LARGE);
-        return;
       }
       let cancelled = false;
       setLoading(true);
@@ -133,7 +137,9 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
           console.warn(
             `FkCombobox: prefetch failed for ${refSchema ?? ""}.${refTable}.${refColumn}: ${message}`,
           );
-          setFetchError(message);
+          // A failed refresh over a cached page keeps the picker: a list
+          // that may be one edit behind beats degrading to a free-text box.
+          if (!cached) setFetchError(message);
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
