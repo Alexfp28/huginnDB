@@ -133,6 +133,18 @@ Ambos son gestos puntuales: ninguno de los dos toca la preferencia **Desplegar
 los valores anidados por defecto** (Ajustes → Apariencia), que es la que decide
 cómo se abre un documento de entrada.
 
+**Ordenar no depende de las cabeceras.** La vista de lista no tiene, así que el
+orden vive en otros dos sitios, en los dos modos de vista. El botón **Ordenar**
+(⇅) de la barra construye un orden de varios niveles con los campos de la
+página, rutas anidadas incluidas, y el orden activo aparece como chips junto a
+los de filtro: un clic lo invierte y la ✕ lo quita. Con clic derecho en
+cualquier campo tienes **Ordenar ascendente / descendente por …** (que sustituye
+el orden, como un clic normal en la cabecera) y **Filtrar por este valor**.
+Dentro de un array se prescinde del índice: filtrar por un elemento de `tags`
+pide los documentos cuyo `tags` *contiene* ese valor, y ordenar por
+`items.0.sku` ordena por `items.sku`, porque `sort()` no entiende un índice
+posicional.
+
 Un límite: **la clave de un campo no se puede renombrar en el sitio**. Renombrar
 es un `$set` de la clave nueva más un `$unset` de la vieja, y hacerlo con
 seguridad exige una única actualización atómica a nivel de documento, no las

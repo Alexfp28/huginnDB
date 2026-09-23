@@ -98,6 +98,7 @@ import { useGridColumns } from "@/lib/grid/useGridColumns";
 import { useGridKeyboardNav } from "@/lib/grid/useGridKeyboardNav";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
 import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
+import { removeSortLevel, toggleSortLevel } from "@/lib/grid/sortSpec";
 import { useCellEditing } from "@/lib/grid/useCellEditing";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 import type { Driver } from "@/types";
@@ -189,6 +190,14 @@ interface Props {
   onSortChange?: (column: string, additive: boolean) => void;
   /** Active multi-column sort, in precedence order. */
   sort?: SortSpec[];
+  /**
+   * Replace the whole sort. The seam every header-less surface uses — the
+   * sort chips in the toolbar and the list view's field context menu — where
+   * `onSortChange`'s "a header was clicked" vocabulary does not apply. The
+   * transitions are `lib/grid/sortSpec.ts`'s. Absent → no chips and no sort
+   * entries in the list view's menu.
+   */
+  onSortSpecsChange?: (next: SortSpec[]) => void;
   /**
    * Applied filter — drives the client-side `visibleRows` pass and is
    * what the grid believes is the *current* search. For tabs that
@@ -372,6 +381,7 @@ export function DataGrid({
   onCellSave: onCellSaveProp,
   onSortChange,
   sort,
+  onSortSpecsChange,
   fkColumnNames,
   onNavigateFk,
   globalFilter,
@@ -1146,6 +1156,15 @@ export function DataGrid({
         typedFilterValues={typedFilterValues}
         onRemoveFilter={onRemoveFilter}
         onEditFilter={onEditFilter}
+        sort={onSortSpecsChange ? sort : undefined}
+        onToggleSort={
+          onSortSpecsChange &&
+          ((column) => onSortSpecsChange(toggleSortLevel(sort ?? [], column)))
+        }
+        onRemoveSort={
+          onSortSpecsChange &&
+          ((column) => onSortSpecsChange(removeSortLevel(sort ?? [], column)))
+        }
         onInsertRow={onInsertRow}
         showRowCount={showRowCount}
         visibleRowCount={visibleRows.length}
@@ -1186,6 +1205,13 @@ export function DataGrid({
               onFieldSave={editable ? onFieldSave : undefined}
               onFieldDelete={editable ? onFieldDelete : undefined}
               onDeleteRow={onDeleteRow}
+              sort={sort}
+              onSortChange={onSortSpecsChange}
+              onAddFilter={onAddFilter}
+              // MongoDB addresses a nested field by its dotted path, in a sort
+              // as in a filter; a SQL `ORDER BY`/`WHERE` names a column, so
+              // there only top-level fields get those menu entries.
+              nestedPaths={driver === "mongodb"}
               onExpandField={(rowValues, path, value, type) =>
                 openHeavyEditor(
                   rowValues,

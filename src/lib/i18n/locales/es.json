@@ -694,6 +694,22 @@
       "insertHint": "Enter inserta · Esc descarta",
       "changeType": "Cambiar el tipo"
     },
+    "sort": {
+      "button": "Ordenar",
+      "menuTitle": "Ordenar por",
+      "ascending": "Ascendente",
+      "descending": "Descendente",
+      "removeLevel": "Quitar del orden",
+      "clear": "Quitar el orden",
+      "noFields": "Aún no hay campos por los que ordenar",
+      "chipAsc": "{{field}}, ascendente — clic para invertir",
+      "chipDesc": "{{field}}, descendente — clic para invertir",
+      "chipRemove": "Quitar {{field}} del orden",
+      "activeCount": "{{count}} criterios de orden",
+      "byAsc": "Ordenar ascendente por {{field}}",
+      "byDesc": "Ordenar descendente por {{field}}",
+      "removeField": "Quitar {{field}} del orden"
+    },
     "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado",
     "saveFailed": "No se pudo guardar el cambio",
     "rowsCopied": "{{count}} filas copiadas"

@@ -6,6 +6,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Sorting in the list view, and a sort you can see in both modes.** The
+  browse sort was always server-side and it kept applying in the list view, but
+  the only way to set it was clicking a column header, and the list view has no
+  headers. A collection sorted in table mode stayed sorted in list mode with
+  nothing on screen saying so, and a collection opened in list mode could not
+  be sorted at all. Users coming from MongoDB Compass reached for its Sort field
+  and found nothing.
+
+  The sort now has three entry points that work in both view modes, on every
+  driver:
+
+  - A **Sort** button (⇅) in the grid toolbar, next to the advanced filter. It
+    lists the table's columns (on MongoDB, the fields on the page, nested
+    paths included) and builds a multi-level sort one field at a time. It
+    carries the same count badge as the filter button.
+  - **Sort chips** beside the filter chips. Click one to reverse its direction,
+    ✕ to drop it. When there is more than one level they show their rank, and
+    in a narrow pane they fold into one summary chip, the same way the filter
+    chips do. In table mode they also keep a sort visible after its column has
+    scrolled out of view.
+  - A **context menu on every field** of the list view: *Sort ascending /
+    descending by …* (this replaces the sort, like a plain header click; the
+    toolbar menu is the one that adds levels), *Remove … from the sort*,
+    *Filter by this value* and *Filter excluding this value*, which the list
+    view never had, and *Copy*.
+
+  On MongoDB a nested field sorts and filters by its dotted path. Inside an
+  array the index is dropped, as the advanced filter already did:
+  `items.0.sku` sorts on `items.sku`, because `sort()` does not read a
+  positional index, and filtering on one element of `tags` asks for documents
+  whose `tags` contains it. On SQL only top-level fields get these entries,
+  because `ORDER BY` and `WHERE` name a column. This is the first step of the
+  query bar users asked for (projection, a raw filter and the rest come
+  in later releases). The backend is unchanged: it already accepted everything
+  these controls send.
+
 ## [1.27.0] — 2026-09-23
 
 ### Added

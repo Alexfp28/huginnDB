@@ -53,11 +53,15 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { notify } from "@/lib/notify";
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Copy,
+  Filter,
+  FilterX,
   Inbox,
   Maximize2,
   Plus,
@@ -66,6 +70,14 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
+import {
+  ContextMenu,
+  ContextMenuAction,
+  ContextMenuContent,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   DraftCellControl,
@@ -81,6 +93,8 @@ import {
 } from "@/components/ui/select";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { toJson as rowToJson } from "@/lib/grid/copyFormats";
+import { formatValue } from "@/lib/grid/formatValue";
+import { removeSortLevel, sortLevelOf, sortOnly } from "@/lib/grid/sortSpec";
 import {
   BSON_TYPES,
   defaultText,
@@ -101,10 +115,12 @@ import { cn } from "@/lib/utils";
 import type {
   BsonTypeTree,
   CellValue,
+  ColumnFilter,
   ColumnInfo,
   ColumnMeta,
   DraftCell,
   DraftRow,
+  SortSpec,
 } from "@/types";
 
 /**
@@ -187,6 +203,23 @@ interface DocumentListViewProps {
   /** Inline INSERT card, pinned above the documents. Absent → this surface
    *  isn't insertable (a pipeline preview, a read-only query result). */
   draft?: ListDraft | null;
+  /**
+   * The browse's server-side sort, and the seam that replaces it. This view
+   * has no column headers, so a field's context menu is where "sort by this"
+   * lives here — the same "order by *this*" a plain header click means in the
+   * table view (`sortOnly`, not an added level). Absent → no sort entries.
+   */
+  sort?: SortSpec[];
+  onSortChange?: (next: SortSpec[]) => void;
+  /** Push a server-side filter — the table view's "Filter by this value",
+   *  offered on a field here. Absent → no filter entries. */
+  onAddFilter?: (f: ColumnFilter) => void;
+  /**
+   * Whether a nested field can be sorted and filtered on by its dotted path.
+   * True on MongoDB, where `sort()` and `find()` both take one; false on SQL,
+   * where `ORDER BY` and `WHERE` name a column, so only top-level fields do.
+   */
+  nestedPaths?: boolean;
 }
 
 /**
@@ -241,6 +274,10 @@ interface DocumentCardCallbacks {
     type: string,
   ) => void;
   copyToClipboard: (text: string) => void;
+  onSortChange?: (next: SortSpec[]) => void;
+  onAddFilter?: (f: ColumnFilter) => void;
+  /** Read at call time by "remove from the sort", like every callback here. */
+  sort: SortSpec[];
 }
 
 /** Field-row copy, precomputed once per language rather than once per field
@@ -258,6 +295,10 @@ interface DocFieldLabels {
   opaqueType: string;
   changeType: string;
 }
+
+/** The empty sort, one identity for every render that has none — a fresh `[]`
+ *  per render would break every card's memo. */
+const NO_SORT: SortSpec[] = [];
 
 export function DocumentListView({
   columns,
@@ -280,6 +321,10 @@ export function DocumentListView({
   flashedRowIndex,
   flashedPath,
   draft,
+  sort,
+  onSortChange,
+  onAddFilter,
+  nestedPaths = false,
 }: DocumentListViewProps) {
   const { t, i18n } = useTranslation();
   /**
@@ -319,6 +364,9 @@ export function DocumentListView({
     onDeleteRow,
     onExpandField,
     copyToClipboard,
+    onSortChange,
+    onAddFilter,
+    sort: sort ?? NO_SORT,
   });
   callbacksRef.current = {
     onFieldSave,
@@ -326,6 +374,9 @@ export function DocumentListView({
     onDeleteRow,
     onExpandField,
     copyToClipboard,
+    onSortChange,
+    onAddFilter,
+    sort: sort ?? NO_SORT,
   };
 
   /**
@@ -452,6 +503,10 @@ export function DocumentListView({
                 hasFieldSave={!!onFieldSave}
                 hasDeleteRow={!!onDeleteRow}
                 hasExpandField={!!onExpandField}
+                sort={sort ?? NO_SORT}
+                canSort={!!onSortChange}
+                canFilter={!!onAddFilter}
+                nestedPaths={nestedPaths}
                 t={t}
                 labels={labels}
                 callbacksRef={callbacksRef}
@@ -669,6 +724,12 @@ interface DocumentCardProps {
   hasFieldSave: boolean;
   hasDeleteRow: boolean;
   hasExpandField: boolean;
+  /** The active sort — a stable array (the tab's state), so it breaks the memo
+   *  only when the sort itself changes. Read for each field's menu. */
+  sort: SortSpec[];
+  canSort: boolean;
+  canFilter: boolean;
+  nestedPaths: boolean;
   /** `t`'s own identity is stable in react-i18next, so passing it through
    *  props doesn't fight the memo — only needed here for the few strings
    *  that interpolate a value computed per field (a count, a path, a type
@@ -722,6 +783,10 @@ interface FieldRowActions {
   deleteField: (f: DocField) => void;
   addAfter: (f: DocField) => void;
   expandField: (f: DocField) => void;
+  sortBy: (f: DocField, desc: boolean) => void;
+  unsort: (f: DocField) => void;
+  filterBy: (f: DocField, exclude: boolean) => void;
+  copyValue: (f: DocField) => void;
 }
 
 const DocumentCard = memo(function DocumentCard({
@@ -741,6 +806,10 @@ const DocumentCard = memo(function DocumentCard({
   hasFieldSave,
   hasDeleteRow,
   hasExpandField,
+  sort,
+  canSort,
+  canFilter,
+  nestedPaths,
   t,
   labels,
   callbacksRef,
@@ -1045,7 +1114,53 @@ const DocumentCard = memo(function DocumentCard({
   // local state, same as `toggleFold`/`startEdit`/etc. themselves. What
   // stays constant across renders is the `actionsRef` OBJECT's identity
   // (it's a ref), which is all `memo(FieldRow)` ever sees as a prop.
-  const actionsRef = useRef<FieldRowActions>({
+  /**
+   * The browse column a field is sorted and filtered on, or `null` when it
+   * cannot be one.
+   *
+   * **Array indexes are dropped**, the way the filter builder's paths drop
+   * them (gotcha #81): `items.0.sku` browses as `items.sku`, and an element of
+   * a scalar array as the array itself. That is what the gesture means from a
+   * document — "filter by this value" on one tag is "has this tag", which
+   * `{ tags: "x" }` is and `{ "tags.0": "x" }` is not, and `sort()` does not
+   * read a positional index at all. The list's own paths keep the index
+   * because a `$set` has to name one element; that is a different job.
+   *
+   * Ruled out: a container (ordering or matching on a whole sub-document is
+   * legal on MongoDB and almost never what anyone means), and on SQL anything
+   * below the top level, because `ORDER BY` and `WHERE` name a column
+   * (`nestedPaths`, MongoDB only).
+   */
+  const browsePaths = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const f of fields) {
+      // Parents precede their children in `fields`, so the parent's entry is
+      // always there by the time a child is reached.
+      const parent = out.get(pathKey(f.path.slice(0, -1))) ?? "";
+      out.set(
+        pathKey(f.path),
+        f.inArray ? parent : parent ? `${parent}.${f.key}` : f.key,
+      );
+    }
+    return out;
+  }, [fields]);
+  function browseColumn(f: DocField): string | null {
+    if (f.container !== null) return null;
+    if (!nestedPaths && f.path.length !== 1) return null;
+    return browsePaths.get(pathKey(f.path)) || null;
+  }
+
+  function sortDescOf(f: DocField): boolean | null {
+    const column = canSort ? browseColumn(f) : null;
+    return column ? (sortLevelOf(sort, column)?.desc ?? null) : null;
+  }
+
+  // One object, rebuilt every `DocumentCard` render (its methods close over
+  // this render's `edit`/`toggled`/`typeMenu`/`draft` local state, same as
+  // `toggleFold`/`startEdit`/etc. themselves) and published through a ref.
+  // What stays constant across renders is the `actionsRef` OBJECT's identity,
+  // which is all `memo(FieldRow)` ever sees as a prop.
+  const actions: FieldRowActions = {
     openTypeMenu: (key) => setTypeMenu(key),
     closeTypeMenu: () => setTypeMenu(null),
     toggleFold,
@@ -1069,32 +1184,31 @@ const DocumentCard = memo(function DocumentCard({
         f.type,
       );
     },
-  });
-  actionsRef.current = {
-    openTypeMenu: (key) => setTypeMenu(key),
-    closeTypeMenu: () => setTypeMenu(null),
-    toggleFold,
-    startEdit,
-    editChange: (value) =>
-      setEdit((prev) => (prev ? { ...prev, text: value } : prev)),
-    commitEdit: (f) => void commitEdit(f),
-    cancelEdit: () => setEdit(null),
-    changeType: (f, next) => void changeType(f, next),
-    deleteField: (f) => void deleteField(f),
-    addAfter: startDraft,
-    expandField: (f) => {
-      const onExpandField = callbacksRef.current.onExpandField;
-      if (!onExpandField || !isAddressable(f)) return;
-      onExpandField(
-        rowValues,
-        f.path,
+    sortBy: (f, desc) => {
+      const column = browseColumn(f);
+      if (column) callbacksRef.current.onSortChange?.(sortOnly(column, desc));
+    },
+    unsort: (f) => {
+      const column = browseColumn(f);
+      const { onSortChange, sort: current } = callbacksRef.current;
+      if (column) onSortChange?.(removeSortLevel(current, column));
+    },
+    filterBy: (f, exclude) => {
+      const column = browseColumn(f);
+      const onAddFilter = callbacksRef.current.onAddFilter;
+      if (!column || !onAddFilter) return;
+      // Same shape the table view's cell menu pushes, so a chip made here is
+      // indistinguishable from one made there.
+      onAddFilter(
         f.value === null || f.value === undefined
-          ? ""
-          : editText(f.value, f.type),
-        f.type,
+          ? { column, op: exclude ? "is_not_null" : "is_null" }
+          : { column, op: exclude ? "ne" : "eq", value: f.value },
       );
     },
+    copyValue: (f) => callbacksRef.current.copyToClipboard(formatValue(f.value)),
   };
+  const actionsRef = useRef<FieldRowActions>(actions);
+  actionsRef.current = actions;
 
   return (
     <div className={cn("group/doc px-3 py-2", striped && "bg-muted/30")}>
@@ -1185,6 +1299,9 @@ const DocumentCard = memo(function DocumentCard({
                 canMutate={canMutate(f)}
                 canExpand={hasExpandField && isAddressable(f)}
                 typeMenuOpen={typeMenu === key}
+                sortable={canSort && browseColumn(f) !== null}
+                sortDesc={sortDescOf(f)}
+                filterable={canFilter && browseColumn(f) !== null}
                 labels={labels}
                 actionsRef={actionsRef}
               />
@@ -1224,6 +1341,13 @@ interface FieldRowProps {
   canExpand: boolean;
   /** Whether this row's type picker is the one currently mounted. */
   typeMenuOpen: boolean;
+  /** The context menu offers "sort by this field". */
+  sortable: boolean;
+  /** This field's direction in the sort, or `null` when it isn't in it. A
+   *  primitive, so a sort change re-renders only the fields it touches. */
+  sortDesc: boolean | null;
+  /** The context menu offers "filter by this value". */
+  filterable: boolean;
   labels: DocFieldLabels;
   /** Stable across renders — see `FieldRowActions`. Every method takes the
    *  field it acts on, so `FieldRow` never needs a field-specific callback
@@ -1245,11 +1369,14 @@ const FieldRow = memo(function FieldRow({
   canMutate,
   canExpand,
   typeMenuOpen,
+  sortable,
+  sortDesc,
+  filterable,
   labels,
   actionsRef,
 }: FieldRowProps) {
   const isNull = f.value === null || f.value === undefined;
-  return (
+  const row = (
     <div
       className={cn(
         "group/field flex items-center gap-2 font-mono leading-relaxed hover:bg-accent",
@@ -1406,7 +1533,103 @@ const FieldRow = memo(function FieldRow({
         ))}
     </div>
   );
+  // No menu while the value is being edited: a right-click inside the input
+  // belongs to the text field (paste, select all), not to the document.
+  if (editing) return row;
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <FieldMenuItems
+          field={f}
+          sortable={sortable}
+          sortDesc={sortDesc}
+          filterable={filterable}
+          actionsRef={actionsRef}
+        />
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 });
+
+/**
+ * A field's context menu. Its own component so its `useTranslation()` (the
+ * labels interpolate the field's path) is paid only while a menu is open —
+ * Radix mounts the content lazily — rather than once per field row.
+ *
+ * Sorting here *replaces* the sort, like a plain header click in the table
+ * view; building a multi-level sort is the toolbar's "Sort by" menu's job (see
+ * `lib/grid/sortSpec.ts`).
+ */
+function FieldMenuItems({
+  field: f,
+  sortable,
+  sortDesc,
+  filterable,
+  actionsRef,
+}: {
+  field: DocField;
+  sortable: boolean;
+  sortDesc: boolean | null;
+  filterable: boolean;
+  actionsRef: MutableRefObject<FieldRowActions>;
+}) {
+  const { t } = useTranslation();
+  const field = pathKey(f.path);
+  const isNull = f.value === null || f.value === undefined;
+  return (
+    <>
+      <ContextMenuLabel>
+        {field}
+        {isNull ? " · NULL" : ""}
+      </ContextMenuLabel>
+      {sortable && (
+        <>
+          <ContextMenuAction
+            icon={ArrowUp}
+            label={t("dataGrid.sort.byAsc", { field })}
+            disabled={sortDesc === false}
+            onSelect={() => actionsRef.current.sortBy(f, false)}
+          />
+          <ContextMenuAction
+            icon={ArrowDown}
+            label={t("dataGrid.sort.byDesc", { field })}
+            disabled={sortDesc === true}
+            onSelect={() => actionsRef.current.sortBy(f, true)}
+          />
+          {sortDesc !== null && (
+            <ContextMenuAction
+              icon={X}
+              label={t("dataGrid.sort.removeField", { field })}
+              onSelect={() => actionsRef.current.unsort(f)}
+            />
+          )}
+          <ContextMenuSeparator />
+        </>
+      )}
+      {filterable && (
+        <>
+          <ContextMenuAction
+            icon={Filter}
+            label={t("dataGrid.ctxFilterBy")}
+            onSelect={() => actionsRef.current.filterBy(f, false)}
+          />
+          <ContextMenuAction
+            icon={FilterX}
+            label={t("dataGrid.ctxFilterExcluding")}
+            onSelect={() => actionsRef.current.filterBy(f, true)}
+          />
+          <ContextMenuSeparator />
+        </>
+      )}
+      <ContextMenuAction
+        icon={Copy}
+        label={t("dataGrid.ctxCopy")}
+        onSelect={() => actionsRef.current.copyValue(f)}
+      />
+    </>
+  );
+}
 
 /** The "new field" form row: key, type and value, committed as one `$set`. */
 function DraftRow({

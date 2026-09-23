@@ -23,6 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowUpDown,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -100,6 +101,8 @@ import { runExport } from "@/lib/grid/exportTable";
 import { clampRowHeight } from "@/lib/grid/rowHeight";
 import { nextOffset, pageWindow, prevOffset } from "@/lib/grid/pagination";
 import { collectNestedFieldPaths } from "@/lib/grid/fieldPaths";
+import { nextSort } from "@/lib/grid/sortSpec";
+import { SortByMenuItems, type SortField } from "@/components/grid/SortControls";
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import {
@@ -165,36 +168,6 @@ function duplicateDraft(
     }
   }
   return { cells, error: null, saving: false };
-}
-
-/**
- * Compute the next sort state from a header click.
- *
- * - **Plain click** (`additive === false`): collapse to a single key on
- *   `column`, cycling its direction ASC → DESC → none (clicking a third time,
- *   or while already multi-sorted, resets to that one column ascending).
- * - **Ctrl/Cmd+click** (`additive === true`): keep the existing keys and add
- *   `column` as the lowest-precedence level (ASC); if it's already present,
- *   cycle it ASC → DESC → removed in place.
- */
-function nextSort(
-  current: SortSpec[],
-  column: string,
-  additive: boolean,
-): SortSpec[] {
-  const existing = current.find((s) => s.column === column);
-  if (additive) {
-    if (!existing) return [...current, { column, desc: false }];
-    if (!existing.desc)
-      return current.map((s) =>
-        s.column === column ? { ...s, desc: true } : s,
-      );
-    return current.filter((s) => s.column !== column);
-  }
-  // Plain click: a single-key cycle, ignoring any multi-sort already active.
-  if (!existing || current.length > 1) return [{ column, desc: false }];
-  if (!existing.desc) return [{ column, desc: true }];
-  return [];
 }
 
 // A connection with no filter history yet reads `filterHistory` as
@@ -408,6 +381,17 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     setOffset(0);
   }, []);
 
+  /** Replace the sort wholesale — the chips, the "Sort by" menu and the list
+   *  view's field menu. Same page reset as a header click. */
+  const replaceSort = useCallback((next: SortSpec[]) => {
+    setSort(next);
+    setOffset(0);
+  }, []);
+
+  /** The "Sort by" menu is open (bar dropdown or overflow submenu). Gates the
+   *  nested-path walk below, like the filter dialogs gate theirs. */
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
   );
@@ -425,7 +409,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * but it is still a walk of every document in the page, and it would
    * otherwise re-run on every fetch for a list nobody is looking at.
    */
-  const nestedFieldsWanted = isMongo && (advanced !== null || bulkUpdateOpen);
+  const nestedFieldsWanted =
+    isMongo && (advanced !== null || bulkUpdateOpen || sortMenuOpen);
   const nestedFields = useMemo(
     () =>
       nestedFieldsWanted && result
@@ -433,6 +418,23 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         : [],
     [nestedFieldsWanted, result],
   );
+
+  /**
+   * What the "Sort by" menu offers. SQL: the table's columns, from the catalog
+   * — `ORDER BY` names a column and nothing else. MongoDB: the same paths the
+   * advanced filter offers (top-level plus nested, array indexes dropped),
+   * minus sub-documents, which sort legally and meaninglessly. Built only
+   * while the menu is open, for the same reason `nestedFields` is.
+   */
+  const sortFields: SortField[] = useMemo(() => {
+    if (!sortMenuOpen) return [];
+    if (isMongo) {
+      return nestedFields
+        .filter((f) => f.type !== "object" && f.type !== "document")
+        .map((f) => ({ path: f.path, type: f.type }));
+    }
+    return (cols ?? []).map((c) => ({ path: c.name, type: c.data_type }));
+  }, [sortMenuOpen, isMongo, nestedFields, cols]);
 
   /**
    * Every column that participates in the table's PRIMARY KEY, in
@@ -1206,6 +1208,70 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </DropdownMenuItem>
         ),
       },
+      {
+        // The sort's own entry point. The table view always had one (its
+        // headers); the list view had none, which is the gap this closes —
+        // and it is offered in both modes so the control is where the user
+        // left it when they switch.
+        id: "sort-by",
+        bar: (
+          <DropdownMenu onOpenChange={setSortMenuOpen}>
+            <SimpleTooltip label={t("dataGrid.sort.button")}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t("dataGrid.sort.button")}
+                  className="relative"
+                >
+                  <ArrowUpDown
+                    className={cn("h-3.5 w-3.5", sort.length ? "text-brand" : "")}
+                  />
+                  {sort.length > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-brand px-1 text-3xs font-semibold text-white">
+                      {sort.length}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+            </SimpleTooltip>
+            <DropdownMenuContent align="start" className="max-w-[22rem]">
+              <SortByMenuItems
+                fields={sortFields}
+                sort={sort}
+                onChange={replaceSort}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ),
+        // A dropdown collapses into a submenu, never a nested dropdown — see
+        // `DropdownMenuSubTrigger`.
+        menu: (
+          <DropdownMenuSub onOpenChange={setSortMenuOpen}>
+            <DropdownMenuSubTrigger className="text-xs">
+              <ArrowUpDown
+                className={cn(
+                  "mr-2 h-3.5 w-3.5",
+                  sort.length ? "text-brand" : "",
+                )}
+              />
+              {t("dataGrid.sort.button")}
+              {sort.length > 0 && (
+                <span className="ml-auto pl-3 tabular-nums text-muted-foreground">
+                  {sort.length}
+                </span>
+              )}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-w-[22rem]">
+              <SortByMenuItems
+                fields={sortFields}
+                sort={sort}
+                onChange={replaceSort}
+              />
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ),
+      },
     ],
     // `cols`/`colError`/`colsLoading` are load-bearing here and were missing:
     // the filter button renders from them, and `fetchData` — the only thing in
@@ -1215,7 +1281,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     // first render's JSX, and the button spun forever regardless of how small
     // the collection was. The project runs no `exhaustive-deps` lint by design,
     // so a dependency array is read by hand or not at all — read it.
-    [reloadAll, loading, t, serverFilters, cols, colError, colsLoading],
+    [
+      reloadAll,
+      loading,
+      t,
+      serverFilters,
+      cols,
+      colError,
+      colsLoading,
+      sort,
+      sortFields,
+      replaceSort,
+    ],
   );
 
   // Rendered right beside DataGrid's own "Insert" button (via `insertExtra`),
@@ -1533,6 +1610,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onFieldDelete={isMongo ? onFieldDelete : undefined}
             sort={sort}
             onSortChange={applySort}
+            onSortSpecsChange={replaceSort}
             // `globalFilter` drives the grid's client-side `visibleRows`
             // pass and MUST match the filter the backend used to build
             // `result.rows` — that's `appliedFilter`, not the
