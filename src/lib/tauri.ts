@@ -30,6 +30,7 @@ import type {
   CellValue,
   ColumnFilter,
   ColumnInfo,
+  IncomingForeignKey,
   ConflictResolution,
   BatchResult,
   ConnectionProfile,
@@ -499,6 +500,20 @@ export const api = {
     schema: string | undefined,
     table: string,
   ) => invoke<void>("drop_table", { connectionId, schema, table }),
+
+  /** Foreign keys on *other* tables that reference this one (self-references
+   *  excluded) — read by the drop dialog before the user confirms. Empty on
+   *  MongoDB. */
+  listReferencingForeignKeys: (
+    connectionId: string,
+    schema: string | undefined,
+    table: string,
+  ) =>
+    invoke<IncomingForeignKey[]>("list_referencing_foreign_keys", {
+      connectionId,
+      schema,
+      table,
+    }),
 
   /** Empty a table — remove every row but keep the table (#69). `TRUNCATE`
    *  on Postgres/MySQL, `DELETE FROM` on SQLite, `deleteMany({})` on MongoDB. */

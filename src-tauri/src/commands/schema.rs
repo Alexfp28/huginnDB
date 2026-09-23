@@ -106,6 +106,55 @@ pub struct ColumnInfo {
     pub referenced_column: Option<String>,
 }
 
+/// A foreign key on *another* table that points at the one being asked about —
+/// the reverse of [`ColumnInfo::referenced_table`], answered by
+/// [`list_referencing_foreign_keys`].
+///
+/// `schema` is the referencing table's own schema, which need not be the
+/// target's: MySQL and Postgres both allow cross-schema FKs, and a drop
+/// warning that omitted the schema would send the user looking in the wrong
+/// database. SQLite reports `None` (one schema only).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct IncomingForeignKey {
+    pub schema: Option<String>,
+    pub table: String,
+    pub constraint: String,
+    /// The referencing table's columns, in constraint order.
+    pub columns: Vec<String>,
+}
+
+/// Fold one-row-per-column catalog output into one entry per constraint.
+///
+/// Every driver's query returns `(schema, table, constraint, column)` ordered
+/// by the first three and then by the column's position in the key, so a
+/// composite FK arrives as consecutive rows. Folding consecutive runs (rather
+/// than a map keyed on the constraint name) keeps that order and does not
+/// merge two same-named constraints living on different tables — constraint
+/// names are only unique per table on Postgres and SQLite.
+pub(crate) fn group_incoming_fks(
+    rows: impl IntoIterator<Item = (Option<String>, String, String, String)>,
+) -> Vec<IncomingForeignKey> {
+    let mut out: Vec<IncomingForeignKey> = Vec::new();
+    for (schema, table, constraint, column) in rows {
+        match out.last_mut() {
+            Some(last)
+                if last.schema == schema
+                    && last.table == table
+                    && last.constraint == constraint =>
+            {
+                last.columns.push(column)
+            }
+            _ => out.push(IncomingForeignKey {
+                schema,
+                table,
+                constraint,
+                columns: vec![column],
+            }),
+        }
+    }
+    out
+}
+
 /// Index summary including the participating columns.
 #[derive(Debug, Serialize)]
 pub struct IndexInfo {
@@ -739,6 +788,57 @@ pub async fn drop_table(
     Ok(())
 }
 
+/// The foreign keys on other tables that reference `schema.table` — what
+/// stands between the user and a `DROP TABLE`.
+///
+/// The drop dialog asks this before the user confirms. Without it the only
+/// signal was the server's refusal after the fact, and on MySQL 5.7 / MariaDB
+/// that refusal (1217/1451, "a foreign key constraint fails") names no table
+/// at all; MySQL 8.0's 3730 names one even when several reference it.
+///
+/// **Self-references are left out** by every driver's query: a table's FK to
+/// itself does not block dropping it, and listing it would be a warning about
+/// nothing. MongoDB has no foreign keys and answers an empty list.
+#[tauri::command]
+pub async fn list_referencing_foreign_keys(
+    app: tauri::AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<Vec<IncomingForeignKey>> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::error::with_timeout_for(
+        state.inner(),
+        &connection_id,
+        "list_referencing_foreign_keys",
+        list_referencing_foreign_keys_inner(state.inner(), &connection_id, schema, table),
+    )
+    .await
+}
+
+async fn list_referencing_foreign_keys_inner(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<String>,
+    table: String,
+) -> AppResult<Vec<IncomingForeignKey>> {
+    match state.pool_for(connection_id)? {
+        DbPool::Postgres(p) => {
+            crate::db::postgres::schema::referencing_fks(&p, schema.as_deref(), &table).await
+        }
+        DbPool::Mysql(p) => {
+            crate::db::mysql::schema::referencing_fks(&p, schema.as_deref(), &table).await
+        }
+        DbPool::Sqlite(p) => crate::db::sqlite::schema::referencing_fks(&p, &table).await,
+        DbPool::MsSql(p) => {
+            crate::db::mssql::schema::referencing_fks(&p, schema.as_deref(), &table).await
+        }
+        DbPool::Mongo(_) => Ok(Vec::new()),
+    }
+}
+
 /// Empty a table — remove every row while keeping the table itself (#69).
 ///
 /// Postgres/MySQL use `TRUNCATE TABLE` (fast, non-logged); SQLite has no
@@ -942,6 +1042,40 @@ pub async fn list_privileges_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn row(
+        schema: Option<&str>,
+        table: &str,
+        fk: &str,
+        col: &str,
+    ) -> (Option<String>, String, String, String) {
+        (schema.map(Into::into), table.into(), fk.into(), col.into())
+    }
+
+    #[test]
+    fn incoming_fks_fold_a_composite_key_into_one_entry_in_key_order() {
+        let got = group_incoming_fks([
+            row(Some("shop"), "lines", "fk_lines_order", "order_id"),
+            row(Some("shop"), "lines", "fk_lines_order", "order_rev"),
+            row(Some("shop"), "payments", "fk_pay_order", "order_id"),
+        ]);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].columns, vec!["order_id", "order_rev"]);
+        assert_eq!(got[1].table, "payments");
+    }
+
+    #[test]
+    fn incoming_fks_keep_same_named_constraints_on_different_tables_apart() {
+        // Postgres and SQLite scope constraint names per table, so `fk_order`
+        // can exist twice; merging them would invent a composite key.
+        let got = group_incoming_fks([
+            row(Some("public"), "a", "fk_order", "order_id"),
+            row(Some("public"), "b", "fk_order", "order_id"),
+            row(Some("archive"), "b", "fk_order", "order_id"),
+        ]);
+        assert_eq!(got.len(), 3);
+        assert!(got.iter().all(|f| f.columns == vec!["order_id"]));
+    }
 
     /// `DatabaseSize` is a wire contract, and the difference between an absent
     /// key and a `null` one has already cost this codebase a crash once — the

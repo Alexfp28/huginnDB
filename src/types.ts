@@ -311,6 +311,18 @@ export interface ColumnInfo {
   referenced_column?: string | null;
 }
 
+/**
+ * A foreign key on another table that points at the one asked about — what
+ * blocks a `DROP TABLE`. Mirrors Rust `IncomingForeignKey`; `schema` is the
+ * referencing table's own (it can differ from the target's), `null` on SQLite.
+ */
+export interface IncomingForeignKey {
+  schema: string | null;
+  table: string;
+  constraint: string;
+  columns: string[];
+}
+
 /** One row in an FK dropdown. */
 export interface FkOption {
   /** Stringified referenced primary-key value. */

@@ -259,9 +259,97 @@ pub async fn view_definition(
         .map(|sql| crate::db::view_ddl::strip_view_header(&sql)))
 }
 
+/// Foreign keys on other tables that reference `table`, for the drop dialog.
+/// See [`crate::commands::schema::list_referencing_foreign_keys`].
+///
+/// SQLite has no catalog view of FKs from the referenced side, only
+/// `PRAGMA foreign_key_list(child)`, so every other table is asked in turn —
+/// N small pragma reads, acceptable for a confirm dialog on a local file. The
+/// pragma names the parent as it was *written* in the child's DDL, which
+/// SQLite itself resolves case-insensitively, so the match is too.
+///
+/// SQLite constraints are usually anonymous; the pragma's per-table `id` then
+/// stands in as the name (`fk_0`, `fk_1`, …) so two FKs from the same child
+/// stay apart.
+pub async fn referencing_fks(
+    p: &sqlx::SqlitePool,
+    table: &str,
+) -> AppResult<Vec<crate::commands::schema::IncomingForeignKey>> {
+    let children: Vec<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master \
+         WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> ? COLLATE NOCASE \
+         ORDER BY name",
+    )
+    .bind(table)
+    .fetch_all(p)
+    .await?;
+    let mut rows = Vec::new();
+    for child in children {
+        let q = format!(
+            "PRAGMA foreign_key_list({})",
+            Dialect::Sqlite.quote_ident(&child)
+        );
+        // `id` then `seq` is constraint order then key order.
+        let mut fks: Vec<(i64, i64, String)> = sqlx::query(&q)
+            .fetch_all(p)
+            .await?
+            .into_iter()
+            .filter(|r| r.get::<String, _>("table").eq_ignore_ascii_case(table))
+            .map(|r| (r.get("id"), r.get("seq"), r.get("from")))
+            .collect();
+        fks.sort();
+        rows.extend(
+            fks.into_iter()
+                .map(|(id, _, from)| (None, child.clone(), format!("fk_{id}"), from)),
+        );
+    }
+    Ok(crate::commands::schema::group_incoming_fks(rows))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// File-backed for the reason `db::exec::tests` gives: an in-memory
+    /// database is per-connection, so the schema would not survive the pool.
+    async fn pool(name: &str) -> SqlitePool {
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+        let path = std::env::temp_dir().join(format!("huginndb_sqlite_schema_{name}.db"));
+        let _ = std::fs::remove_file(&path);
+        SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn referencing_fks_lists_every_child_and_leaves_self_references_out() {
+        let p = pool("referencing_fks").await;
+        for sql in [
+            "CREATE TABLE orders (id INTEGER, rev INTEGER, parent_id INTEGER \
+                 REFERENCES orders(id), PRIMARY KEY (id, rev))",
+            "CREATE TABLE lines (order_id INTEGER, order_rev INTEGER, \
+                 FOREIGN KEY (order_id, order_rev) REFERENCES orders(id, rev))",
+            // Written in a different case than the table was created with.
+            "CREATE TABLE payments (order_id INTEGER REFERENCES ORDERS(id))",
+            "CREATE TABLE unrelated (x INTEGER)",
+        ] {
+            sqlx::query(sql).execute(&p).await.unwrap();
+        }
+
+        let got = referencing_fks(&p, "orders").await.unwrap();
+
+        let tables: Vec<&str> = got.iter().map(|f| f.table.as_str()).collect();
+        assert_eq!(tables, vec!["lines", "payments"]);
+        assert_eq!(got[0].columns, vec!["order_id", "order_rev"]);
+        assert_eq!(got[1].columns, vec!["order_id"]);
+        assert!(got.iter().all(|f| f.schema.is_none()));
+    }
 
     #[test]
     fn pages_to_bytes_multiplies_the_pragma_pair() {

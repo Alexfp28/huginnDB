@@ -56,6 +56,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   valor es un parámetro enlazado que se convierte contra su columna, así que la
   distinción no existe.
 
+- **Al eliminar una tabla se nombran las tablas que la referencian, antes de
+  confirmar.** El diálogo de borrado no decía nada de claves foráneas, así que
+  el primer aviso era el servidor rechazando el borrado. Y ese rechazo ayuda
+  poco: en MySQL 5.7 y MariaDB (1217/1451, *«a foreign key constraint fails»*)
+  no nombra ninguna tabla, y el 3730 de MySQL 8.0 nombra solo una de las
+  posibles. Ahora el diálogo busca todas las claves foráneas de *otras* tablas
+  que apuntan a esta y las lista como `tabla (columnas) → constraint`, con el
+  esquema cuando la tabla vive en otro. Las autorreferencias quedan fuera,
+  porque no impiden el borrado. Funciona en MySQL/MariaDB, PostgreSQL, SQLite y
+  SQL Server.
+
+  La consulta es orientativa y nunca bloquea el botón. Si falla, el diálogo
+  simplemente no muestra nada, y la última palabra sigue siendo del servidor:
+  las comprobaciones de FK pueden estar desactivadas, y PostgreSQL tiene
+  `CASCADE`.
+
 ### Corregido
 
 - **Un filtro de MongoDB ya no hace la pregunta equivocada sobre un campo cuyo

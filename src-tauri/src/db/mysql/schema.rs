@@ -491,3 +491,41 @@ pub async fn view_definition(
     .await?;
     Ok(def.map(|q| q.trim().to_string()))
 }
+
+/// Foreign keys on other tables that reference `schema.table`, for the drop
+/// dialog. See [`crate::commands::schema::list_referencing_foreign_keys`].
+///
+/// Reads `key_column_usage` from the referenced side — the same view
+/// `commands::structure::mysql_structure` reads from the owning side. The
+/// referencing table may live in another schema, so its `table_schema` is
+/// returned rather than assumed. Self-references are filtered in SQL.
+pub async fn referencing_fks(
+    p: &sqlx::MySqlPool,
+    schema: Option<&str>,
+    table: &str,
+) -> AppResult<Vec<crate::commands::schema::IncomingForeignKey>> {
+    let rows = sqlx::query(
+        "SELECT k.table_schema AS s, k.table_name AS t, \
+                k.constraint_name AS c, k.column_name AS col \
+         FROM information_schema.key_column_usage k \
+         WHERE k.referenced_table_schema = COALESCE(NULLIF(?, ''), DATABASE()) \
+           AND k.referenced_table_name = ? \
+           AND NOT (k.table_schema = k.referenced_table_schema \
+                    AND k.table_name = k.referenced_table_name) \
+         ORDER BY k.table_schema, k.table_name, k.constraint_name, k.ordinal_position",
+    )
+    .bind(schema.unwrap_or_default())
+    .bind(table)
+    .fetch_all(p)
+    .await?;
+    Ok(crate::commands::schema::group_incoming_fks(
+        rows.iter().map(|r| {
+            (
+                Some(r.get::<String, _>("s")),
+                r.get::<String, _>("t"),
+                r.get::<String, _>("c"),
+                r.get::<String, _>("col"),
+            )
+        }),
+    ))
+}

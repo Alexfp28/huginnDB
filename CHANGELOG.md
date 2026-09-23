@@ -51,6 +51,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   hide in plain sight. SQL chips are unchanged: there the value is a bound
   parameter coerced against its column, so the distinction does not exist.
 
+- **Dropping a table names the tables that reference it, before you confirm.**
+  The drop dialog used to be silent about foreign keys, so the first sign of
+  one was the server refusing the drop. That refusal is not much help: on MySQL
+  5.7 and MariaDB (1217/1451, *"a foreign key constraint fails"*) it names no
+  table at all, and MySQL 8.0's 3730 names only one of possibly several. The
+  dialog now looks up every foreign key on *another* table pointing at this one
+  and lists it as `table (columns) → constraint`, with the table's schema when
+  it lives in a different one. Self-references are left out, since they do not
+  block the drop. Works on MySQL/MariaDB, PostgreSQL, SQLite and SQL Server.
+
+  The lookup is advisory and never blocks the button. If it fails, the dialog
+  simply shows nothing, and the server keeps the last word: FK checks may be
+  switched off, and PostgreSQL has `CASCADE`.
+
 ### Fixed
 
 - **A MongoDB filter no longer asks the wrong question about a field whose
