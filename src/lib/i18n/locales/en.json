@@ -437,7 +437,11 @@
       "submit": "Drop table",
       "dropping": "Dropping…",
       "failed": "Drop failed: {{message}}",
-      "done": "Dropped {{name}}"
+      "done": "Dropped {{name}}",
+      "checkingReferences": "Checking which tables reference it…",
+      "referencedBy_one": "Referenced by {{count}} foreign key",
+      "referencedBy_other": "Referenced by {{count}} foreign keys",
+      "referencedByHint": "The server will refuse the drop while these exist. Drop or change them first."
     },
     "renameView": {
       "title": "Rename view",

@@ -437,7 +437,11 @@
       "submit": "Eliminar tabla",
       "dropping": "Eliminando…",
       "failed": "Error al eliminar: {{message}}",
-      "done": "{{name}} eliminada"
+      "done": "{{name}} eliminada",
+      "checkingReferences": "Comprobando qué tablas la referencian…",
+      "referencedBy_one": "Referenciada por {{count}} clave foránea",
+      "referencedBy_other": "Referenciada por {{count}} claves foráneas",
+      "referencedByHint": "El servidor rechazará el borrado mientras existan. Elimínalas o modifícalas antes."
     },
     "renameView": {
       "title": "Renombrar vista",

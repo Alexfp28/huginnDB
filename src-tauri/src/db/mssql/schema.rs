@@ -702,6 +702,37 @@ pub fn decode_rows(rows: &[Row]) -> (Vec<(String, String)>, Vec<Vec<Value>>) {
     (columns, data)
 }
 
+/// Foreign keys on other tables that reference `schema.table`, for the drop
+/// dialog. See [`crate::commands::schema::list_referencing_foreign_keys`].
+///
+/// [`all_foreign_keys`] turned around: it filters on `parent_object_id`, this
+/// on `referenced_object_id`. Self-references are filtered in SQL.
+pub async fn referencing_fks(
+    pool: &MsSqlPool,
+    schema: Option<&str>,
+    table: &str,
+) -> AppResult<Vec<crate::commands::schema::IncomingForeignKey>> {
+    let rows = pool
+        .query_all(
+            "SELECT ps.name AS [s], pt.name AS [t], fk.name AS [c], pc.name AS [col] \
+             FROM sys.foreign_keys fk \
+             JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id \
+             JOIN sys.tables pt ON pt.object_id = fk.parent_object_id \
+             JOIN sys.schemas ps ON ps.schema_id = pt.schema_id \
+             JOIN sys.columns pc ON pc.object_id = fkc.parent_object_id \
+                                AND pc.column_id = fkc.parent_column_id \
+             WHERE fk.referenced_object_id = OBJECT_ID(@P1) \
+               AND fk.parent_object_id <> fk.referenced_object_id \
+             ORDER BY ps.name, pt.name, fk.name, fkc.constraint_column_id",
+            &[Some(object_name(schema, table))],
+        )
+        .await?;
+    Ok(crate::commands::schema::group_incoming_fks(
+        rows.iter()
+            .map(|r| (Some(s(r, "s")), s(r, "t"), s(r, "c"), s(r, "col"))),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{referential_action, render_type, strip_outer_parens};

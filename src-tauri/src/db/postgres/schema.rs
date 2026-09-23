@@ -310,3 +310,47 @@ pub async fn view_definition(
     .await?;
     Ok(def.map(|q| q.trim().trim_end_matches(';').trim().to_string()))
 }
+
+/// Foreign keys on other tables that reference `schema.table`, for the drop
+/// dialog. See [`crate::commands::schema::list_referencing_foreign_keys`].
+///
+/// `pg_constraint` rather than `information_schema`: the latter only shows
+/// constraints on tables the login *owns or has a privilege on*, so a child
+/// table the user cannot read would vanish from the warning — precisely the
+/// one they need to hear about, since they also cannot drop its FK.
+/// `to_regclass` resolves the quoted name to the table's oid, or NULL (and so
+/// no rows) when it does not exist. `unnest … WITH ORDINALITY` keeps a
+/// composite key's columns in key order. Self-references are filtered in SQL.
+pub async fn referencing_fks(
+    p: &PgPool,
+    schema: Option<&str>,
+    table: &str,
+) -> AppResult<Vec<crate::commands::schema::IncomingForeignKey>> {
+    let qualified = crate::db::sql::Dialect::Postgres.qualify_defaulted(schema, table);
+    let rows = sqlx::query(
+        "SELECT n.nspname::text AS s, cl.relname::text AS t, \
+                con.conname::text AS c, att.attname::text AS col \
+         FROM pg_constraint con \
+         JOIN pg_class cl ON cl.oid = con.conrelid \
+         JOIN pg_namespace n ON n.oid = cl.relnamespace \
+         CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord) \
+         JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.attnum \
+         WHERE con.contype = 'f' \
+           AND con.confrelid = to_regclass($1) \
+           AND con.conrelid <> con.confrelid \
+         ORDER BY n.nspname, cl.relname, con.conname, k.ord",
+    )
+    .bind(&qualified)
+    .fetch_all(p)
+    .await?;
+    Ok(crate::commands::schema::group_incoming_fks(
+        rows.iter().map(|r| {
+            (
+                Some(r.get::<String, _>("s")),
+                r.get::<String, _>("t"),
+                r.get::<String, _>("c"),
+                r.get::<String, _>("col"),
+            )
+        }),
+    ))
+}
