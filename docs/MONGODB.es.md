@@ -165,7 +165,9 @@ lo ejecuta tal cual.
 (`{ locale: 'es', strength: 1 }`) cambia cómo se comparan las cadenas en el
 filtro y en el orden —también en el recuento del pie— y el hint obliga a usar
 un índice por su nombre. Los dos aparecen en la línea *Resultado* como
-`.collation(…)` / `.hint(…)`, que la pestaña de consulta también acepta.
+`.collation(…)` / `.hint(…)`, que la pestaña de consulta también acepta. **Explicar**, a su lado, lee el
+plan que usaría el borrador (verbosidad `queryPlanner`, así que no se ejecuta
+nada).
 
 Un límite: **la clave de un campo no se puede renombrar en el sitio**. Renombrar
 es un `$set` de la clave nueva más un `$unset` de la vieja, y hacerlo con

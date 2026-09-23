@@ -156,7 +156,8 @@ hands it to a query tab that runs it as written.
 (`{ locale: 'es', strength: 1 }`) changes how strings compare in the filter and
 the sort alike — the footer's count included — and the hint forces an index by
 name. Both appear in the *Result* line as `.collation(…)` / `.hint(…)`, which
-the query tab also accepts.
+the query tab also accepts. **Explain**, beside them, reads the plan the
+draft would use (`queryPlanner` verbosity, so nothing runs).
 
 One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
 the new key plus an `$unset` of the old one, and doing that safely needs one

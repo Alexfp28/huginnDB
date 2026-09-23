@@ -16,9 +16,13 @@ import {
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const describeTableQuery = vi.fn();
+const explainTableQuery = vi.fn();
 const openQueryTab = vi.fn();
 vi.mock("@/lib/tauri", () => ({
-  api: { describeTableQuery: (q: unknown) => describeTableQuery(q) },
+  api: {
+    describeTableQuery: (q: unknown) => describeTableQuery(q),
+    explainTableQuery: (q: unknown) => explainTableQuery(q),
+  },
 }));
 vi.mock("@/lib/tabs/openQueryTab", () => ({
   openQueryTab: (id: string, opts: unknown) => openQueryTab(id, opts),
@@ -457,5 +461,42 @@ describe("QueryPanel advanced options", () => {
         "PostgreSQL has no index hints; its planner chooses on its own.",
       ),
     ).toBeTruthy();
+  });
+});
+
+describe("QueryPanel explain", () => {
+  const base = { connectionId: "c1", table: "device", limit: 100, offset: 0 };
+
+  it("reads the plan of the draft and drops it once the draft moves on", async () => {
+    describeTableQuery.mockResolvedValue({
+      text: "SELECT * FROM device LIMIT 100 OFFSET 0",
+      language: "sql",
+    });
+    explainTableQuery.mockResolvedValue({ raw: { query_block: { cost: 1 } } });
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={byCode}
+        preview={base}
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    await screen.findByText(/SELECT \* FROM device/);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Explain — the plan this query would use, without running it",
+      }),
+    );
+    expect(explainTableQuery).toHaveBeenLastCalledWith(
+      expect.objectContaining({ table: "device", filters: byCode }),
+    );
+    await screen.findByText(/query_block/);
+    expect(screen.getByText("Execution plan")).toBeTruthy();
+
+    // A different draft is a different query: its plan is not this one.
+    fireEvent.change(valueInputs()[0], { target: { value: "IMPCR02" } });
+    expect(screen.queryByText("Execution plan")).toBeNull();
   });
 });
