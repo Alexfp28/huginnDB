@@ -430,11 +430,21 @@ pub async fn explain(conn: &MongoConn, sample: &str) -> AppResult<ExplainPlan> {
             sort,
             skip,
             limit,
+            collation,
+            hint,
             ..
         } => {
             let mut cmd = doc! {"find": &parsed.collection, "filter": filter};
             if let Some(p) = projection {
                 cmd.insert("projection", p);
+            }
+            // Both change the plan the server picks, so an explain that left
+            // them out would be explaining a different query.
+            if let Some(c) = collation {
+                cmd.insert("collation", *c);
+            }
+            if let Some(h) = hint {
+                cmd.insert("hint", *h);
             }
             if let Some(s) = sort {
                 cmd.insert("sort", s);

@@ -170,6 +170,8 @@ function snapshotFor(connectionId: string): ConnectionTabState {
       documentViewMode: t.viewState?.documentViewMode ?? null,
       projection: t.viewState?.projection ?? null,
       rawFilter: t.viewState?.rawFilter ?? null,
+      collation: t.viewState?.collation ?? null,
+      hint: t.viewState?.hint ?? null,
     }));
   const activeId = tabs.find((t) => t.id === tabsState.activeId)?.id ?? null;
   const expandedSchemaNodes = schemaSlice
@@ -333,7 +335,9 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
           p.search ||
           p.documentViewMode ||
           p.projection ||
-          p.rawFilter
+          p.rawFilter ||
+          p.collation ||
+          p.hint
             ? {
                 filters: p.filters ?? undefined,
                 sort: p.sort ?? undefined,
@@ -341,6 +345,8 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
                 documentViewMode: p.documentViewMode ?? undefined,
                 projection: p.projection ?? undefined,
                 rawFilter: p.rawFilter ?? undefined,
+                collation: p.collation ?? undefined,
+                hint: p.hint ?? undefined,
               }
             : undefined,
       }));

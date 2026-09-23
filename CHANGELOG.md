@@ -8,6 +8,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Collation and an index hint, per browse.** The query panel's **Advanced**
+  row — folded to one line until opened — sets two things the planner and the
+  sort normally decide on their own:
+
+  - **Collation.** On SQL it applies to every sort key, spelled the way each
+    engine names one (`COLLATE "es-ES-x-icu"` on PostgreSQL,
+    `utf8mb4_spanish_ci` on MySQL, `Latin1_General_CI_AS` on SQL Server, and a
+    picker with SQLite's three). On MongoDB it is a collation document
+    (`{ locale: 'es', strength: 1 }`) that the server applies to the filter
+    *and* the sort, so the count carries it too — with `strength: 1`, "a" and
+    "A" are the same value. A collation cannot be a bind parameter, so the
+    names are checked before they are spliced in.
+  - **Index (hint).** A picker with the table's own indexes. The browse forces
+    it (`FORCE INDEX` on MySQL, `INDEXED BY` on SQLite, `WITH (INDEX(…))` on
+    SQL Server, `hint()` on MongoDB), and each of those fails rather than
+    ignoring an index that no longer exists — the honest behaviour for
+    something set on purpose. PostgreSQL has no index hints, so the picker
+    is disabled there and says so.
+
+  Both show in the *Result* line and are exported, saved with the tab and
+  shown as an **Advanced** chip while set. The MongoDB query tab's grammar
+  learned `.collation(…)` and `.hint(…)` too, so *Open in editor* still hands
+  over something it runs as written, and Pulse's `explain` passes both on.
+
 - **Write the filter by hand, and see the query it runs.** The query panel's
   *Filter* row takes an **expression** next to its conditions: a condition as
   you would write it after `WHERE` on SQL, or a filter document on MongoDB in

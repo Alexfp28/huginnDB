@@ -161,6 +161,12 @@ AND con las condiciones y la búsqueda. La fila *Resultado* del panel muestra el
 orden y página, y **Abrir en el editor** lo pasa a una pestaña de consulta que
 lo ejecuta tal cual.
 
+**La collation y el índice están en *Avanzado*.** Un documento de collation
+(`{ locale: 'es', strength: 1 }`) cambia cómo se comparan las cadenas en el
+filtro y en el orden —también en el recuento del pie— y el hint obliga a usar
+un índice por su nombre. Los dos aparecen en la línea *Resultado* como
+`.collation(…)` / `.hint(…)`, que la pestaña de consulta también acepta.
+
 Un límite: **la clave de un campo no se puede renombrar en el sitio**. Renombrar
 es un `$set` de la clave nueva más un `$unset` de la vieja, y hacerlo con
 seguridad exige una única actualización atómica a nivel de documento, no las

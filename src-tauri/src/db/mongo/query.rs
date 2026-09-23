@@ -8,8 +8,9 @@
 //! affected-document count in `rows_affected` and carry no rows.
 
 use crate::commands::query::{
-    shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp, Projection,
-    QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, MAX_ADHOC_QUERY_ROWS,
+    nonblank, shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp,
+    Projection, QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, TableQuery,
+    MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
@@ -178,11 +179,19 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             sort,
             limit,
             skip,
+            collation,
+            hint,
             one,
         } => {
             let mut action = coll.find(filter);
             if let Some(p) = projection {
                 action = action.projection(p);
+            }
+            if let Some(c) = collation {
+                action = action.collation(collation_from_doc(*c)?);
+            }
+            if let Some(h) = hint {
+                action = action.hint(hint_from_bson(*h)?);
             }
             if let Some(s) = sort {
                 action = action.sort(s);
@@ -405,14 +414,9 @@ fn stmt_preview(s: &str) -> String {
 /// does, so this rebuilds the same filter `find` would run — purely for
 /// display, not reused to actually query — to give the Console the same
 /// "what ran" record the SQL drivers and the mongo shell tab already get.
-pub(crate) fn describe_find(
-    collection: &str,
-    predicate: &TableFilter,
-    order: &[SortSpec],
-    projection: Option<&Projection>,
-    limit: i64,
-    offset: i64,
-) -> String {
+pub(crate) fn describe_find(q: &TableQuery) -> String {
+    let (collection, predicate, order) = (q.table.as_str(), &q.filter, q.order.as_slice());
+    let (projection, limit, offset) = (q.projection.as_ref(), q.limit, q.offset);
     // Infallible on purpose: this is the Console's record of what ran, and the
     // run itself has already reported a bad expression. Without one it is the
     // same document `predicate_doc` builds.
@@ -435,6 +439,20 @@ pub(crate) fn describe_find(
         s.push_str(&format!(
             ".sort({})",
             Bson::Document(sort).into_canonical_extjson()
+        ));
+    }
+    // A collation that does not parse has already failed the run; the record
+    // simply leaves it out.
+    if let Ok(Some(c)) = collation_doc(nonblank(&q.collation)) {
+        s.push_str(&format!(
+            ".collation({})",
+            Bson::Document(c).into_canonical_extjson()
+        ));
+    }
+    if let Some(h) = nonblank(&q.hint) {
+        s.push_str(&format!(
+            ".hint({})",
+            serde_json::to_string(h).unwrap_or_default()
         ));
     }
     if offset > 0 {
@@ -510,15 +528,10 @@ fn shell_collection(collection: &str) -> String {
 /// [`super::values::bson_to_shell_text`], which [`shell::parse`] reads back:
 /// `ObjectId("…")` rather than `{"$oid": "…"}`. The projection is a chained
 /// `.projection(…)`, the form that grammar documents.
-pub(crate) fn describe_find_shell(
-    collection: &str,
-    predicate: &TableFilter,
-    order: &[SortSpec],
-    projection: Option<&Projection>,
-    limit: i64,
-    offset: i64,
-) -> AppResult<String> {
+pub(crate) fn describe_find_shell(q: &TableQuery) -> AppResult<String> {
     use super::values::bson_to_shell_text;
+    let (collection, predicate, order) = (q.table.as_str(), &q.filter, q.order.as_slice());
+    let (projection, limit, offset) = (q.projection.as_ref(), q.limit, q.offset);
     let filter = predicate_doc(predicate)?;
     let mut s = format!(
         "{}.find({})",
@@ -535,6 +548,18 @@ pub(crate) fn describe_find_shell(
         s.push_str(&format!(
             ".sort({})",
             bson_to_shell_text(&Bson::Document(sort))
+        ));
+    }
+    if let Some(c) = collation_doc(nonblank(&q.collation))? {
+        s.push_str(&format!(
+            ".collation({})",
+            bson_to_shell_text(&Bson::Document(c))
+        ));
+    }
+    if let Some(h) = nonblank(&q.hint) {
+        s.push_str(&format!(
+            ".hint({})",
+            serde_json::to_string(h).unwrap_or_default()
         ));
     }
     if offset > 0 {
@@ -751,6 +776,59 @@ fn regex_escape(input: &str) -> String {
     out
 }
 
+/// A collation document (`{ locale: 'es', strength: 1 }`) as the driver's
+/// typed option. `locale` is required by the server, so its absence is
+/// reported here, in words, rather than as a deserialisation error.
+pub(crate) fn collation_from_doc(d: Document) -> AppResult<mongodb::options::Collation> {
+    if !d.contains_key("locale") {
+        return Err(AppError::InvalidInput(
+            "collation: `locale` is required, e.g. { locale: 'es', strength: 1 }".into(),
+        ));
+    }
+    mongodb::bson::deserialize_from_document(d)
+        .map_err(|e| AppError::InvalidInput(format!("collation: {e}")))
+}
+
+/// A collation typed as text, as the document it parses to — checked by
+/// [`collation_from_doc`] so a bad one fails the same way wherever it is read.
+pub(crate) fn collation_doc(text: Option<&str>) -> AppResult<Option<Document>> {
+    let Some(text) = text else { return Ok(None) };
+    match shell::parse_relaxed_value(text)
+        .map_err(|e| AppError::InvalidInput(format!("collation: {e}")))?
+    {
+        Bson::Document(d) => {
+            collation_from_doc(d.clone())?;
+            Ok(Some(d))
+        }
+        _ => Err(AppError::InvalidInput(
+            "collation: a collation is a document, like { locale: 'es', strength: 1 }".into(),
+        )),
+    }
+}
+
+/// Parse a collation typed as text — the query panel's *Collation* field.
+pub(crate) fn parse_collation(text: &str) -> AppResult<mongodb::options::Collation> {
+    match shell::parse_relaxed_value(text)
+        .map_err(|e| AppError::InvalidInput(format!("collation: {e}")))?
+    {
+        Bson::Document(d) => collation_from_doc(d),
+        _ => Err(AppError::InvalidInput(
+            "collation: a collation is a document, like { locale: 'es', strength: 1 }".into(),
+        )),
+    }
+}
+
+/// An index hint: a name, or a key document.
+pub(crate) fn hint_from_bson(b: Bson) -> AppResult<mongodb::options::Hint> {
+    match b {
+        Bson::String(name) => Ok(mongodb::options::Hint::Name(name)),
+        Bson::Document(keys) => Ok(mongodb::options::Hint::Keys(keys)),
+        _ => Err(AppError::InvalidInput(
+            "hint: an index name or a key document".into(),
+        )),
+    }
+}
+
 /// The `sort()` document for a browse, or `None` when unsorted. BSON documents
 /// preserve insertion order, so a multi-key sort doc honours the requested
 /// precedence (`order[0]` is the primary key).
@@ -783,44 +861,42 @@ pub(crate) fn projection_doc(projection: Option<&Projection>) -> Option<Document
 }
 
 /// Paginated collection browse — the MongoDB analogue of `fetch_table_data`.
-// One argument over clippy's default: the browse's own shape (window, order,
-// predicate, projection, count) is what this takes, and bundling it would only
-// re-split the `TableQuery` the caller just destructured.
-#[allow(clippy::too_many_arguments)]
-pub async fn fetch_collection_data(
-    conn: &MongoConn,
-    collection: &str,
-    limit: i64,
-    offset: i64,
-    order: &[SortSpec],
-    predicate: &TableFilter,
-    projection: Option<&Projection>,
-    with_count: bool,
-) -> AppResult<QueryResult> {
+pub async fn fetch_collection_data(conn: &MongoConn, q: &TableQuery) -> AppResult<QueryResult> {
     let start = Instant::now();
     let db = resolve_db(conn)?;
-    let coll = db.collection::<Document>(collection);
+    let coll = db.collection::<Document>(&q.table);
 
-    let filter = predicate_doc(predicate)?;
+    let filter = predicate_doc(&q.filter)?;
+    let collation = nonblank(&q.collation).map(parse_collation).transpose()?;
 
     // Skip the count when the caller already knows the total (sort/page-only
     // change); `count_documents` over a filter is the slow part on big
     // collections, mirroring the SQL COUNT(*) skip in `fetch_table_data`.
-    let total = if with_count {
-        Some(coll.count_documents(filter.clone()).await?)
+    let total = if q.with_count {
+        let mut count = coll.count_documents(filter.clone());
+        if let Some(c) = collation.clone() {
+            count = count.collation(c);
+        }
+        Some(count.await?)
     } else {
         None
     };
 
     let mut action = coll
         .find(filter)
-        .limit(limit.max(0))
-        .skip(offset.max(0) as u64);
-    if let Some(p) = projection_doc(projection) {
+        .limit(q.limit.max(0))
+        .skip(q.offset.max(0) as u64);
+    if let Some(p) = projection_doc(q.projection.as_ref()) {
         action = action.projection(p);
     }
-    if let Some(sort) = sort_doc(order) {
+    if let Some(sort) = sort_doc(&q.order) {
         action = action.sort(sort);
+    }
+    if let Some(c) = collation {
+        action = action.collation(c);
+    }
+    if let Some(h) = nonblank(&q.hint) {
+        action = action.hint(mongodb::options::Hint::Name(h.to_string()));
     }
     let mut cursor = action.await?;
     let docs = collect(&mut cursor).await?;
@@ -843,6 +919,7 @@ pub async fn count_collection(
     conn: &MongoConn,
     collection: &str,
     predicate: &TableFilter,
+    collation: Option<&str>,
     unfiltered: bool,
 ) -> AppResult<CountResult> {
     let db = resolve_db(conn)?;
@@ -867,10 +944,16 @@ pub async fn count_collection(
         // `estimated_document_count` would be worse than showing nothing — it
         // ignores the predicate, so it would report the whole collection as if
         // it were the filtered total.
-        let total = coll
+        // A collation changes which documents match (`strength: 1` makes "a"
+        // and "A" equal), so the count has to carry it or it would count a
+        // different set than the page shows.
+        let mut count = coll
             .count_documents(filter)
-            .max_time(Duration::from_millis(COUNT_TIMEOUT_MS))
-            .await?;
+            .max_time(Duration::from_millis(COUNT_TIMEOUT_MS));
+        if let Some(c) = collation.map(parse_collation).transpose()? {
+            count = count.collation(c);
+        }
+        let total = count.await?;
         Ok(CountResult {
             total,
             estimated: false,
@@ -1123,6 +1206,31 @@ pub async fn insert_documents(
 
 #[cfg(test)]
 mod tests {
+    /// A browse of `table` for the describe functions, which take a whole
+    /// `TableQuery` now that collation and hint joined its shape.
+    fn browse(
+        table: &str,
+        filter: TableFilter,
+        order: Vec<SortSpec>,
+        projection: Option<Projection>,
+        limit: i64,
+        offset: i64,
+    ) -> TableQuery {
+        TableQuery {
+            connection_id: "c1".into(),
+            schema: None,
+            table: table.into(),
+            limit,
+            offset,
+            order,
+            filter,
+            projection,
+            collation: None,
+            hint: None,
+            with_count: false,
+        }
+    }
+
     use super::*;
 
     fn doc_with(pairs: &[(&str, Bson)]) -> Document {
@@ -1334,7 +1442,7 @@ mod tests {
             filters,
             ..TableFilter::default()
         };
-        let s = describe_find("events", &predicate, &order, None, 50, 100);
+        let s = describe_find(&browse("events", predicate, order, None, 50, 100));
         assert!(s.starts_with("db.events.find("));
         assert!(s.contains("\"atnId\""));
         assert!(s.contains(".sort("));
@@ -1389,14 +1497,14 @@ mod tests {
             fields: vec!["code".into()],
             exclude: false,
         };
-        let text = describe_find_shell(
+        let text = describe_find_shell(&browse(
             "device",
-            &raw("{ qty: { $gt: 3 } }"),
-            &order,
-            Some(&p),
+            raw("{ qty: { $gt: 3 } }"),
+            order,
+            Some(p),
             100,
             200,
-        )
+        ))
         .unwrap();
         assert!(text.starts_with("db.device.find("), "{text}");
         // What "Open in editor" writes is something the query tab runs.
@@ -1405,10 +1513,47 @@ mod tests {
 
     #[test]
     fn describe_find_shell_quotes_an_unusual_collection_name() {
-        let text =
-            describe_find_shell("my-coll", &TableFilter::default(), &[], None, 0, 0).unwrap();
+        let text = describe_find_shell(&browse(
+            "my-coll",
+            TableFilter::default(),
+            vec![],
+            None,
+            0,
+            0,
+        ))
+        .unwrap();
         assert!(text.starts_with("db.getCollection(\"my-coll\")"), "{text}");
         assert!(shell::parse(&text).is_ok(), "the shell cannot read: {text}");
+    }
+
+    #[test]
+    fn collation_and_hint_round_trip_through_the_query_tab_parser() {
+        let mut q = browse("device", TableFilter::default(), vec![], None, 100, 0);
+        q.collation = Some("{ locale: 'es', strength: 1 }".into());
+        q.hint = Some("code_1".into());
+        let text = describe_find_shell(&q).unwrap();
+        assert!(text.contains(".collation("), "{text}");
+        assert!(text.contains(".hint(\"code_1\")"), "{text}");
+        match shell::parse(&text).unwrap().op {
+            MongoOp::Find {
+                collation, hint, ..
+            } => {
+                assert_eq!(
+                    collation.as_deref(),
+                    Some(&doc! { "locale": "es", "strength": 1 })
+                );
+                assert_eq!(hint.as_deref(), Some(&Bson::String("code_1".into())));
+            }
+            other => panic!("expected Find, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_collation_needs_a_locale() {
+        assert!(collation_doc(Some("{ strength: 1 }")).is_err());
+        assert!(collation_doc(Some("'es'")).is_err());
+        assert!(collation_doc(Some("{ locale: 'es', strength: 2 }")).is_ok());
+        assert_eq!(collation_doc(None).unwrap(), None);
     }
 
     #[test]
@@ -1445,7 +1590,14 @@ mod tests {
             fields: vec!["code".into()],
             exclude: false,
         };
-        let s = describe_find("device", &TableFilter::default(), &[], Some(&p), 0, 0);
+        let s = describe_find(&browse(
+            "device",
+            TableFilter::default(),
+            vec![],
+            Some(p),
+            0,
+            0,
+        ));
         assert!(s.starts_with("db.device.find({}, {"), "{s}");
         assert!(s.contains("\"code\""), "{s}");
     }
@@ -1512,7 +1664,14 @@ mod tests {
 
     #[test]
     fn describe_find_omits_skip_and_limit_when_zero() {
-        let s = describe_find("events", &TableFilter::default(), &[], None, 0, 0);
+        let s = describe_find(&browse(
+            "events",
+            TableFilter::default(),
+            vec![],
+            None,
+            0,
+            0,
+        ));
         assert_eq!(s, "db.events.find({})");
     }
 

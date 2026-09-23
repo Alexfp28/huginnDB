@@ -12,8 +12,8 @@
 //! the `bson` crate (see `Cargo.toml`), so fidelity matches MongoDB's spec for
 //! every BSON type — not just the common tags the grid's own converter handles.
 
-use crate::commands::query::{Projection, SortSpec, TableFilter};
-use crate::db::mongo::query::{predicate_doc, projection_doc, sort_doc};
+use crate::commands::query::{nonblank, Projection, SortSpec, TableFilter};
+use crate::db::mongo::query::{parse_collation, predicate_doc, projection_doc, sort_doc};
 use crate::db::mongo::schema::resolve_db;
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -46,6 +46,10 @@ pub struct CollectionScan {
     pub order: Vec<SortSpec>,
     #[serde(default)]
     pub projection: Option<Projection>,
+    #[serde(default)]
+    pub collation: Option<String>,
+    #[serde(default)]
+    pub hint: Option<String>,
 }
 
 /// Export the documents of `collection` to a user-chosen `.json` file as a
@@ -93,6 +97,12 @@ pub async fn export_collection(
     }
     if let Some(projection) = projection_doc(scan.projection.as_ref()) {
         find = find.projection(projection);
+    }
+    if let Some(c) = nonblank(&scan.collation).map(parse_collation).transpose()? {
+        find = find.collation(c);
+    }
+    if let Some(h) = nonblank(&scan.hint) {
+        find = find.hint(mongodb::options::Hint::Name(h.to_string()));
     }
     let mut cursor = find.await?;
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);

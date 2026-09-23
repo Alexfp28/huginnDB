@@ -293,6 +293,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * — see `QueryPanelFocus` — or `null` when it was opened from its button.
    */
   const [queryOpen, setQueryOpen] = useState(false);
+  /** The table's index names for the panel's hint picker — fetched the first
+   *  time the panel opens, `null` until then (or when the read fails, which
+   *  leaves the picker disabled rather than offering nothing to choose). */
+  const [indexNames, setIndexNames] = useState<string[] | null>(null);
   const [queryFocus, setQueryFocus] = useState<QueryPanelFocus | null>(null);
   /** What was actually committed via Enter — drives the backend fetch. */
   const [appliedFilter, setAppliedFilter] = useState(
@@ -326,6 +330,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   );
   /** The expression as the backend should see it: blank is none. */
   const raw = rawFilter.trim() ? rawFilter : undefined;
+  /**
+   * The query panel's *Advanced* row, applied: a collation (a name on SQL, a
+   * document on MongoDB) and an index hint. Blank is none, like `rawFilter`.
+   */
+  const [collationText, setCollationText] = useState<string>(
+    () => restoredViewState?.collation ?? "",
+  );
+  const [hintText, setHintText] = useState<string>(
+    () => restoredViewState?.hint ?? "",
+  );
+  const collation = collationText.trim() || undefined;
+  const hint = hintText.trim() || undefined;
   // Re-apply when a *new* `initialFilters` array arrives — i.e. the user
   // navigated via FK into a table tab that was already open. The initial mount
   // already seeded `serverFilters` above, so the ref starts at that value and
@@ -354,6 +370,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       documentViewMode,
       projection: isNarrowing(projection) ? projection : undefined,
       rawFilter: raw,
+      collation,
+      hint,
     });
   }, [
     setViewState,
@@ -364,6 +382,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     documentViewMode,
     projection,
     raw,
+    collation,
+    hint,
   ]);
 
   const pushHistory = useFilterHistory((s) => s.push);
@@ -560,6 +580,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       appliedFilter,
       wire,
       raw,
+      collation,
+      hint,
     });
     if (inflightKeyRef.current === reqKey) return;
     inflightKeyRef.current = reqKey;
@@ -581,6 +603,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
         projection: wire,
         raw,
+        collation,
+        hint,
         withCount: false,
       });
       setResult(r);
@@ -602,6 +626,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     appliedFilter,
     wire,
     raw,
+    collation,
+    hint,
   ]);
 
   // Fetch the row total independently of the data page. Keyed only on the
@@ -618,6 +644,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       f: serverFilters,
       s: appliedFilter,
       r: raw,
+      c: collation,
     });
     if (countInflightRef.current === countKey) return;
     countInflightRef.current = countKey;
@@ -635,6 +662,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         search: appliedFilter || undefined,
         searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
         raw,
+        collation,
       });
       setTotal(c.total);
       setTotalEstimated(c.estimated);
@@ -645,7 +673,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       if (countInflightRef.current === countKey)
         countInflightRef.current = null;
     }
-  }, [connectionId, schema, table, serverFilters, appliedFilter, raw]);
+  }, [connectionId, schema, table, serverFilters, appliedFilter, raw, collation]);
 
   /**
    * Reload the page **and** the row total — what "refresh" means to a user.
@@ -985,6 +1013,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       order: sort.length ? sort : undefined,
       projection: wire,
       raw,
+      collation,
+      hint,
     };
     return runExport(
       () =>
@@ -1011,6 +1041,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     sort,
     wire,
     raw,
+    collation,
+    hint,
     t,
   ]);
 
@@ -1179,6 +1211,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // rather than wrapping onto a second row (see `GridToolbarItem`). The menu
   // form is a labelled row — which is also the chance to spell out what an
   // icon-only button only implies in a tooltip.
+  useEffect(() => {
+    if (!queryOpen || indexNames !== null) return;
+    let live = true;
+    api
+      .listIndexes(connectionId, schema, table)
+      .then((ix) => live && setIndexNames(ix.map((x) => x.name)))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [queryOpen, indexNames, connectionId, schema, table]);
+
   /**
    * The projection and the expression, as chips under the toolbar — see
    * `GridToolbarProps.queryChips` for why they must be on screen while on.
@@ -1203,6 +1247,26 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         onRemove: () => setProjection(undefined),
       });
     }
+    if (collation || hint) {
+      out.push({
+        id: "advanced",
+        section: t("dataGrid.chipRow.advanced"),
+        label: [
+          collation &&
+            t("tableData.query.collationSummary", { value: collation }),
+          hint && t("tableData.query.hintSummary", { value: hint }),
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        editLabel: t("dataGrid.chipRow.editAdvanced"),
+        removeLabel: t("dataGrid.chipRow.removeAdvanced"),
+        onEdit: openPanel,
+        onRemove: () => {
+          setCollationText("");
+          setHintText("");
+        },
+      });
+    }
     if (raw) {
       out.push({
         id: "expression",
@@ -1219,7 +1283,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       });
     }
     return out;
-  }, [projection, raw, t]);
+  }, [projection, raw, collation, hint, t]);
 
   const leadingToolbar: GridToolbarItem[] = useMemo(
     () => [
@@ -1774,6 +1838,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                   applied={serverFilters}
                   appliedProjection={projection}
                   appliedRaw={rawFilter}
+                  appliedCollation={collationText}
+                  appliedHint={hintText}
+                  driver={driver}
+                  indexNames={indexNames}
                   document={isMongo}
                   keyColumns={pkColumnNames}
                   preview={{
@@ -1791,6 +1859,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                     setServerFilters(next.filters);
                     setProjection(next.projection);
                     setRawFilter(next.raw);
+                    setCollationText(next.collation);
+                    setHintText(next.hint);
                     setOffset(0);
                   }}
                   onClose={() => setQueryOpen(false)}

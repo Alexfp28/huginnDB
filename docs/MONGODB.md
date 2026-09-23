@@ -152,6 +152,12 @@ the search. The panel's *Result* row shows the whole `db.<collection>.find(…)`
 the draft would run, projection, sort and page included, and **Open in editor**
 hands it to a query tab that runs it as written.
 
+**Collation and index hint live under *Advanced*.** A collation document
+(`{ locale: 'es', strength: 1 }`) changes how strings compare in the filter and
+the sort alike — the footer's count included — and the hint forces an index by
+name. Both appear in the *Result* line as `.collation(…)` / `.hint(…)`, which
+the query tab also accepts.
+
 One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
 the new key plus an `$unset` of the old one, and doing that safely needs one
 atomic document-level update rather than the per-field writes this view uses.

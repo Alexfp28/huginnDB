@@ -63,6 +63,8 @@ describe("QueryPanel", () => {
       filters: byCode,
       projection: undefined,
       raw: "",
+      collation: "",
+      hint: "",
     });
   });
 
@@ -83,6 +85,8 @@ describe("QueryPanel", () => {
       filters: [{ column: "code", op: "eq", value: "IMPCR02" }],
       projection: undefined,
       raw: "",
+      collation: "",
+      hint: "",
     });
   });
 
@@ -195,6 +199,8 @@ describe("QueryPanel projection", () => {
       filters: byCode,
       projection: { fields: ["user"], exclude: false },
       raw: "",
+      collation: "",
+      hint: "",
     });
   });
 
@@ -226,6 +232,8 @@ describe("QueryPanel projection", () => {
       filters: [],
       projection: { fields: ["configuration"], exclude: true },
       raw: "",
+      collation: "",
+      hint: "",
     });
   });
 
@@ -247,6 +255,8 @@ describe("QueryPanel projection", () => {
       filters: [],
       projection: undefined,
       raw: "",
+      collation: "",
+      hint: "",
     });
   });
 });
@@ -279,6 +289,8 @@ describe("QueryPanel expression and result", () => {
       filters: byCode,
       projection: undefined,
       raw: "qty > 3",
+      collation: "",
+      hint: "",
     });
   });
 
@@ -383,5 +395,67 @@ describe("QueryPanel regressions from review", () => {
     );
     const pre = document.querySelector("pre");
     expect(pre?.textContent).toContain("\n  user:");
+  });
+});
+
+describe("QueryPanel advanced options", () => {
+  it("applies a collation and an index hint with everything else", () => {
+    const onApply = vi.fn();
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={byCode}
+        driver="sqlite"
+        indexNames={["idx_code", "idx_user"]}
+        focus={null}
+        onApply={onApply}
+        onClose={() => {}}
+      />,
+    );
+    // Folded until asked for.
+    expect(screen.queryByText("Collation")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Collation and index hint — none set",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Collation"), {
+      target: { value: "NOCASE" },
+    });
+    fireEvent.change(screen.getByLabelText("Index (hint)"), {
+      target: { value: "idx_code" },
+    });
+    expect(screen.getByText("Unapplied changes")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^Apply/ }));
+    expect(onApply).toHaveBeenCalledWith({
+      filters: byCode,
+      projection: undefined,
+      raw: "",
+      collation: "NOCASE",
+      hint: "idx_code",
+    });
+  });
+
+  it("offers no hint on PostgreSQL, and says why", () => {
+    render(
+      <QueryPanel
+        columns={columns}
+        applied={[]}
+        driver="postgres"
+        indexNames={["idx_code"]}
+        appliedCollation="es-ES-x-icu"
+        focus={null}
+        onApply={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    // Opened already: a collation is set.
+    const hint = screen.getByLabelText("Index (hint)") as HTMLSelectElement;
+    expect(hint.disabled).toBe(true);
+    expect(
+      screen.getByText(
+        "PostgreSQL has no index hints; its planner chooses on its own.",
+      ),
+    ).toBeTruthy();
   });
 });
