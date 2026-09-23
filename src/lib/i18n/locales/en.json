@@ -694,6 +694,22 @@
       "insertHint": "Enter inserts · Esc discards",
       "changeType": "Change type"
     },
+    "sort": {
+      "button": "Sort",
+      "menuTitle": "Sort by",
+      "ascending": "Ascending",
+      "descending": "Descending",
+      "removeLevel": "Remove from the sort",
+      "clear": "Clear the sort",
+      "noFields": "No fields to sort by yet",
+      "chipAsc": "{{field}}, ascending — click to reverse",
+      "chipDesc": "{{field}}, descending — click to reverse",
+      "chipRemove": "Remove {{field}} from the sort",
+      "activeCount": "{{count}} sort levels",
+      "byAsc": "Sort ascending by {{field}}",
+      "byDesc": "Sort descending by {{field}}",
+      "removeField": "Remove {{field}} from the sort"
+    },
     "expandEditorWithSchema": "Edit in Monaco — schema \"{{name}}\" attached",
     "saveFailed": "Could not save the change",
     "rowsCopied": "{{count}} row(s) copied"

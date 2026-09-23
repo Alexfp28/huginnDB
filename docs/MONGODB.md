@@ -126,6 +126,17 @@ floated over its documents. Both are one-off gestures: neither writes the
 **Expand nested values by default** preference (Settings → Appearance), which is
 what decides how a document opens in the first place.
 
+**Sorting works without column headers.** The list view has none, so the sort
+lives in two other places, in both view modes. The **Sort** button (⇅) in the
+toolbar builds a multi-level sort from the fields on the page, nested paths
+included, and the active sort shows as chips beside the filter chips: click one
+to reverse it, ✕ to drop it. Right-click any field for **Sort ascending /
+descending by …** (which replaces the sort, like a plain header click) and
+**Filter by this value**. Inside an array the index is dropped: filtering on an
+element of `tags` asks for documents whose `tags` *contains* that value, and
+sorting on `items.0.sku` sorts on `items.sku`, since `sort()` does not read a
+positional index.
+
 One limit: **a field's key cannot be renamed in place**. A rename is a `$set` of
 the new key plus an `$unset` of the old one, and doing that safely needs one
 atomic document-level update rather than the per-field writes this view uses.

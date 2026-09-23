@@ -23,11 +23,11 @@
 import { StrictMode, useRef } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import i18n from "i18next";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/lib/i18n";
 import { DocumentListView } from "./DocumentListView";
-import type { CellValue, ColumnMeta } from "@/types";
+import type { CellValue, ColumnFilter, ColumnMeta, SortSpec } from "@/types";
 
 // Module-level so both renders in a test see the exact same array
 // references — a fresh `[]` per render would (correctly) invalidate the
@@ -305,5 +305,140 @@ describe("expand every nested object", () => {
     expect(
       screen.queryByLabelText("Expand every nested object in this document"),
     ).toBeNull();
+  });
+});
+
+/**
+ * The list view's field context menu — where "sort by this" lives, since the
+ * list has no column headers to click — and the browse path each field maps
+ * to. The path is the part worth pinning: the list's own paths carry array
+ * indexes (a `$set` needs them) while a sort or filter must not.
+ */
+const menuColumns: ColumnMeta[] = [
+  { name: "code", data_type: "string" },
+  { name: "tags", data_type: "array" },
+  { name: "meta", data_type: "object" },
+];
+const menuRows: CellValue[][] = [["IMPCR01", ["press"], { plant: "P1" }]];
+
+function MenuHarness({
+  nestedPaths,
+  sort,
+  onSortChange,
+  onAddFilter,
+}: {
+  nestedPaths: boolean;
+  sort?: SortSpec[];
+  onSortChange: (next: SortSpec[]) => void;
+  onAddFilter: (f: ColumnFilter) => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  return (
+    <div ref={scrollRef} style={{ overflow: "auto", height: 400 }}>
+      <DocumentListView
+        scrollRef={scrollRef}
+        columns={menuColumns}
+        rows={menuRows}
+        nullDisplay="NULL"
+        zebraStripes={false}
+        expandNested
+        showTypes={false}
+        lineNumbers={false}
+        copyToClipboard={() => {}}
+        emptyLabel="empty"
+        sort={sort}
+        onSortChange={onSortChange}
+        onAddFilter={onAddFilter}
+        nestedPaths={nestedPaths}
+      />
+    </div>
+  );
+}
+
+function openMenuOn(text: string) {
+  fireEvent.contextMenu(screen.getByText(text));
+}
+
+describe("field context menu", () => {
+  it("sorts by the field alone, replacing the sort", () => {
+    const onSortChange = vi.fn();
+    render(
+      <MenuHarness
+        nestedPaths
+        sort={[{ column: "ts", desc: true }]}
+        onSortChange={onSortChange}
+        onAddFilter={() => {}}
+      />,
+    );
+    openMenuOn('"IMPCR01"');
+    fireEvent.click(screen.getByText("Sort descending by code"));
+    expect(onSortChange).toHaveBeenCalledWith([{ column: "code", desc: true }]);
+  });
+
+  it("offers to drop a field that is already in the sort, keeping the rest", () => {
+    const onSortChange = vi.fn();
+    render(
+      <MenuHarness
+        nestedPaths
+        sort={[
+          { column: "code", desc: false },
+          { column: "ts", desc: true },
+        ]}
+        onSortChange={onSortChange}
+        onAddFilter={() => {}}
+      />,
+    );
+    openMenuOn('"IMPCR01"');
+    fireEvent.click(screen.getByText("Remove code from the sort"));
+    expect(onSortChange).toHaveBeenCalledWith([{ column: "ts", desc: true }]);
+  });
+
+  it("filters an array element by its array, not by its index", () => {
+    const onAddFilter = vi.fn();
+    render(
+      <MenuHarness
+        nestedPaths
+        onSortChange={() => {}}
+        onAddFilter={onAddFilter}
+      />,
+    );
+    openMenuOn('"press"');
+    fireEvent.click(screen.getByText("Filter by this value"));
+    expect(onAddFilter).toHaveBeenCalledWith({
+      column: "tags",
+      op: "eq",
+      value: "press",
+    });
+  });
+
+  it("addresses a nested field by its dotted path on MongoDB", () => {
+    const onSortChange = vi.fn();
+    render(
+      <MenuHarness
+        nestedPaths
+        onSortChange={onSortChange}
+        onAddFilter={() => {}}
+      />,
+    );
+    openMenuOn('"P1"');
+    fireEvent.click(screen.getByText("Sort ascending by meta.plant"));
+    expect(onSortChange).toHaveBeenCalledWith([
+      { column: "meta.plant", desc: false },
+    ]);
+  });
+
+  it("offers neither sort nor filter below the top level on SQL", () => {
+    render(
+      <MenuHarness
+        nestedPaths={false}
+        onSortChange={() => {}}
+        onAddFilter={() => {}}
+      />,
+    );
+    openMenuOn('"P1"');
+    expect(screen.queryByText(/Sort ascending/)).toBeNull();
+    expect(screen.queryByText("Filter by this value")).toBeNull();
+    // The menu itself still opens: copying a value is not a column operation.
+    expect(screen.getByText("Copy")).toBeTruthy();
   });
 });

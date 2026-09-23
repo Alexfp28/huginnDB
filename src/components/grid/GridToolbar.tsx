@@ -36,9 +36,10 @@ import {
   ServerFilterChip,
   ServerFilterSummary,
 } from "@/components/grid/ServerFilterChips";
+import { SortChip, SortSummary } from "@/components/grid/SortControls";
 import { useToolbarDensity } from "@/lib/grid/toolbarDensity";
 import { cn, formatNumber } from "@/lib/utils";
-import type { ColumnFilter } from "@/types";
+import type { ColumnFilter, SortSpec } from "@/types";
 
 /**
  * One toolbar action, in BOTH of its presentations.
@@ -102,6 +103,14 @@ interface GridToolbarProps {
   /** Open the advanced filter focused on the condition at this index — the
    *  chip's position in `serverFilters` is the dialog's row index. */
   onEditFilter?: (index: number) => void;
+  /** The active sort, drawn as chips after the filter chips — in both view
+   *  modes, because the list view has no headers to show it on. Absent (a
+   *  query-result grid) draws nothing. */
+  sort?: SortSpec[];
+  /** Flip one level's direction (chip body). */
+  onToggleSort?: (column: string) => void;
+  /** Drop one level (chip ✕, summary row). */
+  onRemoveSort?: (column: string) => void;
   onInsertRow?: () => void;
   /** Fit every column to its widest visible value. */
   /**
@@ -137,6 +146,9 @@ export function GridToolbar({
   typedFilterValues,
   onRemoveFilter,
   onEditFilter,
+  sort,
+  onToggleSort,
+  onRemoveSort,
   onInsertRow,
   insertAlternatives,
   showRowCount,
@@ -367,6 +379,26 @@ export function GridToolbar({
               typedValues={typedFilterValues}
               onEdit={onEditFilter}
               onRemove={onRemoveFilter && (() => onRemoveFilter(i))}
+            />
+          ))
+        ))}
+      {/* The sort, as chips — same collapse rule as the filters beside it,
+          for the same reason: from `compact` down, one summary chip. */}
+      {sort &&
+        sort.length > 0 &&
+        onToggleSort &&
+        onRemoveSort &&
+        (density !== "wide" ? (
+          <SortSummary sort={sort} onRemove={onRemoveSort} />
+        ) : (
+          sort.map((s, i) => (
+            <SortChip
+              key={s.column}
+              spec={s}
+              rank={i + 1}
+              showRank={sort.length > 1}
+              onToggle={() => onToggleSort(s.column)}
+              onRemove={() => onRemoveSort(s.column)}
             />
           ))
         ))}

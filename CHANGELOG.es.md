@@ -8,6 +8,44 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Ordenar en la vista de lista, y un orden que se ve en los dos modos.** El
+  orden de la navegación siempre se aplicó en el servidor y seguía aplicándose
+  en la vista de lista, pero la única forma de ponerlo era hacer clic en la
+  cabecera de una columna, y la vista de lista no tiene cabeceras. Una colección
+  ordenada en modo tabla seguía ordenada en modo lista sin que nada en pantalla
+  lo dijera, y una colección abierta en modo lista no se podía ordenar. Quien
+  venía de MongoDB Compass buscaba su campo Sort y no encontraba nada.
+
+  El orden tiene ahora tres puntos de entrada que funcionan en los dos modos de
+  vista y con todos los drivers:
+
+  - Un botón **Ordenar** (⇅) en la barra de la tabla, junto al filtro avanzado.
+    Muestra las columnas de la tabla (en MongoDB, los campos de la página,
+    incluidas las rutas anidadas) y construye un orden de varios niveles campo a
+    campo. Lleva el mismo contador que el botón de filtro.
+  - **Chips de orden** junto a los de filtro. Un clic invierte la dirección y
+    la ✕ lo quita. Si hay más de un nivel muestran su posición, y en un panel
+    estrecho se pliegan en un único chip de resumen, igual que los de filtro.
+    En modo tabla también mantienen visible un orden cuando su columna se ha
+    desplazado fuera de la vista.
+  - Un **menú contextual en cada campo** de la vista de lista: *Ordenar
+    ascendente / descendente por …* (sustituye el orden, como un clic normal en
+    la cabecera; el menú de la barra es el que añade niveles), *Quitar … del
+    orden*, *Filtrar por este valor* y *Filtrar excluyendo este valor*, que la
+    vista de lista nunca había tenido, y *Copiar*.
+
+  En MongoDB un campo anidado se ordena y se filtra por su ruta con puntos.
+  Dentro de un array se prescinde del índice, como ya hacía el filtro avanzado:
+  `items.0.sku` ordena por `items.sku`, porque `sort()` no entiende un índice
+  posicional, y filtrar por un elemento de `tags` pide los documentos cuyo
+  `tags` lo contiene. En SQL solo los campos de primer nivel tienen estas
+  opciones, porque `ORDER BY` y `WHERE` nombran una columna. Es el primer paso
+  de la barra de consulta que pidieron los usuarios (la proyección, el filtro en bruto y
+  el resto llegan en versiones posteriores). El backend no cambia: ya aceptaba
+  todo lo que envían estos controles.
+
 ## [1.27.0] — 2026-09-23
 
 ### Añadido
