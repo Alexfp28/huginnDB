@@ -231,11 +231,22 @@ pub async fn execute(
             )
             .await?,
         )?,
+        // Every caller of this function acts for an AI, so a statement
+        // classified as a read runs where the database itself refuses a write
+        // — the second barrier behind the text classifier. See
+        // `execute_read_with_state` for what it does and does not cover.
         RunStatement {
             connection_id, sql, ..
-        } => serde_json::to_value(
-            crate::commands::query::execute_with_state(sink, state, connection_id, sql).await?,
-        )?,
+        } => {
+            let is_read =
+                crate::db::classify::classify_statement(sql) == crate::db::sql::StmtClass::Read;
+            serde_json::to_value(if is_read {
+                crate::commands::query::execute_read_with_state(sink, state, connection_id, sql)
+                    .await?
+            } else {
+                crate::commands::query::execute_with_state(sink, state, connection_id, sql).await?
+            })?
+        }
         FetchTableData {
             connection_id,
             schema,
