@@ -3,7 +3,7 @@
 The single, current source of truth for "what's left." Historical per-version
 planning docs (`1.4.0_ROADMAP.md`, `1.5.0_ROADMAP.md`) have been retired now
 that their work has shipped — see `CHANGELOG.md` for the record of what each
-release actually contained. Two living, detail-level roadmaps are still
+release actually contained. Three living, detail-level roadmaps are still
 maintained separately because they track a single subsystem in depth:
 
 - [`docs/MONGODB_ROADMAP.md`](docs/MONGODB_ROADMAP.md) — MongoDB driver, done
@@ -11,6 +11,9 @@ maintained separately because they track a single subsystem in depth:
 - [`docs/MCP_CONNECTOR_ROADMAP.md`](docs/MCP_CONNECTOR_ROADMAP.md) — the
   `huginndb-mcp` connector's design rationale and phased build-out (now fully
   shipped, kept for the "why" behind its architecture).
+- [`docs/POLICY_ROADMAP.md`](docs/POLICY_ROADMAP.md) — managed policy:
+  per-role permissions for people and the AI, administered once for every
+  installation (planned, not started).
 
 This document covers everything else: the top-level feature roadmap that used
 to live in the README.
