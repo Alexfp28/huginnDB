@@ -24,6 +24,7 @@ mod ai;
 mod app_identity;
 mod bridge;
 mod commands;
+mod credentials;
 mod db;
 mod error;
 pub mod json_schemas;
@@ -468,6 +469,10 @@ pub fn run() {
             commands::origins::sync_origin,
             commands::origins::set_secret_override,
             commands::origins::clear_secret_override,
+            commands::credentials::personal_credentials,
+            commands::credentials::set_personal_credentials,
+            commands::credentials::clear_personal_credentials,
+            commands::credentials::remember_password,
             commands::origin_doc::probe_origin_writable,
             commands::origin_doc::open_origin_document,
             commands::origin_doc::list_publishable_environments,

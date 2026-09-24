@@ -29,6 +29,11 @@ import { useTabs } from "@/stores/session/tabs";
 import { clearProtectedPanelsForConnection } from "@/lib/dockview";
 import type { ConnectionProfile, DeleteProfilesReport } from "@/types";
 import { isDatabaseViewOf } from "@/lib/connectionLabel";
+import { isMissingPassword } from "@/lib/db/driver";
+import {
+  askForPassword,
+  rememberAskedPassword,
+} from "@/lib/connection/passwordPrompt";
 
 interface ConnectionsState {
   /** Profiles persisted on disk (no passwords). */
@@ -162,7 +167,26 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     if (get().connecting.has(id)) return;
     set((s) => ({ connecting: new Set(s.connecting).add(id) }));
     try {
-      await api.connect(id, password, sshSecret);
+      try {
+        await api.connect(id, password, sshSecret);
+      } catch (e) {
+        // No password in the keychain for the user this connection signs in
+        // as — always the case on a person's first connect with their own
+        // database user. Ask, rather than report the keychain's emptiness.
+        // A password passed in was already an answer, so it is not asked for
+        // again.
+        const profile = get().profiles.find((p) => p.id === id);
+        if (password || !profile || !isMissingPassword(e)) throw e;
+        const asked = await askForPassword(profile);
+        if (!asked) throw e;
+        await api.connect(id, asked.password, sshSecret);
+        await rememberAskedPassword(profile, asked).catch((err) =>
+          notify.error(i18n.t("passwordPrompt.rememberFailed"), {
+            description: String(err),
+          }),
+        );
+        if (asked.remember) await get().refreshProfiles();
+      }
       get().markConnected(id);
 
       // Persist the updated launch state opportunistically so an abrupt close

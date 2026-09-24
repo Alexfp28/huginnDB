@@ -58,7 +58,5 @@ pub fn delete_password(account: &str) -> AppResult<()> {
 /// Useful in flows where a missing password is unambiguously a setup
 /// problem rather than an optional state.
 pub fn require_password(account: &str) -> AppResult<String> {
-    get_password(account)?.ok_or_else(|| {
-        AppError::NotFound(format!("no stored password for keychain account {account}"))
-    })
+    get_password(account)?.ok_or_else(|| AppError::MissingPassword(account.to_string()))
 }

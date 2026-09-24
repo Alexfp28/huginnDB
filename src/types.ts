@@ -208,6 +208,24 @@ export interface ConnectionProfile {
    * `SecretOverride.supersedes`.
    */
   secret_override?: SecretOverride | null;
+  /**
+   * The database user this person signs in as, in place of the published one
+   * (managed policy phase 3). Local: never published, exported or synced.
+   * Written only by `set_personal_credentials`; a rule's `dbUser` pins it
+   * instead, which `personal_credentials` reports.
+   */
+  personal_username?: string | null;
+}
+
+/** A connection's personal credentials, from `personal_credentials`. */
+export interface PersonalCredentials {
+  /** The user it signs in as when that is not the published one. */
+  username: string | null;
+  /** `policy` means the organization fixed it, and the field is locked. */
+  source: "policy" | "local" | null;
+  publishedUsername: string;
+  /** Whether the keychain holds a password for the user that signs in. */
+  hasPassword: boolean;
 }
 
 /** This machine's own password standing in for the one a shared origin
@@ -1297,6 +1315,8 @@ export interface ConnectionPolicy {
   unmatched: boolean;
   /** Unmatched and the policy leaves such connections to the local settings. */
   leftAlone: boolean;
+  /** The database user the policy signs this person in as (`dbUser`). */
+  dbUser: string | null;
   rules: RulePolicy[];
 }
 

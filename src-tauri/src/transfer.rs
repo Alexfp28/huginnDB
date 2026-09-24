@@ -613,7 +613,12 @@ pub fn build_exported_profiles(
             None
         };
         exported.push(ExportedProfile {
-            profile: profile.clone(),
+            // A person's own database user is theirs, not the file's: it is
+            // never exported (and `merge_into` / the import clear it anyway).
+            profile: ConnectionProfile {
+                personal_username: None,
+                ..profile.clone()
+            },
             secrets,
         });
     }

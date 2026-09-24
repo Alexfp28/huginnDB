@@ -87,6 +87,15 @@ pub enum AppError {
     #[error("not found: {0}")]
     NotFound(String),
 
+    /// A connection needs a password the keychain does not hold (the payload
+    /// is the keychain account). Its own variant because it is the one
+    /// connect failure the app can finish for the user: the frontend matches
+    /// [`MISSING_PASSWORD_TAG`] and asks for the password instead of showing
+    /// an error — which is what a person's first connect with their own
+    /// database user always meets (`crate::credentials`).
+    #[error("{MISSING_PASSWORD_TAG} for keychain account {0}")]
+    MissingPassword(String),
+
     /// A network operation exceeded its allotted budget. Most likely the
     /// underlying socket died silently — a NAT/firewall dropping an idle
     /// connection without a FIN/RST — rather than the server refusing
@@ -153,6 +162,12 @@ pub enum AppError {
 /// breaks `isTooManyConnections` in `src/lib/db/driver.ts` — keep the two in
 /// sync.
 pub const TOO_MANY_CONNECTIONS_TAG: &str = "too many connections";
+
+/// Stable marker every [`AppError::MissingPassword`] message starts with. The
+/// same text `require_password` has always produced, so nothing that already
+/// read it changes. Matched by `isMissingPassword` in `src/lib/db/driver.ts`;
+/// keep the two in sync.
+pub const MISSING_PASSWORD_TAG: &str = "no stored password";
 
 /// Message of the [`AppError::Transfer`] raised when the user closes the native
 /// save dialog instead of picking a file.

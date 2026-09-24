@@ -57,6 +57,7 @@ import type {
   IndexInfo,
   InsertRowsSummary,
   PolicyAccess,
+  PersonalCredentials,
   PolicyStatus,
   PoolStats,
   RelationAccess,
@@ -1184,6 +1185,30 @@ export const api = {
    *  connection would keep quietly running on the local password. */
   clearSecretOverride: (profileId: string) =>
     invoke<ConnectionProfile>("clear_secret_override", { profileId }),
+
+  // A person's own database user (managed policy phase 3) ------------------
+
+  /** Which user a connection signs in as, and whether its password is stored. */
+  personalCredentials: (profileId: string) =>
+    invoke<PersonalCredentials>("personal_credentials", { profileId }),
+
+  /** Sign in as `username` (ignored when the policy pins one) with `password`.
+   *  For a connection from an origin, or one the policy pins a user for. */
+  setPersonalCredentials: (args: {
+    profileId: string;
+    username?: string | null;
+    password?: string | null;
+  }) => invoke<PersonalCredentials>("set_personal_credentials", args),
+
+  /** Back to the published user; the personal password is deleted. */
+  clearPersonalCredentials: (profileId: string) =>
+    invoke<PersonalCredentials>("clear_personal_credentials", { profileId }),
+
+  /** Store a password a connect found missing, under the account it signs in
+   *  with. Refused for an origin connection on the published user — that is
+   *  `setSecretOverride`'s job. */
+  rememberPassword: (profileId: string, password: string) =>
+    invoke<void>("remember_password", { profileId, password }),
 
   // The origin's document (#155) -------------------------------------------
 

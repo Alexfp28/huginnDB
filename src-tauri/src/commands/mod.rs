@@ -10,6 +10,7 @@ pub mod ai;
 pub mod app;
 pub mod bulk;
 pub mod connection;
+pub mod credentials;
 pub mod dump;
 pub mod feedback;
 pub mod guard;

@@ -318,6 +318,22 @@ export function isTooManyConnections(error: unknown): boolean {
 }
 
 /**
+ * Marker the backend prefixes onto a connect that found no password in the
+ * keychain. Must stay in sync with `MISSING_PASSWORD_TAG` in
+ * `src-tauri/src/error.rs`.
+ */
+const MISSING_PASSWORD_TAG = "no stored password";
+
+/**
+ * Whether `error` is a connect that needs a password the keychain does not
+ * hold — the one connect failure the app can finish for the user by asking.
+ * What a person's first connect with their own database user always meets.
+ */
+export function isMissingPassword(error: unknown): boolean {
+  return String(error).toLowerCase().includes(MISSING_PASSWORD_TAG);
+}
+
+/**
  * Marker the backend uses when the user closes the native save dialog.
  *
  * Must stay in sync with `EXPORT_CANCELLED` in `src-tauri/src/error.rs`.

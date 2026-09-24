@@ -344,6 +344,14 @@ function ConnectionRow({
       </TreeRow>
       {open && (
         <div className="space-y-1.5 px-3 pb-2">
+          {connection.dbUser && (
+            <p className="text-2xs text-muted-foreground">
+              {t("settings.policy.dbUser")}{" "}
+              <span className="font-mono text-foreground">
+                {connection.dbUser}
+              </span>
+            </p>
+          )}
           {connection.rules.map((rule, i) => (
             <RuleBlock key={i} rule={rule} />
           ))}

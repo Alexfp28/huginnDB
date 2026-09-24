@@ -181,6 +181,9 @@ permite en él.
 
   La IA nunca tiene más que la persona: lo que `ai` añada respecto a `human` se
   ignora, y Ajustes → Política muestra un aviso.
+- **`dbUser`**: el usuario de base de datos con el que una persona entra en este
+  servidor; ver
+  [Cada persona con su propio usuario de base de datos](#cada-persona-con-su-propio-usuario-de-base-de-datos).
 
 Una sentencia que hace dos cosas necesita los dos permisos: un upsert necesita
 `insert` y `update`, y el `REPLACE` de MySQL necesita `insert` y `delete`.
@@ -211,6 +214,35 @@ regla del rol del usuario:
   para saltarse una regla.
 - `"allow"`: la política no la toca y solo se aplican los ajustes locales del
   usuario.
+
+## Cada persona con su propio usuario de base de datos
+
+Para las personas, la política de la app es un guardarraíl, porque la propia
+contraseña de la base de datos abre cualquier cliente. Lo que lo cierra es dar a
+**cada persona su propio usuario de base de datos**, con los permisos de su
+rol: así es la base de datos la que aplica la política, y la contraseña
+compartida no tiene por qué llegar al equipo de nadie.
+
+- **`dbUser`** en una regla fija el usuario con el que una persona entra en ese
+  servidor. Es una plantilla con un único token, `{user}`, que es su cuenta de
+  Windows sin el dominio y en minúsculas: `"dbUser": "{user}"` conecta a
+  `ACME\ALopez` como `alopez`; `"erp_{user}"`, como `erp_alopez`. Vale para
+  todo el servidor que nombra la regla (sus `databases` no lo acotan), y gana la
+  primera regla del rol para ese servidor que lo tenga. La persona no puede
+  cambiarlo: el diálogo de la conexión lo muestra con un candado.
+- Sin `dbUser`, una persona puede elegir igualmente su propio usuario en una
+  conexión que viene de un origen compartido (**Tus credenciales**, en el
+  diálogo). Se queda en su equipo: nunca se publica, se exporta ni se
+  sincroniza.
+- La primera vez que una persona se conecta con su propio usuario, HuginnDB le
+  pide la contraseña y, si lo marca, la recuerda en su llavero para ese usuario.
+- Mientras una persona entra con su propio usuario, la contraseña del origen
+  compartido para esa conexión **no** se guarda en su equipo. Para que no llegue
+  a ningún equipo, publica la conexión sin contraseña.
+
+> **Actualiza HuginnDB en todos los equipos antes de añadir `dbUser`.** Las
+> versiones anteriores no conocen el campo, dan la política por no válida y
+> bloquean todas las conexiones hasta que se actualicen.
 
 ## Cómo comprobarla
 

@@ -72,6 +72,7 @@ import { DeleteConnectionsDialog } from "@/components/connection/dialogs/DeleteC
 import { MongoUriFoldDialog } from "@/components/connection/dialogs/MongoUriFoldDialog";
 import { isFromOrigin } from "@/lib/connection/origin";
 import { originScope } from "@/lib/origins/scope";
+import { PersonalCredentialsNotice } from "@/components/connection/PersonalCredentialsNotice";
 import { SecretOverrideNotice } from "@/components/connection/SecretOverrideNotice";
 import { notify } from "@/lib/notify";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
@@ -302,6 +303,9 @@ export function ConnectionDialog({
    * independent local copy.
    */
   const canEditInPlace = fromOrigin && originIsPublished;
+  /** Whether the person signs in to it with their own database user —
+   *  reported by `PersonalCredentialsNotice`, which asks the backend. */
+  const [personalActive, setPersonalActive] = useState(false);
   /**
    * Whether the origin behind this profile has stopped pulling connections
    * (#171), in which case this entry is still the file's — tagged, read-only,
@@ -744,12 +748,33 @@ export function ConnectionDialog({
                         has not fixed yet. Not offered to a publisher: they can
                         correct the connection properly, and republish it. */}
                       {!canEditInPlace && stored && (
+                        <PersonalCredentialsNotice
+                          profile={stored}
+                          password={password}
+                          onChange={setPersonalActive}
+                        />
+                      )}
+                      {/* About the published user's password, so not while
+                        the person signs in as their own user. */}
+                      {!canEditInPlace && stored && !personalActive && (
                         <SecretOverrideNotice
                           profile={stored}
                           password={password}
                           sshSecret={sshSecret}
                         />
                       )}
+                    </div>
+                  )}
+                  {/* A connection of one's own, whose user the policy pins:
+                    said here, since there is no origin banner to say it in.
+                    Renders nothing unless the policy pins one. */}
+                  {!fromOrigin && stored && (
+                    <div className="mb-2 rounded-md border border-border bg-muted/40 px-2.5 py-2 text-2xs text-muted-foreground empty:hidden">
+                      <PersonalCredentialsNotice
+                        profile={stored}
+                        password={password}
+                        bare
+                      />
                     </div>
                   )}
                   <TabsContent value="general" className="pt-3">

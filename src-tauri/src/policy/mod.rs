@@ -162,6 +162,20 @@ pub fn current_user() -> &'static str {
     USER.get_or_init(|| whoami::fallible::username().unwrap_or_default())
 }
 
+/// The database user the policy in force pins for the person using this
+/// process on `profile`'s server, if it pins one (a rule's `dbUser`). `None`
+/// without an active policy: a pending or broken one refuses the connection
+/// anyway (`guard::endpoint`), so there is nothing to sign in as.
+pub fn pinned_db_user(
+    policy: &SharedPolicy,
+    profile: &crate::state::ConnectionProfile,
+) -> Option<String> {
+    match &*policy.read() {
+        PolicyState::Active { doc, .. } => resolve::pinned_db_user(doc, current_user(), profile),
+        _ => None,
+    }
+}
+
 /// `user=… role=…` for the MCP audit log, so every line says who the AI was
 /// acting for and under which role. `role=-` without a policy.
 // The audit log is the MCP sidecar's, which the `mcp` feature gates.

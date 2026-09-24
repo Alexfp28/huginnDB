@@ -79,6 +79,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   there, one call learns that and no relation is ever asked about. See
   `CLAUDE.md` gotcha #96.
 
+- **Each person can sign in with their own database user.** The managed
+  policy is a guardrail for people as long as a shared database password can
+  open any other client; a database user per person, with matching grants, is
+  what lets the database enforce it. A rule's new `dbUser` fixes the user a
+  person signs in to that server as — a template whose one token, `{user}`, is
+  their OS account without the domain (`"{user}"`, `"erp_{user}"`) — and the
+  connection dialog shows it locked. Without it, a person can choose their own
+  user on a connection from a shared origin ("Your credentials"), kept on this
+  machine only: never published, exported or synced. While a personal user is
+  in force the origin's shared password is no longer stored on the machine,
+  which is what keeps it from opening another client there. A connect that
+  finds no password for the user it signs in as now asks for it, and can
+  remember it, instead of reporting an empty keychain — for any connection,
+  not only these. On MongoDB the published user and password are taken out of
+  the connection string. Settings → Policy shows the pinned user. Versions
+  before this one read a policy with `dbUser` as invalid and block, so update
+  every installation first. See `CLAUDE.md` gotcha #97.
+
 ### Fixed
 
 - **An empty MongoDB collection still had no way to insert its first

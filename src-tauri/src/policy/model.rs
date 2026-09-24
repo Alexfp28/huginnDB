@@ -75,6 +75,14 @@ pub struct Rule {
     pub human: Vec<Permission>,
     #[serde(default)]
     pub ai: Vec<Permission>,
+    /// The database user a person signs in to this endpoint as — a template
+    /// whose one token, `{user}`, is their OS account without the domain and
+    /// in lower case (`"{user}"`, `"{user}_ro"`, `"erp_{user}"`). Pinned: it
+    /// wins over the person's own choice, because giving each person their own
+    /// database user is how the database, and not only HuginnDB, comes to
+    /// enforce the policy (§7). Absent: the connection's own user.
+    #[serde(default)]
+    pub db_user: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -292,6 +300,36 @@ impl Rule {
     }
 }
 
+/// The only token a `dbUser` template may carry.
+pub const DB_USER_TOKEN: &str = "{user}";
+
+/// A `dbUser` template with `{user}` replaced by `user`, folded the way the
+/// document's user keys are. `None` when that leaves nothing, which is only
+/// possible for an OS that will not name its user.
+pub fn expand_db_user(template: &str, user: &str) -> Option<String> {
+    let user = normalise_user(user);
+    if template.contains(DB_USER_TOKEN) && user.is_empty() {
+        return None;
+    }
+    let expanded = template.trim().replace(DB_USER_TOKEN, &user);
+    (!expanded.is_empty()).then_some(expanded)
+}
+
+/// Why a `dbUser` template cannot be used, if it cannot.
+fn db_user_problem(template: &str) -> Option<&'static str> {
+    let t = template.trim();
+    if t.is_empty() {
+        return Some("is empty");
+    }
+    // Every brace must belong to a `{user}`: a typo such as `{usr}` would
+    // otherwise sign everybody in as the literal text `{usr}`.
+    let rest = t.replace(DB_USER_TOKEN, "");
+    if rest.contains('{') || rest.contains('}') {
+        return Some("may only use the token {user}");
+    }
+    None
+}
+
 /// A user key as the document spells it, folded to how it is compared.
 pub fn normalise_user(name: &str) -> String {
     let name = name.trim();
@@ -354,6 +392,9 @@ impl PolicyDoc {
                         "role {name:?}, rule {}: a database or relation pattern is empty",
                         i + 1
                     ));
+                }
+                if let Some(problem) = rule.db_user.as_deref().and_then(db_user_problem) {
+                    return Err(format!("role {name:?}, rule {}: dbUser {problem}", i + 1));
                 }
                 let ai = Grant::of(&rule.ai);
                 if ai.intersect(rule.human_grant()) != ai {
@@ -505,5 +546,39 @@ mod tests {
         assert!(rule(r#","databases":["billing"]"#).is_scoped());
         assert!(rule(r#","relations":{"allow":["t"]}"#).is_scoped());
         assert!(rule(r#","relations":{"deny":["t"]}"#).is_scoped());
+    }
+
+    #[test]
+    fn a_db_user_template_may_only_name_the_user() {
+        let with = |template: &str| {
+            format!(
+                r#"{{ "version": 1, "defaultRole": "r", "roles": {{ "r": {{ "rules": [
+                    {{ "endpoint": "*", "dbUser": {template:?} }}
+                ] }} }} }}"#
+            )
+        };
+        for good in ["{user}", "{user}_ro", "erp_{user}", "shared_reader"] {
+            assert!(PolicyDoc::parse(&with(good)).is_ok(), "{good}");
+        }
+        for (bad, why) in [("", "is empty"), ("{usr}", "{user}"), ("{user", "{user}")] {
+            let err = PolicyDoc::parse(&with(bad)).unwrap_err();
+            assert!(err.contains("dbUser") && err.contains(why), "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_db_user_expands_to_the_bare_lower_case_account() {
+        assert_eq!(
+            expand_db_user("{user}", r"ACME\ALopez"),
+            Some("alopez".into())
+        );
+        assert_eq!(
+            expand_db_user("erp_{user}", "alopez"),
+            Some("erp_alopez".into())
+        );
+        assert_eq!(expand_db_user("reader", ""), Some("reader".into()));
+        // An OS that will not name its user gets no personal user at all,
+        // rather than signing in as the empty string.
+        assert_eq!(expand_db_user("{user}", ""), None);
     }
 }

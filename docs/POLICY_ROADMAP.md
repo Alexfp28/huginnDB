@@ -345,8 +345,10 @@ edit the managed source — which holds here too.
    (every command guarded, a test holds the list complete) and UI mirroring
    (§6.2): locked controls with the reason, locked tabs, a window bar while
    the policy is loading or broken, `unmanagedConnections`.
-3. **Real enforcement for people.** Per-user user name on origin profiles;
-   `GRANT` / `createRole` script generation (§7).
+3. **Real enforcement for people.** Per-user user name on origin profiles
+   — *shipped* (gotcha #97: a rule's `dbUser`, or the person's own choice,
+   with the shared secret no longer landed); `GRANT` / `createRole` script
+   generation (§7) — *next*.
 4. **Authoring.** An in-app editor for the policy document (today: a JSON file
    validated by the shipped JSON Schema), ADMX/ADML templates for GPO.
 

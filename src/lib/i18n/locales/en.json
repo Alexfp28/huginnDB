@@ -1903,6 +1903,7 @@
       "unmatchedAllowShort": "no rule — local settings decide",
       "unmatchedDenyShort": "no rule — blocked",
       "rowSummary": "People: {{human}} · AI: {{ai}} · free SQL: {{freeSql}}",
+      "dbUser": "Database user",
       "freeSqlShortOn": "yes",
       "freeSqlShortOff": "no"
     }
@@ -3369,5 +3370,29 @@
       "broken": "Your organization's policy could not be applied, so no connection can be read or written.",
       "details": "Details"
     }
-  }
+  },
+    "passwordPrompt": {
+      "title": "Password for {{name}}",
+      "body": "The keychain has no password for {{user}} on this connection. Type it to connect.",
+      "password": "Password",
+      "remember": "Remember it on this computer",
+      "connect": "Connect",
+      "rememberFailed": "Connected, but the password could not be remembered"
+    },
+    "personalCredentials": {
+      "pinned": "Your organization signs you in to this server as {{user}}. The password you type in this dialog is stored for that user.",
+      "own": "You sign in as {{user}}, your own database user, instead of the shared {{shared}}.",
+      "offer": "Sign in with your own database user instead of the shared one — the database then enforces your permissions itself, and the shared password stops reaching this computer.",
+      "user": "Your database user",
+      "passwordStored": "password stored",
+      "passwordMissing": "no password stored",
+      "save": "Use mine",
+      "forgetPassword": "Forget password",
+      "useShared": "Use the shared one",
+      "saved": "Your credentials are saved",
+      "saveFailed": "Couldn't save your credentials",
+      "cleared": "Back to the shared credentials",
+      "clearedHint": "The shared password comes back with the next sync of the origin.",
+      "clearFailed": "Couldn't go back to the shared credentials"
+    }
 }
