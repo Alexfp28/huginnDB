@@ -11,10 +11,13 @@
  * people may do is shown for reference and labelled as such.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/ui/search-field";
+import { Segmented } from "@/components/ui/segmented";
+import { TreeRow } from "@/components/ui/tree-row";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import type { ConnectionPolicy, PolicyStatus, RulePolicy } from "@/types";
@@ -56,31 +59,7 @@ export function PolicySection() {
 
       {status && <Summary status={status} />}
 
-      {status?.state === "active" && (
-        <div>
-          <div className="mb-1 text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.policy.connections")}
-          </div>
-          {status.connections.length === 0 ? (
-            <p className="text-2xs text-muted-foreground">
-              {t("settings.policy.noConnections")}
-            </p>
-          ) : (
-            <div className="divide-y divide-border/60 rounded-md border border-border">
-              {status.connections.map((c) => (
-                <ConnectionRow
-                  key={c.id}
-                  connection={c}
-                  unmanaged={status.unmanagedConnections}
-                />
-              ))}
-            </div>
-          )}
-          <p className="mt-1 text-2xs text-muted-foreground">
-            {t("settings.policy.humanNotEnforced")}
-          </p>
-        </div>
-      )}
+      {status?.state === "active" && <ConnectionList status={status} />}
     </div>
   );
 }
@@ -188,6 +167,115 @@ function Field({
   );
 }
 
+type Filter = "managed" | "unmatched" | "all";
+
+/**
+ * The per-connection half. A user with twenty-odd saved connections under a
+ * policy that names three of them used to get twenty-odd full-height blocks
+ * to scroll past; now the list opens on the connections a rule names, each
+ * one line until expanded, with a name filter and the unnamed ones one click
+ * away.
+ */
+function ConnectionList({ status }: { status: PolicyStatus }) {
+  const { t } = useTranslation();
+  const managedCount = status.connections.filter((c) => !c.unmatched).length;
+  const unmatchedCount = status.connections.length - managedCount;
+  // Open on what the policy says something about; fall back to everything
+  // when it names none of this user's connections, so the list is never
+  // empty for a reason the user cannot see.
+  const [filter, setFilter] = useState<Filter>(
+    managedCount > 0 ? "managed" : "all",
+  );
+  const [query, setQuery] = useState("");
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return status.connections.filter(
+      (c) =>
+        (filter === "all" ||
+          (filter === "managed" ? !c.unmatched : c.unmatched)) &&
+        (q === "" || c.name.toLowerCase().includes(q)),
+    );
+  }, [status.connections, filter, query]);
+
+  return (
+    <div>
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
+          {t("settings.policy.connections")}
+        </div>
+        <div className="text-2xs text-muted-foreground">
+          {t("settings.policy.connectionCounts", {
+            total: status.connections.length,
+            managed: managedCount,
+            unmatched: unmatchedCount,
+          })}
+        </div>
+      </div>
+
+      {status.connections.length === 0 ? (
+        <p className="text-2xs text-muted-foreground">
+          {t("settings.policy.noConnections")}
+        </p>
+      ) : (
+        <>
+          <div className="mb-2 flex items-center gap-2">
+            <SearchField
+              size="sm"
+              className="flex-1"
+              value={query}
+              onValueChange={setQuery}
+              onClear={() => setQuery("")}
+              clearLabel={t("settings.policy.clearSearch")}
+              placeholder={t("settings.policy.searchPlaceholder")}
+              aria-label={t("settings.policy.searchPlaceholder")}
+            />
+            <Segmented<Filter>
+              size="sm"
+              value={filter}
+              onValueChange={setFilter}
+              aria-label={t("settings.policy.filterLabel")}
+              options={[
+                {
+                  value: "managed",
+                  label: t("settings.policy.filterManaged", {
+                    count: managedCount,
+                  }),
+                },
+                {
+                  value: "unmatched",
+                  label: t("settings.policy.filterUnmatched", {
+                    count: unmatchedCount,
+                  }),
+                },
+                { value: "all", label: t("settings.policy.filterAll") },
+              ]}
+            />
+          </div>
+          {visible.length === 0 ? (
+            <p className="text-2xs text-muted-foreground">
+              {t("settings.policy.noMatches")}
+            </p>
+          ) : (
+            <div className="divide-y divide-border/60 rounded-md border border-border">
+              {visible.map((c) => (
+                <ConnectionRow
+                  key={c.id}
+                  connection={c}
+                  unmanaged={status.unmanagedConnections}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      <p className="mt-1 text-2xs text-muted-foreground">
+        {t("settings.policy.humanNotEnforced")}
+      </p>
+    </div>
+  );
+}
+
 function ConnectionRow({
   connection,
   unmanaged,
@@ -196,24 +284,65 @@ function ConnectionRow({
   unmanaged: PolicyStatus["unmanagedConnections"];
 }) {
   const { t } = useTranslation();
-  return (
-    <div className="space-y-1.5 px-3 py-2">
-      <div className="text-xs font-medium">{connection.name}</div>
-      {connection.unmatched ? (
-        <p
+  const [open, setOpen] = useState(false);
+
+  if (connection.unmatched) {
+    return (
+      <div className="flex items-center justify-between gap-3 px-3 py-1.5">
+        <span className="min-w-0 truncate text-xs">{connection.name}</span>
+        <span
           className={cn(
-            "text-2xs",
+            "shrink-0 text-2xs",
             unmanaged === "allow" ? "text-muted-foreground" : "text-destructive",
           )}
         >
           {t(
             unmanaged === "allow"
-              ? "settings.policy.unmatchedAllow"
-              : "settings.policy.unmatchedDeny",
+              ? "settings.policy.unmatchedAllowShort"
+              : "settings.policy.unmatchedDenyShort",
           )}
-        </p>
-      ) : (
-        connection.rules.map((rule, i) => <RuleBlock key={i} rule={rule} />)
+        </span>
+      </div>
+    );
+  }
+
+  // One line: the AI's effective permissions across the connection's rules,
+  // and whether any of them leaves free SQL on. The detail is one click away.
+  const aiPerms = [...new Set(connection.rules.flatMap((r) => r.ai))];
+  const freeSql = connection.rules.some((r) => r.freeSql);
+  const Chevron = open ? ChevronDown : ChevronRight;
+
+  return (
+    <div>
+      <TreeRow
+        className="gap-2 px-3"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Chevron className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-left text-xs font-medium">
+          {connection.name}
+        </span>
+        <span className="shrink-0 text-2xs text-muted-foreground">
+          {t("settings.policy.rowSummary", {
+            ai:
+              aiPerms.length > 0
+                ? aiPerms.join(", ")
+                : t("settings.policy.nothing"),
+            freeSql: t(
+              freeSql
+                ? "settings.policy.freeSqlShortOn"
+                : "settings.policy.freeSqlShortOff",
+            ),
+          })}
+        </span>
+      </TreeRow>
+      {open && (
+        <div className="space-y-1.5 px-3 pb-2">
+          {connection.rules.map((rule, i) => (
+            <RuleBlock key={i} rule={rule} />
+          ))}
+        </div>
       )}
     </div>
   );

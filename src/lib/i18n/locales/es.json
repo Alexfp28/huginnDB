@@ -1881,8 +1881,6 @@
       "warnings": "Avisos",
       "connections": "Conexiones",
       "noConnections": "No tienes conexiones guardadas.",
-      "unmatchedDeny": "Ninguna regla de tu rol nombra esta conexión, así que la IA no puede usarla.",
-      "unmatchedAllow": "Ninguna regla de tu rol nombra esta conexión; deciden los ajustes locales.",
       "databases": "Bases de datos",
       "relations": "Relaciones",
       "never": "Nunca",
@@ -1893,7 +1891,20 @@
       "freeSql": "Consultas libres",
       "freeSqlOn": "permitidas",
       "freeSqlOff": "desactivadas: la regla se limita a algunas bases de datos o relaciones, y el texto de una consulta no se puede comprobar contra eso",
-      "humanNotEnforced": "Lo que pueden hacer las personas se muestra como referencia: esta versión aplica la política solo a la IA."
+      "humanNotEnforced": "Lo que pueden hacer las personas se muestra como referencia: esta versión aplica la política solo a la IA.",
+      "connectionCounts": "{{total}} conexiones · {{managed}} con reglas · {{unmatched}} sin regla",
+      "searchPlaceholder": "Filtrar conexiones",
+      "clearSearch": "Borrar filtro",
+      "filterLabel": "Mostrar",
+      "filterManaged": "Con reglas ({{count}})",
+      "filterUnmatched": "Sin regla ({{count}})",
+      "filterAll": "Todas",
+      "noMatches": "Ninguna conexión coincide.",
+      "unmatchedAllowShort": "sin regla: deciden los ajustes locales",
+      "unmatchedDenyShort": "sin regla: bloqueada para la IA",
+      "rowSummary": "IA: {{ai}} · SQL libre: {{freeSql}}",
+      "freeSqlShortOn": "sí",
+      "freeSqlShortOff": "no"
     }
   },
   "notifications": {
