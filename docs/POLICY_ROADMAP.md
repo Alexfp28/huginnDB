@@ -52,6 +52,8 @@ needs more.
 | D2 | For people, v1 is a **guardrail plus per-user database credentials**, and HuginnDB **generates the `GRANT` script** from the policy. | See §3. The database is the only thing that can enforce against a person who holds the password. |
 | D3 | **Free SQL is disabled** (query editor for people, `run_query`/`run_write` for the AI) in any rule whose scope is narrower than the whole connection. | Extracting the relations a statement touches is not solvable airtight across five dialects (§6.3). Structured surfaces can be filtered exactly. |
 | D4 | The policy is anchored per machine in **both** the HKLM registry and a system-directory file; the registry wins. | Same shape as VS Code and Claude Code (§8). The file works without Group Policy and on every OS; the registry is what GPO/Intune deploy. |
+| D5 | **One role per user.** A user is in their department and nothing else; roles are never combined. | Combining roles makes the effective permission something nobody wrote down, and the support cost of explaining it lands on us. |
+| D6 | **No signing and no local copy.** An unreadable policy blocks (§5.4); tampering is prevented by the share's permissions (only administrators write). | The signature's main job was to make an offline cache safe to trust. A machine that reaches its database but not the share is rare enough not to justify a key pair and a new dependency. |
 
 ## 3. What can and cannot be enforced — say this to customers verbatim
 
@@ -99,6 +101,11 @@ Matched case-insensitively, with or without the `DOMAIN\` prefix. It is not
 verified against anything; the user list is maintained by hand. A user not
 listed gets `defaultRole`, which should be the most restrictive role.
 
+It is read from the operating system (`whoami::username()`, which calls
+`GetUserNameW` on Windows), **never from an environment variable**: `USERNAME`
+and `USER` are set by whoever launches the process, so a user could start the
+app with `USERNAME=admin` and inherit the administrator's role.
+
 ### 5.2 Anchors (D4)
 
 Read in order; **the first source that carries a policy wins**, the rest are
@@ -122,7 +129,7 @@ No anchor → the installation is unmanaged and behaves exactly as today.
 {
   "version": 1,
   "defaultRole": "none",
-  "users": { "scara": ["admin"], "alopez": ["sales"] },
+  "users": { "scara": "admin", "alopez": "sales" },
   "roles": {
     "none": { "rules": [] },
     "sales": {
@@ -154,8 +161,8 @@ Semantics:
   effective port + tunnel, i.e. `db::endpoint::EndpointKey`) is what the server
   actually is. SQLite has no endpoint key; its rules match the file path.
 - **Scope:** `databases` / `schemas` / `relations` accept `*` globs; absent
-  means "all". `deny` wins over `allow`, and across multiple roles of one user
-  any deny wins.
+  means "all". `deny` wins over `allow`. A user has exactly one role (D5), so
+  there is no cross-role merge to define.
 - **Verbs:** `select`, `insert`, `update`, `delete`, `ddl`, `export`
   (reading is not exporting: it is the channel data leaves by), `monitor`
   (Pulse, sessions, the Security panel — they show *other users'* statement
@@ -171,30 +178,59 @@ Semantics:
 An anchor that exists but cannot be read or parsed, or a `source` that cannot be
 reached, **fails closed**: managed endpoints become read-nothing for people and
 unreachable for the AI, with a banner naming the source and the error. It never
-falls back to "unmanaged". (Offline laptops: see open question Q2.)
+falls back to "unmanaged", and there is no cached copy to fall back to (D6): a
+machine that reaches its database but not the share cannot use managed
+endpoints until the share is back.
 
 ## 6. Enforcement
 
 ### 6.1 The AI — airtight
 
 Every AI request, from the MCP sidecar and from the AI panel, is a
-`BridgeRequest`. Policy is checked **there**, in `bridge::server`, beside the
-existing `McpWritePolicy` re-check — never only in the sidecar and never in the
-frontend.
+`BridgeRequest`, and every one of them is executed by **one function**,
+`bridge::exec::execute`. It has exactly four callers, and all four act for an
+AI:
 
-- **Discovery is filtered, not refused.** `ListDatabases`, `ListTables` and
-  friends return only what the rule's scope admits, so a model does not learn
-  the names of relations it cannot read.
+| Caller | Path |
+|--------|------|
+| `bridge/server.rs` | MCP sidecar served by the running app |
+| `mcp/mod.rs` (`Huginn::call`) | MCP sidecar running alone, owning its own pools |
+| `ai/exec.rs` | the AI panel's agent mode |
+| `ai/tasks.rs` | the AI panel's assisted tasks — which today skip `check_policy` |
+
+Policy is checked **there**, not in `bridge::server`: `check_policy` in the
+server misses the sidecar running alone, the assisted tasks and every read.
+The subject is always the AI, so no caller parameter is needed.
+
+- **Discovery is filtered, not refused.** `ListDatabases` and `ListTables` are
+  filtered on their typed `Vec` before it is serialised, so a model does not
+  learn the names of relations it cannot read.
 - **Structured tools** (`browse_table`, `describe_table`, `insert_row`,
   `update_cell`, `delete_rows`, …) name their relation, so they are checked
   exactly: scope, then verb (`insert_row` → `insert`, `update_cell` →
   `update`, `delete_rows` → `delete`).
-- **`run_query` / `run_write`** exist only where the rule's scope is the whole
-  endpoint (D3). Otherwise they are **removed** from the catalogue for that
-  connection rather than refused — the same rule the AI panel's metadata-only
-  mode already follows (gotcha #74).
+- **`run_query` / `run_write`** are allowed only where the rule's scope is the
+  whole endpoint (D3). Where it is not:
+  - in the **AI panel** they are removed from the catalogue, as metadata-only
+    mode already removes the row tools (`ai::tools::catalogue`);
+  - over **MCP** they are refused at call time. The MCP tool list cannot vary
+    per connection: clients cache `tools/list` for the session, which is why
+    only `--read-only` ever changes it (gotchas #58, #59).
 - `pulse_*`, `list_users` and `list_privileges` require `monitor`.
-- The audit log records the OS user and the resolved role(s) on every call.
+- The per-variant mapping is an exhaustive `match` with no `_` arm (gotchas
+  #49, #71), so a new `BridgeRequest` variant cannot be added without deciding
+  what policy it needs.
+- The audit log records the OS user and the resolved role on every call.
+
+Three things do **not** pass through `execute` and are checked where they are:
+
+- `EnsureConnected`, intercepted by `bridge/server.rs` and by the sidecar's
+  `ensure_connected`: refused unless some rule of the role matches the endpoint.
+- The MCP `list_connections` tool, which never builds a `BridgeRequest`: it
+  hides the connections the role cannot reach.
+- The local per-connection settings, which policy can only **narrow**: the
+  effective MCP write policy is policy ∩ `mcp_write`, and `mcp_exposed` /
+  `ai_enabled` are still required.
 
 The AI's exposure map in `ai/tools.rs` stays exhaustive with no `_` arm
 (gotcha #71); policy adds a check, it does not add an escape hatch. Gotcha #49's
@@ -226,10 +262,13 @@ later version may allow free SQL on a rule that declares it is backed by one.
 
 ### 6.4 Splitting the write tier
 
-`StmtClass::DataWrite` becomes three verbs, and classification returns a
-**set** of verbs rather than one ordered tier (still the union over every
-statement in the batch, gotcha #76). Mixed statements claim every verb they can
-perform:
+Classification gains a **set** of verbs (`db::classify::verbs_of`, still the
+union over every statement in the batch, gotcha #76) that `DataWrite` is split
+into. `StmtClass` stays, *derived* from the set, so the existing `== Read`
+checks and gotcha #54's single-source rule keep holding without touching every
+caller. Mixed statements claim every verb they can perform, and a statement
+nothing recognises claims all three write verbs — the same conservative side
+today's `DataWrite` default takes:
 
 | Statement | Verbs |
 |-----------|-------|
@@ -238,8 +277,8 @@ perform:
 | MySQL `REPLACE` | insert + delete |
 | `TRUNCATE` | ddl (unchanged) |
 | Mongo `insert*` / `update*` / `replaceOne` / `delete*` | insert / update / update / delete |
-| Mongo `findOneAndReplace` / `findOneAndUpdate` / `findOneAndDelete` | update / update / delete |
-| Mongo `bulkWrite` | union of its operations |
+| Mongo `aggregate` ending in `$out` / `$merge` | ddl / insert + update |
+| Mongo `findOneAndReplace` / `findOneAndUpdate` / `findOneAndDelete`, `bulkWrite` | not in the grammar today (refused as unsupported); when added: update / update / delete, and the union of its operations |
 
 `McpWritePolicy` survives as the unmanaged per-connection setting and maps
 onto the verb sets (`ReadOnly` = {select}, `Data` = {select, insert, update,
@@ -286,12 +325,18 @@ edit the managed source — which holds here too.
 
 ## 9. Phases
 
+0. **Prerequisite — trust the classifier** (PR #186). Mapping `StmtClass`'s
+   call sites for this work found three writes classified as reads — a `WITH`
+   carrying DML, `EXPLAIN ANALYZE`, and a MongoDB `aggregate` ending in
+   `$out`/`$merge` — which a `read-only` MCP connection and the AI panel let
+   run. Fixed in the classifier, plus a read-only transaction around every read
+   an AI sends (gotcha #93). The verb split builds on it, so it lands first.
 1. **Core, AI enforcement.** Verb split in `classify` (§6.4) with tests; a
    pure resolver *(policy, user, endpoint, relation, verb) → allow/deny* with
    exhaustive tests; anchor loading (§5.2) and fail-closed (§5.4); enforcement
-   in `bridge::server` for the MCP sidecar and the AI panel (§6.1); make
-   `policy_id_of` exhaustive (gotcha #49); a read-only **Policy diagnostics**
-   view: source, user, roles, effective permissions per connection.
+   in `bridge::exec::execute` plus the three paths outside it (§6.1); a
+   read-only **Policy diagnostics** view: source, state, user, role, effective
+   permissions per connection.
    *Done:* a managed user's AI cannot list, read or write outside its rule,
    proven by tests at the bridge.
 2. **People.** Command-level enforcement and UI mirroring (§6.2), lock
@@ -305,15 +350,17 @@ Not in any phase: AD/LDAP identity, a gateway server, filtering free SQL.
 
 ## 10. Open questions
 
-- **Q1 — Signing.** A share whose ACL lets users write makes the policy
-  editable by the people it restricts. Signing the document (key pair; public
-  key in the anchor) detects that, and also makes an offline cache safe. It
-  needs a new dependency (e.g. an Ed25519 crate) — to be approved first.
-- **Q2 — Offline.** Without signing, a cached copy lives in a user-writable
-  directory and could be edited, so v1 has no cache: unreachable share =
-  fail closed. Acceptable for laptops?
-- **Q3 — Multiple roles per user.** Union of allows with deny winning (as
-  sketched), or exactly one role per user in v1?
+Closed (2026-09-24):
+
+- ~~Q1 — Signing~~ → no (D6). Tampering is prevented by the share's
+  permissions: only administrators may write the policy file, which the admin
+  documentation must say in so many words.
+- ~~Q2 — Offline~~ → no cache (D6). A machine that reaches its database but
+  not the share is rare, and blocking is the safe answer.
+- ~~Q3 — Multiple roles per user~~ → one role (D5).
+
+Open:
+
 - **Q4 — Licence.** The repository is MIT. If managed policy is the part that
   is sold, it needs a separate licence (open core). A business decision, to
   settle before phase 1 ships publicly.
