@@ -1881,8 +1881,6 @@
       "warnings": "Warnings",
       "connections": "Connections",
       "noConnections": "You have no saved connections.",
-      "unmatchedDeny": "No rule of your role names this connection, so the AI cannot use it.",
-      "unmatchedAllow": "No rule of your role names this connection; the local settings decide.",
       "databases": "Databases",
       "relations": "Relations",
       "never": "Never",
@@ -1893,7 +1891,20 @@
       "freeSql": "Free-form queries",
       "freeSqlOn": "allowed",
       "freeSqlOff": "disabled — the rule is limited to some databases or relations, and a query's text cannot be checked against that",
-      "humanNotEnforced": "What people may do is shown for reference: this version applies the policy to the AI only."
+      "humanNotEnforced": "What people may do is shown for reference: this version applies the policy to the AI only.",
+      "connectionCounts": "{{total}} connections · {{managed}} with rules · {{unmatched}} without",
+      "searchPlaceholder": "Filter connections",
+      "clearSearch": "Clear filter",
+      "filterLabel": "Show",
+      "filterManaged": "With rules ({{count}})",
+      "filterUnmatched": "Without ({{count}})",
+      "filterAll": "All",
+      "noMatches": "No connection matches.",
+      "unmatchedAllowShort": "no rule — local settings decide",
+      "unmatchedDenyShort": "no rule — blocked for the AI",
+      "rowSummary": "AI: {{ai}} · free SQL: {{freeSql}}",
+      "freeSqlShortOn": "yes",
+      "freeSqlShortOff": "no"
     }
   },
   "notifications": {

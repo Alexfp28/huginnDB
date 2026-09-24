@@ -7,7 +7,7 @@
  * — the case that matters most — that a broken policy blocks the AI.
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/lib/i18n";
@@ -65,7 +65,12 @@ describe("PolicySection", () => {
     expect(await screen.findByText("sales")).toBeTruthy();
     expect(screen.getByText("ana")).toBeTruthy();
     expect(screen.getByText("Active")).toBeTruthy();
-    expect(screen.getByText("ERP")).toBeTruthy();
+    expect(screen.getByText(/1 with rules · 1 without/)).toBeTruthy();
+    // One line per connection until it is opened.
+    expect(screen.getByText("AI: select · free SQL: no")).toBeTruthy();
+    expect(screen.queryByText("invoices, v_invoice_*")).toBeNull();
+
+    fireEvent.click(screen.getByText("ERP"));
     expect(screen.getByText("billing")).toBeTruthy();
     expect(screen.getByText("invoices, v_invoice_*")).toBeTruthy();
     expect(screen.getByText("v_invoice_cards")).toBeTruthy();
@@ -73,10 +78,66 @@ describe("PolicySection", () => {
     expect(screen.getByText("select")).toBeTruthy();
     expect(screen.getByText("select, insert, update")).toBeTruthy();
     expect(screen.getByText(/^disabled/)).toBeTruthy();
-    // A connection no rule names is out of the AI's reach under `deny`.
-    expect(screen.getByText(/the AI cannot use it/)).toBeTruthy();
     // And the panel is honest about phase 1.
     expect(screen.getByText(/applies the policy to the AI only/)).toBeTruthy();
+  });
+
+  it("opens on the connections a rule names, the rest one click away", async () => {
+    policyStatus.mockResolvedValue(status());
+    render(<PolicySection />);
+
+    expect(await screen.findByText("ERP")).toBeTruthy();
+    expect(screen.queryByText("HR")).toBeNull();
+
+    fireEvent.click(screen.getByText("Without (1)"));
+    expect(screen.getByText("HR")).toBeTruthy();
+    // Under `deny`, a connection no rule names is out of the AI's reach.
+    expect(screen.getByText("no rule — blocked for the AI")).toBeTruthy();
+    expect(screen.queryByText("ERP")).toBeNull();
+  });
+
+  it("stays usable with many connections", async () => {
+    const many = Array.from({ length: 25 }, (_, i) => ({
+      id: `c${i}`,
+      name: `Client ${String(i).padStart(2, "0")}`,
+      unmatched: i >= 3,
+      leftAlone: false,
+      rules:
+        i < 3
+          ? [
+              {
+                databases: null,
+                allow: null,
+                deny: [],
+                human: ["select"],
+                ai: ["select"],
+                freeSql: true,
+              },
+            ]
+          : [],
+    }));
+    policyStatus.mockResolvedValue(status({ connections: many }));
+    render(<PolicySection />);
+
+    expect(
+      await screen.findByText("25 connections · 3 with rules · 22 without"),
+    ).toBeTruthy();
+    // Only the three a rule names are listed to begin with.
+    expect(screen.getAllByText(/^Client /)).toHaveLength(3);
+
+    fireEvent.click(screen.getByText("All"));
+    expect(screen.getAllByText(/^Client /)).toHaveLength(25);
+
+    fireEvent.change(screen.getByPlaceholderText("Filter connections"), {
+      target: { value: "client 2" },
+    });
+    // "Client 20" … "Client 24", matched without regard to case.
+    expect(screen.getAllByText(/^Client /)).toHaveLength(5);
+
+    fireEvent.change(screen.getByPlaceholderText("Filter connections"), {
+      target: { value: "nothing like it" },
+    });
+    expect(screen.getByText("No connection matches.")).toBeTruthy();
   });
 
   it("says a broken policy blocks the AI, and why", async () => {

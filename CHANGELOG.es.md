@@ -32,7 +32,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   todas las peticiones de la IA en vez de quedarse sin política, una errata en
   el fichero es un error y no una restricción que falta, y la cuenta se lee del
   sistema operativo, nunca de `USERNAME`. **Ajustes → Política** muestra de
-  dónde viene la política, la cuenta y el rol, y qué permite cada conexión; el
+  dónde viene la política, la cuenta y el rol, y qué permite cada conexión
+  —empezando por las conexiones que nombra alguna regla, una línea por
+  conexión hasta desplegarla, con filtro por nombre para equipos con decenas
+  de ellas—; el
   registro de auditoría MCP anota ahora `user=` y `role=`. Aplicar los permisos
   `human` a las personas en la app es la siguiente fase. Ver
   [`docs/POLICY.es.md`](docs/POLICY.es.md) y el gotcha #94 de `CLAUDE.md`.

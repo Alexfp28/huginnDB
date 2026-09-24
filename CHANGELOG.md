@@ -29,7 +29,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   back to none, a typo in the file is an error rather than a missing
   restriction, and the account is read from the operating system, never from
   `USERNAME`. **Settings → Policy** shows where the policy came from, the
-  account and role, and what each connection allows; the MCP audit log now
+  account and role, and what each connection allows — opening on the
+  connections a rule names, one line each until expanded, with a name filter
+  for machines with dozens of them; the MCP audit log now
   records `user=` and `role=`. Applying the `human` permissions to people in
   the app is the next phase. See [`docs/POLICY.md`](docs/POLICY.md) and
   `CLAUDE.md` gotcha #94.
