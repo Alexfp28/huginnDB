@@ -421,10 +421,122 @@ pub fn is_ddl(sql: &str) -> bool {
 /// [`is_read_only`] is intentionally *not* changed by this — it also drives
 /// whether the GUI fetches a result set, and there a false positive would blank
 /// the grid for an ordinary query.
+///
+/// Under a `WITH` head the `INTO` of `INSERT INTO` / `MERGE INTO` is not a
+/// `SELECT … INTO`: that statement is row-level DML behind a CTE, and reporting
+/// it as DDL put `WITH src AS (…) INSERT INTO t SELECT …` out of reach of a
+/// `data` connection. [`with_performs_dml`] gives it its real tier instead.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 fn is_select_into(head_lower: &str) -> bool {
-    (head_lower.starts_with("select") || head_lower.starts_with("with"))
-        && contains_word(head_lower, "into")
+    if head_lower.starts_with("select") {
+        return contains_word(head_lower, "into");
+    }
+    if !head_lower.starts_with("with") {
+        return false;
+    }
+    let words = words(head_lower);
+    words.iter().enumerate().any(|(i, w)| {
+        *w == "into" && !matches!(i.checked_sub(1).map(|p| words[p]), Some("insert" | "merge"))
+    })
+}
+
+/// Whether a statement that opens with `WITH` writes rows.
+///
+/// Postgres lets a CTE carry DML — `WITH d AS (DELETE FROM t RETURNING *)
+/// SELECT * FROM d` — and both Postgres and MySQL 8 accept a `WITH` in front of
+/// a top-level `INSERT` / `UPDATE` / `DELETE`. By its first keyword every one of
+/// them is a read, and [`classify`] reported exactly that until this check
+/// existed: a `read-only` MCP connection and the AI panel's no-write rule both
+/// let a `WITH`-prefixed `DELETE` through, and the server ran it.
+///
+/// A DML keyword anywhere in the statement's *code* counts. Literals, quoted
+/// identifiers and comments are blanked first by [`mask_non_code`], so `WHERE
+/// action = 'update'` is still a read. Two spellings of the keywords that are
+/// not DML are excluded: the row-locking clauses `FOR UPDATE` / `FOR NO KEY
+/// UPDATE`, and T-SQL's `MERGE JOIN` hint. Anything else errs towards the write,
+/// which is the safe direction for a boundary.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+fn with_performs_dml(sql: &str) -> bool {
+    let masked = String::from_utf8_lossy(&mask_non_code(sql)).to_ascii_lowercase();
+    let words = words(&masked);
+    let at = |i: Option<usize>| i.and_then(|i| words.get(i)).copied();
+    words.iter().enumerate().any(|(i, w)| match *w {
+        "insert" | "delete" => true,
+        "update" => !matches!(at(i.checked_sub(1)), Some("for" | "key")),
+        "merge" => at(Some(i + 1)) != Some("join"),
+        _ => false,
+    })
+}
+
+/// The statement an `EXPLAIN ANALYZE` runs, if `head_lower` is one.
+///
+/// `EXPLAIN ANALYZE` is not a preview: Postgres (and MySQL 8's `EXPLAIN
+/// ANALYZE`) *execute* the statement to measure it, so `EXPLAIN ANALYZE DELETE
+/// FROM t` deletes. A plain `EXPLAIN` only plans, and stays a read. Accepts
+/// both the parenthesised option list (`EXPLAIN (ANALYZE, BUFFERS) …`, where any
+/// mention of `ANALYZE` counts — `ANALYZE false` is rare enough that erring
+/// towards "it runs" costs nothing) and the bare keywords, in either spelling,
+/// with `VERBOSE` and MySQL's `FORMAT = …` around them.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+fn explain_analyze_target(head_lower: &str) -> Option<&str> {
+    let mut rest = head_lower.strip_prefix("explain")?.trim_start();
+    let mut analyze = false;
+    if let Some(options) = rest.strip_prefix('(') {
+        let close = options.find(')')?;
+        analyze = contains_word(&options[..close], "analyze")
+            || contains_word(&options[..close], "analyse");
+        rest = options[close + 1..].trim_start();
+    } else {
+        loop {
+            let word_end = rest
+                .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .unwrap_or(rest.len());
+            match &rest[..word_end] {
+                "analyze" | "analyse" => analyze = true,
+                "verbose" => {}
+                "format" => {
+                    // `FORMAT = TREE`, `FORMAT=JSON`: skip the `=` and its value.
+                    let after = rest[word_end..]
+                        .trim_start()
+                        .strip_prefix('=')?
+                        .trim_start();
+                    let value_end = after
+                        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                        .unwrap_or(after.len());
+                    rest = after[value_end..].trim_start();
+                    continue;
+                }
+                _ => break,
+            }
+            rest = rest[word_end..].trim_start();
+        }
+    }
+    analyze.then_some(rest)
+}
+
+/// A read-looking statement's real tier: a read, unless it is a `WITH` that
+/// carries DML or an `EXPLAIN ANALYZE` of something that is not a read.
+///
+/// Kept apart from [`is_read_only`] on purpose — that one also decides whether
+/// the GUI fetches a result set, and a `WITH … DELETE … RETURNING` does return
+/// rows. This is only about which tier the statement *needs*.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+fn read_or_disguised_write(sql: &str) -> StmtClass {
+    let head = skip_leading_noise(sql)
+        .trim_start_matches(|c: char| c == '(' || c.is_whitespace())
+        .to_ascii_lowercase();
+    if head.starts_with("with") && with_performs_dml(&head) {
+        return StmtClass::DataWrite;
+    }
+    if let Some(target) = explain_analyze_target(&head) {
+        // Nothing after the options means there is nothing we can vouch for.
+        return if target.is_empty() {
+            StmtClass::DataWrite
+        } else {
+            classify_one(target)
+        };
+    }
+    StmtClass::Read
 }
 
 /// Split `sql` into its top-level statements.
@@ -450,11 +562,39 @@ fn is_select_into(head_lower: &str) -> bool {
 /// This is not a SQL parser and is not trying to be (gotcha #33): it only
 /// needs to know where a statement ends, which is a lexical question.
 pub fn split_statements(sql: &str) -> Vec<&str> {
-    let bytes = sql.as_bytes();
+    let masked = mask_non_code(sql);
     let mut parts = Vec::new();
     let mut start = 0usize;
+    for (i, &byte) in masked.iter().enumerate() {
+        if byte == b';' {
+            parts.push(&sql[start..i]);
+            start = i + 1;
+        }
+    }
+    parts.push(&sql[start..]);
+    parts
+        .into_iter()
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// `sql` with every byte that is not code blanked to a space: string literals,
+/// quoted identifiers (`"…"`, `` `…` ``, `[…]`), comments and Postgres
+/// dollar-quoted bodies, delimiters included.
+///
+/// Byte offsets line up with `sql`, which is what lets [`split_statements`]
+/// cut the original text wherever the mask still shows a `;`, and lets
+/// [`with_performs_dml`] look for keywords without a literal `'delete'`
+/// counting as one. One lexer for both, so the two can never disagree about
+/// where a string ends. Bytes rather than a `String`: the offsets are what
+/// matter, and nothing here should be able to panic on odd input.
+fn mask_non_code(sql: &str) -> Vec<u8> {
+    let bytes = sql.as_bytes();
+    let mut out = bytes.to_vec();
     let mut i = 0usize;
     while i < bytes.len() {
+        let from = i;
         match bytes[i] {
             // A string literal or a quoted identifier. The closing quote may be
             // doubled to escape itself in every dialect here, and backslash-
@@ -526,21 +666,29 @@ pub fn split_statements(sql: &str) -> Vec<&str> {
                         None => i = bytes.len(),
                     }
                 }
-                None => i += 1,
+                None => {
+                    i += 1;
+                    continue;
+                }
             },
-            b';' => {
-                parts.push(&sql[start..i]);
-                start = i + 1;
+            // Code, `;` included: left as it is.
+            _ => {
                 i += 1;
+                continue;
             }
-            _ => i += 1,
         }
+        // A backslash escape can step past the end of an unterminated literal.
+        let to = i.min(bytes.len());
+        out[from..to].fill(b' ');
     }
-    parts.push(&sql[start..]);
-    parts
-        .into_iter()
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
+    out
+}
+
+/// The identifier-shaped words of `s`, in order — the tokeniser
+/// [`contains_word`] uses, for callers that also need a word's neighbours.
+fn words(s: &str) -> Vec<&str> {
+    s.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|w| !w.is_empty())
         .collect()
 }
 
@@ -591,7 +739,7 @@ fn classify_one(sql: &str) -> StmtClass {
     if is_ddl(sql) {
         StmtClass::Ddl
     } else if is_read_only(sql) {
-        StmtClass::Read
+        read_or_disguised_write(sql)
     } else {
         StmtClass::DataWrite
     }
@@ -950,6 +1098,110 @@ mod tests {
         // Several reads stay a read: the rule is the strictest tier present,
         // not "more than one statement is suspicious".
         assert_eq!(classify("SELECT 1; SELECT 2"), StmtClass::Read);
+    }
+
+    #[test]
+    fn a_with_that_carries_dml_is_a_write() {
+        for sql in [
+            "WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+            "WITH u AS (UPDATE t SET a = 1 WHERE id = 2 RETURNING *) SELECT * FROM u",
+            "with d as (delete from t returning id) select count(*) from d",
+            "WITH src AS (SELECT 1 AS id) INSERT INTO t (id) SELECT id FROM src",
+            "WITH src AS (SELECT id FROM s) UPDATE t SET a = 1 WHERE id IN (SELECT id FROM src)",
+            "WITH src AS (SELECT id FROM s) DELETE FROM t WHERE id IN (SELECT id FROM src)",
+            "-- looks harmless\nWITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+            "(WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d)",
+        ] {
+            assert_eq!(classify(sql), StmtClass::DataWrite, "{sql}");
+            // The GUI still fetches their result set: `RETURNING` returns rows.
+            assert!(is_read_only(sql) || sql.contains("INSERT"), "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_with_that_only_reads_stays_a_read() {
+        for sql in [
+            "WITH x AS (SELECT 1) SELECT * FROM x",
+            // The words are data or names here, not statements.
+            "WITH x AS (SELECT * FROM log WHERE action = 'delete') SELECT * FROM x",
+            "WITH x AS (SELECT \"update\" FROM t) SELECT * FROM x",
+            "WITH x AS (SELECT 1 /* delete */) SELECT * FROM x",
+            "WITH x AS (SELECT $$insert$$) SELECT * FROM x",
+            // Row locks and a join hint borrow the keywords.
+            "WITH x AS (SELECT * FROM t FOR UPDATE) SELECT * FROM x",
+            "WITH x AS (SELECT * FROM t FOR NO KEY UPDATE) SELECT * FROM x",
+            "WITH x AS (SELECT * FROM a INNER MERGE JOIN b ON a.id = b.id) SELECT * FROM x",
+        ] {
+            assert_eq!(classify(sql), StmtClass::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_with_in_front_of_insert_into_is_dml_not_select_into() {
+        // It used to be DDL, because of the `into`, which kept it away from a
+        // `data` connection that is allowed to insert.
+        let sql = "WITH src AS (SELECT 1 AS id) INSERT INTO t (id) SELECT id FROM src";
+        assert!(!is_ddl(sql));
+        assert_eq!(classify(sql), StmtClass::DataWrite);
+        // A real `SELECT … INTO` behind a `WITH` still creates a table.
+        assert_eq!(
+            classify("WITH x AS (SELECT 1 AS a) SELECT a INTO t2 FROM x"),
+            StmtClass::Ddl
+        );
+    }
+
+    #[test]
+    fn explain_analyze_takes_the_tier_of_what_it_runs() {
+        for sql in [
+            "EXPLAIN ANALYZE DELETE FROM t WHERE id = 1",
+            "EXPLAIN ANALYSE UPDATE t SET a = 1 WHERE id = 1",
+            "EXPLAIN (ANALYZE, BUFFERS) INSERT INTO t VALUES (1)",
+            "EXPLAIN (FORMAT JSON, ANALYZE true) DELETE FROM t WHERE id = 1",
+            "EXPLAIN ANALYZE VERBOSE DELETE FROM t WHERE id = 1",
+            "EXPLAIN ANALYZE FORMAT=TREE UPDATE t SET a = 1 WHERE id = 1",
+            // Nothing after the options: there is nothing to vouch for.
+            "EXPLAIN ANALYZE",
+        ] {
+            assert_eq!(classify(sql), StmtClass::DataWrite, "{sql}");
+        }
+        assert_eq!(
+            classify("EXPLAIN ANALYZE CREATE TABLE t2 AS SELECT * FROM t"),
+            StmtClass::Ddl
+        );
+        assert_eq!(
+            classify("EXPLAIN ANALYZE WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d"),
+            StmtClass::DataWrite
+        );
+    }
+
+    #[test]
+    fn a_plain_explain_only_plans_and_stays_a_read() {
+        for sql in [
+            "EXPLAIN DELETE FROM t WHERE id = 1",
+            "EXPLAIN FORMAT=JSON UPDATE t SET a = 1 WHERE id = 1",
+            "EXPLAIN (FORMAT JSON) DELETE FROM t WHERE id = 1",
+            "EXPLAIN QUERY PLAN DELETE FROM t WHERE id = 1",
+            "EXPLAIN ANALYZE SELECT * FROM t",
+            "EXPLAIN (ANALYZE) SELECT * FROM t",
+        ] {
+            assert_eq!(classify(sql), StmtClass::Read, "{sql}");
+        }
+    }
+
+    #[test]
+    fn masking_keeps_offsets_and_blanks_only_non_code() {
+        let sql = "SELECT 'a;b', \"c;d\" /* e;f */ FROM t; -- g;h\nSELECT ñ";
+        let masked = super::mask_non_code(sql);
+        assert_eq!(masked.len(), sql.len());
+        let semis: Vec<usize> = masked
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| **b == b';')
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(semis, vec![sql.find("t;").unwrap() + 1]);
+        // Code outside the literals, multi-byte identifiers included, is kept.
+        assert!(String::from_utf8_lossy(&masked).ends_with("SELECT ñ"));
     }
 
     /// `DESCRIBE` is how a model asks MySQL for a table's shape, and it is a

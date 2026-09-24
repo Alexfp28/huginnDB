@@ -21,6 +21,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the same way. Ad-hoc queries are untouched: an empty `find` in the editor
   still reports no columns.
 
+### Security
+
+- **Three statements that write were classified as reads, and ran under a
+  read-only policy.** The tier a statement needs — what a `read-only` MCP
+  connection and the AI panel's no-write rule check — is decided from its text,
+  and three shapes read as a `SELECT` by their first word:
+  - a `WITH` carrying DML: Postgres runs `WITH d AS (DELETE FROM t RETURNING *)
+    SELECT * FROM d`, and Postgres and MySQL 8 accept a `WITH` in front of a
+    top-level `INSERT` / `UPDATE` / `DELETE`;
+  - `EXPLAIN ANALYZE`, which on Postgres and MySQL *executes* the statement it
+    measures — `EXPLAIN ANALYZE DELETE …` deletes;
+  - a MongoDB `aggregate` ending in `$out` (replaces a collection) or `$merge`
+    (writes into one), classified by the method name alone.
+
+  All three now get the tier of what they do: a `WITH` with a DML keyword in its
+  code is a data write (literals, quoted names and comments are ignored, and so
+  are `FOR UPDATE` and T-SQL's `MERGE JOIN`), `EXPLAIN ANALYZE` takes the tier
+  of the statement it runs while a plain `EXPLAIN` stays a read, `$out` is DDL
+  and `$merge` a data write. On the way, `WITH … INSERT INTO …` stops being
+  reported as DDL because of its `INTO`, which had kept it away from a `data`
+  connection allowed to insert.
+
+  **And the database now enforces it too.** A statement an AI sends that is
+  classified as a read runs inside a read-only transaction on PostgreSQL and
+  MySQL, and with `PRAGMA query_only` on SQLite, so a write the classifier
+  misses fails on the server instead of executing. Limits, stated plainly: SQL
+  Server has no read-only transaction and MongoDB no such mode, so those two
+  rely on the classifier alone; and on MySQL a DDL statement commits implicitly
+  before running, so there the barrier stops DML, not DDL. See `CLAUDE.md`
+  gotcha #93.
+
 ## [1.28.0] — 2026-09-23
 
 ### Added

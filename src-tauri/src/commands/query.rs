@@ -1043,6 +1043,44 @@ pub(crate) async fn execute_with_state(
     connection_id: &str,
     sql: &str,
 ) -> AppResult<QueryResult> {
+    execute_adhoc(sink, state, connection_id, sql, false).await
+}
+
+/// [`execute_with_state`] for a statement that has been classified as a read,
+/// run so that **the database** refuses it if the classification was wrong.
+///
+/// The tier a statement needs is decided from its text (`db::classify`), and
+/// text can hide a write: a CTE carrying a `DELETE`, an `EXPLAIN ANALYZE`, a
+/// function with side effects called from a `SELECT`. Every one of those was
+/// classified as a read at some point, and a read-only MCP connection or the AI
+/// panel then ran it. This is the second barrier, for the callers that act for
+/// an AI (`bridge::exec`): the read runs inside a read-only transaction on
+/// PostgreSQL and MySQL and with `PRAGMA query_only` on SQLite, so a
+/// misclassified write fails on the server instead of executing.
+///
+/// What it does not cover, said plainly: SQL Server has no read-only
+/// transaction, and runs as before; MongoDB has no such mode either, and relies
+/// on its classifier alone. On MySQL a DDL statement commits the transaction
+/// implicitly before running, so there the barrier stops DML but not DDL — which
+/// the classifier's DDL-first check has to catch.
+///
+/// Refuses outright a statement that is not even shaped like a read.
+pub(crate) async fn execute_read_with_state(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: &str,
+    sql: &str,
+) -> AppResult<QueryResult> {
+    execute_adhoc(sink, state, connection_id, sql, true).await
+}
+
+async fn execute_adhoc(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: &str,
+    sql: &str,
+    read_only: bool,
+) -> AppResult<QueryResult> {
     let pool = state.pool_for(connection_id)?;
     let driver = pool.driver_name();
     let start = Instant::now();
@@ -1075,6 +1113,11 @@ pub(crate) async fn execute_with_state(
     }
 
     if !is_read_only(sql) {
+        if read_only {
+            return Err(AppError::InvalidInput(
+                "this statement is not a read, and was sent to be run as one".into(),
+            ));
+        }
         // Ad-hoc, hand-typed DML/DDL runs through the **unprepared** simple-query
         // protocol (`raw_sql`), not the prepared/binary protocol that
         // `sqlx::query(...)` uses. The editor never binds parameters, so there's
@@ -1141,7 +1184,11 @@ pub(crate) async fn execute_with_state(
                 driver,
                 sql,
                 start,
-                fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
+                if read_only {
+                    fetch_in_read_only_tx(&p, "BEGIN READ ONLY", sql).await
+                } else {
+                    fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
+                }
             );
             (pg_result(&rows), truncated)
         }
@@ -1152,7 +1199,11 @@ pub(crate) async fn execute_with_state(
                 driver,
                 sql,
                 start,
-                fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
+                if read_only {
+                    fetch_in_read_only_tx(&p, "START TRANSACTION READ ONLY", sql).await
+                } else {
+                    fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
+                }
             );
             (mysql_result(&rows), truncated)
         }
@@ -1163,7 +1214,11 @@ pub(crate) async fn execute_with_state(
                 driver,
                 sql,
                 start,
-                fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
+                if read_only {
+                    fetch_sqlite_query_only(&p, sql).await
+                } else {
+                    fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
+                }
             );
             (sqlite_result(&rows), truncated)
         }
@@ -1626,6 +1681,56 @@ where
         }
     }
     Ok((rows, truncated))
+}
+
+/// [`fetch_capped`] inside a transaction opened with `begin` (`BEGIN READ
+/// ONLY` / `START TRANSACTION READ ONLY`), always rolled back — see
+/// [`execute_read_with_state`]. The rollback runs whether or not the read
+/// failed, so the connection goes back to the pool outside any transaction;
+/// the read's own error wins over a failed rollback, being the one that says
+/// what went wrong.
+async fn fetch_in_read_only_tx<DB>(
+    pool: &sqlx::Pool<DB>,
+    begin: &'static str,
+    sql: &str,
+) -> Result<(Vec<DB::Row>, bool), sqlx::Error>
+where
+    DB: sqlx::Database,
+    for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
+    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+{
+    let mut tx = pool.begin_with(begin).await?;
+    let fetched = fetch_capped(&mut *tx, sql, MAX_ADHOC_QUERY_ROWS).await;
+    let rolled_back = tx.rollback().await;
+    let rows = fetched?;
+    rolled_back?;
+    Ok(rows)
+}
+
+/// SQLite's counterpart of [`fetch_in_read_only_tx`]: `PRAGMA query_only`
+/// refuses every write, DDL included, on the connection it is set on.
+///
+/// It is a per-connection setting, so the one thing that must not happen is
+/// handing the connection back to the pool still in that mode — the user's own
+/// next write from the editor would fail for no visible reason. If switching it
+/// off fails, the connection is closed instead of being returned.
+async fn fetch_sqlite_query_only(
+    pool: &sqlx::SqlitePool,
+    sql: &str,
+) -> Result<(Vec<sqlx::sqlite::SqliteRow>, bool), sqlx::Error> {
+    let mut conn = pool.acquire().await?;
+    sqlx::query("PRAGMA query_only = ON")
+        .execute(&mut *conn)
+        .await?;
+    let fetched = fetch_capped(&mut *conn, sql, MAX_ADHOC_QUERY_ROWS).await;
+    if sqlx::query("PRAGMA query_only = OFF")
+        .execute(&mut *conn)
+        .await
+        .is_err()
+    {
+        conn.close_on_drop();
+    }
+    fetched
 }
 
 /// Reject filter payloads that would build pathological or invalid SQL.
@@ -3887,6 +3992,64 @@ mod filter_tests {
 /// one is exactly what these cover — which is also where the interesting bugs
 /// are: a budget one driver forgets to charge, and a field serde drops at the
 /// IPC boundary (gotcha #14) because nobody declared it on both sides.
+#[cfg(test)]
+mod read_barrier_tests {
+    use super::*;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    /// One connection, so the test sees the very connection the barrier used
+    /// when it checks that `query_only` was switched back off.
+    async fn sqlite_pool(name: &str) -> sqlx::SqlitePool {
+        let path = std::env::temp_dir().join(format!("huginndb_read_barrier_{name}.db"));
+        let _ = std::fs::remove_file(&path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO t (id) VALUES (1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn a_write_that_reaches_the_barrier_is_refused_by_sqlite() {
+        let pool = sqlite_pool("refused").await;
+        // As if the classifier had let it through as a read.
+        let err = fetch_sqlite_query_only(&pool, "DELETE FROM t RETURNING id").await;
+        assert!(err.is_err(), "query_only must refuse the delete");
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(n, 1, "the row must still be there");
+    }
+
+    #[tokio::test]
+    async fn the_connection_goes_back_to_the_pool_writable() {
+        let pool = sqlite_pool("restored").await;
+        let (rows, _) = fetch_sqlite_query_only(&pool, "SELECT id FROM t")
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        // The pool's only connection is the one the read used.
+        sqlx::query("INSERT INTO t (id) VALUES (2)")
+            .execute(&pool)
+            .await
+            .expect("the user's own write must not inherit query_only");
+    }
+}
+
 #[cfg(test)]
 mod batch_tests {
     use super::*;

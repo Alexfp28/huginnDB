@@ -160,19 +160,32 @@ pub fn parse_enabled(stages: &[PipelineStageInput]) -> AppResult<Vec<Document>> 
 /// pipeline is sent, so the message names the stage instead of surfacing a
 /// server error.
 pub fn reject_write_stages(stages: &[Document]) -> AppResult<()> {
-    for (i, stage) in stages.iter().enumerate() {
-        for key in stage.keys() {
-            if key == "$out" || key == "$merge" {
-                return Err(AppError::InvalidInput(format!(
-                    "stage {} uses {key}, which writes to a collection — HuginnDB does not run \
-                     write stages from the aggregation editor. Remove it to preview the pipeline, \
-                     or run it from the query editor.",
-                    i + 1
-                )));
-            }
-        }
+    match write_stage(stages) {
+        Some((i, key)) => Err(AppError::InvalidInput(format!(
+            "stage {} uses {key}, which writes to a collection — HuginnDB does not run \
+             write stages from the aggregation editor. Remove it to preview the pipeline, \
+             or run it from the query editor.",
+            i + 1
+        ))),
+        None => Ok(()),
     }
-    Ok(())
+}
+
+/// The first stage that writes, as `(index, "$out" | "$merge")`.
+///
+/// Shared by [`reject_write_stages`] and by `shell::MongoOp::class`, which is
+/// what keeps an `aggregate` ending in `$out` from being classified as a read:
+/// the editor's guard and the MCP/AI tier have to agree on what a write stage
+/// is, or the pipeline the editor refuses to preview is one a read-only
+/// connection may run.
+pub fn write_stage(stages: &[Document]) -> Option<(usize, &'static str)> {
+    stages.iter().enumerate().find_map(|(i, stage)| {
+        stage.keys().find_map(|key| match key.as_str() {
+            "$out" => Some((i, "$out")),
+            "$merge" => Some((i, "$merge")),
+            _ => None,
+        })
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -24,6 +24,40 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   misma forma. Las consultas ad hoc no cambian: un `find` vacío en el editor
   sigue sin informar de columnas.
 
+### Seguridad
+
+- **Tres sentencias que escriben se clasificaban como lecturas y se ejecutaban
+  con una política de solo lectura.** El nivel que necesita una sentencia —lo
+  que comprueban una conexión MCP `read-only` y la regla de no escritura del
+  panel de IA— se decide a partir de su texto, y tres formas parecían un
+  `SELECT` por su primera palabra:
+  - un `WITH` con DML: Postgres ejecuta `WITH d AS (DELETE FROM t RETURNING *)
+    SELECT * FROM d`, y Postgres y MySQL 8 aceptan un `WITH` delante de un
+    `INSERT` / `UPDATE` / `DELETE`;
+  - `EXPLAIN ANALYZE`, que en Postgres y MySQL *ejecuta* la sentencia que
+    mide: `EXPLAIN ANALYZE DELETE …` borra;
+  - un `aggregate` de MongoDB que termina en `$out` (sustituye una colección) o
+    en `$merge` (escribe en una), clasificado solo por el nombre del método.
+
+  Las tres reciben ahora el nivel de lo que hacen: un `WITH` con una palabra
+  clave de DML en su código es una escritura de datos (se ignoran literales,
+  nombres entre comillas y comentarios, y también `FOR UPDATE` y el `MERGE JOIN`
+  de T-SQL), `EXPLAIN ANALYZE` toma el nivel de la sentencia que ejecuta
+  mientras que un `EXPLAIN` normal sigue siendo lectura, `$out` es DDL y
+  `$merge` una escritura de datos. De paso, `WITH … INSERT INTO …` deja de
+  contar como DDL por su `INTO`, lo que lo dejaba fuera del alcance de una
+  conexión `data` que sí puede insertar.
+
+  **Y ahora también lo hace cumplir la base de datos.** Una sentencia que envía
+  una IA y que se clasifica como lectura se ejecuta dentro de una transacción de
+  solo lectura en PostgreSQL y MySQL, y con `PRAGMA query_only` en SQLite, así
+  que una escritura que se le escape al clasificador falla en el servidor en vez
+  de ejecutarse. Límites, dichos claramente: SQL Server no tiene transacciones
+  de solo lectura ni MongoDB un modo equivalente, así que esos dos dependen solo
+  del clasificador; y en MySQL un DDL hace commit implícito antes de ejecutarse,
+  así que ahí la barrera frena el DML, no el DDL. Ver el gotcha #93 de
+  `CLAUDE.md`.
+
 ## [1.28.0] — 2026-09-23
 
 ### Añadido

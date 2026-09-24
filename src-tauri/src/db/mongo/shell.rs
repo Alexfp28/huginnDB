@@ -124,10 +124,21 @@ impl MongoOp {
     /// grammar rule rather than by a permission change.
     pub fn class(&self) -> StmtClass {
         match self {
-            MongoOp::Find { .. }
-            | MongoOp::Aggregate { .. }
-            | MongoOp::Count { .. }
-            | MongoOp::Distinct { .. } => StmtClass::Read,
+            // An aggregation reads unless it ends in a write stage. `$out`
+            // creates or *replaces* a whole collection, which is what `CREATE
+            // TABLE … AS` / `DROP` get on the SQL side; `$merge` writes documents
+            // into one that may already exist. Both used to be classified as a
+            // read by the `aggregate` method name alone, and `query::execute`
+            // runs the pipeline as given — so a read-only connection could
+            // overwrite a collection.
+            MongoOp::Aggregate { pipeline } => match super::aggregation::write_stage(pipeline) {
+                Some((_, "$out")) => StmtClass::Ddl,
+                Some(_) => StmtClass::DataWrite,
+                None => StmtClass::Read,
+            },
+            MongoOp::Find { .. } | MongoOp::Count { .. } | MongoOp::Distinct { .. } => {
+                StmtClass::Read
+            }
             MongoOp::InsertOne { .. }
             | MongoOp::InsertMany { .. }
             | MongoOp::UpdateOne { .. }
@@ -1318,6 +1329,35 @@ mod tests {
             assert_eq!(parse(sql).unwrap().op.class(), StmtClass::Ddl, "{sql}");
             assert!(!parse(sql).unwrap().op.is_read(), "{sql}");
         }
+    }
+
+    #[test]
+    fn an_aggregation_that_writes_is_not_a_read() {
+        use crate::db::sql::StmtClass;
+
+        // `$out` creates or replaces a whole collection.
+        for sql in [
+            "db.t.aggregate([{$out: \"u\"}])",
+            "db.t.aggregate([{$match: {a: 1}}, {$out: \"t\"}])",
+        ] {
+            assert_eq!(parse(sql).unwrap().op.class(), StmtClass::Ddl, "{sql}");
+        }
+        // `$merge` writes documents into one.
+        assert_eq!(
+            parse("db.t.aggregate([{$match: {}}, {$merge: {into: \"u\"}}])")
+                .unwrap()
+                .op
+                .class(),
+            StmtClass::DataWrite
+        );
+        // A pipeline that only reads stays a read.
+        assert_eq!(
+            parse("db.t.aggregate([{$match: {a: 1}}, {$group: {_id: \"$b\"}}])")
+                .unwrap()
+                .op
+                .class(),
+            StmtClass::Read
+        );
     }
 
     #[test]
