@@ -127,6 +127,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   que `export` no tiene equivalente en la base de datos. HuginnDB nunca lo
   ejecuta: el diálogo ofrece Copiar y Guardar. Ver el gotcha #98 de `CLAUDE.md`.
 
+- **La política gestionada se puede editar desde HuginnDB en lugar de a
+  mano.** Era un JSON que un administrador escribía en una carpeta compartida,
+  y una errata bloqueaba todos los equipos, porque la política falla cerrada.
+  Ajustes → Política → **Editar política** la abre como un formulario —roles y
+  sus reglas (servidor, bases de datos, tablas, qué pueden hacer la persona y su
+  IA, su usuario de base de datos), cuentas, rol por defecto— con el JSON a un
+  clic; los dos editan un único borrador, y un campo que esta versión no conoce
+  se conserva tal cual. Cada cambio lo comprueba el analizador que aplica la
+  política, y un borrador no válido no se puede guardar. **Ver como** enseña lo
+  que tendría cualquier cuenta y su IA en cada conexión guardada con el
+  borrador. Los nombres se sugieren a partir de las conexiones guardadas y del
+  catálogo de una conexión abierta, y siempre se pueden escribir. Quién puede
+  guardar lo decide la carpeta compartida: el editor solo guarda donde Windows
+  deja a la cuenta escribir en la carpeta de la política, y en el resto es de
+  solo lectura con el motivo de Windows. Al guardar se conserva un `.bak`,
+  nunca se sobrescribe un cambio que otra persona hizo mientras tanto (tu texto
+  va al portapapeles) y se aplica aquí al instante. **Crear política** pone en
+  marcha una organización sin política a partir de una plantilla que mantiene
+  dentro a quien la crea, y da el comando `reg add` y el valor de directiva de
+  grupo; una política incrustada se pasa a un fichero igual. Ver el gotcha #100
+  de `CLAUDE.md`.
+
 ### Corregido
 
 - **Una política gestionada ya no se rompe cinco minutos porque la carpeta
