@@ -95,6 +95,7 @@ pub async fn get_view_definition(
     view: String,
 ) -> AppResult<ViewDefinition> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &view)?;
     let limit = crate::error::connection_timeout(state.inner(), &connection_id);
     crate::error::with_timeout_secs(limit, "get_view_definition", async move {
         let label = match schema.as_deref() {
@@ -196,6 +197,14 @@ pub async fn preview_view_change(
     args: ViewChangeArgs,
 ) -> AppResult<ViewPreview> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    // A view's body is a query the person wrote, and can read any relation: free SQL (D3).
+    crate::commands::guard::read(
+        state.inner(),
+        &args.connection_id,
+        args.desired.schema.as_deref(),
+        &args.desired.name,
+    )?;
+    crate::commands::guard::free_read(state.inner(), &args.connection_id)?;
     let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, drop_and_recreate) =
@@ -214,6 +223,24 @@ pub async fn apply_view_change(
     args: ViewChangeArgs,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    // DDL on the view as it will be and, for a rename, as it was. A view's body is a query the person wrote, and can read any relation: free SQL (D3).
+    crate::commands::guard::relation(
+        state.inner(),
+        &args.connection_id,
+        args.desired.schema.as_deref(),
+        &args.desired.name,
+        crate::db::sql::Verbs::DDL,
+    )?;
+    if let Some(original) = &args.original {
+        crate::commands::guard::relation(
+            state.inner(),
+            &args.connection_id,
+            original.schema.as_deref(),
+            &original.name,
+            crate::db::sql::Verbs::DDL,
+        )?;
+    }
+    crate::commands::guard::free_read(state.inner(), &args.connection_id)?;
     let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
@@ -530,6 +557,20 @@ pub async fn rename_view(
         ));
     }
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &view,
+        crate::db::sql::Verbs::DDL,
+    )?;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        new_name.trim(),
+        crate::db::sql::Verbs::DDL,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
     let sql = dialect.rename_stmt(schema.as_deref(), &view, new_name.trim(), Relation::View)?;
@@ -547,6 +588,13 @@ pub async fn drop_view(
     view: String,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &view,
+        crate::db::sql::Verbs::DDL,
+    )?;
     let sink = TauriSink::new(&app, window.label());
     drop_view_inner(&sink, state.inner(), &connection_id, schema, &view).await
 }

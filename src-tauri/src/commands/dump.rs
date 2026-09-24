@@ -148,6 +148,27 @@ pub async fn export_databases(
         if let Some(names) = &target.tables {
             tables.retain(|t| names.contains(&t.name));
         }
+        // Only what the person may export. A table they asked for by name and
+        // may not export is refused rather than quietly left out — a dump that
+        // silently lacks a table is worse than one that says why it failed. A
+        // whole-database dump keeps what they may export and names nothing
+        // else, the way the explorer does.
+        let exportable = |t: &TableInfo| {
+            crate::commands::guard::export(
+                state.inner(),
+                &target.connection_id,
+                Some(&t.schema),
+                &t.name,
+            )
+        };
+        if target.tables.is_some() {
+            for t in &tables {
+                exportable(t)?;
+            }
+        } else {
+            crate::commands::guard::endpoint(state.inner(), &target.connection_id)?;
+            tables.retain(|t| exportable(t).is_ok());
+        }
         resolved.push(ResolvedExportTarget {
             database_name: target.database_name.clone(),
             pool,
@@ -312,6 +333,7 @@ pub async fn export_table(
     table: String,
 ) -> AppResult<String> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::export(state.inner(), &connection_id, schema.as_deref(), &table)?;
     let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -405,6 +427,8 @@ pub async fn export_table_rows(
         hint,
     } = query;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::export(state.inner(), &connection_id, schema.as_deref(), &table)?;
+    crate::commands::guard::raw_filter(state.inner(), &connection_id, &filter)?;
     let pool = state.pool_for(&connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(

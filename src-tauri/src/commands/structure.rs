@@ -32,6 +32,7 @@ pub async fn get_table_structure(
     table: String,
 ) -> AppResult<TableStructure> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &table)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -85,6 +86,7 @@ pub async fn get_table_create_ddl(
     table: String,
 ) -> AppResult<String> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &table)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -563,6 +565,13 @@ pub async fn preview_structure_change(
     args: StructureChangeArgs,
 ) -> AppResult<StructurePreview> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    // A dry run builds statements and runs none, so reading is enough.
+    crate::commands::guard::read(
+        state.inner(),
+        &args.connection_id,
+        args.desired.schema.as_deref(),
+        &args.desired.name,
+    )?;
     let pool = state.pool_for(&args.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -587,6 +596,32 @@ pub async fn apply_structure_change(
     args: StructureChangeArgs,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    // DDL on the table as it will be and, for a rename, as it was; and read
+    // access to every table a foreign key points at, since a key names it.
+    crate::commands::guard::relation(
+        state.inner(),
+        &args.connection_id,
+        args.desired.schema.as_deref(),
+        &args.desired.name,
+        crate::db::sql::Verbs::DDL,
+    )?;
+    if let Some(original) = &args.original {
+        crate::commands::guard::relation(
+            state.inner(),
+            &args.connection_id,
+            original.schema.as_deref(),
+            &original.name,
+            crate::db::sql::Verbs::DDL,
+        )?;
+    }
+    for fk in &args.desired.foreign_keys {
+        crate::commands::guard::read(
+            state.inner(),
+            &args.connection_id,
+            fk.ref_schema.as_deref(),
+            &fk.ref_table,
+        )?;
+    }
     apply_structure_change_inner(state.inner(), args).await
 }
 

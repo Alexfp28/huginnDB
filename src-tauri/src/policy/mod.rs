@@ -27,8 +27,11 @@ mod resolve;
 mod source;
 
 pub use enforce::{
-    enforce, filter_databases, filter_tables, free_sql_blocked, status, PolicyStatus,
+    access, enforce, filter_databases, filter_databases_for, filter_tables, filter_tables_for,
+    free_sql_blocked, relation_access, require, status, PolicyAccess, PolicyStatus, RelationAccess,
 };
+pub use model::Subject;
+pub use resolve::Need;
 // Only the MCP sidecar's `list_connections` asks this.
 #[cfg(feature = "mcp")]
 pub use enforce::reachable_by_ai;
@@ -36,6 +39,15 @@ pub use enforce::reachable_by_ai;
 use parking_lot::RwLock;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
+
+/// Emitted by the desktop app whenever the policy in force changes — loaded,
+/// edited on the share, broken, removed — so every window re-reads what it
+/// may offer instead of showing yesterday's locks until it is reopened.
+pub const CHANGED_EVENT: &str = "huginndb://policy-changed";
+
+/// Called after a reload that changed the state. The app passes one that
+/// emits [`CHANGED_EVENT`]; the sidecar has nobody to tell.
+pub type OnChange = Box<dyn Fn() + Send + 'static>;
 
 /// How often the anchor and the policy it names are read again. The file is a
 /// few kilobytes, so this costs nothing even on a share, and it is how an
@@ -81,7 +93,7 @@ pub fn unmanaged() -> SharedPolicy {
 /// the first request. A policy on a share is left `Pending` and read by the
 /// reload thread straight away, so a slow or unreachable share can never delay
 /// the window appearing.
-pub fn install(shared: &SharedPolicy) {
+pub fn install(shared: &SharedPolicy, on_change: Option<OnChange>) {
     let first = match source::read_anchor() {
         Ok(None) => PolicyState::Unmanaged,
         Ok(Some(anchor @ source::Anchor::Inline { .. })) => evaluate(&anchor),
@@ -102,7 +114,16 @@ pub fn install(shared: &SharedPolicy) {
         .name("huginndb-policy".into())
         .spawn(move || loop {
             let next = load();
+            // `Debug` is a fingerprint of everything the state says — source,
+            // error, the whole document — and this runs every five minutes, so
+            // comparing it costs nothing and needs no hashing of its own.
+            let changed = format!("{next:?}") != format!("{:?}", *shared.read());
             *shared.write() = next;
+            if changed {
+                if let Some(notify) = &on_change {
+                    notify();
+                }
+            }
             std::thread::sleep(RELOAD_EVERY);
         });
 }

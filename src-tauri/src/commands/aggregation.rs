@@ -146,6 +146,17 @@ pub async fn run_mongo_pipeline(
     args: RunPipelineArgs,
 ) -> AppResult<QueryResult> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    crate::commands::guard::pipeline(
+        state.inner(),
+        &args.connection_id,
+        &args.source,
+        args.text.iter().map(String::as_str).chain(
+            args.stages
+                .iter()
+                .flatten()
+                .map(|stage| stage.body.as_str()),
+        ),
+    )?;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     let stages = args.parsed()?;
     aggregation::run_pipeline(
@@ -178,6 +189,12 @@ pub async fn preview_mongo_stages(
     args: PreviewStagesArgs,
 ) -> AppResult<Vec<StagePreview>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    crate::commands::guard::pipeline(
+        state.inner(),
+        &args.connection_id,
+        &args.source,
+        args.stages.iter().map(|stage| stage.body.as_str()),
+    )?;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     aggregation::preview_stages(
         &conn,
@@ -202,6 +219,7 @@ pub async fn get_mongo_view(
     view: String,
 ) -> AppResult<MongoViewDefinition> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, None, &view)?;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     aggregation::read_view(&conn, &view).await
 }
@@ -233,6 +251,26 @@ pub async fn save_mongo_view(
     args: SaveViewArgs,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    // Creating or redefining a view is DDL on it; what it reads is its source,
+    // and any collection it joins.
+    crate::commands::guard::relation(
+        state.inner(),
+        &args.connection_id,
+        None,
+        &args.name,
+        crate::db::sql::Verbs::DDL,
+    )?;
+    crate::commands::guard::pipeline(
+        state.inner(),
+        &args.connection_id,
+        &args.view_on,
+        args.text.iter().map(String::as_str).chain(
+            args.stages
+                .iter()
+                .flatten()
+                .map(|stage| stage.body.as_str()),
+        ),
+    )?;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     let stages = RunPipelineArgs {
         connection_id: args.connection_id.clone(),

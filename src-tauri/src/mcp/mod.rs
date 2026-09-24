@@ -2351,7 +2351,7 @@ pub async fn serve() -> anyhow::Result<()> {
     let state = Arc::new(AppState::new());
     // The sidecar reads the same machine anchors the app does, so a policy
     // binds the AI whether or not the app is running to serve it.
-    crate::policy::install(&state.policy);
+    crate::policy::install(&state.policy, None);
 
     // The exposed set as it stands *right now*. Only a banner and the bridge
     // handshake below read it: every enforcement path re-reads `profiles.json`

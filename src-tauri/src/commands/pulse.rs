@@ -47,6 +47,7 @@ pub async fn pulse_health(
     connection_id: String,
 ) -> AppResult<PulseHealth> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -156,6 +157,7 @@ pub async fn pulse_top_queries(
     connection_id: String,
 ) -> AppResult<Vec<TopQuery>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -174,6 +176,7 @@ pub async fn pulse_storage(
     connection_id: String,
 ) -> AppResult<Vec<StorageItem>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -207,6 +210,7 @@ pub async fn pulse_sessions(
     connection_id: String,
 ) -> AppResult<Vec<SessionRow>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -242,6 +246,7 @@ pub async fn pulse_index_usage(
     connection_id: String,
 ) -> AppResult<Vec<IndexUsage>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -266,6 +271,9 @@ pub async fn pulse_explain(
     sample: String,
 ) -> AppResult<ExplainPlan> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    // A plan is read from text the person supplies, so it is free SQL too.
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
+    crate::commands::guard::free_sql(state.inner(), &connection_id, &sample)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -311,6 +319,9 @@ pub async fn pulse_history(
     metric: String,
     since_ms: i64,
 ) -> AppResult<PulseHistorySeries> {
+    // Read from the local history rather than the server, but it is the same
+    // monitoring data the live panel shows.
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     pulse_metrics_inner(state.inner(), &connection_id, &metric, since_ms).await
 }
 

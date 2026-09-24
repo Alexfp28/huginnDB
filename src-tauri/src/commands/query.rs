@@ -436,6 +436,15 @@ pub async fn explain_table_query(
     query: TableQuery,
 ) -> AppResult<crate::pulse::ExplainPlan> {
     query.filter.validate()?;
+    // Reading the relation, and — on SQL — the panel's hand-written expression,
+    // which can reach any other relation and is free SQL (`guard::raw_filter`).
+    crate::commands::guard::read(
+        state.inner(),
+        &query.connection_id,
+        query.schema.as_deref(),
+        &query.table,
+    )?;
+    crate::commands::guard::raw_filter(state.inner(), &query.connection_id, &query.filter)?;
     let pool = state.pool_for(&query.connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let text = crate::db::mongo::query::describe_find_shell(&query)?;
@@ -475,6 +484,15 @@ pub async fn describe_table_query(
     query: TableQuery,
 ) -> AppResult<QueryPreview> {
     query.filter.validate()?;
+    // Reading the relation, and — on SQL — the panel's hand-written expression,
+    // which can reach any other relation and is free SQL (`guard::raw_filter`).
+    crate::commands::guard::read(
+        state.inner(),
+        &query.connection_id,
+        query.schema.as_deref(),
+        &query.table,
+    )?;
+    crate::commands::guard::raw_filter(state.inner(), &query.connection_id, &query.filter)?;
     let pool = state.pool_for(&query.connection_id)?;
     if matches!(&pool, DbPool::Mongo(_)) {
         let text = crate::db::mongo::query::describe_find_shell(&query)?;
@@ -1027,6 +1045,7 @@ pub async fn execute_query(
     sql: String,
 ) -> AppResult<QueryResult> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::free_sql(state.inner(), &connection_id, &sql)?;
     execute_with_state(&sink, state.inner(), &connection_id, &sql).await
 }
 
@@ -1292,6 +1311,7 @@ pub async fn execute_batch(
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::free_sql_batch(state.inner(), &connection_id, &statements)?;
     execute_batch_inner(&sink, state.inner(), connection_id, statements).await
 }
 
@@ -2008,6 +2028,15 @@ pub async fn fetch_table_data(
 ) -> AppResult<QueryResult> {
     let sink =
         crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
+    // Reading the relation, and — on SQL — the panel's hand-written expression,
+    // which can reach any other relation and is free SQL (`guard::raw_filter`).
+    crate::commands::guard::read(
+        state.inner(),
+        &query.connection_id,
+        query.schema.as_deref(),
+        &query.table,
+    )?;
+    crate::commands::guard::raw_filter(state.inner(), &query.connection_id, &query.filter)?;
     fetch_table_data_inner(&sink, state.inner(), query).await
 }
 
@@ -2181,6 +2210,15 @@ pub async fn count_table_rows(
 ) -> AppResult<CountResult> {
     let sink =
         crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
+    // Reading the relation, and — on SQL — the panel's hand-written expression,
+    // which can reach any other relation and is free SQL (`guard::raw_filter`).
+    crate::commands::guard::read(
+        state.inner(),
+        &query.connection_id,
+        query.schema.as_deref(),
+        &query.table,
+    )?;
+    crate::commands::guard::raw_filter(state.inner(), &query.connection_id, &query.filter)?;
     count_table_rows_inner(&sink, state.inner(), query).await
 }
 
@@ -2427,6 +2465,13 @@ pub async fn update_cell(
     column_type: Option<String>,
 ) -> AppResult<u64> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::UPDATE,
+    )?;
     update_cell_inner(
         &sink,
         state.inner(),
@@ -2624,6 +2669,13 @@ pub async fn unset_field(
     field: String,
 ) -> AppResult<u64> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::UPDATE,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
@@ -2700,6 +2752,13 @@ pub async fn delete_rows(
     pk_value_rows: Vec<Vec<Value>>,
 ) -> AppResult<u64> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::DELETE,
+    )?;
     delete_rows_inner(
         &sink,
         state.inner(),
@@ -2853,6 +2912,13 @@ pub async fn insert_row(
     values: Vec<RowValue>,
 ) -> AppResult<Value> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::INSERT,
+    )?;
     insert_row_inner(
         &sink,
         state.inner(),
@@ -2898,6 +2964,13 @@ pub async fn insert_documents(
     source: String,
 ) -> AppResult<Value> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::INSERT,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
     let DbPool::Mongo(conn) = &pool else {
@@ -3250,6 +3323,9 @@ pub async fn fetch_fk_options(
     // otherwise fail with `NotConnected` before this function ever reaches
     // its own `pool_for` call further down.
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    // The options come from the key's *target* table — a relation other than
+    // the one on screen, which the person must be able to read in its own right.
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &table)?;
 
     // Catalog validation. Failing here means the target was dropped or
     // moved out from under us; the frontend treats this as "fall back to

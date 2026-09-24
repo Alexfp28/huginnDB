@@ -189,6 +189,12 @@ pub async fn preview_bulk_update(
 ) -> AppResult<BulkUpdatePreview> {
     validate_args(&args)?;
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    crate::commands::guard::read(
+        state.inner(),
+        &args.connection_id,
+        args.schema.as_deref(),
+        &args.table,
+    )?;
     let pool = state.pool_for(&args.connection_id)?;
 
     let statement = if matches!(&pool, DbPool::Mongo(_)) {
@@ -248,6 +254,13 @@ pub async fn apply_bulk_update(
     args: BulkUpdateArgs,
 ) -> AppResult<u64> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &args.connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &args.connection_id,
+        args.schema.as_deref(),
+        &args.table,
+        crate::db::sql::Verbs::UPDATE,
+    )?;
     apply_bulk_update_inner(&sink, state.inner(), args).await
 }
 

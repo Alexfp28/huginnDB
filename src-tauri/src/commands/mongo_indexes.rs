@@ -50,6 +50,7 @@ pub async fn list_mongo_indexes(
     collection: String,
 ) -> AppResult<Vec<MongoIndexInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, None, &collection)?;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::list_indexes(&conn, &collection).await
 }
@@ -70,6 +71,13 @@ pub async fn create_mongo_index(
     args: CreateIndexArgs,
 ) -> AppResult<()> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &args.connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &args.connection_id,
+        None,
+        &args.collection,
+        crate::db::sql::Verbs::DDL,
+    )?;
     create_mongo_index_inner(&sink, state.inner(), &args).await
 }
 
@@ -106,6 +114,13 @@ pub async fn recreate_mongo_index(
     args: RecreateIndexArgs,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &args.connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &args.connection_id,
+        None,
+        &args.collection,
+        crate::db::sql::Verbs::DDL,
+    )?;
     let conn = state.mongo_for(&args.connection_id, MONGO_ONLY)?;
     indexes::recreate_index(&conn, &args.collection, &args.original_name, &args.spec).await
 }
@@ -120,6 +135,13 @@ pub async fn drop_mongo_index(
     name: String,
 ) -> AppResult<()> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::DDL,
+    )?;
     drop_mongo_index_inner(&sink, state.inner(), &connection_id, &collection, &name).await
 }
 
@@ -174,6 +196,13 @@ pub async fn set_mongo_index_hidden(
     hidden: bool,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::DDL,
+    )?;
     let conn = state.mongo_for(&connection_id, MONGO_ONLY)?;
     indexes::set_index_hidden(&conn, &collection, &name, hidden).await
 }

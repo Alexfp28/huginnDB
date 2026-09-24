@@ -272,8 +272,16 @@ pub fn run() {
             // policy is in force from here, one on a share blocks until its
             // first read (`policy::install`).
             {
-                use tauri::Manager;
-                policy::install(&app.state::<AppState>().policy);
+                use tauri::{Emitter, Manager};
+                // Every window re-reads what it may offer when the policy
+                // changes, rather than keeping yesterday's locks until reopened.
+                let handle = app.handle().clone();
+                policy::install(
+                    &app.state::<AppState>().policy,
+                    Some(Box::new(move || {
+                        let _ = handle.emit(policy::CHANGED_EVENT, ());
+                    })),
+                );
             }
             pool_reaper::spawn(app.handle().clone());
             // Off in effect (a no-op tick) unless some profile has
@@ -307,6 +315,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
             commands::policy::policy_status,
+            commands::policy::policy_access,
+            commands::policy::policy_relation_access,
             commands::connection::save_profile,
             commands::connection::delete_profile,
             commands::connection::delete_profiles,

@@ -18,15 +18,19 @@ de la app— pasan por un único punto donde se comprueba la política. Si la
 política la rechaza, la IA no puede hacerlo. Da igual que la app esté abierta o
 que el conector funcione solo.
 
-**Para las personas, esta versión todavía no aplica la política.** Los permisos
-`human` se leen, se muestran en Ajustes → Política y limitan a la IA (una IA
-nunca tiene más permisos que la persona para la que trabaja), pero las
-pantallas de la app aún no los aplican. Eso es la siguiente fase. Conviene
-tener claro lo que podrá y no podrá hacer: una persona que tiene la contraseña
-de la base de datos siempre puede abrir otro cliente, así que la forma de que
-las restricciones de las personas no se puedan saltar es que cada persona se
-conecte con **su propio usuario de base de datos**, con permisos que coincidan
-con la política.
+**Para las personas, la política la aplica la app, como guardarraíl.** Todos
+los comandos que la app lanza contra una base de datos comprueban antes los
+permisos `human` de la persona: el explorador solo muestra lo que su rol puede
+ver, una escritura que no tiene permitida se rechaza, y las consultas libres
+—el editor de consultas, la expresión escrita a mano del panel de consulta, el
+cuerpo de una vista, un pipeline de MongoDB que une otras colecciones— se
+rechazan en una regla que limita relaciones. Es un guardarraíl y no un muro, y
+conviene decir claramente por qué: una persona que tiene la contraseña de la
+base de datos puede abrir otro cliente y saltarse HuginnDB por completo. La
+forma de que las restricciones de las personas no se puedan saltar es que cada
+persona se conecte con **su propio usuario de base de datos**, con permisos que
+coincidan con la política; generar esos permisos a partir de la política es la
+siguiente fase.
 
 La política solo **restringe**, nunca amplía. Los ajustes por conexión que ya
 tienen los usuarios —qué conexiones se exponen al MCP, su nivel de escritura
@@ -72,12 +76,13 @@ cambio llega a las instalaciones abiertas sin reiniciarlas.
 
 **Se bloquea.** Si existe un ancla pero el fichero al que apunta no se puede
 leer (la carpeta compartida no responde, el fichero se ha movido) o no es
-válido, se rechazan todas las peticiones de la IA con un mensaje que nombra el
-fichero y el error, y Ajustes → Política lo muestra en rojo. HuginnDB nunca
-vuelve a "sin política", ni guarda una copia local a la que volver.
+válido, se rechazan todas las peticiones de la IA, y una persona puede abrir la
+app y sus ajustes pero ninguna conexión deja leer ni escribir; cada rechazo
+nombra el fichero y el error, y Ajustes → Política lo muestra en rojo. HuginnDB
+nunca vuelve a "sin política", ni guarda una copia local a la que volver.
 
-Mientras se lee por primera vez una política de una carpeta compartida, la IA
-queda en pausa igual, normalmente bastante menos de un segundo.
+Mientras se lee por primera vez una política de una carpeta compartida, las dos
+quedan en pausa igual, normalmente bastante menos de un segundo.
 
 ## El formato
 
@@ -163,7 +168,7 @@ permite en él.
   | `insert`, `update`, `delete` | cada escritura de filas, por separado |
   | `ddl` | cambios de esquema: crear, alterar, borrar, truncar, índices, vistas |
   | `monitor` | Pulse, sesiones del servidor, usuarios y privilegios: muestran sentencias *de otras personas*, que pueden contener datos que este rol no puede leer |
-  | `export` | exportar datos (reservado para la fase de personas) |
+  | `export` | sacar las filas de una tabla a un fichero; necesita también `select` sobre ella |
 
   La IA nunca tiene más que la persona: lo que `ai` añada respecto a `human` se
   ignora, y Ajustes → Política muestra un aviso.

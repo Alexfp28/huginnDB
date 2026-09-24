@@ -72,6 +72,7 @@ pub async fn export_collection(
     scan: Option<CollectionScan>,
 ) -> AppResult<String> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::export(state.inner(), &connection_id, None, &collection)?;
     let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;
@@ -137,6 +138,13 @@ pub async fn import_collection(
     file_path: String,
 ) -> AppResult<u64> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::INSERT,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     let conn = mongo_conn(&pool)?;
     let db = resolve_db(conn)?;

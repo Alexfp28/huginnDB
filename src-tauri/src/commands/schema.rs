@@ -232,13 +232,19 @@ pub async fn list_databases(
     connection_id: String,
 ) -> AppResult<Vec<DatabaseInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout_for(
+    crate::commands::guard::endpoint(state.inner(), &connection_id)?;
+    let databases = crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
         "list_databases",
         list_databases_inner(state.inner(), &connection_id),
     )
-    .await
+    .await?;
+    Ok(crate::commands::guard::databases(
+        state.inner(),
+        &connection_id,
+        databases,
+    ))
 }
 
 /// Borrowed-state core of [`list_databases`], reused by the headless MCP
@@ -270,13 +276,21 @@ pub async fn get_database_sizes(
     connection_id: String,
 ) -> AppResult<Vec<DatabaseSize>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout_for(
+    crate::commands::guard::endpoint(state.inner(), &connection_id)?;
+    let sizes = crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
         "get_database_sizes",
         get_database_sizes_inner(state.inner(), &connection_id),
     )
-    .await
+    .await?;
+    // Sizes name databases, so they are filtered like the list itself.
+    Ok(sizes
+        .into_iter()
+        .filter(|d| {
+            crate::commands::guard::database(state.inner(), &connection_id, &d.name).is_ok()
+        })
+        .collect())
 }
 
 /// Borrowed-state core of [`get_database_sizes`].
@@ -332,6 +346,7 @@ pub async fn create_database(
 ) -> AppResult<()> {
     crate::db::ddl::validate_ident("database", &name)?;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::database_ddl(state.inner(), &connection_id, &name)?;
     let pool = state.pool_for(&connection_id)?;
     if initial_collection.is_some() && !matches!(pool, DbPool::Mongo(_)) {
         return Err(AppError::InvalidInput(
@@ -449,6 +464,7 @@ pub async fn drop_database(
     name: String,
 ) -> AppResult<()> {
     crate::db::ddl::validate_ident("database", &name)?;
+    crate::commands::guard::database_ddl(state.inner(), &connection_id, &name)?;
     // Remove + close our child pool first. The write guard is released at the
     // end of this statement, so the subsequent `.close().await` never holds
     // the lock across an await point.
@@ -587,6 +603,13 @@ pub async fn create_collection(
     // was one edit away from disagreeing with them about what MongoDB accepts.
     let trimmed = crate::db::mongo::schema::validate_collection(&name)?;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        None,
+        trimmed,
+        crate::db::sql::Verbs::DDL,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     match &pool {
         DbPool::Mongo(conn) => {
@@ -613,13 +636,19 @@ pub async fn list_tables(
     _database: Option<String>,
 ) -> AppResult<Vec<TableInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout_for(
+    crate::commands::guard::endpoint(state.inner(), &connection_id)?;
+    let tables = crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
         "list_tables",
         list_tables_inner(state.inner(), &connection_id),
     )
-    .await
+    .await?;
+    Ok(crate::commands::guard::tables(
+        state.inner(),
+        &connection_id,
+        tables,
+    ))
 }
 
 /// Borrowed-state core of [`list_tables`], reused by the headless MCP
@@ -655,6 +684,7 @@ pub async fn list_columns(
     table: String,
 ) -> AppResult<Vec<ColumnInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &table)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -694,6 +724,7 @@ pub async fn list_indexes(
     table: String,
 ) -> AppResult<Vec<IndexInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &table)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -773,6 +804,13 @@ pub async fn drop_table(
     table: String,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::DDL,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -809,13 +847,27 @@ pub async fn list_referencing_foreign_keys(
     table: String,
 ) -> AppResult<Vec<IncomingForeignKey>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
-    crate::error::with_timeout_for(
+    crate::commands::guard::read(state.inner(), &connection_id, schema.as_deref(), &table)?;
+    let incoming = crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
         "list_referencing_foreign_keys",
         list_referencing_foreign_keys_inner(state.inner(), &connection_id, schema, table),
     )
-    .await
+    .await?;
+    // Each entry names the table the key comes *from*: one the person may not
+    // see is left out, or the list would name it.
+    Ok(incoming
+        .into_iter()
+        .filter(|fk| {
+            crate::commands::guard::visible(
+                state.inner(),
+                &connection_id,
+                fk.schema.as_deref(),
+                &fk.table,
+            )
+        })
+        .collect())
 }
 
 async fn list_referencing_foreign_keys_inner(
@@ -857,6 +909,13 @@ pub async fn empty_table(
     table: String,
 ) -> AppResult<()> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::DDL,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let db = crate::db::mongo::schema::resolve_db(conn)?;
@@ -906,6 +965,22 @@ pub async fn rename_table(
         ));
     }
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    // Both ends: the relation being renamed, and the name (and, on MongoDB, the
+    // database) it would land under.
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::DDL,
+    )?;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        new_schema.as_deref().or(schema.as_deref()),
+        new_name.trim(),
+        crate::db::sql::Verbs::DDL,
+    )?;
     let pool = state.pool_for(&connection_id)?;
     // MongoDB has no DDL to build: `renameCollection` is a run-command on
     // `admin` that takes both sides fully qualified, so it also covers the
@@ -944,6 +1019,7 @@ pub async fn server_version(
     connection_id: String,
 ) -> AppResult<String> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::endpoint(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -979,6 +1055,7 @@ pub async fn list_users(
     connection_id: String,
 ) -> AppResult<Vec<UserInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,
@@ -1013,6 +1090,7 @@ pub async fn list_privileges(
     user: String,
 ) -> AppResult<Vec<PrivilegeInfo>> {
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::monitor(state.inner(), &connection_id)?;
     crate::error::with_timeout_for(
         state.inner(),
         &connection_id,

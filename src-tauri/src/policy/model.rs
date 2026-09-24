@@ -175,6 +175,16 @@ pub enum Permission {
     Monitor,
 }
 
+/// Who a decision is about: the person using the app, or the AI acting for
+/// them. A rule is read through the matching block — `human`, or `ai ∩ human`
+/// (D1) — so the same document answers both, and the AI can never be granted
+/// more than its user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Subject {
+    Human,
+    Ai,
+}
+
 /// A permission list folded into what enforcement asks about.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Grant {
@@ -203,6 +213,15 @@ impl Grant {
         }
     }
 
+    /// What either grant allows.
+    pub fn union(self, other: Grant) -> Grant {
+        Grant {
+            verbs: self.verbs | other.verbs,
+            export: self.export || other.export,
+            monitor: self.monitor || other.monitor,
+        }
+    }
+
     /// What both grants allow.
     pub fn intersect(self, other: Grant) -> Grant {
         Grant {
@@ -218,17 +237,7 @@ impl Grant {
 
     /// The names, in the order the document spells them — for diagnostics.
     pub fn names(self) -> Vec<&'static str> {
-        let mut out: Vec<&'static str> = [
-            (Verbs::SELECT, "select"),
-            (Verbs::INSERT, "insert"),
-            (Verbs::UPDATE, "update"),
-            (Verbs::DELETE, "delete"),
-            (Verbs::DDL, "ddl"),
-        ]
-        .into_iter()
-        .filter(|(v, _)| self.verbs.contains(*v))
-        .map(|(_, n)| n)
-        .collect();
+        let mut out = verb_names(self.verbs);
         if self.export {
             out.push("export");
         }
@@ -237,6 +246,21 @@ impl Grant {
         }
         out
     }
+}
+
+/// The statement verbs in `verbs`, by the names a policy document uses.
+pub fn verb_names(verbs: Verbs) -> Vec<&'static str> {
+    [
+        (Verbs::SELECT, "select"),
+        (Verbs::INSERT, "insert"),
+        (Verbs::UPDATE, "update"),
+        (Verbs::DELETE, "delete"),
+        (Verbs::DDL, "ddl"),
+    ]
+    .into_iter()
+    .filter(|(v, _)| verbs.contains(*v))
+    .map(|(_, n)| n)
+    .collect()
 }
 
 impl Rule {
@@ -248,6 +272,14 @@ impl Rule {
 
     pub fn human_grant(&self) -> Grant {
         Grant::of(&self.human)
+    }
+
+    /// The grant a subject reads this rule through.
+    pub fn grant_for(&self, subject: Subject) -> Grant {
+        match subject {
+            Subject::Human => self.human_grant(),
+            Subject::Ai => self.ai_grant(),
+        }
     }
 
     /// Whether the rule is narrower than its whole endpoint — which is what
