@@ -13,7 +13,7 @@ maintained separately because they track a single subsystem in depth:
   shipped, kept for the "why" behind its architecture).
 - [`docs/POLICY_ROADMAP.md`](docs/POLICY_ROADMAP.md) — managed policy:
   per-role permissions for people and the AI, administered once for every
-  installation (planned, not started).
+  installation (phase 1, the AI, shipped; people next).
 
 This document covers everything else: the top-level feature roadmap that used
 to live in the README.
@@ -46,6 +46,7 @@ in a roadmap and now don't:
 | Open VSX theme browser | 1.26.0 | An **Extensions** panel in the right dock: search the registry, install a theme, apply it, and update the installed ones. Icon themes are filtered out by reading each candidate's manifest (1–11 KB) rather than its package, downloads are verified against the registry's published `sha256`, and the destination is read from preferences inside the backend so the kill-switch cannot be bypassed. An update never overwrites a palette the user has edited. See `CLAUDE.md` gotcha #88. |
 | VS Code theme import | 1.26.0 | `Import theme…` in Settings → Appearance accepts a `.vsix` or a bare `*-color-theme.json`. One file yields two things of different kinds: the editor gets a **translation** (Monaco *is* VS Code's editor), the chrome gets a **derivation** — ~230 widget-named keys read into 30 role-named tokens — which lands as an editable custom family rather than being presented as "your theme". Built against five real open-vsx themes kept as fixtures. Browsing the registry in-app is still open, see below. See `CLAUDE.md` gotcha #87. |
 | **Query panel** — a Compass-style query bar for every driver | Unreleased (next minor) | Started from a user comparing the list view with MongoDB Compass: the list view could not be sorted at all, and there was no projection. Shipped in six PRs (#177–#182), one design, one panel under the grid toolbar that replaced the advanced filter dialog: sort chips and a field context menu that work in both view modes; conditions plus a hand-written **expression** ANDed with them (a `WHERE` fragment on SQL, a filter document on MongoDB) rather than a lossy "conditions ⇄ JSON" toggle; **projection** with the key columns always kept; **collation** and an **index hint** in each engine's own spelling (PostgreSQL's missing hints are disabled with the reason); a **Result** line built by the code the browse runs, with *Copy*, *Open in editor* and **Explain** (SQL Server refused: its plan needs `SHOWPLAN` in a batch of its own); **Go to row** in place of Compass's Skip/Limit; and an export that writes what the grid shows. Deliberately *not* copied: a per-query `maxTimeMS` (the browse stays unbounded, gotcha #92) and free Skip/Limit fields, which would fight the pager. Everything is saved with the tab. |
+| **Managed policy — phase 1: the AI** | Unreleased (next minor) | The objection an enterprise buyer raised: configuring and auditing permissions workstation by workstation. An administrator writes one policy — `HKLM\SOFTWARE\Policies\HuginnDB` or `managed-policy.json` in the system folder, inline or pointing to a share — giving each OS account one role and each role per-server rules: visible databases and relations, and select / insert / update / delete / ddl granted separately, plus `monitor`. Enforced for the AI at the one function every AI request passes through, with discovery filtered, free SQL withheld under scoped rules, `ai ⊆ human`, fail-closed, and only ever narrowing the local settings; Settings → Policy shows what applies. Preceded by a classifier fix (three writes that passed as reads) and the INSERT/UPDATE/DELETE verb split. People are phase 2. See `docs/POLICY.md`, `docs/POLICY_ROADMAP.md` and gotchas #93–#94. |
 | Bulk row insert | 1.25.0 | "Paste rows as JSON…", behind the grid's Insert button, on all four SQL drivers: an object is one row, an array is many, and the backend turns either into one multi-row `INSERT` per bind-ceiling chunk inside a single transaction. Bulk *delete* had shipped in 1.0.2 and MongoDB had been covered since its document dialog accepted an array; this is the SQL half. Keys are validated against the catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted. See `CLAUDE.md` gotcha #84. |
 
 ## Open (priority order)
@@ -410,9 +411,10 @@ Don't propose these unless the user asks first:
 
 - A linter beyond the existing `tsc --noEmit` + `cargo fmt` / `cargo clippy`
   advice in `CONTRIBUTING.md`.
-- AI features baked into the app itself (autocomplete suggestions via LLM,
-  "explain this query", etc.) — the MCP connector is the sanctioned way an AI
-  tool touches HuginnDB, from the outside.
+- AI features that are cloud-by-default, and LLM-driven autocomplete in the
+  Monaco editor (a different latency and cost profile from a chat panel). The
+  in-app **AI panel** is not this: it shipped in 1.22.0, local-first,
+  read-only and off by default (see `docs/AI.md`).
 - Cloud sync of profiles or saved queries. **Shared origins** (#108, shipped) are
   not this and don't open the door to it: a file on a path the OS already mounts,
   curated by hand, read one way with no service, account or background upload
