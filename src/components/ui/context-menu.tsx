@@ -119,29 +119,33 @@ const ContextMenuAction = React.forwardRef<
         destructive &&
           !locked &&
           "text-destructive focus:bg-destructive/10 focus:text-destructive",
+        // Muted rather than half-transparent: the generic disabled fade
+        // would take the reason line down with it, and the reason is the
+        // point of the item.
+        locked &&
+          "items-start text-muted-foreground data-[disabled]:opacity-100",
       )}
     >
       <Icon
         className={cn(
           "mr-2 h-3.5 w-3.5 shrink-0",
-          locked && "mt-px self-start",
+          // Level with the label's line, not the middle of two lines.
+          locked && "mt-px opacity-60",
         )}
       />
       {locked ? (
-        <span className="flex min-w-0 flex-col pr-2">
+        <span className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate">{label}</span>
-          <span className="text-3xs text-muted-foreground">{locked}</span>
+          <span className="flex items-center gap-1 text-3xs leading-tight text-muted-foreground/80">
+            <Lock aria-hidden className="h-2.5 w-2.5 shrink-0" />
+            <span>{locked}</span>
+          </span>
         </span>
       ) : (
         <span className="truncate">{label}</span>
       )}
-      {locked ? (
-        <Lock
-          aria-hidden
-          className="ml-auto mt-0.5 h-3 w-3 shrink-0 self-start opacity-70"
-        />
-      ) : (
-        shortcut && <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
+      {!locked && shortcut && (
+        <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
       )}
     </ContextMenuItem>
   ),
