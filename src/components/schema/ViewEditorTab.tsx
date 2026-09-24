@@ -21,6 +21,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
 import { notify } from "@/lib/notify";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
+import { usePolicyLocker } from "@/lib/policy/access";
 import Editor, { type Monaco } from "@monaco-editor/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
@@ -84,6 +86,15 @@ export function ViewEditorTab({
   const schemaState = useSchema((s) => s.byConnection[connectionId]);
 
   const driver = useConnectionDriver(connectionId);
+  // A view's body is free SQL — under a rule that limits relations it could
+  // read any of them — so both the previews (which run it) and Apply are
+  // refused there, and Apply also needs `ddl` on the view.
+  const lock = usePolicyLocker(
+    connectionId,
+    mode === "edit" && view ? { schema, name: view } : null,
+  );
+  const freeSqlLock = lock("freeSql");
+  const applyLock = lock("ddl") ?? freeSqlLock;
 
   const completionSuggestions = useMemo(
     () =>
@@ -202,9 +213,17 @@ export function ViewEditorTab({
   }, [connectionId]);
 
   const runBothPreviews = useCallback(() => {
+    if (freeSqlLock) {
+      // Say why instead of sending two statements that would be refused.
+      setDdl("");
+      setPreviewError(freeSqlLock);
+      setDataPreview(null);
+      setDataPreviewError(freeSqlLock);
+      return;
+    }
     runDdlPreview();
     runDataPreview();
-  }, [runDdlPreview, runDataPreview]);
+  }, [runDdlPreview, runDataPreview, freeSqlLock]);
 
   useDebouncedPreview(desired, runBothPreviews);
 
@@ -346,15 +365,21 @@ export function ViewEditorTab({
               label={t("view.refresh")}
             />
           )}
-          <Button
-            size="sm"
-            onClick={() => void doApply()}
-            disabled={
-              applying || !name.trim() || !query.trim() || !!previewError
-            }
-          >
-            {applying ? t("view.applying") : t("view.apply")}
-          </Button>
+          <PolicyLockHint reason={applyLock}>
+            <Button
+              size="sm"
+              onClick={() => void doApply()}
+              disabled={
+                applying ||
+                !name.trim() ||
+                !query.trim() ||
+                !!previewError ||
+                !!applyLock
+              }
+            >
+              {applying ? t("view.applying") : t("view.apply")}
+            </Button>
+          </PolicyLockHint>
         </div>
       </div>
 

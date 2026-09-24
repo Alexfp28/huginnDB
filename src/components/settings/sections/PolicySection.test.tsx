@@ -4,7 +4,7 @@
  * Settings → Policy renders what `policy_status` reports, for each state a
  * machine can be in. The panel is read-only, so the tests are about what a
  * user is *told*: who they are, which role, what each connection allows, and
- * — the case that matters most — that a broken policy blocks the AI.
+ * — the case that matters most — that a broken policy blocks every connection, for people and the AI.
  */
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -67,7 +67,9 @@ describe("PolicySection", () => {
     expect(screen.getByText("Active")).toBeTruthy();
     expect(screen.getByText(/1 with rules · 1 without/)).toBeTruthy();
     // One line per connection until it is opened.
-    expect(screen.getByText("AI: select · free SQL: no")).toBeTruthy();
+    expect(
+      screen.getByText("People: select, insert, update · AI: select · free SQL: no"),
+    ).toBeTruthy();
     expect(screen.queryByText("invoices, v_invoice_*")).toBeNull();
 
     fireEvent.click(screen.getByText("ERP"));
@@ -79,7 +81,7 @@ describe("PolicySection", () => {
     expect(screen.getByText("select, insert, update")).toBeTruthy();
     expect(screen.getByText(/^disabled/)).toBeTruthy();
     // And the panel is honest about phase 1.
-    expect(screen.getByText(/applies the policy to the AI only/)).toBeTruthy();
+    expect(screen.getByText(/applies the policy as a guardrail/)).toBeTruthy();
   });
 
   it("opens on the connections a rule names, the rest one click away", async () => {
@@ -91,8 +93,8 @@ describe("PolicySection", () => {
 
     fireEvent.click(screen.getByText("Without (1)"));
     expect(screen.getByText("HR")).toBeTruthy();
-    // Under `deny`, a connection no rule names is out of the AI's reach.
-    expect(screen.getByText("no rule — blocked for the AI")).toBeTruthy();
+    // Under `deny`, a connection no rule names is out of reach.
+    expect(screen.getByText("no rule — blocked")).toBeTruthy();
     expect(screen.queryByText("ERP")).toBeNull();
   });
 
@@ -140,7 +142,7 @@ describe("PolicySection", () => {
     expect(screen.getByText("No connection matches.")).toBeTruthy();
   });
 
-  it("says a broken policy blocks the AI, and why", async () => {
+  it("says a broken policy blocks every connection, and why", async () => {
     policyStatus.mockResolvedValue(
       status({
         state: "broken",
@@ -153,7 +155,9 @@ describe("PolicySection", () => {
     render(<PolicySection />);
 
     expect(await screen.findByText("Could not be applied")).toBeTruthy();
-    expect(screen.getByText(/the AI is blocked on every connection/)).toBeTruthy();
+    expect(
+      screen.getByText(/no connection can be read or written/),
+    ).toBeTruthy();
     expect(screen.getByText(/unknown field `relatons`/)).toBeTruthy();
     // Nothing about connections is shown when there is no policy in force.
     expect(screen.queryByText("ERP")).toBeNull();

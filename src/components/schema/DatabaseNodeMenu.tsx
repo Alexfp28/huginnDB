@@ -55,6 +55,7 @@ import {
   supportsSqlDump,
 } from "@/lib/db/driver";
 import { notify } from "@/lib/notify";
+import { usePolicyLocker } from "@/lib/policy/access";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
@@ -64,6 +65,7 @@ import type { Driver } from "@/types";
 
 export function DatabaseNodeMenu({
   dbName,
+  accessId,
   driver,
   schema,
   canDrop,
@@ -77,6 +79,13 @@ export function DatabaseNodeMenu({
   /** The database this node stands for — shown in the collection dialog and
    *  in every confirmation. */
   dbName: string;
+  /**
+   * The id the managed policy is asked about for this database — the bound id
+   * in single-DB mode, `databaseViewId(parent, dbName)` in multi-DB mode. Known
+   * up front, unlike the pool `resolveTargetId` may still have to open, because
+   * the locks have to be right the moment the menu shows.
+   */
+  accessId: string;
   driver: Driver | undefined;
   /**
    * The schema new tables/views should be created in, when the node knows it.
@@ -110,6 +119,8 @@ export function DatabaseNodeMenu({
   children: React.ReactElement;
 }) {
   const { t } = useTranslation();
+  const lock = usePolicyLocker(accessId);
+  const ddlLock = lock("ddl");
   /** The bound id the create-collection dialog targets; non-null while open. */
   const [createCollectionId, setCreateCollectionId] = useState<string | null>(
     null,
@@ -199,6 +210,7 @@ export function DatabaseNodeMenu({
             <ContextMenuAction
               icon={Table2}
               label={t("schema.context.newTable")}
+              locked={ddlLock}
               onSelect={() => void createTableHere()}
             />
           )}
@@ -206,12 +218,16 @@ export function DatabaseNodeMenu({
             <ContextMenuAction
               icon={Eye}
               label={t("schema.context.newView")}
+              // A view's body is free SQL: under a rule that limits relations
+              // it could read any of them (`apply_view_change` refuses it).
+              locked={ddlLock ?? lock("freeSql")}
               onSelect={() => void createViewHere()}
             />
           )}
           <ContextMenuAction
             icon={SquareTerminal}
             label={t("schema.context.newQueryHere")}
+            locked={lock("freeSql")}
             onSelect={() => void openQueryHere()}
           />
           {onScopeHere && (
@@ -225,6 +241,7 @@ export function DatabaseNodeMenu({
             <ContextMenuAction
               icon={FolderPlus}
               label={t("schema.createCollection.title")}
+              locked={ddlLock}
               onSelect={() => void createCollectionHere()}
             />
           )}
@@ -237,11 +254,14 @@ export function DatabaseNodeMenu({
               <ContextMenuAction
                 icon={Download}
                 label={t("schema.exportDatabase.title")}
+                locked={lock("export")}
                 onSelect={() => void exportThisDatabase()}
               />
               <ContextMenuAction
                 icon={Upload}
                 label={t("schema.importSql.title")}
+                // A .sql file runs as a batch of free statements.
+                locked={lock("freeSql")}
                 onSelect={() => void importSqlHere()}
               />
             </>
@@ -250,6 +270,7 @@ export function DatabaseNodeMenu({
           <ContextMenuAction
             icon={ShieldCheck}
             label={t("security.title")}
+            locked={lock("monitor")}
             onSelect={() => void openSecurityHere()}
           />
           {canDrop && (
@@ -259,6 +280,7 @@ export function DatabaseNodeMenu({
                 icon={Trash2}
                 destructive
                 label={t("schema.context.dropDatabase")}
+                locked={ddlLock}
                 onSelect={() => void onDrop()}
               />
             </>

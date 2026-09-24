@@ -341,10 +341,10 @@ edit the managed source — which holds here too.
    permissions per connection.
    *Done:* a managed user's AI cannot list, read or write outside its rule,
    proven by tests at the bridge.
-2. **People** — *backend shipped* (gotcha #95; every command guarded, a test
-   holds the list complete); *interface next*. Command-level enforcement and UI
-   mirroring (§6.2), lock
-   indicators, `unmanagedConnections`.
+2. **People** — *shipped* (gotchas #95–#96). Command-level enforcement
+   (every command guarded, a test holds the list complete) and UI mirroring
+   (§6.2): locked controls with the reason, locked tabs, a window bar while
+   the policy is loading or broken, `unmanagedConnections`.
 3. **Real enforcement for people.** Per-user user name on origin profiles;
    `GRANT` / `createRole` script generation (§7).
 4. **Authoring.** An in-app editor for the policy document (today: a JSON file

@@ -56,8 +56,11 @@ import type {
   ImportResult,
   IndexInfo,
   InsertRowsSummary,
+  PolicyAccess,
   PolicyStatus,
   PoolStats,
+  RelationAccess,
+  RelationRef,
   Preferences,
   PrivilegeInfo,
   PulseExplainPlan,
@@ -349,6 +352,21 @@ export const api = {
    * what each connection allows. Read-only; see `commands::policy`.
    */
   policyStatus: () => invoke<PolicyStatus>("policy_status"),
+
+  /**
+   * What the person using the app may do on each connection (profile ids or
+   * `<parent>::db::<name>` view ids). Advisory: it decides which controls are
+   * locked, while every command refuses on its own (`commands::guard`).
+   */
+  policyAccess: (connectionIds: string[]) =>
+    invoke<PolicyAccess>("policy_access", { connectionIds }),
+
+  /** Per-relation access, in one call per listing or tab. */
+  policyRelationAccess: (connectionId: string, relations: RelationRef[]) =>
+    invoke<RelationAccess[]>("policy_relation_access", {
+      connectionId,
+      relations,
+    }),
 
   /**
    * Close every per-database pool, keeping the top-level connections the user

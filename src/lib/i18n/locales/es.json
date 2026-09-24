@@ -1859,7 +1859,7 @@
       "notesSaved": "Notas guardadas"
     },
     "policy": {
-      "intro": "Cuando tu organización gestiona HuginnDB, un administrador decide, por rol, a qué puede acceder la IA en cada conexión. Aquí ves lo que se te aplica; es de solo lectura.",
+      "intro": "Cuando tu organización gestiona HuginnDB, un administrador decide, por rol, a qué pueden acceder las personas y la IA en cada conexión. Aquí ves lo que se te aplica; es de solo lectura.",
       "refresh": "Actualizar",
       "loadFailed": "No se pudo leer el estado de la política: {{error}}",
       "stateLabel": "Estado",
@@ -1870,14 +1870,14 @@
         "broken": "No se pudo aplicar"
       },
       "unmanagedHint": "No hay ninguna política instalada en este equipo, así que HuginnDB funciona como siempre. Un administrador la instala en el registro (HKLM\\SOFTWARE\\Policies\\HuginnDB) o como managed-policy.json en la carpeta de políticas del sistema.",
-      "pendingHint": "La política todavía se está leyendo de su origen. La IA queda en pausa hasta entonces.",
-      "brokenHint": "La política no se pudo aplicar, así que la IA está bloqueada en todas las conexiones. Pide a tu administrador que la corrija.",
+      "pendingHint": "La política todavía se está leyendo de su origen. Las conexiones y la IA quedan en pausa hasta entonces.",
+      "brokenHint": "La política no se pudo aplicar, así que ninguna conexión deja leer ni escribir, ni a ti ni a la IA. Pide a tu administrador que la corrija.",
       "source": "Origen",
       "user": "Cuenta",
       "role": "Rol",
       "unmanagedConnections": "Conexiones que la política no nombra",
       "unmanagedAllow": "las deciden los ajustes locales",
-      "unmanagedDeny": "bloqueadas para la IA",
+      "unmanagedDeny": "bloqueadas",
       "warnings": "Avisos",
       "connections": "Conexiones",
       "noConnections": "No tienes conexiones guardadas.",
@@ -1891,7 +1891,7 @@
       "freeSql": "Consultas libres",
       "freeSqlOn": "permitidas",
       "freeSqlOff": "desactivadas: la regla se limita a algunas bases de datos o relaciones, y el texto de una consulta no se puede comprobar contra eso",
-      "humanNotEnforced": "Lo que pueden hacer las personas se muestra como referencia: esta versión aplica la política solo a la IA.",
+      "humanGuardrail": "Para las personas, la app aplica la política como guardarraíl: quien tiene la contraseña de una base de datos puede seguir usando otro cliente. Lo que lo cierra es un usuario de base de datos por persona, con los permisos que correspondan.",
       "connectionCounts": "{{total}} conexiones · {{managed}} con reglas · {{unmatched}} sin regla",
       "searchPlaceholder": "Filtrar conexiones",
       "clearSearch": "Borrar filtro",
@@ -1901,8 +1901,8 @@
       "filterAll": "Todas",
       "noMatches": "Ninguna conexión coincide.",
       "unmatchedAllowShort": "sin regla: deciden los ajustes locales",
-      "unmatchedDenyShort": "sin regla: bloqueada para la IA",
-      "rowSummary": "IA: {{ai}} · SQL libre: {{freeSql}}",
+      "unmatchedDenyShort": "sin regla: bloqueada",
+      "rowSummary": "Personas: {{human}} · IA: {{ai}} · SQL libre: {{freeSql}}",
       "freeSqlShortOn": "sí",
       "freeSqlShortOff": "no"
     }
@@ -3339,5 +3339,35 @@
     "inUse": "En uso",
     "page": "Página {{page}} de ~{{pages}}",
     "chooseVariants": "Elegir variantes…"
+  },
+  "policy": {
+    "lockedTitle": "Bloqueado por la política de tu organización",
+    "lock": {
+      "pending": "La política gestionada aún se está cargando",
+      "broken": "No se pudo aplicar la política gestionada",
+      "connection": "Tu rol no puede usar esta conexión",
+      "need": "La política de tu organización no permite {{what}}"
+    },
+    "what": {
+      "read": "leer esto",
+      "freeSql": "consultas libres aquí",
+      "insert": "añadir filas aquí",
+      "update": "editar filas aquí",
+      "delete": "borrar filas aquí",
+      "ddl": "cambiar la estructura aquí",
+      "export": "exportar desde aquí",
+      "monitor": "monitorizar este servidor"
+    },
+    "rows": {
+      "insert": "añadir filas",
+      "update": "editar filas",
+      "delete": "borrar filas",
+      "notice": "La política de tu organización no permite {{what}} en esta tabla"
+    },
+    "ribbon": {
+      "pending": "Leyendo la política de tu organización: las conexiones quedan en pausa hasta que cargue.",
+      "broken": "No se pudo aplicar la política de tu organización, así que ninguna conexión deja leer ni escribir.",
+      "details": "Detalles"
+    }
   }
 }

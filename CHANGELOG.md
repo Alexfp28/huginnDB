@@ -55,8 +55,29 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   database password can use another client, which per-person database users
   (the next phase) are what close. A test fails when a new command is
   registered without stating what the policy asks of it, and another when a
-  command that touches a database never calls the guard. Locking the matching
-  controls in the interface is the next change. See `CLAUDE.md` gotcha #95.
+  command that touches a database never calls the guard. See `CLAUDE.md`
+  gotcha #95.
+- **What the managed policy does not allow is locked in the interface, with
+  the reason.** The commands already refused it; now the controls say so
+  before they are used. A menu item a person's role does not allow stays
+  where it was, disabled, with a lock and one line under its label saying
+  what the policy does not allow — drop and rename, new table and view,
+  import, export, Security, create and drop database, connect. A tab whose
+  whole purpose is refused shows a locked empty state instead of failing on
+  every request: the query editor without free SQL (including query tabs
+  restored from the last session), Security and Pulse without `monitor`, any
+  tab while the policy is loading or broken. In the grid, editing, inserting,
+  duplicating, deleting and bulk-updating follow their own verb, and one line
+  above the rows names what is missing; export follows `export`; on SQL the
+  query panel's hand-written expression is locked under a rule that limits
+  relations, and one already applied stays visible, and removable, without
+  being sent. Structure, view, aggregation and index editors lock Apply,
+  Save and Create; a view's live preview says why instead of running its
+  body. A bar across the window says when the policy is loading or could not
+  be applied, with a link to Settings → Policy, whose text now describes
+  people as well as the AI. Nothing changes on a machine without a policy:
+  there, one call learns that and no relation is ever asked about. See
+  `CLAUDE.md` gotcha #96.
 
 ### Fixed
 

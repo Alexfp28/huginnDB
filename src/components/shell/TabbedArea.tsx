@@ -28,7 +28,7 @@
  * the reconciliation.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import {
@@ -48,6 +48,7 @@ import { QueryEditorTab } from "@/components/query/QueryEditorTab";
 import { SecurityTab } from "@/components/schema/SecurityTab";
 import { StructureEditorTab } from "@/components/schema/StructureEditorTab";
 import { ViewEditorTab } from "@/components/schema/ViewEditorTab";
+import { PolicyGate, PolicyLockHint } from "@/components/common/PolicyLock";
 import { Button } from "@/components/ui/button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
@@ -57,6 +58,7 @@ import {
   registerInnerDockviewApi,
   syncTabPanels,
 } from "@/lib/dockview";
+import { tabNeed, usePolicyLock } from "@/lib/policy/access";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { scheduleSaveActive } from "@/stores/session/persistedTabs";
@@ -106,6 +108,28 @@ interface IndexesPanelParams {
   collection?: string;
 }
 
+/**
+ * A tab body the managed policy does not allow is replaced by a locked empty
+ * state — which covers the tabs restored from a previous session as much as
+ * the ones opened now, since both are mounted here.
+ */
+function Gated({
+  connectionId,
+  tab,
+  children,
+}: {
+  connectionId: string;
+  tab: Parameters<typeof tabNeed>[0];
+  children: ReactNode;
+}) {
+  const { need, relation } = tabNeed(tab);
+  return (
+    <PolicyGate connectionId={connectionId} need={need} relation={relation}>
+      {children}
+    </PolicyGate>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Panel bodies — read their identity from the panel params and delegate to
 // the existing feature components. Each panel keeps its own mounted React
@@ -118,74 +142,101 @@ function TablePanel(props: IDockviewPanelProps<TablePanelParams>) {
   // The dockview panel id is the tab id (see the reconciler's addPanel call),
   // so we can key the grid-selection report off it without a new param.
   return (
-    <TableDataTab
-      tabId={props.api.id}
-      connectionId={connectionId}
-      schema={schema}
-      table={table}
-    />
+    <Gated connectionId={connectionId} tab={{ kind: "table", schema, table }}>
+      <TableDataTab
+        tabId={props.api.id}
+        connectionId={connectionId}
+        schema={schema}
+        table={table}
+      />
+    </Gated>
   );
 }
 
 function QueryPanel(props: IDockviewPanelProps<QueryPanelParams>) {
   const { tabId, connectionId } = props.params;
-  return <QueryEditorTab tabId={tabId} connectionId={connectionId} />;
+  return (
+    <Gated connectionId={connectionId} tab={{ kind: "query" }}>
+      <QueryEditorTab tabId={tabId} connectionId={connectionId} />
+    </Gated>
+  );
 }
 
 function SecurityPanel(props: IDockviewPanelProps<QueryPanelParams>) {
   const { tabId, connectionId } = props.params;
-  return <SecurityTab tabId={tabId} connectionId={connectionId} />;
+  return (
+    <Gated connectionId={connectionId} tab={{ kind: "security" }}>
+      <SecurityTab tabId={tabId} connectionId={connectionId} />
+    </Gated>
+  );
 }
 
 function StructurePanel(props: IDockviewPanelProps<StructurePanelParams>) {
   const { tabId, connectionId, schema, table, mode } = props.params;
   return (
-    <StructureEditorTab
-      tabId={tabId}
+    <Gated
       connectionId={connectionId}
-      schema={schema}
-      table={table}
-      mode={mode}
-    />
+      tab={{ kind: "structure", schema, table, mode }}
+    >
+      <StructureEditorTab
+        tabId={tabId}
+        connectionId={connectionId}
+        schema={schema}
+        table={table}
+        mode={mode}
+      />
+    </Gated>
   );
 }
 
 function ViewPanel(props: IDockviewPanelProps<ViewPanelParams>) {
   const { tabId, connectionId, schema, view, mode } = props.params;
   return (
-    <ViewEditorTab
-      tabId={tabId}
-      connectionId={connectionId}
-      schema={schema}
-      view={view}
-      mode={mode}
-    />
+    <Gated connectionId={connectionId} tab={{ kind: "view", schema, view, mode }}>
+      <ViewEditorTab
+        tabId={tabId}
+        connectionId={connectionId}
+        schema={schema}
+        view={view}
+        mode={mode}
+      />
+    </Gated>
   );
 }
 
 function AggregationPanel(props: IDockviewPanelProps<AggregationPanelParams>) {
   const { tabId, connectionId, schema, collection, view, mode } = props.params;
   return (
-    <AggregationTab
-      tabId={tabId}
+    <Gated
       connectionId={connectionId}
-      schema={schema}
-      collection={collection}
-      view={view}
-      mode={mode}
-    />
+      tab={{ kind: "aggregation", schema, table: collection, view }}
+    >
+      <AggregationTab
+        tabId={tabId}
+        connectionId={connectionId}
+        schema={schema}
+        collection={collection}
+        view={view}
+        mode={mode}
+      />
+    </Gated>
   );
 }
 
 function IndexesPanel(props: IDockviewPanelProps<IndexesPanelParams>) {
   const { tabId, connectionId, schema, collection } = props.params;
   return (
-    <MongoIndexesTab
-      tabId={tabId}
+    <Gated
       connectionId={connectionId}
-      schema={schema}
-      collection={collection}
-    />
+      tab={{ kind: "indexes", schema, table: collection }}
+    >
+      <MongoIndexesTab
+        tabId={tabId}
+        connectionId={connectionId}
+        schema={schema}
+        collection={collection}
+      />
+    </Gated>
   );
 }
 
@@ -202,22 +253,30 @@ const INNER_COMPONENTS = {
 function NewTabAction(_props: IDockviewHeaderActionsProps) {
   const { t } = useTranslation();
   const connectionId = useUi((s) => s.selectedConnectionId);
+  const lock = usePolicyLock(connectionId, "freeSql");
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
+      disabled={!connectionId || !!lock}
+      onClick={() => {
+        if (!connectionId) return;
+        openQueryTab(connectionId);
+      }}
+    >
+      <Plus className="h-3.5 w-3.5" />
+    </Button>
+  );
   return (
     <div className="flex items-center gap-0.5 pr-1">
-      <SimpleTooltip label={t("tabs.newQueryTooltip")} side="bottom">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-muted-foreground hover:bg-accent hover:text-brand"
-          disabled={!connectionId}
-          onClick={() => {
-            if (!connectionId) return;
-            openQueryTab(connectionId);
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-      </SimpleTooltip>
+      {lock ? (
+        <PolicyLockHint reason={lock}>{button}</PolicyLockHint>
+      ) : (
+        <SimpleTooltip label={t("tabs.newQueryTooltip")} side="bottom">
+          {button}
+        </SimpleTooltip>
+      )}
     </div>
   );
 }

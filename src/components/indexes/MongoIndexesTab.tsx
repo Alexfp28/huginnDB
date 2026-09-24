@@ -26,6 +26,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
+import { usePolicyLock } from "@/lib/policy/access";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/icon-button";
 import { IndexEditorDialog } from "@/components/indexes/dialogs/IndexEditorDialog";
@@ -60,8 +62,15 @@ interface Props {
   collection?: string;
 }
 
-export function MongoIndexesTab({ connectionId, collection }: Props) {
+export function MongoIndexesTab({ connectionId, schema, collection }: Props) {
   const { t } = useTranslation();
+  // Listing indexes is a read (the tab's gate); creating, hiding and dropping
+  // one is DDL on the collection.
+  const ddlLock = usePolicyLock(
+    connectionId,
+    "ddl",
+    collection ? { schema, name: collection } : null,
+  );
   const [indexes, setIndexes] = useState<MongoIndexInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -221,17 +230,20 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
             loading={loading}
             label={t("indexes.refresh")}
           />
-          <Button
-            size="sm"
-            onClick={() => {
-              setEditing(null);
-              setSaveError(null);
-              setEditorOpen(true);
-            }}
-          >
-            <Plus className="mr-1 h-3.5 w-3.5" />
-            {t("indexes.create")}
-          </Button>
+          <PolicyLockHint reason={ddlLock}>
+            <Button
+              size="sm"
+              disabled={!!ddlLock}
+              onClick={() => {
+                setEditing(null);
+                setSaveError(null);
+                setEditorOpen(true);
+              }}
+            >
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              {t("indexes.create")}
+            </Button>
+          </PolicyLockHint>
         </div>
       </div>
 
@@ -353,17 +365,21 @@ export function MongoIndexesTab({ connectionId, collection }: Props) {
                 )}
                 <td className="px-1 py-1.5">
                   <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <IconButton
-                        icon={MoreHorizontal}
-                        label={
-                          index.isId
-                            ? t("indexes.idIndexLocked")
-                            : t("indexes.actions")
-                        }
-                        disabled={index.isId || busy === index.name}
-                      />
-                    </DropdownMenuTrigger>
+                    <PolicyLockHint reason={index.isId ? null : ddlLock}>
+                      <DropdownMenuTrigger asChild>
+                        <IconButton
+                          icon={MoreHorizontal}
+                          label={
+                            index.isId
+                              ? t("indexes.idIndexLocked")
+                              : (ddlLock ?? t("indexes.actions"))
+                          }
+                          disabled={
+                            index.isId || busy === index.name || !!ddlLock
+                          }
+                        />
+                      </DropdownMenuTrigger>
+                    </PolicyLockHint>
                     <DropdownMenuContent align="end" className="text-xs">
                       <DropdownMenuItem
                         onSelect={() => {

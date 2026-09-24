@@ -31,6 +31,8 @@ import {
   ListFilter,
 } from "lucide-react";
 import { notify } from "@/lib/notify";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
+import { usePolicyLock } from "@/lib/policy/access";
 
 import { DatabaseNodeMenu } from "@/components/schema/DatabaseNodeMenu";
 import { SingleDbExplorer } from "@/components/schema/SingleDbExplorer";
@@ -84,6 +86,7 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
   const driver = profile?.driver;
   const canCreateDatabase = supportsCreateDatabase(driver);
   const canDropDatabase = supportsDropDatabase(driver);
+  const createDbLock = usePolicyLock(parentId, "ddl");
   // DataGrip-style visible-databases subset. `null`/empty = show all. Resolved
   // across both layers (this environment's override, then the profile) rather
   // than read off the profile: the profile is global, so reading it directly is
@@ -275,15 +278,18 @@ export const MultiDbExplorer = memo(function MultiDbExplorer({
             </div>
             {cs.databases.length === 0
               ? canCreateDatabase && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    onClick={() => setCreateDbOpen(true)}
-                  >
-                    <DatabaseZap className="mr-1.5 h-3.5 w-3.5" />
-                    {t("schema.createDatabase.title")}
-                  </Button>
+                  <PolicyLockHint reason={createDbLock}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs"
+                      disabled={!!createDbLock}
+                      onClick={() => setCreateDbOpen(true)}
+                    >
+                      <DatabaseZap className="mr-1.5 h-3.5 w-3.5" />
+                      {t("schema.createDatabase.title")}
+                    </Button>
+                  </PolicyLockHint>
                 )
               : /* Hidden, not absent: the fix is the visibility picker, and
                    offering "new database" here would answer a question the
@@ -558,6 +564,7 @@ function DatabaseRoot({
     <div>
       <DatabaseNodeMenu
         dbName={dbName}
+        accessId={databaseViewId(parentId, dbName)}
         driver={driver}
         canDrop={canDrop}
         resolveTargetId={resolveChildId}

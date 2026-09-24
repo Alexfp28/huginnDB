@@ -22,6 +22,7 @@ import { hydrateInstalledThemes } from "@/stores/preferences/theme";
 import { UpdateBanner } from "@/components/shell/UpdateBanner";
 import { WindowTitleSync } from "@/components/shell/WindowTitleSync";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
+import { PolicyRibbon } from "@/components/shell/PolicyRibbon";
 import { SplashScreen } from "@/components/shell/SplashScreen";
 import { getCurrentVersion } from "@/lib/appInfo/updater";
 import { useWhatsNew } from "@/stores/dialogs/whatsNew";
@@ -95,6 +96,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
 import { useBridge } from "@/lib/bridges/useBridge";
+import { startPolicyBridge } from "@/lib/bridges/policy-bridge";
 
 export default function App() {
   const profiles = useConnections((s) => s.profiles);
@@ -298,6 +300,7 @@ export default function App() {
   // of `active`/`profiles`/`prefs` with no way to learn about another
   // window's connect/disconnect/profile edit/settings change.
   useBridge(startConnectionSyncBridge);
+  useBridge(startPolicyBridge);
 
   // Cross-window window-count tracking (the color badge below): a new
   // window opened anywhere, or any window closing, changes what every
@@ -503,6 +506,7 @@ export default function App() {
       <SplashScreen />
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
         <SandboxRibbon />
+        <PolicyRibbon />
         <WindowColorBadge />
         <header className="relative flex h-9 items-center border-b border-border px-2">
           {/* Left — File + Window + View + Help menus */}

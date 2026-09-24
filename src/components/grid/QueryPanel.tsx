@@ -98,6 +98,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/tauri";
 import { copyToClipboard } from "@/lib/clipboard";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
+import { usePolicyLock } from "@/lib/policy/access";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { filterFieldsFor, type FilterField } from "@/lib/grid/fieldPaths";
 import {
@@ -200,6 +202,7 @@ export function QueryPanel({
   indexNames = null,
   document = false,
   keyColumns = NO_KEYS,
+  rawLocked = null,
   preview,
   focus,
   onApply,
@@ -230,6 +233,12 @@ export function QueryPanel({
   document?: boolean;
   /** SQL: the primary key's columns, shown locked in the projection. */
   keyColumns?: readonly string[];
+  /**
+   * Why the managed policy does not allow the expression here (it is free SQL
+   * on a SQL driver). One already applied is shown read-only, so the person
+   * can see and remove it, but it takes no part in the preview.
+   */
+  rawLocked?: string | null;
   /** The chip the user clicked to get here, if they did. */
   focus: QueryPanelFocus | null;
   onApply: (next: QueryPanelApply) => void;
@@ -371,7 +380,7 @@ export function QueryPanel({
 
   const result = useQueryPreview(preview, {
     filters: draftFilters,
-    raw,
+    raw: rawLocked ? "" : raw,
     projection: wireProjection(projectionFromDraft(projection), {
       document,
       keyColumns,
@@ -478,8 +487,15 @@ export function QueryPanel({
                     }}
                   />
                 </div>
+                {rawLocked && (
+                  <p className="flex items-center gap-1 text-2xs text-muted-foreground">
+                    <Lock aria-hidden className="h-3 w-3 shrink-0" />
+                    {rawLocked}
+                  </p>
+                )}
                 <Textarea
-                  autoFocus={raw === ""}
+                  autoFocus={raw === "" && !rawLocked}
+                  readOnly={!!rawLocked}
                   aria-label={t("tableData.query.expression")}
                   spellCheck={false}
                   rows={Math.min(6, Math.max(2, raw.split("\n").length))}
@@ -494,17 +510,20 @@ export function QueryPanel({
                 />
               </div>
             ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                size="xs"
-                icon={Plus}
-                onClick={() => setRawOpen(true)}
-              >
-                {document
-                  ? t("tableData.query.addExpressionMongo")
-                  : t("tableData.query.addExpressionSql")}
-              </Button>
+              <PolicyLockHint reason={rawLocked}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  icon={Plus}
+                  disabled={!!rawLocked}
+                  onClick={() => setRawOpen(true)}
+                >
+                  {document
+                    ? t("tableData.query.addExpressionMongo")
+                    : t("tableData.query.addExpressionSql")}
+                </Button>
+              </PolicyLockHint>
             )}
           </PanelRow>
           <PanelRow
@@ -853,6 +872,7 @@ function ResultLine({
   result: PreviewState;
 }) {
   const { t } = useTranslation();
+  const editorLock = usePolicyLock(connectionId, "freeSql");
   const [expanded, setExpanded] = useState(false);
   const [plan, setPlan] = useState<PlanState | null>(null);
   // A plan read for an earlier draft describes a different query: drop it
@@ -915,13 +935,15 @@ function ResultLine({
             disabled={!text}
             onClick={() => void copyToClipboard(text)}
           />
-          <IconButton
-            size="xs"
-            icon={Code2}
-            label={t("tableData.query.openInEditor")}
-            disabled={!text}
-            onClick={() => openQueryTab(connectionId, { sql: text })}
-          />
+          <PolicyLockHint reason={editorLock}>
+            <IconButton
+              size="xs"
+              icon={Code2}
+              label={t("tableData.query.openInEditor")}
+              disabled={!text || !!editorLock}
+              onClick={() => openQueryTab(connectionId, { sql: text })}
+            />
+          </PolicyLockHint>
           <IconButton
             size="xs"
             icon={ListTree}

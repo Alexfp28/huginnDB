@@ -26,6 +26,7 @@ import {
   Table2,
 } from "lucide-react";
 import { notify } from "@/lib/notify";
+import { usePolicyLocker } from "@/lib/policy/access";
 
 import { DatabaseNodeMenu } from "@/components/schema/DatabaseNodeMenu";
 import { IndexesSectionHeader } from "@/components/schema/IndexesSectionHeader";
@@ -100,6 +101,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   onTableOpen?: () => void;
 }) {
   const { t } = useTranslation();
+  const lock = usePolicyLocker(connectionId);
   const cs = useSchema((s) => s.byConnection[connectionId]);
   const refresh = useSchema((s) => s.refresh);
   const toggleNode = useSchema((s) => s.toggleNode);
@@ -373,6 +375,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
         {needsOwnDatabaseNode && (
           <DatabaseNodeMenu
             dbName={boundDatabase}
+            accessId={connectionId}
             driver={driver}
             canDrop={canDropDatabase}
             resolveTargetId={resolveTargetId}
@@ -482,6 +485,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                     return schemaIsDatabase ? (
                       <DatabaseNodeMenu
                         dbName={boundDatabase}
+                        accessId={connectionId}
                         driver={driver}
                         schema={schema}
                         canDrop={canDropDatabase}
@@ -513,6 +517,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                         <ContextMenuAction
                           icon={Table2}
                           label={t("schema.context.newTable")}
+                          locked={lock("ddl")}
                           onSelect={() =>
                             wrappedOpenTab({
                               kind: "structure",
@@ -527,6 +532,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                           <ContextMenuAction
                             icon={Eye}
                             label={t("schema.context.newView")}
+                            locked={lock("ddl") ?? lock("freeSql")}
                             onSelect={() =>
                               wrappedOpenTab({
                                 kind: "view",
@@ -541,6 +547,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
                         <ContextMenuAction
                           icon={SquareTerminal}
                           label={t("schema.context.newQueryHere")}
+                          locked={lock("freeSql")}
                           onSelect={() => openQueryTab(connectionId)}
                         />
                       </ContextMenuContent>

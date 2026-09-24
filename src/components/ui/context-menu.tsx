@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight, Lock, type LucideIcon } from "lucide-react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { cn } from "@/lib/utils";
 import { MENU_ITEM, MENU_PANEL, MENU_SUBTRIGGER } from "@/components/ui/styles";
@@ -99,22 +99,53 @@ const ContextMenuAction = React.forwardRef<
     /** Red styling for irreversible actions (drop, delete, …). */
     destructive?: boolean;
     shortcut?: string;
+    /**
+     * Why the managed policy does not allow this (`usePolicyLock`). Disables
+     * the item and says so under its label, with a lock — a disabled menu item
+     * gets no hover, so a tooltip could never show the reason.
+     */
+    locked?: string | null;
   }
->(({ icon: Icon, label, onSelect, disabled, destructive, shortcut }, ref) => (
-  <ContextMenuItem
-    ref={ref}
-    disabled={disabled}
-    onSelect={onSelect}
-    className={cn(
-      destructive &&
-        "text-destructive focus:bg-destructive/10 focus:text-destructive",
-    )}
-  >
-    <Icon className="mr-2 h-3.5 w-3.5 shrink-0" />
-    <span className="truncate">{label}</span>
-    {shortcut && <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>}
-  </ContextMenuItem>
-));
+>(
+  (
+    { icon: Icon, label, onSelect, disabled, destructive, shortcut, locked },
+    ref,
+  ) => (
+    <ContextMenuItem
+      ref={ref}
+      disabled={disabled || !!locked}
+      onSelect={onSelect}
+      className={cn(
+        destructive &&
+          !locked &&
+          "text-destructive focus:bg-destructive/10 focus:text-destructive",
+      )}
+    >
+      <Icon
+        className={cn(
+          "mr-2 h-3.5 w-3.5 shrink-0",
+          locked && "mt-px self-start",
+        )}
+      />
+      {locked ? (
+        <span className="flex min-w-0 flex-col pr-2">
+          <span className="truncate">{label}</span>
+          <span className="text-3xs text-muted-foreground">{locked}</span>
+        </span>
+      ) : (
+        <span className="truncate">{label}</span>
+      )}
+      {locked ? (
+        <Lock
+          aria-hidden
+          className="ml-auto mt-0.5 h-3 w-3 shrink-0 self-start opacity-70"
+        />
+      ) : (
+        shortcut && <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
+      )}
+    </ContextMenuItem>
+  ),
+);
 ContextMenuAction.displayName = "ContextMenuAction";
 
 const ContextMenuLabel = React.forwardRef<

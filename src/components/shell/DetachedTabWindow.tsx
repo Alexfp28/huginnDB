@@ -32,6 +32,7 @@ import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { NotificationHosts } from "@/components/shell/NotificationHosts";
 import { ConfirmHost } from "@/components/common/ConfirmHost";
 import { useBridge } from "@/lib/bridges/useBridge";
+import { startPolicyBridge } from "@/lib/bridges/policy-bridge";
 import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { TableDataTab } from "@/components/grid/TableDataTab";
 import { QueryEditorTab } from "@/components/query/QueryEditorTab";
@@ -47,10 +48,29 @@ import {
 } from "@/stores/preferences/preferences";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import { setLanguage } from "@/lib/i18n";
+import { PolicyGate } from "@/components/common/PolicyLock";
+import { tabNeed } from "@/lib/policy/access";
 import { api } from "@/lib/tauri";
 import type { AppTab } from "@/types";
 
 function TabBody({ tab }: { tab: AppTab }) {
+  // Same lock as `TabbedArea`'s panels: a body the managed policy does not
+  // allow is replaced, rather than mounted to fail on every request.
+  const { need, relation } = tabNeed({
+    kind: tab.kind,
+    schema: tab.schema,
+    table: tab.table,
+    view: tab.view,
+    mode: tab.kind === "structure" ? tab.structureMode : tab.viewMode,
+  });
+  return (
+    <PolicyGate connectionId={tab.connectionId} need={need} relation={relation}>
+      <TabContent tab={tab} />
+    </PolicyGate>
+  );
+}
+
+function TabContent({ tab }: { tab: AppTab }) {
   switch (tab.kind) {
     case "table":
       return (
@@ -142,6 +162,7 @@ export function DetachedTabWindow() {
   }, [language]);
 
   useBridge(startWindowListBridge);
+  useBridge(startPolicyBridge);
 
   return (
     <TooltipProvider>

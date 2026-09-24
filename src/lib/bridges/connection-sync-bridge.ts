@@ -20,12 +20,18 @@
  * schema cache. `markDisconnected` is a no-op for a window that never had the
  * connection active.
  *
+ * A profile change also drops the managed policy's cached locks
+ * (`stores/session/policyAccess.ts`), because editing a connection's host can
+ * move it onto a different rule. The policy's own change event is
+ * `policy-bridge.ts`.
+ *
  * Mount once at App startup — re-subscribing every render would attach
  * duplicate listeners (HMR / StrictMode).
  */
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useConnections } from "@/stores/session/connections";
+import { usePolicyAccess } from "@/stores/session/policyAccess";
 
 const CONNECTION_CLOSED_EVENT = "huginndb://connection-closed";
 const PROFILES_CHANGED_EVENT = "huginndb://profiles-changed";
@@ -43,6 +49,7 @@ export async function startConnectionSyncBridge(): Promise<UnlistenFn> {
   );
   const unlistenProfiles = await listen(PROFILES_CHANGED_EVENT, () => {
     void useConnections.getState().refreshProfiles();
+    usePolicyAccess.getState().invalidate();
   });
   return () => {
     unlistenClosed();
