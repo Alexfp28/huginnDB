@@ -1,0 +1,477 @@
+//! The policy document an administrator writes, and the checks that make a
+//! malformed one fail loudly instead of being half-applied.
+//!
+//! Every struct denies unknown fields. A typo in a hand-edited security file —
+//! `"relatons"`, `"denny"` — must not be read as "no restriction here": it
+//! makes the whole document [`super::PolicyState::Broken`], which blocks, and
+//! the diagnostics name the field.
+
+use crate::db::sql::Verbs;
+use crate::state::Driver;
+use serde::Deserialize;
+use std::collections::BTreeMap;
+
+/// The only document version this build understands. A newer one is refused
+/// rather than read as far as it happens to parse: its new fields could be the
+/// restrictions.
+pub const VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PolicyDoc {
+    pub version: u32,
+    /// The role of anyone the `users` map does not name. It should be the most
+    /// restrictive one, since that is who an unexpected account gets.
+    pub default_role: String,
+    /// OS account name → role, exactly one role per user (D5). Keys are
+    /// matched case-insensitively, with or without a `DOMAIN\` prefix.
+    #[serde(default)]
+    pub users: BTreeMap<String, String>,
+    pub roles: BTreeMap<String, Role>,
+    /// What happens on a connection no rule of the user's role matches.
+    #[serde(default)]
+    pub unmanaged_connections: Unmanaged,
+}
+
+/// `deny` by default: a connection the policy does not name is out of reach,
+/// which is also what stops a user side-stepping a rule by reaching the same
+/// server under another name (an IP instead of a hostname).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Unmanaged {
+    #[default]
+    Deny,
+    Allow,
+}
+
+impl Unmanaged {
+    pub fn label(self) -> &'static str {
+        match self {
+            Unmanaged::Deny => "deny",
+            Unmanaged::Allow => "allow",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Role {
+    #[serde(default)]
+    pub rules: Vec<Rule>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Rule {
+    pub endpoint: EndpointPattern,
+    /// Database globs; absent means every database on the endpoint.
+    #[serde(default)]
+    pub databases: Option<Vec<String>>,
+    #[serde(default)]
+    pub relations: Relations,
+    /// What a person may do. Not enforced for people until phase 2; it bounds
+    /// `ai` already, since the AI never gets more than its user (D1).
+    #[serde(default)]
+    pub human: Vec<Permission>,
+    #[serde(default)]
+    pub ai: Vec<Permission>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Relations {
+    /// Globs of relations that may be reached; absent means all of them. A
+    /// pattern with a `.` is matched against `schema.name`, one without it
+    /// against the name alone.
+    #[serde(default)]
+    pub allow: Option<Vec<String>>,
+    /// Globs that are never reachable, whatever `allow` says.
+    #[serde(default)]
+    pub deny: Vec<String>,
+}
+
+/// Which server a rule is about: `"*"` for every endpoint, or an object naming
+/// one. Matched against the profile's endpoint, never its id — an id is local
+/// and free to mint, so a user re-creating a connection by hand would get one
+/// the policy has never heard of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EndpointPattern {
+    Any,
+    Server {
+        driver: Option<Driver>,
+        host: String,
+        /// Absent means any port on that host.
+        port: Option<u16>,
+    },
+    /// A SQLite file, which has no server to name.
+    File {
+        path: String,
+    },
+}
+
+impl<'de> Deserialize<'de> for EndpointPattern {
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Wire {
+            Star(String),
+            Object(WireObject),
+        }
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireObject {
+            #[serde(default)]
+            driver: Option<Driver>,
+            #[serde(default)]
+            host: Option<String>,
+            #[serde(default)]
+            port: Option<u16>,
+            #[serde(default)]
+            path: Option<String>,
+        }
+        use serde::de::Error;
+        match Wire::deserialize(de)? {
+            Wire::Star(s) if s == "*" => Ok(EndpointPattern::Any),
+            Wire::Star(s) => Err(D::Error::custom(format!(
+                "endpoint {s:?} is not valid: use \"*\" for every server, or an object with a host \
+                 or a path"
+            ))),
+            Wire::Object(o) => match (o.host, o.path) {
+                (Some(host), None) if !host.trim().is_empty() => Ok(EndpointPattern::Server {
+                    driver: o.driver,
+                    host,
+                    port: o.port,
+                }),
+                (None, Some(path)) if !path.trim().is_empty() => {
+                    if o.port.is_some() || o.driver.is_some_and(|d| d != Driver::Sqlite) {
+                        return Err(D::Error::custom(
+                            "an endpoint with a path is a SQLite file: it takes no port and no \
+                             other driver",
+                        ));
+                    }
+                    Ok(EndpointPattern::File { path })
+                }
+                _ => Err(D::Error::custom(
+                    "an endpoint object needs exactly one of a non-empty host or path",
+                )),
+            },
+        }
+    }
+}
+
+/// What a rule grants. The first five are the statement verbs; `export` and
+/// `monitor` are surfaces rather than statements — exporting is how data
+/// leaves, and Pulse / sessions / users show *other people's* statements,
+/// which can carry data this role cannot read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Permission {
+    Select,
+    Insert,
+    Update,
+    Delete,
+    Ddl,
+    Export,
+    Monitor,
+}
+
+/// A permission list folded into what enforcement asks about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Grant {
+    pub verbs: Verbs,
+    pub export: bool,
+    pub monitor: bool,
+}
+
+impl Grant {
+    pub fn of(permissions: &[Permission]) -> Self {
+        permissions.iter().fold(Grant::default(), |g, p| match p {
+            Permission::Select => g.with(Verbs::SELECT),
+            Permission::Insert => g.with(Verbs::INSERT),
+            Permission::Update => g.with(Verbs::UPDATE),
+            Permission::Delete => g.with(Verbs::DELETE),
+            Permission::Ddl => g.with(Verbs::DDL),
+            Permission::Export => Grant { export: true, ..g },
+            Permission::Monitor => Grant { monitor: true, ..g },
+        })
+    }
+
+    fn with(self, verbs: Verbs) -> Self {
+        Grant {
+            verbs: self.verbs | verbs,
+            ..self
+        }
+    }
+
+    /// What both grants allow.
+    pub fn intersect(self, other: Grant) -> Grant {
+        Grant {
+            verbs: self.verbs.intersection(other.verbs),
+            export: self.export && other.export,
+            monitor: self.monitor && other.monitor,
+        }
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.verbs == Verbs::NONE && !self.export && !self.monitor
+    }
+
+    /// The names, in the order the document spells them — for diagnostics.
+    pub fn names(self) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = [
+            (Verbs::SELECT, "select"),
+            (Verbs::INSERT, "insert"),
+            (Verbs::UPDATE, "update"),
+            (Verbs::DELETE, "delete"),
+            (Verbs::DDL, "ddl"),
+        ]
+        .into_iter()
+        .filter(|(v, _)| self.verbs.contains(*v))
+        .map(|(_, n)| n)
+        .collect();
+        if self.export {
+            out.push("export");
+        }
+        if self.monitor {
+            out.push("monitor");
+        }
+        out
+    }
+}
+
+impl Rule {
+    /// What the AI may do under this rule: what the rule gives it, and never
+    /// more than it gives the person (D1).
+    pub fn ai_grant(&self) -> Grant {
+        Grant::of(&self.ai).intersect(Grant::of(&self.human))
+    }
+
+    pub fn human_grant(&self) -> Grant {
+        Grant::of(&self.human)
+    }
+
+    /// Whether the rule is narrower than its whole endpoint — which is what
+    /// takes free SQL away (D3), since no text classifier can say which
+    /// relations a statement touches.
+    pub fn is_scoped(&self) -> bool {
+        self.databases.is_some()
+            || self.relations.allow.is_some()
+            || !self.relations.deny.is_empty()
+    }
+}
+
+/// A user key as the document spells it, folded to how it is compared.
+pub fn normalise_user(name: &str) -> String {
+    let name = name.trim();
+    let bare = name.rsplit_once('\\').map_or(name, |(_, user)| user);
+    bare.to_lowercase()
+}
+
+impl PolicyDoc {
+    /// Parse and validate. Everything returned as an error makes the policy
+    /// `Broken`, so each message has to tell the administrator what to fix.
+    ///
+    /// Returns the warnings too: things that are allowed but probably not
+    /// meant, such as an `ai` list granting what `human` does not (it is
+    /// intersected, never widened).
+    pub fn parse(text: &str) -> Result<(PolicyDoc, Vec<String>), String> {
+        let doc: PolicyDoc =
+            serde_json::from_str(text).map_err(|e| format!("the policy is not valid: {e}"))?;
+        if doc.version != VERSION {
+            return Err(format!(
+                "the policy is version {}, and this HuginnDB understands version {VERSION}. \
+                 Update HuginnDB, or write the policy for version {VERSION}.",
+                doc.version
+            ));
+        }
+        if !doc.roles.contains_key(&doc.default_role) {
+            return Err(format!(
+                "defaultRole {:?} is not one of the roles the policy defines",
+                doc.default_role
+            ));
+        }
+        let mut seen: BTreeMap<String, &str> = BTreeMap::new();
+        for (user, role) in &doc.users {
+            if !doc.roles.contains_key(role) {
+                return Err(format!(
+                    "user {user:?} is assigned role {role:?}, which the policy does not define"
+                ));
+            }
+            let key = normalise_user(user);
+            if key.is_empty() {
+                return Err("a user name in the policy is empty".into());
+            }
+            if let Some(other) = seen.insert(key, user) {
+                return Err(format!(
+                    "users {other:?} and {user:?} are the same account once the domain and the \
+                     case are ignored; a user has exactly one role"
+                ));
+            }
+        }
+        let mut warnings = Vec::new();
+        for (name, role) in &doc.roles {
+            for (i, rule) in role.rules.iter().enumerate() {
+                let globs = rule
+                    .databases
+                    .iter()
+                    .flatten()
+                    .chain(rule.relations.allow.iter().flatten())
+                    .chain(rule.relations.deny.iter());
+                if globs.clone().any(|g| g.trim().is_empty()) {
+                    return Err(format!(
+                        "role {name:?}, rule {}: a database or relation pattern is empty",
+                        i + 1
+                    ));
+                }
+                let ai = Grant::of(&rule.ai);
+                if ai.intersect(rule.human_grant()) != ai {
+                    warnings.push(format!(
+                        "role {name:?}, rule {}: `ai` grants something `human` does not; the AI \
+                         never gets more than the person, so the extra is ignored",
+                        i + 1
+                    ));
+                }
+            }
+        }
+        Ok((doc, warnings))
+    }
+
+    /// The role for an OS account, and its name.
+    pub fn role_for(&self, user: &str) -> (&str, &Role) {
+        let wanted = normalise_user(user);
+        let name = self
+            .users
+            .iter()
+            .find(|(u, _)| normalise_user(u) == wanted)
+            .map_or(self.default_role.as_str(), |(_, role)| role.as_str());
+        // `parse` checked every role a user or the default points at exists.
+        let role = &self.roles[name];
+        (name, role)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MINIMAL: &str = r#"{
+        "version": 1,
+        "defaultRole": "none",
+        "roles": { "none": {} }
+    }"#;
+
+    #[test]
+    fn a_minimal_policy_parses_and_denies_the_unmanaged_by_default() {
+        let (doc, warnings) = PolicyDoc::parse(MINIMAL).unwrap();
+        assert!(warnings.is_empty());
+        assert_eq!(doc.unmanaged_connections, Unmanaged::Deny);
+        assert_eq!(doc.role_for("anyone").0, "none");
+    }
+
+    #[test]
+    fn a_typo_is_an_error_not_a_missing_restriction() {
+        let text = r#"{
+            "version": 1, "defaultRole": "r",
+            "roles": { "r": { "rules": [{
+                "endpoint": "*",
+                "relatons": { "deny": ["cards"] }
+            }] } }
+        }"#;
+        let err = PolicyDoc::parse(text).unwrap_err();
+        assert!(err.contains("relatons"), "{err}");
+    }
+
+    #[test]
+    fn roles_and_versions_are_checked() {
+        let unknown_default = r#"{"version":1,"defaultRole":"x","roles":{"r":{}}}"#;
+        assert!(PolicyDoc::parse(unknown_default)
+            .unwrap_err()
+            .contains("defaultRole"));
+
+        let unknown_user_role =
+            r#"{"version":1,"defaultRole":"r","users":{"ana":"ghost"},"roles":{"r":{}}}"#;
+        assert!(PolicyDoc::parse(unknown_user_role)
+            .unwrap_err()
+            .contains("ghost"));
+
+        let newer = r#"{"version":2,"defaultRole":"r","roles":{"r":{}}}"#;
+        assert!(PolicyDoc::parse(newer).unwrap_err().contains("version 2"));
+    }
+
+    #[test]
+    fn one_account_cannot_hold_two_roles() {
+        let text = r#"{"version":1,"defaultRole":"a",
+            "users":{"CORP\\Ana":"a","ana":"b"},
+            "roles":{"a":{},"b":{}}}"#;
+        assert!(PolicyDoc::parse(text)
+            .unwrap_err()
+            .contains("exactly one role"));
+    }
+
+    #[test]
+    fn users_match_without_domain_or_case() {
+        let text = r#"{"version":1,"defaultRole":"none",
+            "users":{"CORP\\SCara":"admin"},
+            "roles":{"none":{},"admin":{}}}"#;
+        let (doc, _) = PolicyDoc::parse(text).unwrap();
+        assert_eq!(doc.role_for("scara").0, "admin");
+        assert_eq!(doc.role_for("OTHER\\scara").0, "admin");
+        assert_eq!(doc.role_for("someone").0, "none");
+    }
+
+    #[test]
+    fn endpoints_accept_the_star_a_server_or_a_file() {
+        let rule = |endpoint: &str| {
+            format!(
+                r#"{{"version":1,"defaultRole":"r","roles":{{"r":{{"rules":[{{"endpoint":{endpoint}}}]}}}}}}"#
+            )
+        };
+        let parse = |e: &str| {
+            PolicyDoc::parse(&rule(e)).map(|(d, _)| d.roles["r"].rules[0].endpoint.clone())
+        };
+        assert_eq!(parse(r#""*""#).unwrap(), EndpointPattern::Any);
+        assert_eq!(
+            parse(r#"{"driver":"mysql","host":"erp.local","port":3306}"#).unwrap(),
+            EndpointPattern::Server {
+                driver: Some(Driver::Mysql),
+                host: "erp.local".into(),
+                port: Some(3306)
+            }
+        );
+        assert_eq!(
+            parse(r#"{"path":"C:/data/app.db"}"#).unwrap(),
+            EndpointPattern::File {
+                path: "C:/data/app.db".into()
+            }
+        );
+        assert!(parse(r#""everything""#).is_err());
+        assert!(parse(r#"{"host":"a","path":"b"}"#).is_err());
+        assert!(parse(r#"{"path":"a.db","port":1}"#).is_err());
+        assert!(parse(r#"{"port":1}"#).is_err());
+    }
+
+    #[test]
+    fn the_ai_never_gets_more_than_the_person() {
+        let text = r#"{"version":1,"defaultRole":"r","roles":{"r":{"rules":[{
+            "endpoint":"*","human":["select"],"ai":["select","delete","monitor"]}]}}}"#;
+        let (doc, warnings) = PolicyDoc::parse(text).unwrap();
+        assert_eq!(warnings.len(), 1);
+        let grant = doc.roles["r"].rules[0].ai_grant();
+        assert_eq!(grant.verbs, Verbs::SELECT);
+        assert!(!grant.monitor);
+    }
+
+    #[test]
+    fn a_rule_is_scoped_when_it_names_less_than_its_endpoint() {
+        let rule = |extra: &str| {
+            let text = format!(
+                r#"{{"version":1,"defaultRole":"r","roles":{{"r":{{"rules":[{{"endpoint":"*"{extra}}}]}}}}}}"#
+            );
+            PolicyDoc::parse(&text).unwrap().0.roles["r"].rules[0].clone()
+        };
+        assert!(!rule("").is_scoped());
+        assert!(rule(r#","databases":["billing"]"#).is_scoped());
+        assert!(rule(r#","relations":{"allow":["t"]}"#).is_scoped());
+        assert!(rule(r#","relations":{"deny":["t"]}"#).is_scoped());
+    }
+}

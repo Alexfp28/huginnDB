@@ -36,6 +36,8 @@ import shortcutsRaw from "../../../docs/SHORTCUTS.md?raw";
 import shortcutsEsRaw from "../../../docs/SHORTCUTS.es.md?raw";
 import aiRaw from "../../../docs/AI.md?raw";
 import aiEsRaw from "../../../docs/AI.es.md?raw";
+import policyRaw from "../../../docs/POLICY.md?raw";
+import policyEsRaw from "../../../docs/POLICY.es.md?raw";
 
 export interface DocEntry {
   /** Stable id (used as the selected-doc key and React key). */
@@ -144,6 +146,17 @@ export const DOCS: DocEntry[] = [
     path: "docs/AI.md",
     bodies: { en: aiRaw, es: aiEsRaw },
     updated: dates["docs/AI.md"] ?? null,
+  },
+  {
+    // After the AI guide: it is what an organization uses to bound everything
+    // the two entries above let an AI do, and it is written for the
+    // administrator rather than for the person using the panel.
+    id: "policy",
+    titleKey: "docs.entries.policy.title",
+    descriptionKey: "docs.entries.policy.description",
+    path: "docs/POLICY.md",
+    bodies: { en: policyRaw, es: policyEsRaw },
+    updated: dates["docs/POLICY.md"] ?? null,
   },
 ];
 

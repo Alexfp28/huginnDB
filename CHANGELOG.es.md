@@ -8,6 +8,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Política gestionada: un administrador decide, una sola vez, a qué puede
+  acceder la IA en todas las instalaciones.** Pensada para organizaciones que
+  despliegan HuginnDB en muchos puestos, donde configurar cada uno a mano era
+  la objeción. Una política —en `HKLM\SOFTWARE\Policies\HuginnDB` o como
+  `managed-policy.json` en la carpeta de políticas del sistema, con el
+  contenido o apuntando a un fichero en una carpeta compartida— da a cada
+  cuenta del sistema un rol, y cada rol tiene reglas por servidor: qué bases de
+  datos y relaciones se ven, y si la IA puede consultar, insertar, actualizar,
+  borrar o cambiar el esquema, cada cosa por separado, además de `monitor` para
+  Pulse, sesiones y usuarios. Esta versión la aplica **a la IA**, donde se
+  cumple de verdad y no es orientativa: el modelo nunca tiene credenciales, y
+  todas las peticiones del conector MCP (con la app abierta o sin ella) y del
+  agente y las tareas asistidas del panel de IA pasan por la única función
+  donde se comprueba la política. El descubrimiento se filtra, así que la IA no
+  llega a saber los nombres de lo que no puede alcanzar; las consultas libres
+  se retiran allí donde una regla limita qué relaciones se ven, porque el texto
+  de una consulta no se puede comprobar contra eso; y la IA nunca tiene más que
+  los permisos `human` de su usuario. Solo restringe los ajustes MCP y de IA
+  por conexión, nunca los amplía. Una política ilegible o inválida bloquea
+  todas las peticiones de la IA en vez de quedarse sin política, una errata en
+  el fichero es un error y no una restricción que falta, y la cuenta se lee del
+  sistema operativo, nunca de `USERNAME`. **Ajustes → Política** muestra de
+  dónde viene la política, la cuenta y el rol, y qué permite cada conexión; el
+  registro de auditoría MCP anota ahora `user=` y `role=`. Aplicar los permisos
+  `human` a las personas en la app es la siguiente fase. Ver
+  [`docs/POLICY.es.md`](docs/POLICY.es.md) y el gotcha #94 de `CLAUDE.md`.
+
 ### Corregido
 
 - **Una colección de MongoDB vacía seguía sin poder recibir su primer

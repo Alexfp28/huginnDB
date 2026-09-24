@@ -1,0 +1,221 @@
+# Política gestionada
+
+Cuando una organización gestiona HuginnDB, un administrador escribe **una sola
+política** que leen todas las instalaciones. Dice, por rol, a qué puede acceder
+la IA en cada base de datos y qué puede hacer: qué bases de datos y relaciones
+ve, y si puede leer, insertar, actualizar, borrar o cambiar el esquema, cada
+cosa por separado.
+
+Esta guía es para el administrador que la despliega. Si eres usuario y quieres
+saber qué se te aplica, abre **Ajustes → Política**.
+
+## Qué aplica esta versión y qué no
+
+**Para la IA, la política se aplica de verdad, no es orientativa.** El modelo
+nunca tiene la contraseña de la base de datos: la tiene HuginnDB, y todas las
+peticiones de una IA —por el conector MCP (`huginndb-mcp`) o por el panel de IA
+de la app— pasan por un único punto donde se comprueba la política. Si la
+política la rechaza, la IA no puede hacerlo. Da igual que la app esté abierta o
+que el conector funcione solo.
+
+**Para las personas, esta versión todavía no aplica la política.** Los permisos
+`human` se leen, se muestran en Ajustes → Política y limitan a la IA (una IA
+nunca tiene más permisos que la persona para la que trabaja), pero las
+pantallas de la app aún no los aplican. Eso es la siguiente fase. Conviene
+tener claro lo que podrá y no podrá hacer: una persona que tiene la contraseña
+de la base de datos siempre puede abrir otro cliente, así que la forma de que
+las restricciones de las personas no se puedan saltar es que cada persona se
+conecte con **su propio usuario de base de datos**, con permisos que coincidan
+con la política.
+
+La política solo **restringe**, nunca amplía. Los ajustes por conexión que ya
+tienen los usuarios —qué conexiones se exponen al MCP, su nivel de escritura
+MCP, si el panel de IA está activado— siguen aplicándose. Lo que puede hacer la
+IA es la política *y además* esos ajustes.
+
+## Dónde se pone la política
+
+HuginnDB busca en dos sitios, en este orden, y usa el primero que tenga una
+política:
+
+1. **Registro** (Windows): `HKLM\SOFTWARE\Policies\HuginnDB`
+   - `Policy` (REG_SZ): el JSON de la política, o
+   - `PolicySource` (REG_SZ): la ruta al fichero de la política, normalmente en
+     una carpeta compartida: `\\servidor\it\huginndb-policy.json`.
+
+   Es lo que escriben las directivas de grupo e Intune.
+2. **Fichero**: `managed-policy.json` en la carpeta de políticas del sistema:
+   - Windows: `C:\Program Files\HuginnDB\`
+   - Linux: `/etc/huginndb/`
+   - macOS: `/Library/Application Support/HuginnDB/`
+
+   Puede contener la política o solo un puntero a la compartida:
+
+   ```json
+   { "source": "\\\\servidor\\it\\huginndb-policy.json" }
+   ```
+
+Para escribir en cualquiera de los dos sitios hacen falta permisos de
+administrador, y esa es la idea: un usuario normal no puede quitarlos ni
+sustituirlos. `HKCU` **no** se lee, porque el usuario puede escribir en él.
+Tampoco se lee nada de variables de entorno.
+
+**Protege el fichero compartido.** Si la política está en una carpeta
+compartida, solo los administradores deben poder escribir en ella; si no, las
+personas a las que restringe pueden editarla. HuginnDB no firma el fichero: la
+protección son los permisos de la carpeta.
+
+HuginnDB lee la política al arrancar y otra vez **cada 5 minutos**, así que un
+cambio llega a las instalaciones abiertas sin reiniciarlas.
+
+## Si la política no se puede leer
+
+**Se bloquea.** Si existe un ancla pero el fichero al que apunta no se puede
+leer (la carpeta compartida no responde, el fichero se ha movido) o no es
+válido, se rechazan todas las peticiones de la IA con un mensaje que nombra el
+fichero y el error, y Ajustes → Política lo muestra en rojo. HuginnDB nunca
+vuelve a "sin política", ni guarda una copia local a la que volver.
+
+Mientras se lee por primera vez una política de una carpeta compartida, la IA
+queda en pausa igual, normalmente bastante menos de un segundo.
+
+## El formato
+
+```json
+{
+  "version": 1,
+  "defaultRole": "none",
+  "users": {
+    "ana": "ventas",
+    "pau": "produccion",
+    "CORP\\scara": "admin"
+  },
+  "roles": {
+    "none": {},
+    "ventas": {
+      "rules": [{
+        "endpoint": { "driver": "mysql", "host": "erp.corp.local", "port": 3306 },
+        "databases": ["facturacion"],
+        "relations": { "allow": ["facturas", "v_factura_*"], "deny": ["v_factura_tarjetas"] },
+        "human": ["select", "insert", "update"],
+        "ai": ["select"]
+      }]
+    },
+    "produccion": {
+      "rules": [{
+        "endpoint": { "host": "erp.corp.local" },
+        "databases": ["prod_*"],
+        "human": ["select", "insert", "update", "delete"],
+        "ai": ["select", "insert"]
+      }]
+    },
+    "admin": {
+      "rules": [{
+        "endpoint": "*",
+        "human": ["select", "insert", "update", "delete", "ddl", "export", "monitor"],
+        "ai": ["select", "monitor"]
+      }]
+    }
+  },
+  "unmanagedConnections": "deny"
+}
+```
+
+Cualquier campo que HuginnDB no reconozca —una errata como `"relatons"`— hace
+que toda la política sea inválida, y se bloquea. Una restricción mal escrita
+nunca se interpreta como "sin restricción".
+
+### Usuarios y roles
+
+- Un usuario es la **cuenta del sistema operativo** con la que se ejecuta
+  HuginnDB, leída del propio sistema. Los nombres se comparan sin distinguir
+  mayúsculas, con o sin el prefijo `DOMINIO\`.
+- Cada usuario tiene **exactamente un rol**. Poner la misma cuenta dos veces
+  (por ejemplo `ana` y `CORP\ana`) es un error.
+- Quien no aparezca en la lista recibe `defaultRole`. Haz que sea el rol más
+  restrictivo; aquí, `none`, que no da acceso a nada.
+
+### Reglas
+
+Un rol es una lista de reglas. Cada regla dice a qué servidor se refiere y qué
+permite en él.
+
+- **`endpoint`**: `"*"` para todos los servidores, o un objeto:
+  - `host` (obligatorio), con `driver` (`postgres`, `mysql`, `sqlserver`,
+    `mongodb`) y `port` opcionales. Los hosts se comparan sin distinguir
+    mayúsculas ni espacios alrededor, y sin consultar DNS. Un puerto en blanco
+    en la conexión de un usuario cuenta como el puerto por defecto del driver.
+  - `path` para un fichero SQLite (cualquier barra, sin distinguir mayúsculas).
+
+  Las reglas se aplican al **servidor**, no a la conexión guardada: un usuario
+  que vuelva a crear una conexión a mano sigue cubierto.
+- **`databases`**: nombres de bases de datos, con `*` como comodín. Si se
+  omite, cubre todas las bases de datos del servidor.
+- **`relations`**: tablas y vistas, con `allow` (si se omite, todas) y `deny`
+  (siempre gana). Un patrón con punto se compara con `schema.nombre`
+  (`public.*`); uno sin punto, solo con el nombre. En MySQL y MongoDB el schema
+  de una relación *es* su base de datos, así que `facturacion.facturas` también
+  funciona ahí. La comparación no distingue mayúsculas.
+- **`human`** y **`ai`**: lo que pueden hacer la persona y la IA:
+  | Permiso | Permite |
+  |---|---|
+  | `select` | leer filas y describir relaciones |
+  | `insert`, `update`, `delete` | cada escritura de filas, por separado |
+  | `ddl` | cambios de esquema: crear, alterar, borrar, truncar, índices, vistas |
+  | `monitor` | Pulse, sesiones del servidor, usuarios y privilegios: muestran sentencias *de otras personas*, que pueden contener datos que este rol no puede leer |
+  | `export` | exportar datos (reservado para la fase de personas) |
+
+  La IA nunca tiene más que la persona: lo que `ai` añada respecto a `human` se
+  ignora, y Ajustes → Política muestra un aviso.
+
+Una sentencia que hace dos cosas necesita los dos permisos: un upsert necesita
+`insert` y `update`, y el `REPLACE` de MySQL necesita `insert` y `delete`.
+
+### Consultas libres en una regla limitada
+
+Si una regla limita **qué bases de datos o relaciones** se ven (`databases`,
+`relations.allow` o `relations.deny`), la IA **no puede lanzar consultas
+libres** en esa conexión, solo usar las herramientas de tabla (listar,
+describir, examinar y las escrituras de filas que permita la regla). Ninguna
+herramienta puede saber con fiabilidad, a partir del texto de una consulta,
+todas las tablas que toca: las vistas, las funciones, el SQL dinámico y los
+catálogos del sistema como `INFORMATION_SCHEMA` o `master` serían formas de
+saltarse la restricción. Una regla sobre un servidor entero mantiene las
+consultas libres, con los límites de sus permisos.
+
+El descubrimiento también se filtra: la lista de bases de datos y tablas que ve
+la IA solo contiene lo que el rol alcanza, así que no llega a saber los nombres
+del resto.
+
+### Conexiones que la política no nombra
+
+`unmanagedConnections` decide qué pasa con una conexión que no casa con ninguna
+regla del rol del usuario:
+
+- `"deny"` (por defecto): la IA no puede usarla. Esto también hace inútil
+  llegar a un servidor con otro nombre (una IP en lugar de su nombre de host)
+  para saltarse una regla.
+- `"allow"`: la política no la toca y solo se aplican los ajustes locales del
+  usuario.
+
+## Cómo comprobarla
+
+- **Ajustes → Política**, en cualquier equipo, muestra de dónde se ha leído la
+  política, qué cuenta y qué rol ve HuginnDB, y qué permite cada conexión a la
+  IA y a las personas.
+- El registro de auditoría del conector MCP (`mcp-audit.log`, en la carpeta de
+  configuración del usuario) anota `user=` y `role=` en cada escritura de la
+  IA.
+
+## Límites, dichos claramente
+
+- Un **administrador local** puede editar el registro y la carpeta del sistema,
+  así que esto protege frente a usuarios normales, no frente al dueño del
+  equipo. Volver a desplegar la política con las directivas de grupo o con tu
+  herramienta de gestión de equipos la mantiene en su sitio.
+- La política la leen las versiones de HuginnDB que la soportan. Mantén la
+  versión instalada bajo el control de IT, como cualquier software gestionado.
+- Los nombres de servidor se comparan tal como están escritos. Una regla para
+  `erp.corp.local` no cubre el mismo servidor si se llega a él como
+  `10.0.0.5`; con `"deny"` para las conexiones sin gestionar, ese alias
+  simplemente se rechaza.

@@ -40,6 +40,7 @@ pub mod mcp;
 /// The document a shared origin publishes, as an editable draft. Pure model
 /// only — no disk, no keychain; the I/O lives in `commands::origin_doc`.
 mod origin_doc;
+mod policy;
 mod pool_reaper;
 mod prefs;
 mod pulse;
@@ -267,6 +268,13 @@ pub fn run() {
         // than lazily on first connect so the sweep also covers pools left
         // behind by a connection that was opened and closed again.
         .setup(|app| {
+            // Before anything can reach a database for an AI: an inline
+            // policy is in force from here, one on a share blocks until its
+            // first read (`policy::install`).
+            {
+                use tauri::Manager;
+                policy::install(&app.state::<AppState>().policy);
+            }
             pool_reaper::spawn(app.handle().clone());
             // Off in effect (a no-op tick) unless some profile has
             // `pulse_enabled` set, so this costs nothing on a fresh install.
@@ -298,6 +306,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
+            commands::policy::policy_status,
             commands::connection::save_profile,
             commands::connection::delete_profile,
             commands::connection::delete_profiles,

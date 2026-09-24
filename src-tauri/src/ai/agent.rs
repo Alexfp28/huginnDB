@@ -369,7 +369,17 @@ pub async fn run(
     // and refuses independently, so this decides what the model is *offered*
     // rather than what it is allowed — absence is the cheaper guarantee (see
     // `crate::ai::tools::catalogue`), and the refusal is still there behind it.
-    let catalogue = tools::catalogue(scope);
+    let mut catalogue = tools::catalogue(scope);
+    // The organization's policy takes free-form text away wherever it limits
+    // which relations the AI may see (`crate::policy`, D3): no text classifier
+    // can say which tables a query touches. Left out rather than offered and
+    // refused, for the same reason as above — `bridge::exec` still refuses it
+    // behind this.
+    let free_sql_blocked = crate::ai::exec::resolve_connection(connection, &state.profiles.read())
+        .is_ok_and(|id| crate::policy::free_sql_blocked(state, &id));
+    if free_sql_blocked {
+        catalogue.retain(|spec| spec.name != tools::RUN_QUERY && spec.name != tools::PULSE_EXPLAIN);
+    }
     let runtime = AiRuntime {
         endpoint_trust: endpoint_trust_of(scope),
         max_context_rows: limits.max_context_rows,

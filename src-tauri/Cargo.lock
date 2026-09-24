@@ -2696,6 +2696,8 @@ dependencies = [
  "tokio-util",
  "url",
  "uuid",
+ "whoami",
+ "windows-registry",
  "zip",
 ]
 

@@ -1,0 +1,655 @@
+//! The decisions, with no I/O: given a policy, a user, a connection profile
+//! and what a request needs, is it allowed? Everything that reads disks, the
+//! registry or the clock lives elsewhere, so this can be tested exhaustively.
+
+use super::model::{EndpointPattern, Grant, PolicyDoc, Rule, Unmanaged};
+use crate::db::sql::Verbs;
+use crate::state::{ConnectionProfile, Driver};
+
+/// What one AI request needs, in the terms a rule speaks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Need {
+    /// Only that the AI may reach this endpoint at all: opening a connection,
+    /// asking the server version, the plumbing requests.
+    Endpoint,
+    /// That a database is visible (the Mongo per-database target).
+    Database(String),
+    /// A named relation, for these verbs.
+    Relation {
+        schema: Option<String>,
+        name: String,
+        verbs: Verbs,
+    },
+    /// Free text (SQL or mongosh) needing these verbs. Refused under a scoped
+    /// rule whatever the verbs (D3).
+    FreeSql(Verbs),
+    /// Pulse, sessions, users and privileges.
+    Monitor,
+}
+
+/// Why a request was refused — worded for the person who reads it in the
+/// Console or in the AI's answer, so it names the role and says who can
+/// change it (gotcha #77).
+pub type Refusal = String;
+
+/// The context a need is judged in.
+pub struct Ctx<'a> {
+    pub doc: &'a PolicyDoc,
+    pub user: &'a str,
+    pub profile: Option<&'a ConnectionProfile>,
+    /// The database the request is addressed to, when there is one to name:
+    /// the `::db::` part of a per-database view, else the profile's own.
+    pub database: Option<&'a str>,
+}
+
+/// What the rules say about one endpoint for one user.
+enum Coverage<'a> {
+    /// No rule names this endpoint and the policy leaves such connections
+    /// alone: the request is not the policy's business.
+    Unmanaged,
+    /// These rules name it (possibly none, when unmanaged is `deny`).
+    Rules(Vec<&'a Rule>),
+}
+
+impl<'a> Ctx<'a> {
+    fn role(&self) -> &'a str {
+        self.doc.role_for(self.user).0
+    }
+
+    fn coverage(&self) -> Coverage<'a> {
+        let (_, role) = self.doc.role_for(self.user);
+        let rules: Vec<&Rule> = match self.profile {
+            Some(profile) => role
+                .rules
+                .iter()
+                .filter(|r| endpoint_matches(&r.endpoint, profile))
+                .collect(),
+            None => Vec::new(),
+        };
+        if rules.is_empty() && self.doc.unmanaged_connections == Unmanaged::Allow {
+            Coverage::Unmanaged
+        } else {
+            Coverage::Rules(rules)
+        }
+    }
+
+    /// The rules that cover the endpoint *and* the database addressed.
+    fn rules_for_database(&self, database: Option<&str>) -> Option<Vec<&'a Rule>> {
+        match self.coverage() {
+            Coverage::Unmanaged => None,
+            Coverage::Rules(rules) => Some(
+                rules
+                    .into_iter()
+                    .filter(|r| database_matches(r, database))
+                    .collect(),
+            ),
+        }
+    }
+
+    /// The database a relation lives in. On MySQL and MongoDB a relation's
+    /// "schema" *is* its database — `billing.invoices` is table `invoices` in
+    /// database `billing` — so a qualified name says which database it is, and
+    /// wins over the connection's default. Elsewhere (Postgres, SQL Server) a
+    /// schema is inside the connection's database, which is the one that
+    /// counts.
+    fn database_for(&self, schema: Option<&'a str>) -> Option<&'a str> {
+        let schema_is_database = self
+            .profile
+            .is_some_and(|p| matches!(p.driver, Driver::Mysql | Driver::Mongo));
+        match schema.filter(|s| !s.is_empty()) {
+            Some(s) if schema_is_database => Some(s),
+            _ => self.database,
+        }
+    }
+
+    fn refuse(&self, what: impl std::fmt::Display) -> Refusal {
+        format!(
+            "{what} — refused by your organization's HuginnDB policy (role {:?}). Ask your \
+             administrator if you need it.",
+            self.role()
+        )
+    }
+
+    fn connection_label(&self) -> String {
+        self.profile.map_or_else(
+            || "this connection".to_string(),
+            |p| format!("connection {:?}", p.name),
+        )
+    }
+
+    /// Decide one need. `Ok(())` also when the endpoint is unmanaged and the
+    /// policy allows unmanaged connections: then only the local settings
+    /// (`mcp_write`, `mcp_exposed`, `ai_enabled`) govern, as without a policy.
+    pub fn decide(&self, need: &Need) -> Result<(), Refusal> {
+        let Some(rules) = self.rules_for_database(match need {
+            Need::Database(db) => Some(db.as_str()),
+            Need::Relation { schema, .. } => self.database_for(schema.as_deref()),
+            _ => self.database,
+        }) else {
+            return Ok(());
+        };
+        let connection = self.connection_label();
+        let reachable = |rules: &[&Rule]| rules.iter().any(|r| !r.ai_grant().is_empty());
+        match need {
+            Need::Endpoint => {
+                // The endpoint check ignores the database: any rule on the
+                // server that gives the AI anything makes it reachable.
+                let on_endpoint = match self.coverage() {
+                    Coverage::Unmanaged => return Ok(()),
+                    Coverage::Rules(r) => r,
+                };
+                if reachable(&on_endpoint) {
+                    Ok(())
+                } else {
+                    Err(self.refuse(format!("the AI may not use {connection}")))
+                }
+            }
+            Need::Database(db) => {
+                if reachable(&rules) {
+                    Ok(())
+                } else {
+                    Err(self.refuse(format!(
+                        "database {db:?} on {connection} is not available to the AI"
+                    )))
+                }
+            }
+            Need::Relation {
+                schema,
+                name,
+                verbs,
+            } => {
+                let visible: Vec<&&Rule> = rules
+                    .iter()
+                    .filter(|r| relation_allowed(r, schema.as_deref(), name))
+                    .collect();
+                if visible.iter().any(|r| r.ai_grant().verbs.contains(*verbs)) {
+                    Ok(())
+                } else if visible.iter().any(|r| !r.ai_grant().is_empty()) {
+                    Err(self.refuse(format!(
+                        "the AI may not {} {:?}",
+                        verbs_phrase(*verbs),
+                        qualified(schema.as_deref(), name)
+                    )))
+                } else {
+                    Err(self.refuse(format!(
+                        "{:?} on {connection} is not available to the AI",
+                        qualified(schema.as_deref(), name)
+                    )))
+                }
+            }
+            Need::FreeSql(verbs) => {
+                if rules
+                    .iter()
+                    .any(|r| !r.is_scoped() && r.ai_grant().verbs.contains(*verbs))
+                {
+                    Ok(())
+                } else if rules
+                    .iter()
+                    .any(|r| r.is_scoped() && !r.ai_grant().is_empty())
+                {
+                    Err(self.refuse(format!(
+                        "free-form queries are disabled on {connection}, because the policy \
+                         limits which databases or relations the AI may see and a query's text \
+                         cannot be checked against that. Use the table tools instead \
+                         (list_tables, describe_table, browse_table)"
+                    )))
+                } else if reachable(&rules) {
+                    Err(self.refuse(format!(
+                        "this statement needs {}, which the AI may not do on {connection}",
+                        verbs_phrase(*verbs)
+                    )))
+                } else {
+                    Err(self.refuse(format!("the AI may not use {connection}")))
+                }
+            }
+            Need::Monitor => {
+                // Server-wide, like the endpoint check: what Pulse and the
+                // session list show is not per database.
+                let on_endpoint = match self.coverage() {
+                    Coverage::Unmanaged => return Ok(()),
+                    Coverage::Rules(r) => r,
+                };
+                if on_endpoint.iter().any(|r| r.ai_grant().monitor) {
+                    Ok(())
+                } else {
+                    Err(self.refuse(format!(
+                        "server monitoring, sessions and users on {connection} are not available \
+                         to the AI"
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Whether the AI may *see* a relation at all — any verb, so that a
+    /// relation it may only insert into is still listed. Used to filter
+    /// discovery, so a model does not learn the names of what it cannot reach.
+    pub fn relation_visible(&self, schema: Option<&str>, name: &str) -> bool {
+        match self.rules_for_database(self.database_for(schema)) {
+            None => true,
+            Some(rules) => rules
+                .iter()
+                .any(|r| relation_allowed(r, schema, name) && !r.ai_grant().is_empty()),
+        }
+    }
+
+    pub fn database_visible(&self, database: &str) -> bool {
+        self.decide(&Need::Database(database.to_string())).is_ok()
+    }
+
+    /// Whether free SQL is withheld on this connection — every rule that could
+    /// grant it is scoped. The AI panel drops `run_query` from its catalogue
+    /// when this holds, rather than offering a tool that will always refuse.
+    pub fn free_sql_blocked(&self) -> bool {
+        match self.rules_for_database(self.database) {
+            None => false,
+            Some(rules) => !rules
+                .iter()
+                .any(|r| !r.is_scoped() && r.ai_grant().verbs.contains(Verbs::SELECT)),
+        }
+    }
+
+    /// The rules of this user's role that match the profile's endpoint — for
+    /// the diagnostics view.
+    pub fn endpoint_rules(&self) -> Vec<&'a Rule> {
+        match self.coverage() {
+            Coverage::Unmanaged => Vec::new(),
+            Coverage::Rules(rules) => rules,
+        }
+    }
+
+    pub fn is_unmanaged(&self) -> bool {
+        matches!(self.coverage(), Coverage::Unmanaged)
+    }
+}
+
+fn verbs_phrase(verbs: Verbs) -> String {
+    let names = Grant {
+        verbs,
+        export: false,
+        monitor: false,
+    }
+    .names();
+    if names.is_empty() {
+        "reach".to_string()
+    } else {
+        names.join(" + ")
+    }
+}
+
+fn qualified(schema: Option<&str>, name: &str) -> String {
+    match schema {
+        Some(s) if !s.is_empty() => format!("{s}.{name}"),
+        _ => name.to_string(),
+    }
+}
+
+/// Whether a rule's endpoint pattern names this profile's server.
+pub fn endpoint_matches(pattern: &EndpointPattern, profile: &ConnectionProfile) -> bool {
+    use crate::db::endpoint::normalise_host;
+    match pattern {
+        EndpointPattern::Any => true,
+        EndpointPattern::File { path } => {
+            profile.driver == Driver::Sqlite
+                && normalise_path(path) == normalise_path(&profile.database)
+        }
+        EndpointPattern::Server { driver, host, port } => {
+            profile.driver != Driver::Sqlite
+                && driver.map_or(true, |d| d == profile.driver)
+                && normalise_host(host) == normalise_host(&profile.host)
+                && port.map_or(true, |p| p == profile.effective_port())
+        }
+    }
+}
+
+/// Paths compare with either slash and in any case: the administrator writes
+/// the path once for every machine, and Windows paths are case-insensitive.
+fn normalise_path(path: &str) -> String {
+    path.trim().replace('\\', "/").to_lowercase()
+}
+
+fn database_matches(rule: &Rule, database: Option<&str>) -> bool {
+    match (&rule.databases, database) {
+        (None, _) => true,
+        (Some(globs), Some(db)) => globs.iter().any(|g| glob_matches(g, db)),
+        // The rule is about named databases and the request names none it can
+        // be checked against: not covered.
+        (Some(_), None) => false,
+    }
+}
+
+fn relation_allowed(rule: &Rule, schema: Option<&str>, name: &str) -> bool {
+    let full = qualified(schema, name);
+    let hit = |glob: &String| {
+        if glob.contains('.') {
+            glob_matches(glob, &full)
+        } else {
+            glob_matches(glob, name)
+        }
+    };
+    if rule.relations.deny.iter().any(hit) {
+        return false;
+    }
+    match &rule.relations.allow {
+        None => true,
+        Some(globs) => globs.iter().any(hit),
+    }
+}
+
+/// `*` matches any run of characters, everything else itself, ignoring case.
+///
+/// Case-insensitive on purpose, in both directions: a `deny` written as
+/// `Cards` has to catch `cards`, and the cost on the `allow` side — `invoices`
+/// also admitting a separate `INVOICES` on a case-sensitive Postgres — is rare
+/// and visible in the diagnostics.
+pub fn glob_matches(glob: &str, text: &str) -> bool {
+    let glob: Vec<char> = glob.trim().to_lowercase().chars().collect();
+    let text: Vec<char> = text.to_lowercase().chars().collect();
+    // Iterative wildcard match with one backtrack point per `*`.
+    let (mut g, mut t) = (0usize, 0usize);
+    let (mut star, mut mark) = (None::<usize>, 0usize);
+    while t < text.len() {
+        if g < glob.len() && glob[g] != '*' && glob[g] == text[t] {
+            g += 1;
+            t += 1;
+        } else if g < glob.len() && glob[g] == '*' {
+            star = Some(g);
+            mark = t;
+            g += 1;
+        } else if let Some(s) = star {
+            g = s + 1;
+            mark += 1;
+            t = mark;
+        } else {
+            return false;
+        }
+    }
+    glob[g..].iter().all(|c| *c == '*')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::testkit;
+
+    fn doc(text: &str) -> PolicyDoc {
+        PolicyDoc::parse(text).unwrap().0
+    }
+
+    /// The customer's own example: sales reads billing, production only sees
+    /// its own area, an administrator does more, everyone else nothing.
+    const COMPANY: &str = r#"{
+        "version": 1,
+        "defaultRole": "none",
+        "users": { "ana": "sales", "pau": "production", "CORP\\scara": "admin" },
+        "roles": {
+            "none": {},
+            "sales": { "rules": [{
+                "endpoint": { "driver": "mysql", "host": "ERP.local", "port": 3306 },
+                "databases": ["billing"],
+                "relations": { "allow": ["invoices", "v_invoice_*"], "deny": ["v_invoice_cards"] },
+                "human": ["select", "insert", "update"],
+                "ai": ["select"]
+            }] },
+            "production": { "rules": [{
+                "endpoint": { "host": "erp.local" },
+                "databases": ["prod*"],
+                "human": ["select", "insert", "update", "delete"],
+                "ai": ["select", "insert"]
+            }] },
+            "admin": { "rules": [{
+                "endpoint": "*",
+                "human": ["select", "insert", "update", "delete", "ddl", "monitor"],
+                "ai": ["select", "update", "monitor"]
+            }] }
+        }
+    }"#;
+
+    fn erp() -> ConnectionProfile {
+        ConnectionProfile {
+            name: "ERP".into(),
+            driver: Driver::Mysql,
+            host: "erp.local".into(),
+            port: 3306,
+            ..testkit::profile("erp")
+        }
+    }
+
+    fn ctx<'a>(
+        doc: &'a PolicyDoc,
+        user: &'a str,
+        profile: &'a ConnectionProfile,
+        database: Option<&'a str>,
+    ) -> Ctx<'a> {
+        Ctx {
+            doc,
+            user,
+            profile: Some(profile),
+            database,
+        }
+    }
+
+    fn rel(name: &str, verbs: Verbs) -> Need {
+        Need::Relation {
+            schema: None,
+            name: name.into(),
+            verbs,
+        }
+    }
+
+    #[test]
+    fn sales_reads_billing_and_nothing_else() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let sales = ctx(&doc, "ana", &erp, Some("billing"));
+        assert!(sales.decide(&Need::Endpoint).is_ok());
+        assert!(sales.decide(&rel("invoices", Verbs::SELECT)).is_ok());
+        assert!(sales
+            .decide(&rel("v_invoice_totals", Verbs::SELECT))
+            .is_ok());
+        // Denied by name, whatever `allow` says.
+        assert!(sales
+            .decide(&rel("v_invoice_cards", Verbs::SELECT))
+            .is_err());
+        // Not in the allow list.
+        assert!(sales.decide(&rel("payroll", Verbs::SELECT)).is_err());
+        // The person may insert; their AI may not.
+        let err = sales.decide(&rel("invoices", Verbs::INSERT)).unwrap_err();
+        assert!(err.contains("\"sales\""), "{err}");
+        // Another database on the same server is out of reach.
+        let elsewhere = ctx(&doc, "ana", &erp, Some("prod_line"));
+        assert!(elsewhere.decide(&rel("invoices", Verbs::SELECT)).is_err());
+        assert!(!elsewhere.database_visible("prod_line"));
+        assert!(sales.database_visible("billing"));
+    }
+
+    #[test]
+    fn a_scoped_rule_takes_free_sql_away() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let sales = ctx(&doc, "ana", &erp, Some("billing"));
+        let err = sales.decide(&Need::FreeSql(Verbs::SELECT)).unwrap_err();
+        assert!(err.contains("free-form queries are disabled"), "{err}");
+        assert!(sales.free_sql_blocked());
+
+        // An unscoped rule keeps it, bounded by the verbs.
+        let admin = ctx(&doc, "scara", &erp, Some("billing"));
+        assert!(admin.decide(&Need::FreeSql(Verbs::SELECT)).is_ok());
+        assert!(admin.decide(&Need::FreeSql(Verbs::UPDATE)).is_ok());
+        assert!(admin.decide(&Need::FreeSql(Verbs::DELETE)).is_err());
+        assert!(admin
+            .decide(&Need::FreeSql(Verbs::SELECT | Verbs::DELETE))
+            .is_err());
+        assert!(!admin.free_sql_blocked());
+    }
+
+    #[test]
+    fn production_sees_its_own_databases() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let prod = ctx(&doc, "pau", &erp, Some("prod_line"));
+        assert!(prod.decide(&rel("orders", Verbs::INSERT)).is_ok());
+        // Its person may delete; the AI was given less.
+        assert!(prod.decide(&rel("orders", Verbs::DELETE)).is_err());
+        assert!(!ctx(&doc, "pau", &erp, Some("billing")).database_visible("billing"));
+    }
+
+    #[test]
+    fn monitoring_is_its_own_grant() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        assert!(ctx(&doc, "ana", &erp, Some("billing"))
+            .decide(&Need::Monitor)
+            .is_err());
+        assert!(ctx(&doc, "scara", &erp, None)
+            .decide(&Need::Monitor)
+            .is_ok());
+    }
+
+    #[test]
+    fn a_user_without_a_role_gets_the_default_and_reaches_nothing() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let stranger = ctx(&doc, "mallory", &erp, Some("billing"));
+        assert!(stranger.decide(&Need::Endpoint).is_err());
+        assert!(stranger.decide(&rel("invoices", Verbs::SELECT)).is_err());
+    }
+
+    #[test]
+    fn a_server_reached_under_another_name_is_unmanaged_and_denied() {
+        let doc = doc(COMPANY);
+        let aliased = ConnectionProfile {
+            host: "10.0.0.5".into(),
+            ..erp()
+        };
+        // Sales' rule names erp.local; the IP is not it, and unmanaged
+        // connections are denied by default — which is what makes the alias
+        // useless as a way round the rule.
+        assert!(ctx(&doc, "ana", &aliased, Some("billing"))
+            .decide(&Need::Endpoint)
+            .is_err());
+    }
+
+    #[test]
+    fn unmanaged_allow_leaves_unnamed_connections_to_the_local_settings() {
+        let text = COMPANY.replacen(
+            "\"defaultRole\": \"none\",",
+            "\"defaultRole\": \"none\", \"unmanagedConnections\": \"allow\",",
+            1,
+        );
+        let doc = doc(&text);
+        let other = ConnectionProfile {
+            host: "reports.local".into(),
+            ..erp()
+        };
+        let ana = ctx(&doc, "ana", &other, None);
+        assert!(ana.is_unmanaged());
+        assert!(ana.decide(&Need::FreeSql(Verbs::DELETE)).is_ok());
+        // A connection a rule *does* name stays governed by it.
+        let erp = erp();
+        assert!(ctx(&doc, "ana", &erp, Some("billing"))
+            .decide(&Need::FreeSql(Verbs::SELECT))
+            .is_err());
+    }
+
+    #[test]
+    fn endpoints_match_by_server_not_by_id() {
+        let pattern = |p: &str| {
+            let text = format!(
+                r#"{{"version":1,"defaultRole":"r","roles":{{"r":{{"rules":[{{"endpoint":{p}}}]}}}}}}"#
+            );
+            PolicyDoc::parse(&text).unwrap().0.roles["r"].rules[0]
+                .endpoint
+                .clone()
+        };
+        let erp = erp();
+        assert!(endpoint_matches(
+            &pattern(r#"{"host":" ERP.LOCAL "}"#),
+            &erp
+        ));
+        assert!(endpoint_matches(
+            &pattern(r#"{"host":"erp.local","port":3306}"#),
+            &erp
+        ));
+        assert!(!endpoint_matches(
+            &pattern(r#"{"host":"erp.local","port":3307}"#),
+            &erp
+        ));
+        assert!(!endpoint_matches(
+            &pattern(r#"{"driver":"postgres","host":"erp.local"}"#),
+            &erp
+        ));
+        // A blank port is the driver's default (gotcha #89).
+        let blank_port = ConnectionProfile {
+            port: 0,
+            ..erp.clone()
+        };
+        assert!(endpoint_matches(
+            &pattern(r#"{"host":"erp.local","port":3306}"#),
+            &blank_port
+        ));
+
+        let sqlite = ConnectionProfile {
+            driver: Driver::Sqlite,
+            host: String::new(),
+            database: "C:\\Data\\App.db".into(),
+            ..testkit::profile("lite")
+        };
+        assert!(endpoint_matches(
+            &pattern(r#"{"path":"c:/data/app.db"}"#),
+            &sqlite
+        ));
+        assert!(!endpoint_matches(
+            &pattern(r#"{"host":"erp.local"}"#),
+            &sqlite
+        ));
+    }
+
+    #[test]
+    fn on_mysql_a_qualified_name_says_which_database() {
+        let doc = doc(COMPANY);
+        // A root connection with no default database, as the multi-database
+        // explorer opens one.
+        let root = ConnectionProfile {
+            database: String::new(),
+            ..erp()
+        };
+        let sales = ctx(&doc, "ana", &root, None);
+        assert!(sales.relation_visible(Some("billing"), "invoices"));
+        assert!(!sales.relation_visible(Some("hr"), "invoices"));
+        let need = Need::Relation {
+            schema: Some("billing".into()),
+            name: "invoices".into(),
+            verbs: Verbs::SELECT,
+        };
+        assert!(sales.decide(&need).is_ok());
+    }
+
+    #[test]
+    fn qualified_patterns_match_the_schema_too() {
+        let text = r#"{"version":1,"defaultRole":"r","roles":{"r":{"rules":[{
+            "endpoint":"*","relations":{"allow":["public.*"],"deny":["public.secrets"]},
+            "human":["select"],"ai":["select"]}]}}}"#;
+        let doc = doc(text);
+        let pg = ConnectionProfile {
+            driver: Driver::Postgres,
+            ..erp()
+        };
+        let c = ctx(&doc, "u", &pg, Some("erp"));
+        assert!(c.relation_visible(Some("public"), "orders"));
+        assert!(!c.relation_visible(Some("public"), "secrets"));
+        assert!(!c.relation_visible(Some("audit"), "orders"));
+    }
+
+    #[test]
+    fn globs_match_like_an_administrator_expects() {
+        assert!(glob_matches("v_invoice_*", "v_invoice_totals"));
+        assert!(glob_matches("*", "anything"));
+        assert!(glob_matches("prod*", "PROD_line"));
+        assert!(glob_matches("*_log", "audit_log"));
+        assert!(glob_matches("a*b*c", "axxbyyc"));
+        assert!(!glob_matches("a*b*c", "axxbyy"));
+        assert!(!glob_matches("invoices", "invoices_old"));
+        assert!(glob_matches("invoices", "invoices"));
+    }
+}

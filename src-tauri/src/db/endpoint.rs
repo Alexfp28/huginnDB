@@ -102,7 +102,10 @@ impl EndpointKey {
     }
 }
 
-fn normalise_host(host: &str) -> String {
+/// How two spellings of one host are made to compare equal: trimmed and
+/// lowercased, no DNS. Shared with `policy::resolve`, whose rules match
+/// servers the same way the endpoint budget keys them.
+pub(crate) fn normalise_host(host: &str) -> String {
     host.trim().to_ascii_lowercase()
 }
 

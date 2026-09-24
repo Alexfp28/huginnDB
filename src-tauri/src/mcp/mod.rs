@@ -912,12 +912,16 @@ fn audit_log_path() -> Option<std::path::PathBuf> {
 /// so it can never fail the originating DB operation.
 struct AuditSink {
     path: Option<std::path::PathBuf>,
+    /// `user=… role=…` — who the AI acted for, under which policy role
+    /// (`crate::policy::audit_identity`).
+    who: String,
 }
 
 impl AuditSink {
-    fn new() -> Self {
+    fn new(state: &AppState) -> Self {
         Self {
             path: audit_log_path(),
+            who: crate::policy::audit_identity(state),
         }
     }
 }
@@ -932,8 +936,9 @@ impl LogSink for AuditSink {
             (None, None) => "ok".to_string(),
         };
         let line = format!(
-            "{} conn={} driver={} {} sql={}\n",
+            "{} {} conn={} driver={} {} sql={}\n",
             entry.timestamp_ms,
+            self.who,
             entry.connection_id.as_deref().unwrap_or("-"),
             entry.driver.as_deref().unwrap_or("-"),
             outcome,
@@ -985,7 +990,7 @@ impl Huginn {
             match bridge.call(&request).await {
                 Ok(value) => {
                     if audit {
-                        AuditSink::new().log(audit_entry(&request, None));
+                        AuditSink::new(&self.state).log(audit_entry(&request, None));
                     }
                     return Ok(value);
                 }
@@ -994,7 +999,7 @@ impl Huginn {
                     // re-running against a local pool could double-apply a write
                     // whose reply was merely lost. See `BridgeClient::call`.
                     if audit {
-                        AuditSink::new().log(audit_entry(&request, Some(&message)));
+                        AuditSink::new(&self.state).log(audit_entry(&request, Some(&message)));
                     }
                     return Err(crate::error::AppError::InvalidInput(message));
                 }
@@ -1013,7 +1018,7 @@ impl Huginn {
                 }
             }
         }
-        let audit_sink = AuditSink::new();
+        let audit_sink = AuditSink::new(&self.state);
         let noop = NoopSink;
         let sink: &dyn LogSink = if audit { &audit_sink } else { &noop };
         crate::bridge::exec::execute(&self.state, sink, &request).await
@@ -1040,6 +1045,14 @@ impl Huginn {
                  Settings → MCP, or pass --connections {id})"
             )));
         }
+        // And the organization's policy, before a pool is opened either here
+        // or by the app — which checks it again on its side.
+        crate::policy::enforce(
+            &self.state,
+            &BridgeRequest::EnsureConnected {
+                connection_id: id.to_string(),
+            },
+        )?;
         // With the bridge up, pool ownership belongs to the desktop app: ask it
         // to open the connection and keep none of our own. The local
         // `contains` check below is deliberately *not* consulted first — this
@@ -1423,6 +1436,9 @@ impl Huginn {
             .all_profiles()
             .into_iter()
             .filter(|p| self.is_exposed(p))
+            // Nor one the organization's policy puts out of the AI's reach:
+            // listing it would only invite a call that is then refused.
+            .filter(|p| crate::policy::reachable_by_ai(&self.state, p))
             .collect();
         let conns: Vec<Conn> = ids
             .into_iter()
@@ -2333,6 +2349,9 @@ pub async fn serve() -> anyhow::Result<()> {
         );
     }
     let state = Arc::new(AppState::new());
+    // The sidecar reads the same machine anchors the app does, so a policy
+    // binds the AI whether or not the app is running to serve it.
+    crate::policy::install(&state.policy);
 
     // The exposed set as it stands *right now*. Only a banner and the bridge
     // handshake below read it: every enforcement path re-reads `profiles.json`

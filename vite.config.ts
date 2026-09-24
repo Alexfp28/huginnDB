@@ -22,6 +22,7 @@ const DOC_FILES = [
   "docs/SHORTCUTS.md",
   "docs/PULSE.md",
   "docs/AI.md",
+  "docs/POLICY.md",
 ];
 
 /**
