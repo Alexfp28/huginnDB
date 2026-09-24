@@ -1904,6 +1904,20 @@
       "unmatchedDenyShort": "sin regla: bloqueada",
       "rowSummary": "Personas: {{human}} · IA: {{ai}} · SQL libre: {{freeSql}}",
       "dbUser": "Usuario de BD",
+      "grants": {
+        "open": "Generar permisos",
+        "title": "Permisos de base de datos de un rol",
+        "description": "Los GRANT (o el rol de MongoDB) que un rol de la política necesita en un servidor, para que la propia base de datos aplique lo que el rol permite al usuario de base de datos de cada persona. HuginnDB nunca ejecuta este script: revísalo y ejecútalo como administrador.",
+        "role": "Rol",
+        "roleOption_one": "{{role}} ({{count}} persona)",
+        "roleOption_other": "{{role}} ({{count}} personas)",
+        "connection": "En",
+        "generate": "Generar",
+        "noConnection": "Conéctate antes al servidor con tu cuenta de administrador: el script se construye a partir de su catálogo.",
+        "copied": "Script copiado",
+        "save": "Guardar…",
+        "copy": "Copiar"
+      },
       "freeSqlShortOn": "sí",
       "freeSqlShortOff": "no"
     }
@@ -1922,7 +1936,8 @@
       "environments": "Entornos exportados",
       "jsonSchemas": "Esquemas JSON exportados",
       "theme": "Tema exportado",
-      "shortcuts": "Atajos exportados"
+      "shortcuts": "Atajos exportados",
+      "grants": "Script de permisos guardado"
     },
     "center": {
       "open": "Notificaciones",

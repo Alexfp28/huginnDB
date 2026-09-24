@@ -49,6 +49,7 @@ import type {
   ExportTarget,
   FeedbackKind,
   FkOptionsPage,
+  GrantScript,
   IssueOutcome,
   ImportAnalysis,
   AppFlavor,
@@ -361,6 +362,11 @@ export const api = {
    */
   policyAccess: (connectionIds: string[]) =>
     invoke<PolicyAccess>("policy_access", { connectionIds }),
+
+  /** The database permissions `role` needs on `connectionId`'s server, as a
+   *  script to review and run. HuginnDB never runs it. */
+  policyGenerateGrants: (connectionId: string, role: string) =>
+    invoke<GrantScript>("policy_generate_grants", { connectionId, role }),
 
   /** Per-relation access, in one call per listing or tab. */
   policyRelationAccess: (connectionId: string, relations: RelationRef[]) =>

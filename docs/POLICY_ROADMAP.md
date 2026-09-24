@@ -345,10 +345,11 @@ edit the managed source — which holds here too.
    (every command guarded, a test holds the list complete) and UI mirroring
    (§6.2): locked controls with the reason, locked tabs, a window bar while
    the policy is loading or broken, `unmanagedConnections`.
-3. **Real enforcement for people.** Per-user user name on origin profiles
-   — *shipped* (gotcha #97: a rule's `dbUser`, or the person's own choice,
-   with the shared secret no longer landed); `GRANT` / `createRole` script
-   generation (§7) — *next*.
+3. **Real enforcement for people** — *shipped* (gotchas #97–#98). A
+   person's own database user (a rule's `dbUser`, or their own choice on an
+   origin connection, with the shared secret no longer landed), and the
+   `GRANT` / `createRole` script generated from a role against the live
+   catalog (§7), which HuginnDB never runs.
 4. **Authoring.** An in-app editor for the policy document (today: a JSON file
    validated by the shipped JSON Schema), ADMX/ADML templates for GPO.
 

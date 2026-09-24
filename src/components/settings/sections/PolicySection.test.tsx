@@ -12,12 +12,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/lib/i18n";
 import { PolicySection } from "./PolicySection";
-import type { PolicyStatus } from "@/types";
+import { useConnections } from "@/stores/session/connections";
+import type { ConnectionProfile, GrantScript, PolicyStatus } from "@/types";
 
 const policyStatus = vi.fn<() => Promise<PolicyStatus>>();
+const policyGenerateGrants =
+  vi.fn<(connectionId: string, role: string) => Promise<GrantScript>>();
 
 vi.mock("@/lib/tauri", () => ({
-  api: { policyStatus: () => policyStatus() },
+  api: {
+    policyStatus: () => policyStatus(),
+    policyGenerateGrants: (id: string, role: string) =>
+      policyGenerateGrants(id, role),
+  },
 }));
 
 afterEach(() => {
@@ -34,6 +41,10 @@ function status(over: Partial<PolicyStatus> = {}): PolicyStatus {
     user: "ana",
     role: "sales",
     unmanagedConnections: "deny",
+    roles: [
+      { name: "none", members: [] },
+      { name: "sales", members: ["ana"] },
+    ],
     connections: [
       {
         id: "erp",
@@ -202,5 +213,32 @@ describe("PolicySection", () => {
 
     expect(await screen.findByText("Warnings")).toBeTruthy();
     expect(screen.getByText(/the extra is ignored/)).toBeTruthy();
+  });
+
+  it("generates a role's grants against a connected server, and only shows them", async () => {
+    policyStatus.mockResolvedValue(status());
+    policyGenerateGrants.mockResolvedValue({
+      language: "sql",
+      roleName: "huginn_sales",
+      script: "CREATE ROLE IF NOT EXISTS 'huginn_sales';",
+      warnings: ["Roles need MySQL 8.0 or MariaDB 10.0.5 or later."],
+    });
+    useConnections.setState({
+      profiles: [
+        { id: "erp", name: "ERP", driver: "mysql" } as unknown as ConnectionProfile,
+        { id: "local", name: "Local file", driver: "sqlite" } as unknown as ConnectionProfile,
+      ],
+      active: new Set(["erp", "local"]),
+    });
+    render(<PolicySection />);
+
+    fireEvent.click(await screen.findByText("Generate grants"));
+    // The user's own role is the one picked first; SQLite is not offered.
+    expect(screen.queryByRole("option", { name: "Local file" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(await screen.findByText("CREATE ROLE IF NOT EXISTS 'huginn_sales';")).toBeTruthy();
+    expect(policyGenerateGrants).toHaveBeenCalledWith("erp", "sales");
+    expect(screen.getByText(/MariaDB 10.0.5/)).toBeTruthy();
   });
 });

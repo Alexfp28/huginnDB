@@ -519,6 +519,17 @@ pub struct PolicyStatus {
     pub role: Option<String>,
     pub unmanaged_connections: Option<&'static str>,
     pub connections: Vec<ConnectionPolicy>,
+    /// Every role the policy defines, for generating its grants. Nothing the
+    /// policy file does not already show to whoever can read it.
+    pub roles: Vec<RoleInfo>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleInfo {
+    pub name: String,
+    /// The accounts the policy gives this role by name.
+    pub members: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -585,6 +596,7 @@ pub fn status(state: &AppState) -> PolicyStatus {
             role: None,
             unmanaged_connections: None,
             connections: Vec::new(),
+            roles: Vec::new(),
         };
     };
     let profiles = state.profiles.read().clone();
@@ -634,6 +646,19 @@ pub fn status(state: &AppState) -> PolicyStatus {
         warnings,
         role: Some(doc.role_for(&user).0.to_string()),
         unmanaged_connections: Some(doc.unmanaged_connections.label()),
+        roles: doc
+            .roles
+            .keys()
+            .map(|name| RoleInfo {
+                name: name.clone(),
+                members: doc
+                    .users
+                    .iter()
+                    .filter(|(_, r)| *r == name)
+                    .map(|(u, _)| u.clone())
+                    .collect(),
+            })
+            .collect(),
         user,
         connections,
     }

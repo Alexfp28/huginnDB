@@ -374,6 +374,9 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("policy::policy_access", "none"),
     ("policy::policy_relation_access", "none"),
     ("policy::policy_status", "none"),
+    // Reads the server's catalog to write grants: the permission that already
+    // shows users and privileges.
+    ("policy::policy_generate_grants", "monitor"),
     ("prefs::adopt_environment", "none"),
     ("prefs::analyze_environment_import", "none"),
     ("prefs::clear_tab_state", "none"),

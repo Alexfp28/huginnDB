@@ -107,6 +107,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   bloquean, así que actualiza antes todas las instalaciones. Ver el gotcha #97 de
   `CLAUDE.md`.
 
+- **HuginnDB escribe los permisos de base de datos que necesita un rol de la
+  política.** Un usuario de base de datos por persona solo aplica la política
+  si sus permisos coinciden con el rol, y escribirlos a mano para cada rol y
+  servidor es donde se desincronizaría. Ajustes → Política → **Generar
+  permisos** elige un rol y un servidor al que el administrador está
+  conectado, lee su catálogo y escribe el script: un rol de base de datos
+  `huginn_<rol>` con sus `GRANT` en PostgreSQL, MySQL y SQL Server, y un
+  `createRole` con acciones por colección en MongoDB. Una regla sobre todas las
+  relaciones de una base de datos concede a nivel de base de datos o de esquema
+  (cubre las tablas que se creen después); una que nombra relaciones o tiene un
+  `deny` se expande a las tablas que existen ahora, porque un `GRANT` no admite
+  comodines, y el script dice que hay que regenerarlo. Las reglas se suman
+  sobre el mismo objeto; `ddl` y `monitor` se traducen a los permisos propios
+  de cada motor; las personas a las que la política da el rol aparecen
+  comentadas, tal como entran. Las notas dicen lo que el motor no puede
+  ocultar —los nombres de `pg_catalog` en PostgreSQL, la lista de bases de
+  datos de SQL Server (se ofrece, comentado, revocar `VIEW ANY DATABASE`)— y
+  que `export` no tiene equivalente en la base de datos. HuginnDB nunca lo
+  ejecuta: el diálogo ofrece Copiar y Guardar. Ver el gotcha #98 de `CLAUDE.md`.
+
 ### Corregido
 
 - **Una colección de MongoDB vacía seguía sin poder recibir su primer
