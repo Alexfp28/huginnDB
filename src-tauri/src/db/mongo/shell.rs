@@ -18,7 +18,7 @@
 //! references) is rejected with a clear [`AppError::InvalidInput`] rather than
 //! silently mis-parsed.
 
-use crate::db::sql::StmtClass;
+use crate::db::sql::{StmtClass, Verbs};
 use crate::error::{AppError, AppResult};
 use mongodb::bson::{Bson, Document};
 use std::str::FromStr;
@@ -112,40 +112,40 @@ pub enum MongoOp {
 }
 
 impl MongoOp {
-    /// The write tier this operation requires, in the same vocabulary
-    /// [`crate::db::sql::classify`] answers in for SQL.
+    /// What this operation does, in the same vocabulary
+    /// [`crate::db::sql::verbs`] answers in for SQL.
     ///
-    /// This is the *only* place a mongosh statement's tier is decided;
-    /// [`crate::db::classify::classify_statement`] is what routes to it, and
-    /// both MCP enforcement points go through that. The match is exhaustive on
-    /// purpose: adding an operation without saying which tier it needs must be
-    /// a build error, because the failure mode of guessing is a `data`
+    /// This is the *only* place a mongosh statement's verbs — and so its tier —
+    /// are decided; [`crate::db::classify::verbs_of`] is what routes to it, and
+    /// every enforcement point goes through that. The match is exhaustive on
+    /// purpose: adding an operation without saying what it does must be a
+    /// build error, because the failure mode of guessing is a `data`
     /// connection reaching DDL — a privilege escalation introduced by a new
     /// grammar rule rather than by a permission change.
-    pub fn class(&self) -> StmtClass {
+    pub fn verbs(&self) -> Verbs {
         match self {
             // An aggregation reads unless it ends in a write stage. `$out`
             // creates or *replaces* a whole collection, which is what `CREATE
-            // TABLE … AS` / `DROP` get on the SQL side; `$merge` writes documents
-            // into one that may already exist. Both used to be classified as a
-            // read by the `aggregate` method name alone, and `query::execute`
-            // runs the pipeline as given — so a read-only connection could
-            // overwrite a collection.
+            // TABLE … AS` / `DROP` get on the SQL side; `$merge` inserts the
+            // documents it has no match for and updates the ones it has. Both
+            // used to be classified as a read by the `aggregate` method name
+            // alone, and `query::execute` runs the pipeline as given — so a
+            // read-only connection could overwrite a collection.
             MongoOp::Aggregate { pipeline } => match super::aggregation::write_stage(pipeline) {
-                Some((_, "$out")) => StmtClass::Ddl,
-                Some(_) => StmtClass::DataWrite,
-                None => StmtClass::Read,
+                Some((_, "$out")) => Verbs::DDL,
+                Some(_) => Verbs::INSERT | Verbs::UPDATE,
+                None => Verbs::SELECT,
             },
             MongoOp::Find { .. } | MongoOp::Count { .. } | MongoOp::Distinct { .. } => {
-                StmtClass::Read
+                Verbs::SELECT
             }
-            MongoOp::InsertOne { .. }
-            | MongoOp::InsertMany { .. }
-            | MongoOp::UpdateOne { .. }
-            | MongoOp::UpdateMany { .. }
-            | MongoOp::ReplaceOne { .. }
-            | MongoOp::DeleteOne { .. }
-            | MongoOp::DeleteMany { .. } => StmtClass::DataWrite,
+            MongoOp::InsertOne { .. } | MongoOp::InsertMany { .. } => Verbs::INSERT,
+            // Replacing a document's body is an update of that document: the
+            // `_id` stays, and so does its place in the collection.
+            MongoOp::UpdateOne { .. } | MongoOp::UpdateMany { .. } | MongoOp::ReplaceOne { .. } => {
+                Verbs::UPDATE
+            }
+            MongoOp::DeleteOne { .. } | MongoOp::DeleteMany { .. } => Verbs::DELETE,
             // Indexes and namespaces are schema. `createIndex` is the one that
             // looks like data at a glance and is not: it changes what the
             // collection *is*, and it is the tier `CREATE INDEX` already gets
@@ -154,8 +154,14 @@ impl MongoOp {
             | MongoOp::DropIndex { .. }
             | MongoOp::SetIndexHidden { .. }
             | MongoOp::DropCollection
-            | MongoOp::RenameCollection { .. } => StmtClass::Ddl,
+            | MongoOp::RenameCollection { .. } => Verbs::DDL,
         }
+    }
+
+    /// The write tier this operation requires — derived from [`Self::verbs`],
+    /// so the two cannot disagree.
+    pub fn class(&self) -> StmtClass {
+        self.verbs().class()
     }
 
     /// Whether this operation only reads (so the executor fetches a result set
@@ -1328,6 +1334,34 @@ mod tests {
         ] {
             assert_eq!(parse(sql).unwrap().op.class(), StmtClass::Ddl, "{sql}");
             assert!(!parse(sql).unwrap().op.is_read(), "{sql}");
+        }
+    }
+
+    #[test]
+    fn every_operation_names_its_own_verb() {
+        use crate::db::sql::Verbs;
+
+        for (sql, expected) in [
+            ("db.t.find({})", Verbs::SELECT),
+            ("db.t.aggregate([{$match: {a: 1}}])", Verbs::SELECT),
+            ("db.t.insertOne({a: 1})", Verbs::INSERT),
+            ("db.t.insertMany([{a: 1}])", Verbs::INSERT),
+            ("db.t.updateOne({_id: 1}, {$set: {a: 1}})", Verbs::UPDATE),
+            ("db.t.updateMany({a: 1}, {$set: {b: 1}})", Verbs::UPDATE),
+            ("db.t.replaceOne({_id: 1}, {a: 2})", Verbs::UPDATE),
+            ("db.t.deleteOne({_id: 1})", Verbs::DELETE),
+            ("db.t.deleteMany({a: 1})", Verbs::DELETE),
+            (
+                "db.t.aggregate([{$merge: {into: \"u\"}}])",
+                Verbs::INSERT | Verbs::UPDATE,
+            ),
+            ("db.t.aggregate([{$out: \"u\"}])", Verbs::DDL),
+            ("db.t.createIndex({a: 1})", Verbs::DDL),
+            ("db.t.drop()", Verbs::DDL),
+        ] {
+            let op = parse(sql).unwrap().op;
+            assert_eq!(op.verbs(), expected, "{sql}");
+            assert_eq!(op.class(), expected.class(), "{sql}");
         }
     }
 

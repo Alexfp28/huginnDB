@@ -366,9 +366,12 @@ pub fn is_read_only(sql: &str) -> bool {
 /// feature's enforcement path, but its unit tests run under the default
 /// feature set, so it stays compiled unconditionally and only silences the
 /// dead-code lint when `mcp` is off.
-/// The variants are declared least- to most-privileged and the ordering is
-/// load-bearing: [`classify`] takes the `max` over a multi-statement string, so
-/// reordering them would silently pick the *wrong* tier rather than fail.
+/// The variants are declared least- to most-privileged.
+///
+/// A tier is **derived**, never decided on its own: [`Verbs::class`] maps a
+/// statement's verb set onto it, so [`classify`] and [`verbs`] cannot disagree.
+/// It survives because most callers only ask "is this a read?" and a few speak
+/// in tiers to people (the MCP policy's "needs at least `data`").
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StmtClass {
@@ -381,6 +384,65 @@ pub enum StmtClass {
     /// Schema / privilege change: `CREATE` / `DROP` / `ALTER` / `TRUNCATE` /
     /// `RENAME` / `GRANT` / `REVOKE` / `COMMENT`.
     Ddl,
+}
+
+/// What a statement does, as a set — the grain a permission is granted in.
+///
+/// [`StmtClass`] folds every row write into one `DataWrite` tier, which is all
+/// the per-connection MCP policy ever needed (`data` grants the three writes
+/// together). A managed policy grants them **separately** — a department may
+/// insert and update but not delete — so the classifier answers in verbs and
+/// the tier is derived from them ([`Verbs::class`]).
+///
+/// `SELECT` is listed for a statement that reads and nothing else. A write is
+/// not also marked as a read even when it reads to find its rows (`UPDATE …
+/// WHERE id IN (SELECT …)`): a grant that allows a write without allowing reads
+/// is a policy question, answered where policies are validated, not by
+/// inflating every write's verb set here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+pub struct Verbs(u8);
+
+impl Verbs {
+    pub const NONE: Verbs = Verbs(0);
+    pub const SELECT: Verbs = Verbs(1);
+    pub const INSERT: Verbs = Verbs(1 << 1);
+    pub const UPDATE: Verbs = Verbs(1 << 2);
+    pub const DELETE: Verbs = Verbs(1 << 3);
+    /// Schema and privilege changes, `TRUNCATE` included — kept whole, like
+    /// the `full` tier it maps to.
+    pub const DDL: Verbs = Verbs(1 << 4);
+    /// Every row-level write: what an unrecognised statement is assumed to do.
+    pub const WRITES: Verbs = Verbs(Self::INSERT.0 | Self::UPDATE.0 | Self::DELETE.0);
+    pub const ALL: Verbs = Verbs(Self::SELECT.0 | Self::WRITES.0 | Self::DDL.0);
+
+    /// Whether every verb in `needed` is in `self`.
+    pub fn contains(self, needed: Verbs) -> bool {
+        self.0 & needed.0 == needed.0
+    }
+
+    /// Whether `self` and `other` share any verb.
+    pub fn intersects(self, other: Verbs) -> bool {
+        self.0 & other.0 != 0
+    }
+
+    /// The tier this set needs: any DDL makes it `Ddl`, any row write
+    /// `DataWrite`, otherwise it is a `Read`.
+    pub fn class(self) -> StmtClass {
+        if self.intersects(Self::DDL) {
+            StmtClass::Ddl
+        } else if self.intersects(Self::WRITES) {
+            StmtClass::DataWrite
+        } else {
+            StmtClass::Read
+        }
+    }
+}
+
+impl std::ops::BitOr for Verbs {
+    type Output = Verbs;
+    fn bitor(self, other: Verbs) -> Verbs {
+        Verbs(self.0 | other.0)
+    }
 }
 
 /// Best-effort classification of a statement as DDL (schema/privilege change).
@@ -425,7 +487,7 @@ pub fn is_ddl(sql: &str) -> bool {
 /// Under a `WITH` head the `INTO` of `INSERT INTO` / `MERGE INTO` is not a
 /// `SELECT … INTO`: that statement is row-level DML behind a CTE, and reporting
 /// it as DDL put `WITH src AS (…) INSERT INTO t SELECT …` out of reach of a
-/// `data` connection. [`with_performs_dml`] gives it its real tier instead.
+/// `data` connection. [`with_dml_verbs`] gives it its real verbs instead.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 fn is_select_into(head_lower: &str) -> bool {
     if head_lower.starts_with("select") {
@@ -440,7 +502,8 @@ fn is_select_into(head_lower: &str) -> bool {
     })
 }
 
-/// Whether a statement that opens with `WITH` writes rows.
+/// The row-level writes a statement that opens with `WITH` performs — empty
+/// when it only reads.
 ///
 /// Postgres lets a CTE carry DML — `WITH d AS (DELETE FROM t RETURNING *)
 /// SELECT * FROM d` — and both Postgres and MySQL 8 accept a `WITH` in front of
@@ -449,23 +512,89 @@ fn is_select_into(head_lower: &str) -> bool {
 /// existed: a `read-only` MCP connection and the AI panel's no-write rule both
 /// let a `WITH`-prefixed `DELETE` through, and the server ran it.
 ///
-/// A DML keyword anywhere in the statement's *code* counts. Literals, quoted
-/// identifiers and comments are blanked first by [`mask_non_code`], so `WHERE
-/// action = 'update'` is still a read. Two spellings of the keywords that are
-/// not DML are excluded: the row-locking clauses `FOR UPDATE` / `FOR NO KEY
-/// UPDATE`, and T-SQL's `MERGE JOIN` hint. Anything else errs towards the write,
-/// which is the safe direction for a boundary.
+/// A DML keyword anywhere in the statement's *code* counts, each for its own
+/// verb. Literals, quoted identifiers and comments are blanked first by
+/// [`mask_non_code`], so `WHERE action = 'update'` is still a read. The
+/// spellings of the keywords that are not DML are excluded — the row-locking
+/// clauses `FOR UPDATE` / `FOR NO KEY UPDATE`, and T-SQL's `MERGE JOIN` hint —
+/// but only those: `ON DUPLICATE KEY UPDATE` is an update. A `MERGE` claims all
+/// three writes. Anything else errs towards the write, which is the safe
+/// direction for a boundary.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
-fn with_performs_dml(sql: &str) -> bool {
+fn with_dml_verbs(sql: &str) -> Verbs {
     let masked = String::from_utf8_lossy(&mask_non_code(sql)).to_ascii_lowercase();
     let words = words(&masked);
-    let at = |i: Option<usize>| i.and_then(|i| words.get(i)).copied();
-    words.iter().enumerate().any(|(i, w)| match *w {
-        "insert" | "delete" => true,
-        "update" => !matches!(at(i.checked_sub(1)), Some("for" | "key")),
-        "merge" => at(Some(i + 1)) != Some("join"),
-        _ => false,
-    })
+    let back = |i: usize, n: usize| i.checked_sub(n).and_then(|j| words.get(j)).copied();
+    words
+        .iter()
+        .enumerate()
+        .fold(Verbs::NONE, |verbs, (i, w)| match *w {
+            "insert" => verbs | Verbs::INSERT,
+            "delete" => verbs | Verbs::DELETE,
+            "update" if back(i, 1) == Some("for") => verbs,
+            "update" if back(i, 1) == Some("key") && back(i, 2) == Some("no") => verbs,
+            "update" => verbs | Verbs::UPDATE,
+            "merge" if words.get(i + 1) == Some(&"join") => verbs,
+            "merge" => verbs | Verbs::WRITES,
+            _ => verbs,
+        })
+}
+
+/// The writes a statement that is neither DDL nor read-shaped performs.
+///
+/// Read from the statement's own keywords, most of them from the first:
+///
+/// * `INSERT` inserts — and updates as well when it is an upsert (`ON CONFLICT
+///   … DO UPDATE`, MySQL's `ON DUPLICATE KEY UPDATE`), and deletes as well as
+///   SQLite's `INSERT OR REPLACE`, which removes the conflicting row first.
+/// * `REPLACE` (MySQL, SQLite) is a delete-then-insert.
+/// * `UPDATE` updates, `DELETE` deletes.
+/// * `MERGE` does what its `WHEN … THEN` branches say; with none that can be
+///   read (only `DO NOTHING`, or text this cannot follow) it claims all three.
+/// * Anything else — `CALL`, `DO`, `COPY`, `LOAD DATA`, `SET`, … — claims all
+///   three: an unrecognised statement must not slip in under a narrower grant.
+///
+/// Never empty, and never only `SELECT`: a statement that reaches this is not
+/// a read, and returning less would lower its tier.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+fn dml_verbs(sql: &str) -> Verbs {
+    let masked =
+        String::from_utf8_lossy(&mask_non_code(skip_leading_noise(sql))).to_ascii_lowercase();
+    let words = words(&masked);
+    let has_pair = |a: &str, b: &str| words.windows(2).any(|w| w[0] == a && w[1] == b);
+    match words.first().copied() {
+        Some("insert") => {
+            let mut verbs = Verbs::INSERT;
+            if has_pair("do", "update") || has_pair("key", "update") {
+                verbs = verbs | Verbs::UPDATE;
+            }
+            if words.get(1) == Some(&"or") && words.get(2) == Some(&"replace") {
+                verbs = verbs | Verbs::DELETE;
+            }
+            verbs
+        }
+        Some("replace") => Verbs::INSERT | Verbs::DELETE,
+        Some("update") => Verbs::UPDATE,
+        Some("delete") => Verbs::DELETE,
+        Some("merge") => {
+            let branches =
+                words
+                    .windows(2)
+                    .filter(|w| w[0] == "then")
+                    .fold(Verbs::NONE, |verbs, w| match w[1] {
+                        "insert" => verbs | Verbs::INSERT,
+                        "update" => verbs | Verbs::UPDATE,
+                        "delete" => verbs | Verbs::DELETE,
+                        _ => verbs,
+                    });
+            if branches == Verbs::NONE {
+                Verbs::WRITES
+            } else {
+                branches
+            }
+        }
+        _ => Verbs::WRITES,
+    }
 }
 
 /// The statement an `EXPLAIN ANALYZE` runs, if `head_lower` is one.
@@ -514,29 +643,33 @@ fn explain_analyze_target(head_lower: &str) -> Option<&str> {
     analyze.then_some(rest)
 }
 
-/// A read-looking statement's real tier: a read, unless it is a `WITH` that
-/// carries DML or an `EXPLAIN ANALYZE` of something that is not a read.
+/// What a read-looking statement really does: a `SELECT`, unless it is a
+/// `WITH` that carries DML or an `EXPLAIN ANALYZE` of something that is not a
+/// read.
 ///
 /// Kept apart from [`is_read_only`] on purpose — that one also decides whether
 /// the GUI fetches a result set, and a `WITH … DELETE … RETURNING` does return
-/// rows. This is only about which tier the statement *needs*.
+/// rows. This is only about what the statement *needs*.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
-fn read_or_disguised_write(sql: &str) -> StmtClass {
+fn read_verbs(sql: &str) -> Verbs {
     let head = skip_leading_noise(sql)
         .trim_start_matches(|c: char| c == '(' || c.is_whitespace())
         .to_ascii_lowercase();
-    if head.starts_with("with") && with_performs_dml(&head) {
-        return StmtClass::DataWrite;
+    if head.starts_with("with") {
+        let writes = with_dml_verbs(&head);
+        if writes != Verbs::NONE {
+            return writes;
+        }
     }
     if let Some(target) = explain_analyze_target(&head) {
         // Nothing after the options means there is nothing we can vouch for.
         return if target.is_empty() {
-            StmtClass::DataWrite
+            Verbs::WRITES
         } else {
-            classify_one(target)
+            verbs_one(target)
         };
     }
-    StmtClass::Read
+    Verbs::SELECT
 }
 
 /// Split `sql` into its top-level statements.
@@ -585,7 +718,7 @@ pub fn split_statements(sql: &str) -> Vec<&str> {
 ///
 /// Byte offsets line up with `sql`, which is what lets [`split_statements`]
 /// cut the original text wherever the mask still shows a `;`, and lets
-/// [`with_performs_dml`] look for keywords without a literal `'delete'`
+/// [`with_dml_verbs`] look for keywords without a literal `'delete'`
 /// counting as one. One lexer for both, so the two can never disagree about
 /// where a string ends. Bytes rather than a `String`: the offsets are what
 /// matter, and nothing here should be able to panic on odd input.
@@ -717,31 +850,45 @@ fn dollar_tag(rest: &str) -> Option<&str> {
 /// by their first keyword but change schema (`SELECT … INTO`), and it must win
 /// over [`is_read_only`] for those.
 ///
-/// Taking the maximum over [`split_statements`] is what makes the answer safe
-/// for text an AI client wrote: see that function for what the head-only
+/// Taking the strictest tier over [`split_statements`] is what makes the answer
+/// safe for text an AI client wrote: see that function for what the head-only
 /// version let through.
-#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+///
+/// Derived from [`verbs`], never decided on its own: the tier is the verb set's
+/// [`Verbs::class`], so the two cannot disagree about a statement. Callers go
+/// through `db::classify::classify_statement`, which picks the grammar first;
+/// this is the SQL half, kept for the tests that pin tiers.
+#[cfg(test)]
 pub fn classify(sql: &str) -> StmtClass {
-    split_statements(sql)
+    verbs(sql).class()
+}
+
+/// Everything `sql` does, as a set of [`Verbs`] — the union over every
+/// statement in it (gotcha #76), so `SELECT 1; DELETE FROM t` needs `delete`.
+///
+/// Nothing to classify — an empty string, or only semicolons — needs every row
+/// write, for the same reason an unrecognised statement does: the conservative
+/// direction is the safe one.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+pub fn verbs(sql: &str) -> Verbs {
+    let parts = split_statements(sql);
+    if parts.is_empty() {
+        return Verbs::WRITES;
+    }
+    parts
         .into_iter()
-        .map(classify_one)
-        // Nothing to classify — an empty string, or only semicolons. Reported
-        // as a write for the same reason an unrecognised statement is: the
-        // conservative direction is the safe one.
-        .fold(None, |worst: Option<StmtClass>, class| {
-            Some(worst.map_or(class, |worst| worst.max(class)))
-        })
-        .unwrap_or(StmtClass::DataWrite)
+        .map(verbs_one)
+        .fold(Verbs::NONE, |all, one| all | one)
 }
 
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
-fn classify_one(sql: &str) -> StmtClass {
+fn verbs_one(sql: &str) -> Verbs {
     if is_ddl(sql) {
-        StmtClass::Ddl
+        Verbs::DDL
     } else if is_read_only(sql) {
-        read_or_disguised_write(sql)
+        read_verbs(sql)
     } else {
-        StmtClass::DataWrite
+        dml_verbs(sql)
     }
 }
 
@@ -783,8 +930,8 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify, is_ddl, is_read_only, is_unfiltered_write, split_statements, Dialect, Relation,
-        StmtClass,
+        classify, is_ddl, is_read_only, is_unfiltered_write, split_statements, verbs, Dialect,
+        Relation, StmtClass, Verbs,
     };
 
     #[test]
@@ -1098,6 +1245,110 @@ mod tests {
         // Several reads stay a read: the rule is the strictest tier present,
         // not "more than one statement is suspicious".
         assert_eq!(classify("SELECT 1; SELECT 2"), StmtClass::Read);
+    }
+
+    #[test]
+    fn row_writes_are_told_apart() {
+        let (i, u, d) = (Verbs::INSERT, Verbs::UPDATE, Verbs::DELETE);
+        for (sql, expected) in [
+            ("INSERT INTO t VALUES (1)", i),
+            ("INSERT INTO t VALUES (1) ON CONFLICT DO NOTHING", i),
+            ("INSERT IGNORE INTO t VALUES (1)", i),
+            ("INSERT INTO t SELECT * FROM s", i),
+            // A literal that reads like an upsert clause is still a literal.
+            ("INSERT INTO t VALUES ('on duplicate key update')", i),
+            ("UPDATE t SET a = 1 WHERE id = 1", u),
+            ("DELETE FROM t WHERE id = 1", d),
+            (
+                "-- note
+DELETE FROM t WHERE id = 1",
+                d,
+            ),
+        ] {
+            assert_eq!(verbs(sql), expected, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_statement_that_does_two_things_needs_both() {
+        let (i, u, d) = (Verbs::INSERT, Verbs::UPDATE, Verbs::DELETE);
+        for (sql, expected) in [
+            // Upserts update the rows they collide with.
+            ("INSERT INTO t VALUES (1) ON CONFLICT (id) DO UPDATE SET a = 1", i | u),
+            ("INSERT INTO t VALUES (1) ON DUPLICATE KEY UPDATE a = 1", i | u),
+            // A replace removes the conflicting row, then inserts.
+            ("REPLACE INTO t VALUES (1)", i | d),
+            ("INSERT OR REPLACE INTO t VALUES (1)", i | d),
+            // MERGE does what its branches say.
+            (
+                "MERGE INTO t USING s ON t.id = s.id                  WHEN MATCHED THEN UPDATE SET a = s.a                  WHEN NOT MATCHED THEN INSERT (id) VALUES (s.id)",
+                i | u,
+            ),
+            (
+                "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DELETE",
+                d,
+            ),
+            // A batch needs everything any statement in it needs.
+            ("INSERT INTO t VALUES (1); UPDATE t SET a = 2 WHERE id = 1", i | u),
+            ("SELECT 1; DELETE FROM t WHERE id = 1", Verbs::SELECT | d),
+            // Behind a WITH, and behind EXPLAIN ANALYZE.
+            ("WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d", d),
+            (
+                "WITH s AS (SELECT 1 AS id) INSERT INTO t SELECT id FROM s                  ON DUPLICATE KEY UPDATE a = 1",
+                i | u,
+            ),
+            ("EXPLAIN ANALYZE UPDATE t SET a = 1 WHERE id = 1", u),
+        ] {
+            assert_eq!(verbs(sql), expected, "{sql}");
+        }
+    }
+
+    #[test]
+    fn what_cannot_be_read_claims_every_row_write() {
+        for sql in [
+            "CALL do_things()",
+            "DO $$ BEGIN DELETE FROM t; END $$",
+            "COPY t FROM '/tmp/x.csv'",
+            "LOAD DATA INFILE 'x' INTO TABLE t",
+            "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN DO NOTHING",
+            "",
+            ";;",
+        ] {
+            assert_eq!(verbs(sql), Verbs::WRITES, "{sql:?}");
+        }
+    }
+
+    #[test]
+    fn reads_and_ddl_keep_their_verb() {
+        for sql in [
+            "SELECT 1",
+            "SHOW TABLES",
+            "EXPLAIN DELETE FROM t",
+            "WITH x AS (SELECT 1) SELECT * FROM x",
+        ] {
+            assert_eq!(verbs(sql), Verbs::SELECT, "{sql}");
+        }
+        for sql in [
+            "DROP TABLE t",
+            "TRUNCATE t",
+            "SELECT a INTO t2 FROM t",
+            "EXEC sp_help",
+        ] {
+            assert_eq!(verbs(sql), Verbs::DDL, "{sql}");
+        }
+    }
+
+    #[test]
+    fn a_tier_is_the_class_of_its_verbs() {
+        assert_eq!(Verbs::SELECT.class(), StmtClass::Read);
+        for write in [Verbs::INSERT, Verbs::UPDATE, Verbs::DELETE, Verbs::WRITES] {
+            assert_eq!(write.class(), StmtClass::DataWrite);
+            assert_eq!((Verbs::SELECT | write).class(), StmtClass::DataWrite);
+        }
+        assert_eq!((Verbs::DELETE | Verbs::DDL).class(), StmtClass::Ddl);
+        assert_eq!(Verbs::ALL.class(), StmtClass::Ddl);
+        assert!(Verbs::WRITES.contains(Verbs::UPDATE));
+        assert!(!Verbs::INSERT.contains(Verbs::INSERT | Verbs::DELETE));
     }
 
     #[test]

@@ -27,22 +27,31 @@
 //! testable without a server.
 
 use crate::db::mongo::shell;
-use crate::db::sql::StmtClass;
+use crate::db::sql::{StmtClass, Verbs};
 
-/// The tier `sql` requires, whichever grammar it is written in.
+/// Everything `sql` does, whichever grammar it is written in.
 ///
-/// An unparseable `db.…` statement is reported as [`StmtClass::Ddl`] — the
-/// strictest tier. It will fail at parse time anyway when it runs, so the only
-/// thing this choice affects is which policies get to *reach* that error, and
-/// the safe direction for an authorisation decision is to assume the most.
+/// An unparseable `db.…` statement is reported as doing everything, DDL
+/// included — the strictest answer. It will fail at parse time anyway when it
+/// runs, so the only thing this choice affects is which policies get to *reach*
+/// that error, and the safe direction for an authorisation decision is to
+/// assume the most.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
-pub fn classify_statement(sql: &str) -> StmtClass {
+pub fn verbs_of(sql: &str) -> Verbs {
     if shell::looks_like_mongo(sql) {
         return shell::parse(sql)
-            .map(|c| c.op.class())
-            .unwrap_or(StmtClass::Ddl);
+            .map(|c| c.op.verbs())
+            .unwrap_or(Verbs::ALL);
     }
-    crate::db::sql::classify(sql)
+    crate::db::sql::verbs(sql)
+}
+
+/// The tier `sql` requires, whichever grammar it is written in — derived from
+/// [`verbs_of`], so a tier and a verb set can never describe the same statement
+/// differently.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+pub fn classify_statement(sql: &str) -> StmtClass {
+    verbs_of(sql).class()
 }
 
 /// Whether `sql` is a whole-relation `UPDATE`/`DELETE` with no predicate, in
@@ -212,5 +221,26 @@ db.users.deleteMany({a: 1})"
         // SQL guard leaves `DROP TABLE` alone for the same reason.
         assert!(!is_unfiltered_write("db.users.drop()"));
         assert!(!is_unfiltered_write("db.users.deleteOne({})"));
+    }
+
+    #[test]
+    fn verbs_route_by_grammar_and_agree_with_the_tier() {
+        use crate::db::sql::Verbs;
+
+        assert_eq!(verbs_of("db.t.deleteOne({_id: 1})"), Verbs::DELETE);
+        assert_eq!(verbs_of("DELETE FROM t WHERE id = 1"), Verbs::DELETE);
+        // An unparseable mongosh statement is assumed to do everything.
+        assert_eq!(verbs_of("db.t.frobnicate({})"), Verbs::ALL);
+        for sql in [
+            "SELECT 1",
+            "UPDATE t SET a = 1 WHERE id = 1",
+            "DROP TABLE t",
+            "db.t.find({})",
+            "db.t.insertOne({})",
+            "db.t.drop()",
+            "db.t.frobnicate({})",
+        ] {
+            assert_eq!(classify_statement(sql), verbs_of(sql).class(), "{sql}");
+        }
     }
 }

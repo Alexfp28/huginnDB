@@ -52,7 +52,7 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt
 use serde::Deserialize;
 
 use crate::bridge::protocol::BridgeRequest;
-use crate::db::sql::StmtClass;
+use crate::db::sql::{StmtClass, Verbs};
 use crate::error::AppResult;
 use crate::log_bus::{LogEntry, LogSink, NoopSink};
 use crate::state::{ActivePool, AppState, McpWritePolicy};
@@ -1254,7 +1254,7 @@ impl Huginn {
     /// split — the caller is told which tool to use instead, since being
     /// pointed at the cheaper tool is a better answer than silently obliging.
     ///
-    /// Neither refusal replaces the policy gate: `require_class` below still
+    /// Neither refusal replaces the policy gate: `require_verbs` below still
     /// re-reads `mcp_write` from disk on every call, and it is what actually
     /// decides whether a write is allowed to happen.
     async fn run_statement(
@@ -1277,7 +1277,8 @@ impl Huginn {
         // so every bridged Mongo statement was classified by the SQL keyword
         // heuristic instead. See `crate::db::classify` for the two bugs that
         // caused.
-        let class = crate::db::classify::classify_statement(&a.sql);
+        let verbs = crate::db::classify::verbs_of(&a.sql);
+        let class = verbs.class();
 
         match (kind, class) {
             (StatementKind::Read, StmtClass::Read) => {}
@@ -1320,7 +1321,7 @@ impl Huginn {
         // `resolve_mongo_target`), which is never a key in `profiles.json` — a
         // `write_policy` lookup against it would always miss and silently fall
         // back to `ReadOnly`, regardless of the connection's real setting.
-        self.require_class(&a.connection_id, class)?;
+        self.require_verbs(&a.connection_id, verbs)?;
 
         // Reads are not audited; writes append to mcp-audit.log.
         let value = self
@@ -1367,21 +1368,21 @@ impl Huginn {
 
     /// Enforce that `connection_id`'s policy admits a statement of tier
     /// `class`, returning an MCP error naming the current level otherwise.
-    fn require_class(&self, connection_id: &str, class: StmtClass) -> Result<(), ErrorData> {
+    fn require_verbs(&self, connection_id: &str, needed: Verbs) -> Result<(), ErrorData> {
         let policy = self.write_policy(connection_id);
-        if policy.allows(class) {
+        if policy.allows(needed) {
             return Ok(());
         }
-        let needed = match class {
+        // Worded in tiers, because that is what the setting this names offers:
+        // the per-connection policy grants the row writes together.
+        let needed = match needed.class() {
             StmtClass::Read => "read-only",
             StmtClass::DataWrite => "data",
             StmtClass::Ddl => "full",
         };
         Err(ErrorData::invalid_params(
             format!(
-                "connection {connection_id:?} has MCP write policy {:?}, which does not permit \
-                 this operation (needs at least {needed:?}). Raise the connection's level in \
-                 HuginnDB → Settings → MCP.",
+                "connection {connection_id:?} has MCP write policy {:?}, which does not permit                  this operation (needs at least {needed:?}). Raise the connection's level in                  HuginnDB → Settings → MCP.",
                 policy.label()
             ),
             None,
@@ -1867,7 +1868,7 @@ impl Huginn {
             .await?;
         // See the comment in `run_query`: policy is checked against the real
         // profile id, not the resolved (possibly synthetic per-database) target.
-        self.require_class(&a.connection_id, StmtClass::DataWrite)?;
+        self.require_verbs(&a.connection_id, Verbs::INSERT)?;
         let values: Vec<crate::commands::query::RowValue> = a
             .values
             .into_iter()
@@ -1922,7 +1923,7 @@ impl Huginn {
             .await?;
         // See the comment in `run_query`: policy is checked against the real
         // profile id, not the resolved (possibly synthetic per-database) target.
-        self.require_class(&a.connection_id, StmtClass::DataWrite)?;
+        self.require_verbs(&a.connection_id, Verbs::UPDATE)?;
         let out = self
             .call(
                 BridgeRequest::UpdateCell {
@@ -1970,7 +1971,7 @@ impl Huginn {
             .await?;
         // See the comment in `run_query`: policy is checked against the real
         // profile id, not the resolved (possibly synthetic per-database) target.
-        self.require_class(&a.connection_id, StmtClass::DataWrite)?;
+        self.require_verbs(&a.connection_id, Verbs::DELETE)?;
         let out = self
             .call(
                 BridgeRequest::DeleteRows {
@@ -2058,7 +2059,7 @@ impl Huginn {
         // gives the `CREATE OR REPLACE VIEW` a caller could write by hand
         // through `run_query`. Anything lower would let a `data` connection
         // reach through this tool what `run_query` refuses it.
-        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        self.require_verbs(&a.connection_id, Verbs::DDL)?;
         let out = self
             .call(
                 BridgeRequest::ApplyViewChange {
@@ -2108,7 +2109,7 @@ impl Huginn {
             .await?;
         // Policy against the real profile id, never the resolved target — see
         // `save_view` above and `run_query`.
-        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        self.require_verbs(&a.connection_id, Verbs::DDL)?;
         let out = self
             .call(
                 BridgeRequest::DropView {
@@ -2157,7 +2158,7 @@ impl Huginn {
         // `run_query`. `Ddl`, because `db.coll.createIndex(…)` is `Ddl`: a
         // lower tier here would grant through a tool what the statement path
         // refuses.
-        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        self.require_verbs(&a.connection_id, Verbs::DDL)?;
         let out = self
             .call(
                 BridgeRequest::CreateMongoIndex {
@@ -2215,7 +2216,7 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.schema.as_deref())
             .await?;
-        self.require_class(&a.connection_id, StmtClass::Ddl)?;
+        self.require_verbs(&a.connection_id, Verbs::DDL)?;
         let out = self
             .call(
                 BridgeRequest::DropMongoIndex {
@@ -2412,6 +2413,16 @@ pub async fn serve() -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use crate::commands::{query, schema};
+
+    /// What a tier needs, as verbs — so the tests written against tiers keep
+    /// pinning the per-connection policy exactly as before the verb split.
+    fn needs(class: StmtClass) -> Verbs {
+        match class {
+            StmtClass::Read => Verbs::SELECT,
+            StmtClass::DataWrite => Verbs::WRITES,
+            StmtClass::Ddl => Verbs::DDL,
+        }
+    }
     use crate::state::{ActivePool, DbPool};
 
     fn args(v: &[&str]) -> Vec<String> {
@@ -2622,21 +2633,21 @@ mod tests {
     #[test]
     fn write_policy_maps_tiers_correctly() {
         use crate::state::McpWritePolicy::*;
-        assert!(ReadOnly.allows(StmtClass::Read));
-        assert!(!ReadOnly.allows(StmtClass::DataWrite));
-        assert!(!ReadOnly.allows(StmtClass::Ddl));
-        assert!(Data.allows(StmtClass::Read));
-        assert!(Data.allows(StmtClass::DataWrite));
-        assert!(!Data.allows(StmtClass::Ddl));
-        assert!(Full.allows(StmtClass::Read));
-        assert!(Full.allows(StmtClass::DataWrite));
-        assert!(Full.allows(StmtClass::Ddl));
+        assert!(ReadOnly.allows(needs(StmtClass::Read)));
+        assert!(!ReadOnly.allows(needs(StmtClass::DataWrite)));
+        assert!(!ReadOnly.allows(needs(StmtClass::Ddl)));
+        assert!(Data.allows(needs(StmtClass::Read)));
+        assert!(Data.allows(needs(StmtClass::DataWrite)));
+        assert!(!Data.allows(needs(StmtClass::Ddl)));
+        assert!(Full.allows(needs(StmtClass::Read)));
+        assert!(Full.allows(needs(StmtClass::DataWrite)));
+        assert!(Full.allows(needs(StmtClass::Ddl)));
     }
 
     /// Build a `Huginn` around an in-memory profile carrying `policy`, exposed
     /// to the server. `write_policy` re-reads `profiles.json` first, but the
     /// synthetic id is not on disk, so it falls back to this in-memory profile
-    /// — letting us exercise `require_class` without touching real state.
+    /// — letting us exercise `require_verbs` without touching real state.
     fn huginn_with_policy(id: &str, policy: McpWritePolicy, read_only: bool) -> Huginn {
         let state = AppState::new();
         // Through `testkit::profile` rather than a full struct literal, which
@@ -2676,20 +2687,26 @@ mod tests {
     }
 
     #[test]
-    fn require_class_enforces_per_connection_policy() {
+    fn require_verbs_enforces_per_connection_policy() {
         let ro = huginn_with_policy("t-ro", McpWritePolicy::ReadOnly, false);
-        assert!(ro.require_class("t-ro", StmtClass::Read).is_ok());
-        assert!(ro.require_class("t-ro", StmtClass::DataWrite).is_err());
-        assert!(ro.require_class("t-ro", StmtClass::Ddl).is_err());
+        assert!(ro.require_verbs("t-ro", needs(StmtClass::Read)).is_ok());
+        assert!(ro
+            .require_verbs("t-ro", needs(StmtClass::DataWrite))
+            .is_err());
+        assert!(ro.require_verbs("t-ro", needs(StmtClass::Ddl)).is_err());
 
         let data = huginn_with_policy("t-data", McpWritePolicy::Data, false);
-        assert!(data.require_class("t-data", StmtClass::Read).is_ok());
-        assert!(data.require_class("t-data", StmtClass::DataWrite).is_ok());
-        assert!(data.require_class("t-data", StmtClass::Ddl).is_err());
+        assert!(data.require_verbs("t-data", needs(StmtClass::Read)).is_ok());
+        assert!(data
+            .require_verbs("t-data", needs(StmtClass::DataWrite))
+            .is_ok());
+        assert!(data.require_verbs("t-data", needs(StmtClass::Ddl)).is_err());
 
         let full = huginn_with_policy("t-full", McpWritePolicy::Full, false);
-        assert!(full.require_class("t-full", StmtClass::DataWrite).is_ok());
-        assert!(full.require_class("t-full", StmtClass::Ddl).is_ok());
+        assert!(full
+            .require_verbs("t-full", needs(StmtClass::DataWrite))
+            .is_ok());
+        assert!(full.require_verbs("t-full", needs(StmtClass::Ddl)).is_ok());
     }
 
     /// The sidecar-side half of the escalation guard, spelled out as the pair
@@ -2713,16 +2730,16 @@ mod tests {
             let class = classify_statement(sql);
             assert_eq!(class, StmtClass::Ddl, "{sql}");
             assert!(
-                data.require_class("t-data", class).is_err(),
+                data.require_verbs("t-data", needs(class)).is_err(),
                 "a `data` connection must not reach {sql}"
             );
-            assert!(full.require_class("t-full", class).is_ok(), "{sql}");
+            assert!(full.require_verbs("t-full", needs(class)).is_ok(), "{sql}");
         }
 
         // ...and the DML it must not drag with it.
         let class = classify_statement("db.users.insertOne({a: 1})");
         assert_eq!(class, StmtClass::DataWrite);
-        assert!(data.require_class("t-data", class).is_ok());
+        assert!(data.require_verbs("t-data", needs(class)).is_ok());
     }
 
     /// The availability half: a `read-only` MongoDB connection must be able to
@@ -2738,7 +2755,7 @@ mod tests {
         ] {
             let class = crate::db::classify::classify_statement(sql);
             assert_eq!(class, StmtClass::Read, "{sql}");
-            assert!(ro.require_class("t-ro", class).is_ok(), "{sql}");
+            assert!(ro.require_verbs("t-ro", needs(class)).is_ok(), "{sql}");
         }
     }
 
@@ -2746,11 +2763,15 @@ mod tests {
     fn read_only_kill_switch_overrides_full_policy() {
         // Even a `full` connection is forced read-only when --read-only is set.
         let killed = huginn_with_policy("t-kill", McpWritePolicy::Full, true);
-        assert!(killed.require_class("t-kill", StmtClass::Read).is_ok());
         assert!(killed
-            .require_class("t-kill", StmtClass::DataWrite)
+            .require_verbs("t-kill", needs(StmtClass::Read))
+            .is_ok());
+        assert!(killed
+            .require_verbs("t-kill", needs(StmtClass::DataWrite))
             .is_err());
-        assert!(killed.require_class("t-kill", StmtClass::Ddl).is_err());
+        assert!(killed
+            .require_verbs("t-kill", needs(StmtClass::Ddl))
+            .is_err());
     }
 
     async fn mongo_client() -> mongodb::Client {
@@ -2791,17 +2812,19 @@ mod tests {
             .unwrap();
         assert_eq!(target, "mongo-conn::db::iMesPyme");
 
-        // The bug: `require_class(&target, ...)` would find no profile named
+        // The bug: `require_verbs(&target, ...)` would find no profile named
         // `"mongo-conn::db::iMesPyme"` and default to ReadOnly.
         assert!(
-            huginn.require_class(&target, StmtClass::DataWrite).is_err(),
+            huginn
+                .require_verbs(&target, needs(StmtClass::DataWrite))
+                .is_err(),
             "sanity check: the synthetic id is never a profile id"
         );
 
         // The fix: callers gate on the real connection id, which does carry
         // the connection's actual `data` policy.
         assert!(huginn
-            .require_class("mongo-conn", StmtClass::DataWrite)
+            .require_verbs("mongo-conn", needs(StmtClass::DataWrite))
             .is_ok());
     }
 
@@ -3529,19 +3552,19 @@ mod tests {
     #[test]
     fn managing_a_view_needs_full_not_data() {
         use crate::state::McpWritePolicy::{Data, Full, ReadOnly};
-        assert!(!ReadOnly.allows(StmtClass::Ddl));
-        assert!(!Data.allows(StmtClass::Ddl));
-        assert!(Full.allows(StmtClass::Ddl));
+        assert!(!ReadOnly.allows(needs(StmtClass::Ddl)));
+        assert!(!Data.allows(needs(StmtClass::Ddl)));
+        assert!(Full.allows(needs(StmtClass::Ddl)));
         // A preview builds statements and executes nothing, so it rides the
         // read tier and is available at every level.
-        assert!(ReadOnly.allows(StmtClass::Read));
+        assert!(ReadOnly.allows(needs(StmtClass::Read)));
     }
 
     /// Regression guard for the Mongo policy-id trap, at the DDL tier the two
     /// view writes use.
     ///
     /// A MongoDB per-database target is the synthetic `<id>::db::<name>`, which
-    /// is never a key in `profiles.json`. `require_class` must therefore be
+    /// is never a key in `profiles.json`. `require_verbs` must therefore be
     /// handed the real profile id: called with the resolved target it misses the
     /// lookup, and because `McpWritePolicy` defaults to `ReadOnly` it would
     /// refuse a view change the user had explicitly allowed. Sibling of
@@ -3552,12 +3575,14 @@ mod tests {
         let huginn = huginn_with_policy("mongo-conn", McpWritePolicy::Full, false);
 
         // The real profile id: `full` admits DDL, so both view writes proceed.
-        assert!(huginn.require_class("mongo-conn", StmtClass::Ddl).is_ok());
+        assert!(huginn
+            .require_verbs("mongo-conn", needs(StmtClass::Ddl))
+            .is_ok());
 
         // The resolved per-database id is not a profile id, so a policy lookup
         // against it falls back to ReadOnly and refuses.
         assert!(huginn
-            .require_class("mongo-conn::db::shop", StmtClass::Ddl)
+            .require_verbs("mongo-conn::db::shop", needs(StmtClass::Ddl))
             .is_err());
     }
 }

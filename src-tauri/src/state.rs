@@ -164,16 +164,23 @@ pub enum McpWritePolicy {
 // policy inside the *desktop app*, built without the `mcp` feature. That second
 // caller is why these are no longer gated behind it.
 impl McpWritePolicy {
-    /// Whether a statement of the given tier is permitted under this policy.
-    /// `ReadOnly` admits only reads; `Data` adds row-level DML; `Full` adds
-    /// DDL. The ordering is strict — a lower tier never admits a higher one.
-    pub fn allows(self, class: crate::db::sql::StmtClass) -> bool {
-        use crate::db::sql::StmtClass;
+    /// The verbs this policy grants. `ReadOnly` grants reads; `Data` adds the
+    /// three row-level writes **together** — this per-connection setting never
+    /// split them, and a managed policy is what grants them one by one; `Full`
+    /// adds DDL.
+    pub fn verbs(self) -> crate::db::sql::Verbs {
+        use crate::db::sql::Verbs;
         match self {
-            McpWritePolicy::ReadOnly => class == StmtClass::Read,
-            McpWritePolicy::Data => matches!(class, StmtClass::Read | StmtClass::DataWrite),
-            McpWritePolicy::Full => true,
+            McpWritePolicy::ReadOnly => Verbs::SELECT,
+            McpWritePolicy::Data => Verbs::SELECT | Verbs::WRITES,
+            McpWritePolicy::Full => Verbs::ALL,
         }
+    }
+
+    /// Whether an operation that needs `needed` is permitted under this
+    /// policy: every verb it needs has to be granted.
+    pub fn allows(self, needed: crate::db::sql::Verbs) -> bool {
+        self.verbs().contains(needed)
     }
 
     /// Lowercased wire label (`read-only` / `data` / `full`) for error
@@ -1445,5 +1452,24 @@ mod tests {
         .expect("Option fields may be omitted");
         assert!(args.connect_profile.is_none());
         assert!(args.adhoc_host.is_none());
+    }
+
+    /// The per-connection MCP policy never split the row writes, and the verb
+    /// split must not change what it admits: `data` grants all three together.
+    #[test]
+    fn mcp_write_policy_grants_the_same_operations_in_verbs() {
+        use crate::db::sql::Verbs;
+
+        assert_eq!(McpWritePolicy::ReadOnly.verbs(), Verbs::SELECT);
+        assert_eq!(McpWritePolicy::Data.verbs(), Verbs::SELECT | Verbs::WRITES);
+        assert_eq!(McpWritePolicy::Full.verbs(), Verbs::ALL);
+        for write in [Verbs::INSERT, Verbs::UPDATE, Verbs::DELETE, Verbs::WRITES] {
+            assert!(!McpWritePolicy::ReadOnly.allows(write));
+            assert!(McpWritePolicy::Data.allows(write));
+            assert!(McpWritePolicy::Full.allows(write));
+        }
+        assert!(!McpWritePolicy::Data.allows(Verbs::DDL));
+        assert!(!McpWritePolicy::Data.allows(Verbs::DELETE | Verbs::DDL));
+        assert!(McpWritePolicy::Full.allows(Verbs::DDL));
     }
 }
