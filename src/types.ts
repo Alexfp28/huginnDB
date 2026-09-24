@@ -1306,6 +1306,18 @@ export interface PolicyStatus {
   role: string | null;
   unmanagedConnections: "allow" | "deny" | null;
   connections: ConnectionPolicy[];
+  /** Every role the policy defines, for generating its grants. */
+  roles: { name: string; members: string[] }[];
+}
+
+/** A role's database permissions for one server, from
+ *  `policy_generate_grants`. For an administrator to review and run. */
+export interface GrantScript {
+  language: "sql" | "javascript";
+  /** The database role the script creates (`huginn_<role>`). */
+  roleName: string;
+  script: string;
+  warnings: string[];
 }
 
 export interface ConnectionPolicy {

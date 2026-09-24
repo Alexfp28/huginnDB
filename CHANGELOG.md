@@ -97,6 +97,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   before this one read a policy with `dbUser` as invalid and block, so update
   every installation first. See `CLAUDE.md` gotcha #97.
 
+- **HuginnDB writes the database permissions a policy role needs.** A
+  database user per person only enforces the policy if its grants match the
+  role, and writing those by hand for every role and server is where it would
+  drift. Settings → Policy → **Generate grants** picks a role and a server the
+  administrator is connected to, reads its catalog, and writes the script:
+  a `huginn_<role>` database role with its `GRANT`s on PostgreSQL, MySQL and
+  SQL Server, a `createRole` with per-collection actions on MongoDB. A rule
+  over every relation of a database grants at the database or schema level
+  (tables created later are covered); one that names relations or has a
+  `deny` is expanded into the tables that exist now, since a `GRANT` takes no
+  wildcards, and the script says to regenerate it. Rules add up on the same
+  object; `ddl` and `monitor` map to each engine's own permissions; the people
+  the policy gives the role are listed commented out, as they sign in. The
+  notes say what the engine cannot hide — PostgreSQL's `pg_catalog` names, SQL
+  Server's database list (the `VIEW ANY DATABASE` revoke is offered,
+  commented) — and that `export` has no database equivalent. HuginnDB never
+  runs it: the dialog offers Copy and Save. See `CLAUDE.md` gotcha #98.
+
 ### Fixed
 
 - **An empty MongoDB collection still had no way to insert its first

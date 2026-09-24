@@ -230,6 +230,29 @@ computer.
 > it do not know the field, treat the policy as invalid and block every
 > connection until they are updated.
 
+### Generating the grants
+
+A database user per person only enforces the policy if its grants match the
+role. **Settings → Policy → Generate grants** writes them: pick a role and a
+server you are connected to with an administrator account, and HuginnDB builds
+the script from the server's catalog —
+
+- PostgreSQL, MySQL and SQL Server: a database role `huginn_<role>` with its
+  `GRANT`s; MongoDB: a `createRole` with the actions on each collection.
+- A rule over every relation of a database grants at the database or schema
+  level, which also covers tables created later. A rule that names relations
+  (or has a `deny`) is expanded into the tables that exist now — a `GRANT`
+  takes no wildcards — so generate the script again after creating tables.
+- The people the policy gives the role are listed at the end, commented out,
+  as they sign in (`dbUser`, or their account): check the names and uncomment.
+- The script's notes say what the engine cannot hide: PostgreSQL shows every
+  relation's name in `pg_catalog`; SQL Server lists every database unless
+  `VIEW ANY DATABASE` is revoked from `public` (offered, commented); `export`
+  has no database equivalent.
+
+**HuginnDB never runs the script.** Copy it or save it, review it, and run it
+yourself as an administrator.
+
 ## Checking it
 
 - **Settings → Policy** on any machine shows where the policy was read from,

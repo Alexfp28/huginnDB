@@ -22,6 +22,7 @@
 //! app's own commands do not enforce them yet.
 
 mod enforce;
+pub(crate) mod grants;
 pub mod model;
 mod resolve;
 mod source;

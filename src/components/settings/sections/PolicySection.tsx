@@ -13,8 +13,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  KeyRound,
+  RefreshCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GrantScriptDialog } from "@/components/settings/dialogs/GrantScriptDialog";
 import { SearchField } from "@/components/ui/search-field";
 import { Segmented } from "@/components/ui/segmented";
 import { TreeRow } from "@/components/ui/tree-row";
@@ -26,6 +32,7 @@ export function PolicySection() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<PolicyStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [grantsOpen, setGrantsOpen] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -45,11 +52,30 @@ export function PolicySection() {
         <p className="text-[12px] leading-relaxed text-muted-foreground">
           {t("settings.policy.intro")}
         </p>
-        <Button variant="outline" size="sm" onClick={load}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          {t("settings.policy.refresh")}
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          {status?.state === "active" && status.roles.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={KeyRound}
+              onClick={() => setGrantsOpen(true)}
+            >
+              {t("settings.policy.grants.open")}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={load}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            {t("settings.policy.refresh")}
+          </Button>
+        </div>
       </div>
+      {status?.state === "active" && grantsOpen && (
+        <GrantScriptDialog
+          open={grantsOpen}
+          onOpenChange={setGrantsOpen}
+          status={status}
+        />
+      )}
 
       {error && (
         <p className="text-2xs text-destructive">

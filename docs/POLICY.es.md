@@ -244,6 +244,31 @@ compartida no tiene por qué llegar al equipo de nadie.
 > versiones anteriores no conocen el campo, dan la política por no válida y
 > bloquean todas las conexiones hasta que se actualicen.
 
+### Generar los permisos
+
+Un usuario de base de datos por persona solo aplica la política si sus permisos
+coinciden con el rol. **Ajustes → Política → Generar permisos** los escribe:
+elige un rol y un servidor al que estés conectado con una cuenta de
+administrador, y HuginnDB construye el script a partir del catálogo del
+servidor:
+
+- PostgreSQL, MySQL y SQL Server: un rol de base de datos `huginn_<rol>` con sus
+  `GRANT`; MongoDB: un `createRole` con las acciones sobre cada colección.
+- Una regla sobre todas las relaciones de una base de datos concede a nivel de
+  base de datos o de esquema, lo que cubre también las tablas que se creen
+  después. Una regla que nombra relaciones (o tiene un `deny`) se expande a las
+  tablas que existen ahora —un `GRANT` no admite comodines—, así que vuelve a
+  generar el script después de crear tablas.
+- Las personas a las que la política da el rol aparecen al final, comentadas,
+  tal como entran (`dbUser`, o su cuenta): revisa los nombres y descomenta.
+- Las notas del script dicen lo que el motor no puede ocultar: PostgreSQL
+  enseña el nombre de todas las relaciones en `pg_catalog`; SQL Server lista
+  todas las bases de datos salvo que se revoque `VIEW ANY DATABASE` a `public`
+  (se ofrece, comentado); `export` no tiene equivalente en la base de datos.
+
+**HuginnDB nunca ejecuta el script.** Cópialo o guárdalo, revísalo y ejecútalo
+tú como administrador.
+
 ## Cómo comprobarla
 
 - **Ajustes → Política**, en cualquier equipo, muestra de dónde se ha leído la

@@ -1904,6 +1904,20 @@
       "unmatchedDenyShort": "no rule — blocked",
       "rowSummary": "People: {{human}} · AI: {{ai}} · free SQL: {{freeSql}}",
       "dbUser": "Database user",
+      "grants": {
+        "open": "Generate grants",
+        "title": "Database permissions for a role",
+        "description": "The GRANTs (or MongoDB role) a policy role needs on one server, so the database itself enforces what the role allows for each person's own database user. HuginnDB never runs this script: review it, then run it as an administrator.",
+        "role": "Role",
+        "roleOption_one": "{{role}} ({{count}} person)",
+        "roleOption_other": "{{role}} ({{count}} people)",
+        "connection": "On",
+        "generate": "Generate",
+        "noConnection": "Connect to the server with your administrator account first: the script is built from its catalog.",
+        "copied": "Script copied",
+        "save": "Save…",
+        "copy": "Copy"
+      },
       "freeSqlShortOn": "yes",
       "freeSqlShortOff": "no"
     }
@@ -1922,7 +1936,8 @@
       "environments": "Environments exported",
       "jsonSchemas": "JSON Schemas exported",
       "theme": "Theme exported",
-      "shortcuts": "Shortcuts exported"
+      "shortcuts": "Shortcuts exported",
+      "grants": "Grants script saved"
     },
     "center": {
       "open": "Notifications",

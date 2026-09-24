@@ -408,7 +408,7 @@ fn normalise_path(path: &str) -> String {
     path.trim().replace('\\', "/").to_lowercase()
 }
 
-fn database_matches(rule: &Rule, database: Option<&str>) -> bool {
+pub(super) fn database_matches(rule: &Rule, database: Option<&str>) -> bool {
     match (&rule.databases, database) {
         (None, _) => true,
         (Some(globs), Some(db)) => globs.iter().any(|g| glob_matches(g, db)),
@@ -418,7 +418,7 @@ fn database_matches(rule: &Rule, database: Option<&str>) -> bool {
     }
 }
 
-fn relation_allowed(rule: &Rule, schema: Option<&str>, name: &str) -> bool {
+pub(super) fn relation_allowed(rule: &Rule, schema: Option<&str>, name: &str) -> bool {
     let full = qualified(schema, name);
     let hit = |glob: &String| {
         if glob.contains('.') {

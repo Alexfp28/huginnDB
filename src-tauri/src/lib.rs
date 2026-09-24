@@ -318,6 +318,7 @@ pub fn run() {
             commands::policy::policy_status,
             commands::policy::policy_access,
             commands::policy::policy_relation_access,
+            commands::policy::policy_generate_grants,
             commands::connection::save_profile,
             commands::connection::delete_profile,
             commands::connection::delete_profiles,
