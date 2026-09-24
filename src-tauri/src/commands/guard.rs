@@ -377,6 +377,12 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     // Reads the server's catalog to write grants: the permission that already
     // shows users and privileges.
     ("policy::policy_generate_grants", "monitor"),
+    // The policy editor: no database is touched, and who may save is decided
+    // by a real write to the share (`policy::editor`), not by the policy.
+    ("policy::policy_open_for_edit", "none"),
+    ("policy::policy_validate", "none"),
+    ("policy::policy_save", "none"),
+    ("policy::policy_create", "none"),
     ("prefs::adopt_environment", "none"),
     ("prefs::analyze_environment_import", "none"),
     ("prefs::clear_tab_state", "none"),

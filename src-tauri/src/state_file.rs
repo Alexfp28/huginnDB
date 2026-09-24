@@ -156,6 +156,128 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> AppResult<()> {
     }
 }
 
+/// Whether a directory accepts writes, by writing to it — shared by the
+/// shared-origin editor and the policy editor, where the answer is the
+/// authority itself: the share's permissions are what decide who may publish.
+/// Whether this machine can actually write the document, as opposed to whether
+/// the user said it may.
+///
+/// The probe *creates and deletes a file* in the destination directory rather
+/// than reading permission bits. On a Windows share the bits describe the local
+/// mount, not what the server will accept, and the failure they hide is the
+/// worst possible one: an editor that lets somebody compose a revision and then
+/// refuses it at the last step.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WritableProbe {
+    /// Does the document itself exist yet? A publisher creating one is the
+    /// legitimate `false` case.
+    pub exists: bool,
+    /// Did a real write succeed?
+    pub writable: bool,
+    /// The OS's own message when it did not, verbatim — "access is denied" and
+    /// "the network path was not found" call for completely different actions.
+    pub reason: Option<String>,
+}
+
+/// Can this machine write `path`? A real write next to it (a uniquely named
+/// canary, deleted straight away), never a permission read; every failure is
+/// a `reason`, never an error.
+pub fn probe_writable(path: &Path) -> WritableProbe {
+    let exists = path.exists();
+    let Some(dir) = path.parent() else {
+        return WritableProbe {
+            exists,
+            writable: false,
+            reason: Some("the path has no parent directory".into()),
+        };
+    };
+    // A real write, not a permission read: see the type doc. Named so a stray
+    // one is recognisable, and unique so two windows probing at once cannot
+    // delete each other's.
+    let canary = dir.join(format!(".huginndb-write-probe-{}", uuid::Uuid::new_v4()));
+    match std::fs::File::create(&canary) {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&canary);
+            WritableProbe {
+                exists,
+                writable: true,
+                reason: None,
+            }
+        }
+        Err(e) => WritableProbe {
+            exists,
+            writable: false,
+            reason: Some(e.to_string()),
+        },
+    }
+}
+
+/// Lowercase hex SHA-256 of `bytes` — the fingerprint an editor compares
+/// against the file on disk before overwriting it.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(bytes);
+    crate::transfer::hex_lower(&h.finalize())
+}
+
+/// `path`'s modification time as RFC 3339, for display only.
+pub fn mtime_of(path: &Path) -> Option<String> {
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    Some(chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339())
+}
+
+/// [`write_atomic`] without its moment of absence: the new bytes replace the
+/// old in one rename, and the destination exists throughout.
+///
+/// For a file other machines read on a timer with no coordination — the
+/// managed policy. [`write_atomic`] removes the destination before renaming
+/// onto it, and a reader landing in that window sees *no file*: for a policy
+/// that is `Broken`, and a machine that fails closed until its next read, five
+/// minutes later. `std::fs::rename` replaces an existing file on Windows too
+/// (`MoveFileExW` with `MOVEFILE_REPLACE_EXISTING`), so the removal is not
+/// needed. What can still refuse is a reader holding the file open without
+/// delete sharing (Explorer's preview, an editor): that is retried briefly,
+/// and never answered by removing the file first.
+pub fn write_replace(path: &Path, bytes: &[u8]) -> AppResult<()> {
+    let dir = path.parent().ok_or_else(|| {
+        AppError::InvalidInput(format!("{path:?} has no parent directory to write into"))
+    })?;
+    let tmp = dir.join(format!(
+        ".{}.{}.tmp",
+        path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "huginndb".into()),
+        uuid::Uuid::new_v4().simple()
+    ));
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+    }
+    let mut last = None;
+    for attempt in 0..5 {
+        match std::fs::rename(&tmp, path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied && attempt < 4 => {
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(150));
+            }
+            Err(e) => {
+                last = Some(e);
+                break;
+            }
+        }
+    }
+    let _ = std::fs::remove_file(&tmp);
+    Err(last.map_or_else(
+        || AppError::InvalidInput(format!("could not replace {path:?}")),
+        Into::into,
+    ))
+}
+
 /// Copy `path` to `path` + `.bak`, so the revision being replaced survives one
 /// generation.
 ///
@@ -250,5 +372,37 @@ mod tests {
             "rev-1",
             std::fs::read_to_string(dir.join("team.json.bak")).unwrap()
         );
+    }
+
+    /// The policy editor's write: the old contents are replaced in one rename,
+    /// the file is never absent, and nothing is left beside it.
+    #[test]
+    fn write_replace_swaps_the_contents_and_leaves_no_temp_file() {
+        let dir = scratch("write-replace");
+        let dest = dir.join("policy.json");
+        std::fs::write(&dest, b"old").unwrap();
+        write_replace(&dest, b"new").unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"new");
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n != "policy.json")
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+        // And onto a path that does not exist yet.
+        let fresh = dir.join("fresh.json");
+        write_replace(&fresh, b"x").unwrap();
+        assert_eq!(std::fs::read(&fresh).unwrap(), b"x");
+    }
+
+    #[test]
+    fn the_write_probe_answers_with_a_reason_instead_of_failing() {
+        let dir = scratch("probe");
+        let ok = probe_writable(&dir.join("doc.json"));
+        assert!(ok.writable && !ok.exists);
+        let missing = probe_writable(&dir.join("no-such-dir").join("doc.json"));
+        assert!(!missing.writable);
+        assert!(missing.reason.is_some());
     }
 }

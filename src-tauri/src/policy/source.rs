@@ -22,7 +22,7 @@ pub const FILE_NAME: &str = "managed-policy.json";
 /// A policy larger than this is refused rather than parsed. Real ones are a
 /// few kilobytes; the cap only stops a mistake — a log file dropped on the
 /// share under the policy's name — from being read whole on every reload.
-const MAX_BYTES: u64 = 1024 * 1024;
+pub(super) const MAX_BYTES: u64 = 1024 * 1024;
 
 /// What an anchor pointed at.
 #[derive(Debug, Clone, PartialEq, Eq)]
