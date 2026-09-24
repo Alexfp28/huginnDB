@@ -1,6 +1,8 @@
 # HuginnDB managed policy — design rationale and phased build-out
 
-Status: **planned, not started.** This document is the specification for
+Status: **phase 0 and phase 1 shipped** (unreleased, next minor — PRs #186,
+#188, #189; the AI is bound, see [`POLICY.md`](POLICY.md)); **phases 2–4 open**.
+This document is the specification for
 *managed policy*: per-role permissions, set by an administrator in one place,
 that bound what each **person** can do in HuginnDB and what an **AI** acting for
 that person can do, on every installation in an organization.
@@ -325,13 +327,13 @@ edit the managed source — which holds here too.
 
 ## 9. Phases
 
-0. **Prerequisite — trust the classifier** (PR #186). Mapping `StmtClass`'s
+0. **Prerequisite — trust the classifier** — *shipped* (PR #186). Mapping `StmtClass`'s
    call sites for this work found three writes classified as reads — a `WITH`
    carrying DML, `EXPLAIN ANALYZE`, and a MongoDB `aggregate` ending in
    `$out`/`$merge` — which a `read-only` MCP connection and the AI panel let
    run. Fixed in the classifier, plus a read-only transaction around every read
    an AI sends (gotcha #93). The verb split builds on it, so it lands first.
-1. **Core, AI enforcement.** Verb split in `classify` (§6.4) with tests; a
+1. **Core, AI enforcement** — *shipped* (PRs #188, #189; gotcha #94). Verb split in `classify` (§6.4) with tests; a
    pure resolver *(policy, user, endpoint, relation, verb) → allow/deny* with
    exhaustive tests; anchor loading (§5.2) and fail-closed (§5.4); enforcement
    in `bridge::exec::execute` plus the three paths outside it (§6.1); a
