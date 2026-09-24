@@ -494,8 +494,16 @@ pub async fn sync_origin(
     let profiles = state.profiles.clone();
     let tab_state_lock = state.tab_state.clone();
     let schemas = state.json_schemas.clone();
+    let policy = state.policy.clone();
     let report = tauri::async_runtime::spawn_blocking(move || {
-        sync_origin_inner(&connections, &profiles, &tab_state_lock, &schemas, &id)
+        sync_origin_inner(
+            &connections,
+            &profiles,
+            &tab_state_lock,
+            &schemas,
+            &policy,
+            &id,
+        )
     })
     .await
     .map_err(|e| AppError::Transfer(format!("origin sync task failed: {e}")))?;
@@ -526,6 +534,7 @@ fn sync_origin_inner(
     profiles_lock: &Arc<RwLock<Vec<ConnectionProfile>>>,
     tab_state_lock: &Arc<RwLock<tab_state::PersistedTabState>>,
     schemas_lock: &Arc<RwLock<crate::json_schemas::JsonSchemaLibrary>>,
+    policy: &crate::policy::SharedPolicy,
     id: &str,
 ) -> AppResult<OriginSyncReport> {
     let origin = {
@@ -613,6 +622,7 @@ fn sync_origin_inner(
         merge_profiles_bundle(
             connections,
             profiles_lock,
+            policy,
             id,
             passphrase.as_deref(),
             &incoming_profiles,
@@ -785,6 +795,9 @@ pub(crate) fn merge_into(
         // publishes. The update arm restores this machine's own flag from
         // `existing` a few lines down.
         profile.secret_override = None;
+        // Nor the database user a person signs in as on their own machine
+        // (`crate::credentials`) — the same leak, one field over.
+        profile.personal_username = None;
 
         match profiles.iter_mut().find(|p| p.id == profile.id) {
             Some(existing) => {
@@ -843,6 +856,9 @@ pub(crate) fn merge_into(
                 // the ciphertext it supersedes against the one arriving now —
                 // so it has to survive the merge that hands it that ciphertext.
                 profile.secret_override = existing.secret_override.clone();
+                // And the person's own database user: a local choice the
+                // publisher cannot see, which a refresh must never undo.
+                profile.personal_username = existing.personal_username.clone();
                 *existing = profile.clone();
                 report.updated.push(profile.id);
             }
@@ -865,6 +881,7 @@ pub(crate) fn merge_into(
 fn merge_profiles_bundle(
     connections: &Arc<RwLock<ActiveConnections>>,
     profiles_lock: &Arc<RwLock<Vec<ConnectionProfile>>>,
+    policy: &crate::policy::SharedPolicy,
     origin_id: &str,
     passphrase: Option<&str>,
     incoming: &[ExportedProfile],
@@ -893,6 +910,19 @@ fn merge_profiles_bundle(
                 .map(|o| (p.id.clone(), o.supersedes.clone()))
         })
         .collect();
+    // Connections a person signs in to with their own database user — chosen
+    // here, or pinned by the policy's `dbUser`. The shared secret is never
+    // landed for them: it would be stored under an account nothing reads
+    // (`id::<published user>`), and, worse, it would put on this machine the
+    // very password that lets its user open another client as the shared
+    // account — the one thing per-person users exist to prevent.
+    let personal: std::collections::HashSet<String> = profiles_lock
+        .read()
+        .iter()
+        .filter(|p| p.origin_id.as_deref() == Some(origin_id))
+        .filter(|p| crate::credentials::personal_user(policy, p).is_some())
+        .map(|p| p.id.clone())
+        .collect();
     // Overrides this pass expired, because the publisher has since answered
     // the question they were a stopgap for. Reported, never silent: a
     // credential that changes under the user is exactly the thing they need
@@ -914,6 +944,9 @@ fn merge_profiles_bundle(
             // publishes no passwords at all.
             continue;
         };
+        if personal.contains(&entry.profile.id) {
+            continue;
+        }
         let fingerprint = crate::transfer::secrets_fingerprint(secrets);
         let overridden = overrides.get(&entry.profile.id);
         if overridden.is_some_and(|s| override_still_stands(s.as_ref(), &fingerprint)) {
@@ -1311,6 +1344,37 @@ mod tests {
             Some("fp-old"),
         );
         assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// A person's own database user is theirs: a refresh keeps it, and a
+    /// publisher's — on a connection the consumer is adding, where there is
+    /// nothing local to restore — never arrives, or everyone would sign in as
+    /// the publisher.
+    #[test]
+    fn a_sync_keeps_the_local_personal_user_and_never_brings_the_publishers() {
+        let local = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            personal_username: Some("alopez".into()),
+            ..testkit::profile("shared")
+        };
+        let refreshed = published(ConnectionProfile {
+            username: "erp_app".into(),
+            personal_username: Some("the_publisher".into()),
+            ..testkit::profile("shared")
+        });
+        let added = published(ConnectionProfile {
+            personal_username: Some("the_publisher".into()),
+            ..testkit::profile("new")
+        });
+
+        let after = merge(vec![local], &[refreshed, added]);
+
+        assert_eq!(after[0].personal_username.as_deref(), Some("alopez"));
+        assert_eq!(
+            after[0].username, "erp_app",
+            "the published user is the file's"
+        );
+        assert_eq!(after[1].personal_username, None);
     }
 
     /// A publisher who had taken a password over on their own machine must not

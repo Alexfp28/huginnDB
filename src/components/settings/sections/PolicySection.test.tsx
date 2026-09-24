@@ -40,6 +40,7 @@ function status(over: Partial<PolicyStatus> = {}): PolicyStatus {
         name: "ERP",
         unmatched: false,
         leftAlone: false,
+        dbUser: "ana",
         rules: [
           {
             databases: ["billing"],
@@ -51,7 +52,14 @@ function status(over: Partial<PolicyStatus> = {}): PolicyStatus {
           },
         ],
       },
-      { id: "hr", name: "HR", unmatched: true, leftAlone: false, rules: [] },
+      {
+        id: "hr",
+        name: "HR",
+        unmatched: true,
+        leftAlone: false,
+        dbUser: null,
+        rules: [],
+      },
     ],
     ...over,
   };
@@ -74,6 +82,8 @@ describe("PolicySection", () => {
 
     fireEvent.click(screen.getByText("ERP"));
     expect(screen.getByText("billing")).toBeTruthy();
+    // The database user the policy signs this person in as.
+    expect(screen.getByText(/Database user/)).toBeTruthy();
     expect(screen.getByText("invoices, v_invoice_*")).toBeTruthy();
     expect(screen.getByText("v_invoice_cards")).toBeTruthy();
     // What the AI gets and what the person gets, told apart.
@@ -104,6 +114,7 @@ describe("PolicySection", () => {
       name: `Client ${String(i).padStart(2, "0")}`,
       unmatched: i >= 3,
       leftAlone: false,
+      dbUser: null,
       rules:
         i < 3
           ? [

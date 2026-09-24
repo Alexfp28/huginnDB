@@ -2,7 +2,7 @@
 //! and what a request needs, is it allowed? Everything that reads disks, the
 //! registry or the clock lives elsewhere, so this can be tested exhaustively.
 
-use super::model::{EndpointPattern, Grant, PolicyDoc, Rule, Subject, Unmanaged};
+use super::model::{expand_db_user, EndpointPattern, Grant, PolicyDoc, Rule, Subject, Unmanaged};
 use crate::db::sql::Verbs;
 use crate::state::{ConnectionProfile, Driver};
 
@@ -369,6 +369,19 @@ fn qualified(schema: Option<&str>, name: &str) -> String {
         Some(s) if !s.is_empty() => format!("{s}.{name}"),
         _ => name.to_string(),
     }
+}
+
+/// The database user `user`'s role pins on `profile`'s endpoint: the first of
+/// the role's rules for that endpoint, in document order, that carries a
+/// `dbUser`, expanded. Endpoint-wide on purpose: a user signs in to a server,
+/// not to one database of it, so a rule's `databases` do not narrow it.
+pub fn pinned_db_user(doc: &PolicyDoc, user: &str, profile: &ConnectionProfile) -> Option<String> {
+    let (_, role) = doc.role_for(user);
+    role.rules
+        .iter()
+        .filter(|r| endpoint_matches(&r.endpoint, profile))
+        .find_map(|r| r.db_user.as_deref())
+        .and_then(|template| expand_db_user(template, user))
 }
 
 /// Whether a rule's endpoint pattern names this profile's server.
@@ -850,5 +863,36 @@ mod tests {
         assert!(!glob_matches("a*b*c", "axxbyy"));
         assert!(!glob_matches("invoices", "invoices_old"));
         assert!(glob_matches("invoices", "invoices"));
+    }
+
+    #[test]
+    fn the_first_rule_for_the_endpoint_with_a_db_user_pins_it() {
+        let (doc, _) = PolicyDoc::parse(
+            r#"{
+                "version": 1, "defaultRole": "none",
+                "users": { "ACME\\ana": "sales" },
+                "roles": {
+                    "none": {},
+                    "sales": { "rules": [
+                        { "endpoint": { "host": "crm.local" }, "dbUser": "crm_{user}" },
+                        { "endpoint": { "host": "erp.local" }, "databases": ["billing"] },
+                        { "endpoint": { "host": "erp.local" }, "databases": ["hr"],
+                          "dbUser": "{user}" },
+                        { "endpoint": "*", "dbUser": "later" }
+                    ] }
+                }
+            }"#,
+        )
+        .unwrap();
+        let erp = ConnectionProfile {
+            driver: Driver::Postgres,
+            host: "ERP.local".into(),
+            ..crate::testkit::profile("erp")
+        };
+        // Endpoint-wide: the `hr` rule's user applies to the whole server.
+        assert_eq!(pinned_db_user(&doc, "ana", &erp), Some("ana".into()));
+        // Someone the policy does not list gets the default role, which pins
+        // nothing.
+        assert_eq!(pinned_db_user(&doc, "bob", &erp), None);
     }
 }

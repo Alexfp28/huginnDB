@@ -48,5 +48,6 @@ pub fn profile(id: &str) -> ConnectionProfile {
         ai_rows_allowed: false,
         ai_notes: None,
         secret_override: None,
+        personal_username: None,
     }
 }

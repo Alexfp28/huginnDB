@@ -219,6 +219,18 @@ fn annotate_connection_limit(state: &AppState, error: AppError) -> AppError {
     ))
 }
 
+/// The keychain account a person's own password lives under for `profile`,
+/// when they sign in with their own database user and it differs from the
+/// connection's — the second entry a deletion has to take with it.
+fn personal_account(
+    policy: &crate::policy::SharedPolicy,
+    profile: &ConnectionProfile,
+) -> Option<String> {
+    let effective = crate::credentials::effective_profile(policy, profile);
+    let account = effective.keyring_account();
+    (account != profile.keyring_account()).then_some(account)
+}
+
 /// Look up the password for `profile` from the OS keychain.
 ///
 /// SQLite profiles never store a password (the database is a local file),
@@ -234,7 +246,11 @@ pub(crate) fn resolve_password(profile: &ConnectionProfile) -> AppResult<String>
     // MongoDB's password is optional: it may be embedded in the connection URI
     // (or the server may allow unauthenticated local access), so a missing
     // keychain entry is not an error — fall back to an empty string.
-    if matches!(profile.driver, Driver::Mongo) {
+    //
+    // Except with a personal user in force (`crate::credentials`): then the
+    // published credential was taken out of the URI on purpose, and signing in
+    // with no password would only fail at the server with a vaguer message.
+    if matches!(profile.driver, Driver::Mongo) && profile.personal_username.is_none() {
         return Ok(keychain::get_password(&profile.keyring_account())?.unwrap_or_default());
     }
     keychain::require_password(&profile.keyring_account())
@@ -278,10 +294,25 @@ pub fn save_profile(
     if profile.id.is_empty() {
         profile.id = Uuid::new_v4().to_string();
     }
+    // A person's own database user is set by its own command, never by the
+    // form — which does not carry it — so a save keeps what is stored.
+    if profile.personal_username.is_none() {
+        profile.personal_username = state
+            .profiles
+            .read()
+            .iter()
+            .find(|p| p.id == profile.id)
+            .and_then(|p| p.personal_username.clone());
+    }
 
     if let Some(pw) = password {
         if !matches!(profile.driver, Driver::Sqlite) {
-            keychain::set_password(&profile.keyring_account(), &pw)?;
+            // Under the account the connection signs in with: the policy may
+            // pin a personal user (`dbUser`), and a password stored under the
+            // published user's account would never be read.
+            let account =
+                crate::credentials::effective_profile(&state.policy, &profile).keyring_account();
+            keychain::set_password(&account, &pw)?;
         }
     }
 
@@ -660,6 +691,9 @@ pub fn delete_profile(app: AppHandle, state: State<'_, AppState>, id: String) ->
     if let Some(p) = removed {
         if !matches!(p.driver, Driver::Sqlite) {
             keychain::delete_password(&p.keyring_account())?;
+            if let Some(account) = personal_account(&state.policy, &p) {
+                keychain::delete_password(&account)?;
+            }
         }
         if let Some(ssh_account) = p.ssh_keyring_account() {
             keychain::delete_password(&ssh_account)?;
@@ -721,6 +755,11 @@ pub fn delete_profiles(
             if let Err(e) = keychain::delete_password(&p.keyring_account()) {
                 report.failed.push((p.id.clone(), e.to_string()));
             }
+            if let Some(account) = personal_account(&state.policy, p) {
+                if let Err(e) = keychain::delete_password(&account) {
+                    report.failed.push((p.id.clone(), e.to_string()));
+                }
+            }
         }
         if let Some(ssh_account) = p.ssh_keyring_account() {
             if let Err(e) = keychain::delete_password(&ssh_account) {
@@ -753,6 +792,7 @@ pub async fn test_connection(
     ssh_secret: Option<String>,
 ) -> AppResult<String> {
     let window_label = Some(window.label());
+    let profile = crate::credentials::effective_profile(&state.policy, &profile);
     let pw = match password {
         Some(p) => p,
         None => resolve_password(&profile)?,
@@ -893,6 +933,9 @@ pub(crate) async fn connect_inner(
         .find(|p| p.id == id)
         .cloned()
         .ok_or_else(|| AppError::NotFound(format!("profile {id}")))?;
+    // Signs in as the person when a personal database user is in force — the
+    // policy's `dbUser`, or their own choice — with their own password.
+    let profile = crate::credentials::effective_profile(&state.policy, &profile);
 
     // Idempotent: a second `connect` for an already-active id — e.g. a
     // secondary window connecting to the same profile the main window
@@ -1299,6 +1342,8 @@ async fn open_database_view_inner(
         .find(|p| p.id == parent_id)
         .cloned()
         .ok_or_else(|| AppError::NotFound(format!("profile {parent_id}")))?;
+    // A child signs in as the person, like its parent did.
+    let parent = crate::credentials::effective_profile(&state.policy, &parent);
 
     if matches!(parent.driver, Driver::Sqlite) {
         // SQLite has a single file = single database; per-DB browsing is
@@ -1971,6 +2016,9 @@ pub(crate) fn apply_profile_imports(
         // the connection, and the published secret would then be skipped for a
         // keychain entry the user never wrote.
         new_profile.secret_override = None;
+        // And whoever the exporting machine's person signed in as: this
+        // machine's person is somebody else.
+        new_profile.personal_username = None;
 
         // Decrypt and store secrets if present. `Strict` because the user is
         // sitting in the import dialog: a wrong passphrase has to surface here

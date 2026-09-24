@@ -530,6 +530,9 @@ pub struct ConnectionPolicy {
     pub unmatched: bool,
     /// When unmatched: whether the policy leaves it alone (`allow`) or not.
     pub left_alone: bool,
+    /// The database user the policy signs this person in to it as (a rule's
+    /// `dbUser`, expanded), if it pins one.
+    pub db_user: Option<String>,
     pub rules: Vec<RulePolicy>,
 }
 
@@ -619,6 +622,7 @@ pub fn status(state: &AppState) -> PolicyStatus {
                 name: p.name.clone(),
                 unmatched: rules.is_empty(),
                 left_alone: ctx.is_unmanaged(),
+                db_user: super::resolve::pinned_db_user(&doc, &user, p),
                 rules,
             }
         })

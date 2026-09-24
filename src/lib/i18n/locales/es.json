@@ -1903,6 +1903,7 @@
       "unmatchedAllowShort": "sin regla: deciden los ajustes locales",
       "unmatchedDenyShort": "sin regla: bloqueada",
       "rowSummary": "Personas: {{human}} · IA: {{ai}} · SQL libre: {{freeSql}}",
+      "dbUser": "Usuario de BD",
       "freeSqlShortOn": "sí",
       "freeSqlShortOff": "no"
     }
@@ -3369,5 +3370,29 @@
       "broken": "No se pudo aplicar la política de tu organización, así que ninguna conexión deja leer ni escribir.",
       "details": "Detalles"
     }
-  }
+  },
+    "passwordPrompt": {
+      "title": "Contraseña de {{name}}",
+      "body": "El llavero no tiene contraseña para {{user}} en esta conexión. Escríbela para conectar.",
+      "password": "Contraseña",
+      "remember": "Recordarla en este equipo",
+      "connect": "Conectar",
+      "rememberFailed": "Conectado, pero no se pudo recordar la contraseña"
+    },
+    "personalCredentials": {
+      "pinned": "Tu organización te conecta a este servidor como {{user}}. La contraseña que escribas en este diálogo se guarda para ese usuario.",
+      "own": "Te conectas como {{user}}, tu propio usuario de base de datos, en lugar del compartido {{shared}}.",
+      "offer": "Conéctate con tu propio usuario de base de datos en lugar del compartido: así la propia base de datos aplica tus permisos, y la contraseña compartida deja de llegar a este equipo.",
+      "user": "Tu usuario de base de datos",
+      "passwordStored": "contraseña guardada",
+      "passwordMissing": "sin contraseña guardada",
+      "save": "Usar el mío",
+      "forgetPassword": "Olvidar contraseña",
+      "useShared": "Usar el compartido",
+      "saved": "Tus credenciales se han guardado",
+      "saveFailed": "No se pudieron guardar tus credenciales",
+      "cleared": "De vuelta a las credenciales compartidas",
+      "clearedHint": "La contraseña compartida vuelve con la próxima sincronización del origen.",
+      "clearFailed": "No se pudo volver a las credenciales compartidas"
+    }
 }

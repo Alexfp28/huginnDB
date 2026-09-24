@@ -1082,6 +1082,8 @@ impl Huginn {
             .find(|p| p.id == id)
             .cloned()
             .ok_or_else(|| crate::error::AppError::NotFound(format!("profile {id}")))?;
+        // As the app does: the person's own database user, when one is in force.
+        let profile = crate::credentials::effective_profile(&self.state.policy, &profile);
 
         let password = crate::commands::connection::resolve_password(&profile)?;
         let ssh_secret = crate::commands::connection::resolve_ssh_secret(&profile)?;

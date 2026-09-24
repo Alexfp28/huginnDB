@@ -447,6 +447,19 @@ pub struct ConnectionProfile {
     /// **expires**. See [`SecretOverride::supersedes`].
     #[serde(default)]
     pub secret_override: Option<SecretOverride>,
+    /// The database user **this person** signs in as, in place of the one a
+    /// shared origin publishes — phase 3 of managed policy
+    /// (`docs/POLICY_ROADMAP.md` §7): with a database user per person, the
+    /// database itself enforces what the policy says, and a shared password
+    /// that could open another client never has to reach the workstation.
+    ///
+    /// Strictly local, like `secret_override`: `merge_into` clears it on every
+    /// incoming row and restores this machine's value, and neither an origin
+    /// file nor an export carries it. A managed policy can pin the user
+    /// instead (a rule's `dbUser`), which wins over this —
+    /// [`crate::credentials::effective_profile`] is the one place that decides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub personal_username: Option<String>,
 }
 
 /// A consumer's own password standing in for the one a shared origin publishes.
@@ -544,6 +557,11 @@ impl ConnectionProfile {
     ///
     /// We include the profile id so multiple profiles for the same user
     /// don't collide on shared hosts.
+    ///
+    /// Keyed by `username` as it stands on *this* value. Connecting goes
+    /// through [`crate::credentials::effective_profile`] first, so a person's
+    /// own user keys their own password (`id::alopez`) and never the one a
+    /// shared origin lands (`id::erp_app`).
     pub fn keyring_account(&self) -> String {
         format!("{}::{}", self.id, self.username)
     }

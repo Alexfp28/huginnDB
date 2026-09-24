@@ -275,7 +275,13 @@ pub fn build_origin_file(draft: &OriginDraft, exported_at: &str) -> EnvironmentE
         .connections
         .iter()
         .map(|conn| ExportedProfile {
-            profile: conn.profile.clone(),
+            // The publisher's own database user never ships: it would sign
+            // every consumer in as them. `merge_into` clears it on arrival
+            // too; this keeps it out of the file in the first place.
+            profile: ConnectionProfile {
+                personal_username: None,
+                ..conn.profile.clone()
+            },
             secrets: published_envelope(&conn.secret).cloned(),
         })
         .collect();

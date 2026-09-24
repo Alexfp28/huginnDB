@@ -364,6 +364,11 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("origins::peek_origin_file", "none"),
     ("origins::remove_origin", "none"),
     ("origins::set_secret_override", "none"),
+    // A person's own user and password: local, and no database is touched.
+    ("credentials::personal_credentials", "none"),
+    ("credentials::set_personal_credentials", "none"),
+    ("credentials::clear_personal_credentials", "none"),
+    ("credentials::remember_password", "none"),
     ("origins::sync_origin", "none"),
     ("origins::update_origin", "none"),
     ("policy::policy_access", "none"),

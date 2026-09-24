@@ -172,6 +172,8 @@ allows there.
 
   The AI never gets more than the person: whatever `ai` lists beyond `human` is
   ignored, and Settings → Policy shows a warning.
+- **`dbUser`** — the database user a person signs in to this server as; see
+  [Each person with their own database user](#each-person-with-their-own-database-user).
 
 A statement that does two things needs both permissions: an upsert needs
 `insert` and `update`, MySQL's `REPLACE` needs `insert` and `delete`.
@@ -199,6 +201,34 @@ user's role matches:
   hostname) to get around a rule.
 - `"allow"`: the policy leaves it alone, and only the user's local settings
   apply.
+
+## Each person with their own database user
+
+The app's policy is a guardrail for people, because the database password
+itself opens any client. What closes that is giving **each person their own
+database user**, with grants that match their role — then the database
+enforces the policy, and the shared password never needs to reach anyone's
+computer.
+
+- **`dbUser`** on a rule fixes the user a person signs in to that server as.
+  It is a template whose one token, `{user}`, is their Windows account without
+  the domain and in lower case: `"dbUser": "{user}"` signs `ACME\ALopez` in as
+  `alopez`; `"erp_{user}"` as `erp_alopez`. It applies to the whole server the
+  rule names (its `databases` do not narrow it), and the first rule of the role
+  for that server that has one wins. A person cannot change it: the connection
+  dialog shows it with a lock.
+- Without `dbUser`, a person can still choose their own user on a connection
+  that comes from a shared origin (the dialog's **Your credentials**). It stays
+  on their computer: it is never published, exported or synced.
+- The first time a person connects with their own user, HuginnDB asks for its
+  password and, if they tick it, remembers it in their keychain under that user.
+- While a person signs in with their own user, the shared origin's password
+  for that connection is **not** stored on their computer. To keep it off every
+  computer, publish the connection without a password.
+
+> **Update HuginnDB everywhere before you add `dbUser`.** Versions that predate
+> it do not know the field, treat the policy as invalid and block every
+> connection until they are updated.
 
 ## Checking it
 

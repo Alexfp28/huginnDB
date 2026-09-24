@@ -86,6 +86,27 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   cambia nada: allí basta una llamada para saberlo y nunca se pregunta por
   ninguna relación. Ver el gotcha #96 de `CLAUDE.md`.
 
+- **Cada persona puede conectarse con su propio usuario de base de datos.**
+  Para las personas, la política gestionada es un guardarraíl mientras una
+  contraseña compartida de la base de datos pueda abrir cualquier otro cliente;
+  un usuario de base de datos por persona, con los permisos que correspondan, es
+  lo que permite que la aplique la propia base de datos. El nuevo `dbUser` de
+  una regla fija el usuario con el que una persona entra en ese servidor —una
+  plantilla con un único token, `{user}`, que es su cuenta del sistema sin el
+  dominio (`"{user}"`, `"erp_{user}"`)— y el diálogo de la conexión lo muestra
+  bloqueado. Sin él, una persona puede elegir su propio usuario en una conexión
+  de un origen compartido («Tus credenciales»), guardado solo en ese equipo:
+  nunca se publica, se exporta ni se sincroniza. Mientras hay un usuario
+  personal, la contraseña compartida del origen deja de guardarse en el equipo,
+  que es lo que impide que abra otro cliente desde allí. Una conexión que no
+  encuentra contraseña para el usuario con el que entra ahora la pide, y puede
+  recordarla, en vez de informar de un llavero vacío; vale para cualquier
+  conexión, no solo estas. En MongoDB, el usuario y la contraseña publicados se
+  quitan de la cadena de conexión. Ajustes → Política muestra el usuario fijado.
+  Las versiones anteriores a esta dan por no válida una política con `dbUser` y
+  bloquean, así que actualiza antes todas las instalaciones. Ver el gotcha #97 de
+  `CLAUDE.md`.
+
 ### Corregido
 
 - **Una colección de MongoDB vacía seguía sin poder recibir su primer

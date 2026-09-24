@@ -67,6 +67,7 @@ import { OriginRepublishDialog } from "@/components/origins/dialogs/OriginRepubl
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
 import { ConfirmHost } from "@/components/common/ConfirmHost";
+import { PasswordPromptHost } from "@/components/connection/PasswordPromptHost";
 import { startAiStreamBridge } from "@/lib/bridges/ai-stream-bridge";
 import { startLogBridge } from "@/lib/bridges/log-bridge";
 import {
@@ -571,6 +572,7 @@ export default function App() {
         <EnvironmentDeleteConfirmDialog />
         {/* Replaces `window.confirm` — see `lib/confirmDestructive.ts`. */}
         <ConfirmHost />
+        <PasswordPromptHost />
         <div className="flex-1 overflow-hidden">
           <AppShell />
         </div>
