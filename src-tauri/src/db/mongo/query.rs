@@ -902,8 +902,33 @@ pub async fn fetch_collection_data(conn: &MongoConn, q: &TableQuery) -> AppResul
     let docs = collect(&mut cursor).await?;
 
     let mut result = docs_to_result(docs, start.elapsed().as_millis() as u64, false);
+    seed_id_column(&mut result);
     result.total = total;
     Ok(result)
+}
+
+/// Give an empty browse page its `_id` column.
+///
+/// `docs_to_result` derives columns from the documents it is handed, so a page
+/// with none — an empty collection, or a filter that matches nothing — comes
+/// back with no columns at all. `infer_columns` already seeds `_id` as the
+/// primary key for the empty case, but the grid also requires every PK column
+/// to be present in the *result* before it treats the collection as writable
+/// (`TableDataTab`'s `hasPk`), so the missing column hid Insert all over again.
+/// This is the browse-side half of that fix, the analogue of the catalog
+/// fallback `fetch_table_data` does for the SQL drivers (#27).
+///
+/// Only the browse gets this, not `docs_to_result` itself: an ad-hoc query
+/// with no results has no business reporting a field nobody asked for.
+fn seed_id_column(result: &mut QueryResult) {
+    if result.columns.is_empty() {
+        result.columns.push(ColumnMeta {
+            name: "_id".to_string(),
+            // Same label `infer_columns` gives the seeded key: no value has
+            // been observed yet, so there is no BSON type to report.
+            data_type: "null".to_string(),
+        });
+    }
 }
 
 /// Count documents for the browse footer, served independently of the data
@@ -1422,6 +1447,29 @@ mod tests {
         let result = docs_to_result(docs, 0, false);
         assert_eq!(result.columns.len(), 1);
         assert_eq!(result.columns[0].name, "_id");
+        assert_eq!(result.columns[0].data_type, "int");
+    }
+
+    #[test]
+    fn an_empty_browse_page_still_reports_the_id_column() {
+        let mut result = docs_to_result(Vec::new(), 0, false);
+        assert!(result.columns.is_empty());
+        seed_id_column(&mut result);
+        assert_eq!(result.columns.len(), 1);
+        assert_eq!(result.columns[0].name, "_id");
+        assert!(result.rows.is_empty());
+    }
+
+    #[test]
+    fn a_populated_browse_page_keeps_its_own_columns() {
+        let docs = vec![doc_with(&[
+            ("_id", Bson::Int32(1)),
+            ("name", Bson::String("a".into())),
+        ])];
+        let mut result = docs_to_result(docs, 0, false);
+        seed_id_column(&mut result);
+        let names: Vec<&str> = result.columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["_id", "name"]);
         assert_eq!(result.columns[0].data_type, "int");
     }
 

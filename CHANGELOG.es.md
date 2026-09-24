@@ -8,6 +8,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Una colección de MongoDB vacía seguía sin poder recibir su primer
+  documento.** La 1.25.0 arregló la mitad: `infer_columns` siembra `_id` como
+  clave primaria cuando la muestra sale vacía. Pero la condición de escritura
+  del grid (`hasPk` de `TableDataTab`) exige además que todas las columnas de
+  la clave estén en el *resultado del browse*, y el browse construye sus
+  columnas a partir de los documentos que devuelve —cero documentos, cero
+  columnas—, así que `_id` se sabía clave y aun así faltaba en la página, y
+  Insertar seguía oculto. El browse (`fetch_collection_data`) ahora informa de
+  una columna `_id` cuando su página está vacía, la contrapartida en MongoDB
+  del recurso al catálogo que los drivers SQL recibieron en #27. También cubre
+  un filtro que no coincide con ningún documento, que ocultaba Insertar de la
+  misma forma. Las consultas ad hoc no cambian: un `find` vacío en el editor
+  sigue sin informar de columnas.
+
 ## [1.28.0] — 2026-09-23
 
 ### Añadido

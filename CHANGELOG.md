@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **An empty MongoDB collection still had no way to insert its first
+  document.** 1.25.0 fixed half of this: `infer_columns` seeds `_id` as the
+  primary key when the sample comes back empty. But the grid's write gate
+  (`TableDataTab`'s `hasPk`) also requires every PK column to be present in
+  the *browse result*, and the browse builds its columns from the documents it
+  returns — zero documents, zero columns — so `_id` was known to be the key
+  and still missing from the page, and Insert stayed hidden. The browse
+  (`fetch_collection_data`) now reports an `_id` column when its page is
+  empty, the MongoDB counterpart of the catalog fallback the SQL drivers got
+  in #27. It also covers a filter that matches no document, which hid Insert
+  the same way. Ad-hoc queries are untouched: an empty `find` in the editor
+  still reports no columns.
+
 ## [1.28.0] — 2026-09-23
 
 ### Added
