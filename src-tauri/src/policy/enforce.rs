@@ -1,6 +1,7 @@
 //! Policy applied to what an AI asks for: every [`BridgeRequest`] mapped onto
 //! what it needs, and the discovery results filtered to what the AI may see.
 
+use super::model::{verb_names, Grant, Subject};
 use super::resolve::{Ctx, Need};
 use super::{current_user, PolicyState};
 use crate::bridge::protocol::BridgeRequest;
@@ -77,14 +78,26 @@ fn needs_of(request: &BridgeRequest) -> Vec<Need> {
 }
 
 /// The profile behind a connection id — a per-database view folds to its
-/// parent — read from disk first, as `bridge::server::check_policy` does, so
-/// the sidecar sees a profile edited in the app since it started.
-fn profile_for(state: &AppState, connection_id: &str) -> Option<ConnectionProfile> {
+/// parent.
+///
+/// For the AI it is read from disk first, as `bridge::server::check_policy`
+/// does, so the sidecar sees a profile edited in the app since it started. For
+/// a person it is the app's own memory: this runs on every grid page and cell
+/// edit, and the app is what writes `profiles.json` in the first place.
+fn profile_for(
+    state: &AppState,
+    connection_id: &str,
+    subject: Subject,
+) -> Option<ConnectionProfile> {
     let root = crate::state::parent_connection_id(connection_id);
-    crate::store::load_profiles()
-        .ok()
-        .and_then(|ps| ps.into_iter().find(|p| p.id == root))
-        .or_else(|| state.profiles.read().iter().find(|p| p.id == root).cloned())
+    let in_memory = || state.profiles.read().iter().find(|p| p.id == root).cloned();
+    match subject {
+        Subject::Ai => crate::store::load_profiles()
+            .ok()
+            .and_then(|ps| ps.into_iter().find(|p| p.id == root))
+            .or_else(in_memory),
+        Subject::Human => in_memory(),
+    }
 }
 
 /// The database a request is addressed to: the `::db::` part of a
@@ -103,19 +116,28 @@ fn database_of<'a>(
 }
 
 /// The active document, or `Ok(None)` when the machine is unmanaged, or the
-/// refusal when the policy is pending or broken — which blocks every AI
-/// request, since which endpoints it would have governed is unknowable.
-fn active(state: &AppState) -> AppResult<Option<Arc<super::model::PolicyDoc>>> {
+/// refusal when the policy is pending or broken.
+///
+/// Pending and broken block **everything** for either subject: which
+/// endpoints the policy would have governed is unknowable, so no connection
+/// can be assumed to be outside it (§5.4). For a person that means the app
+/// opens and its settings work, but no connection reads or writes until the
+/// policy is read — the wording says so, since they see it in a locked panel.
+fn active(state: &AppState, subject: Subject) -> AppResult<Option<Arc<super::model::PolicyDoc>>> {
+    let who = match subject {
+        Subject::Ai => "the AI is",
+        Subject::Human => "reading and changing data is",
+    };
     match &*state.policy.read() {
         PolicyState::Unmanaged => Ok(None),
         PolicyState::Active { doc, .. } => Ok(Some(doc.clone())),
         PolicyState::Pending { source } => Err(AppError::InvalidInput(format!(
-            "your organization's HuginnDB policy is still being read from {source}; the AI is \
+            "your organization's HuginnDB policy is still being read from {source}; {who} \
              paused until it is. Try again in a moment."
         ))),
         PolicyState::Broken { source, error } => Err(AppError::InvalidInput(format!(
-            "your organization's HuginnDB policy could not be applied, so the AI is blocked \
-             ({source}: {error}). Ask your administrator to fix it."
+            "your organization's HuginnDB policy could not be applied, so {who} blocked on \
+             every connection ({source}: {error}). Ask your administrator to fix it."
         ))),
     }
 }
@@ -124,51 +146,78 @@ fn active(state: &AppState) -> AppResult<Option<Arc<super::model::PolicyDoc>>> {
 /// of `bridge::exec::execute`, and for `EnsureConnected` where that is
 /// intercepted before it.
 pub fn enforce(state: &AppState, request: &BridgeRequest) -> AppResult<()> {
-    let Some(doc) = active(state)? else {
-        return Ok(());
-    };
     let connection_id = crate::bridge::server::connection_id_of(request);
-    let profile = profile_for(state, &connection_id);
-    let ctx = Ctx {
-        doc: &doc,
-        user: current_user(),
-        profile: profile.as_ref(),
-        database: database_of(&connection_id, profile.as_ref()),
-    };
     for need in needs_of(request) {
-        ctx.decide(&need).map_err(AppError::InvalidInput)?;
+        require(state, &connection_id, &need, Subject::Ai)?;
     }
     Ok(())
 }
 
-/// Run `f` against the policy context for `connection_id`, or return `unmanaged`
-/// when there is no active policy.
-fn with_ctx<T>(
+/// Refuse unless `subject` may do what `need` says on `connection_id`.
+///
+/// The one entry point both subjects share. The AI reaches it through
+/// [`enforce`]; a person through the app's own commands (`commands::guard`),
+/// which know what they are about to do and name it directly.
+pub fn require(
     state: &AppState,
     connection_id: &str,
-    unmanaged: T,
-    f: impl FnOnce(&Ctx<'_>) -> T,
-) -> T {
-    let Ok(Some(doc)) = active(state) else {
-        return unmanaged;
+    need: &Need,
+    subject: Subject,
+) -> AppResult<()> {
+    let Some(doc) = active(state, subject)? else {
+        return Ok(());
     };
-    let profile = profile_for(state, connection_id);
+    let profile = profile_for(state, connection_id, subject);
     let ctx = Ctx {
         doc: &doc,
         user: current_user(),
         profile: profile.as_ref(),
         database: database_of(connection_id, profile.as_ref()),
+        subject,
+    };
+    ctx.decide(need).map_err(AppError::InvalidInput)
+}
+
+/// Run `f` against the policy context for `connection_id`: `unmanaged` when
+/// there is no policy, `blocked` when it is pending or broken.
+///
+/// `blocked` is its own argument on purpose. The first version returned the
+/// unmanaged answer for both, which was harmless for the AI — [`enforce`] had
+/// refused the request before any filter ran — and would have shown a person
+/// every table on a machine whose policy share was down.
+fn with_ctx<T>(
+    state: &AppState,
+    connection_id: &str,
+    subject: Subject,
+    unmanaged: T,
+    blocked: T,
+    f: impl FnOnce(&Ctx<'_>) -> T,
+) -> T {
+    let doc = match active(state, subject) {
+        Ok(Some(doc)) => doc,
+        Ok(None) => return unmanaged,
+        Err(_) => return blocked,
+    };
+    let profile = profile_for(state, connection_id, subject);
+    let ctx = Ctx {
+        doc: &doc,
+        user: current_user(),
+        profile: profile.as_ref(),
+        database: database_of(connection_id, profile.as_ref()),
+        subject,
     };
     f(&ctx)
 }
 
-/// The databases the AI may see.
-pub fn filter_databases(
+/// The databases `subject` may see.
+pub fn filter_databases_for(
     state: &AppState,
     connection_id: &str,
     databases: Vec<DatabaseInfo>,
+    subject: Subject,
 ) -> Vec<DatabaseInfo> {
-    let keep: Option<Vec<bool>> = with_ctx(state, connection_id, None, |ctx| {
+    let hide_all = Some(vec![false; databases.len()]);
+    let keep: Option<Vec<bool>> = with_ctx(state, connection_id, subject, None, hide_all, |ctx| {
         Some(
             databases
                 .iter()
@@ -177,6 +226,15 @@ pub fn filter_databases(
         )
     });
     retain_marked(databases, keep)
+}
+
+/// The databases the AI may see.
+pub fn filter_databases(
+    state: &AppState,
+    connection_id: &str,
+    databases: Vec<DatabaseInfo>,
+) -> Vec<DatabaseInfo> {
+    filter_databases_for(state, connection_id, databases, Subject::Ai)
 }
 
 /// `items` without the ones `keep` marks false; all of them when there is no
@@ -192,13 +250,15 @@ fn retain_marked<T>(items: Vec<T>, keep: Option<Vec<bool>>) -> Vec<T> {
     }
 }
 
-/// The tables and views the AI may see.
-pub fn filter_tables(
+/// The tables and views `subject` may see.
+pub fn filter_tables_for(
     state: &AppState,
     connection_id: &str,
     tables: Vec<TableInfo>,
+    subject: Subject,
 ) -> Vec<TableInfo> {
-    let keep: Option<Vec<bool>> = with_ctx(state, connection_id, None, |ctx| {
+    let hide_all = Some(vec![false; tables.len()]);
+    let keep: Option<Vec<bool>> = with_ctx(state, connection_id, subject, None, hide_all, |ctx| {
         Some(
             tables
                 .iter()
@@ -212,17 +272,29 @@ pub fn filter_tables(
     retain_marked(tables, keep)
 }
 
+/// The tables and views the AI may see.
+pub fn filter_tables(
+    state: &AppState,
+    connection_id: &str,
+    tables: Vec<TableInfo>,
+) -> Vec<TableInfo> {
+    filter_tables_for(state, connection_id, tables, Subject::Ai)
+}
+
+/// Whether free SQL is withheld from `subject` on this connection.
+pub fn free_sql_blocked_for(state: &AppState, connection_id: &str, subject: Subject) -> bool {
+    with_ctx(state, connection_id, subject, false, true, |ctx| {
+        ctx.free_sql_blocked()
+    })
+}
+
 /// Whether free SQL is withheld from the AI on this connection, so the AI
 /// panel can leave `run_query` out of its catalogue instead of offering a tool
 /// that always refuses (gotcha #74: absence beats present-but-refused). Over
 /// MCP the tool list cannot vary per connection (gotchas #58, #59), so there
 /// the call is refused instead.
 pub fn free_sql_blocked(state: &AppState, connection_id: &str) -> bool {
-    match active(state) {
-        Err(_) => true,
-        Ok(None) => false,
-        Ok(Some(_)) => with_ctx(state, connection_id, false, |ctx| ctx.free_sql_blocked()),
-    }
+    free_sql_blocked_for(state, connection_id, Subject::Ai)
 }
 
 /// Whether the AI may reach this connection at all — what the MCP
@@ -231,7 +303,7 @@ pub fn free_sql_blocked(state: &AppState, connection_id: &str) -> bool {
 // Used by the MCP `list_connections` tool only, which the `mcp` feature gates.
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub fn reachable_by_ai(state: &AppState, profile: &ConnectionProfile) -> bool {
-    match active(state) {
+    match active(state, Subject::Ai) {
         Err(_) => false,
         Ok(None) => true,
         Ok(Some(doc)) => Ctx {
@@ -239,10 +311,198 @@ pub fn reachable_by_ai(state: &AppState, profile: &ConnectionProfile) -> bool {
             user: current_user(),
             profile: Some(profile),
             database: None,
+            subject: Subject::Ai,
         }
         .decide(&Need::Endpoint)
         .is_ok(),
     }
+}
+
+/// What the app's own interface may offer a person, per connection — the
+/// frontend half of the people phase. The backend refuses regardless; this is
+/// so a control the policy forbids is shown locked, with the reason, instead
+/// of being offered and then failing.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PolicyAccess {
+    /// `unmanaged` / `pending` / `active` / `broken`.
+    pub state: &'static str,
+    /// Why everything is locked, when the policy is pending or broken.
+    pub reason: Option<String>,
+    pub connections: Vec<ConnectionAccess>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionAccess {
+    /// As asked: a profile id or a `<parent>::db::<name>` view id.
+    pub id: String,
+    /// Whether the policy governs this connection at all.
+    pub managed: bool,
+    /// Whether the person may use it (and, for a view id, its database).
+    pub visible: bool,
+    pub free_sql: bool,
+    /// An upper bound for the connection: a single relation may allow less,
+    /// which [`relation_access`] answers.
+    pub verbs: Vec<&'static str>,
+    pub export: bool,
+    pub monitor: bool,
+    /// The refusal a locked control shows, when `visible` is false.
+    pub reason: Option<String>,
+}
+
+/// What a person may do on each relation, in one call per listing or tab.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationAccess {
+    pub visible: bool,
+    pub verbs: Vec<&'static str>,
+    pub export: bool,
+}
+
+/// Everything, for a machine or connection the policy does not govern.
+fn full_grant() -> Grant {
+    Grant {
+        verbs: Verbs::ALL,
+        export: true,
+        monitor: true,
+    }
+}
+
+fn state_label(state: &AppState) -> &'static str {
+    match &*state.policy.read() {
+        PolicyState::Unmanaged => "unmanaged",
+        PolicyState::Pending { .. } => "pending",
+        PolicyState::Active { .. } => "active",
+        PolicyState::Broken { .. } => "broken",
+    }
+}
+
+/// [`PolicyAccess`] for the person using the app.
+pub fn access(state: &AppState, connection_ids: &[String]) -> PolicyAccess {
+    let label = state_label(state);
+    let doc = match active(state, Subject::Human) {
+        Ok(doc) => doc,
+        Err(e) => {
+            let reason = e.to_string();
+            return PolicyAccess {
+                state: label,
+                connections: connection_ids
+                    .iter()
+                    .map(|id| ConnectionAccess {
+                        id: id.clone(),
+                        managed: true,
+                        visible: false,
+                        free_sql: false,
+                        verbs: Vec::new(),
+                        export: false,
+                        monitor: false,
+                        reason: Some(reason.clone()),
+                    })
+                    .collect(),
+                reason: Some(reason),
+            };
+        }
+    };
+    let connections = connection_ids
+        .iter()
+        .map(|id| {
+            let Some(doc) = &doc else {
+                let full = full_grant();
+                return ConnectionAccess {
+                    id: id.clone(),
+                    managed: false,
+                    visible: true,
+                    free_sql: true,
+                    verbs: verb_names(full.verbs),
+                    export: true,
+                    monitor: true,
+                    reason: None,
+                };
+            };
+            let profile = profile_for(state, id, Subject::Human);
+            let ctx = Ctx {
+                doc,
+                user: current_user(),
+                profile: profile.as_ref(),
+                database: database_of(id, profile.as_ref()),
+                subject: Subject::Human,
+            };
+            let refusal = ctx.decide(&Need::Endpoint).err().or_else(|| {
+                crate::state::split_database_view(id)
+                    .and_then(|(_, db)| ctx.decide(&Need::Database(db.to_string())).err())
+            });
+            let grant = if refusal.is_some() {
+                Grant::default()
+            } else {
+                ctx.database_grant().unwrap_or_else(full_grant)
+            };
+            ConnectionAccess {
+                id: id.clone(),
+                managed: !ctx.is_unmanaged(),
+                visible: refusal.is_none(),
+                free_sql: refusal.is_none() && !ctx.free_sql_blocked(),
+                verbs: verb_names(grant.verbs),
+                export: grant.export,
+                // Server-wide, so not the per-database grant.
+                monitor: refusal.is_none() && ctx.decide(&Need::Monitor).is_ok(),
+                reason: refusal,
+            }
+        })
+        .collect();
+    PolicyAccess {
+        state: label,
+        reason: None,
+        connections,
+    }
+}
+
+/// [`RelationAccess`] for each `(schema, name)`, for the person using the app.
+pub fn relation_access(
+    state: &AppState,
+    connection_id: &str,
+    relations: &[(Option<String>, String)],
+) -> Vec<RelationAccess> {
+    let blocked = relations
+        .iter()
+        .map(|_| RelationAccess {
+            visible: false,
+            verbs: Vec::new(),
+            export: false,
+        })
+        .collect();
+    let everything = || {
+        relations
+            .iter()
+            .map(|_| RelationAccess {
+                visible: true,
+                verbs: verb_names(Verbs::ALL),
+                export: true,
+            })
+            .collect()
+    };
+    with_ctx(
+        state,
+        connection_id,
+        Subject::Human,
+        everything(),
+        blocked,
+        |ctx| {
+            relations
+                .iter()
+                .map(|(schema, name)| {
+                    let g = ctx
+                        .relation_grant(schema.as_deref(), name)
+                        .unwrap_or_else(full_grant);
+                    RelationAccess {
+                        visible: !g.is_empty(),
+                        verbs: verb_names(g.verbs),
+                        export: g.export && g.verbs.contains(Verbs::SELECT),
+                    }
+                })
+                .collect()
+        },
+    )
 }
 
 /// What Settings → Policy shows: where the policy came from, who this is, and
@@ -334,6 +594,7 @@ pub fn status(state: &AppState) -> PolicyStatus {
                 user: &user,
                 profile: Some(p),
                 database: None,
+                subject: Subject::Human,
             };
             let rules: Vec<RulePolicy> = ctx
                 .endpoint_rules()
@@ -346,7 +607,10 @@ pub fn status(state: &AppState) -> PolicyStatus {
                         deny: r.relations.deny.clone(),
                         human: r.human_grant().names(),
                         ai: ai.names(),
-                        free_sql: !r.is_scoped() && !ai.is_empty(),
+                        // What `Ctx::free_sql_blocked` decides: an unscoped rule
+                        // that grants reading. It said "any grant" before, so an
+                        // insert-only rule was shown with free SQL it did not have.
+                        free_sql: !r.is_scoped() && ai.verbs.contains(Verbs::SELECT),
                     }
                 })
                 .collect();
@@ -537,5 +801,86 @@ mod tests {
         assert!(!erp.unmatched);
         assert_eq!(erp.rules[0].ai, ["select", "insert"]);
         assert!(!erp.rules[0].free_sql);
+    }
+
+    #[test]
+    fn a_blocked_policy_shows_a_person_nothing() {
+        let state = AppState::new();
+        state.profiles.write().push(testkit::profile("any"));
+        *state.policy.write() = PolicyState::Broken {
+            source: "share".into(),
+            error: "cannot read".into(),
+        };
+        let table = TableInfo {
+            schema: "public".into(),
+            name: "t".into(),
+            kind: "table".into(),
+            row_count: None,
+            size_bytes: None,
+        };
+        // The first version returned the unmanaged answer here, which would
+        // have listed every table on a machine whose policy share was down.
+        assert!(filter_tables_for(&state, "any", vec![table], Subject::Human).is_empty());
+        assert!(free_sql_blocked_for(&state, "any", Subject::Human));
+        let err = require(&state, "any", &Need::Endpoint, Subject::Human)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("reading and changing data is blocked"),
+            "{err}"
+        );
+
+        let access = access(&state, &["any".to_string()]);
+        assert_eq!(access.state, "broken");
+        assert!(access.reason.is_some());
+        assert!(!access.connections[0].visible);
+        assert!(access.connections[0].verbs.is_empty());
+        let rel = relation_access(&state, "any", &[(None, "t".into())]);
+        assert!(!rel[0].visible);
+    }
+
+    #[test]
+    fn an_unmanaged_machine_offers_a_person_everything() {
+        let state = AppState::new();
+        let access = access(&state, &["whatever".to_string()]);
+        assert_eq!(access.state, "unmanaged");
+        let c = &access.connections[0];
+        assert!(c.visible && c.free_sql && c.export && c.monitor && !c.managed);
+        assert_eq!(c.verbs, ["select", "insert", "update", "delete", "ddl"]);
+    }
+
+    #[test]
+    fn a_person_is_offered_what_their_role_allows() {
+        if current_user().is_empty() {
+            return;
+        }
+        let state = state_with_policy();
+        let access = access(&state, &["policy-test-erp".to_string()]);
+        let c = &access.connections[0];
+        assert!(c.managed && c.visible);
+        // The rule names relations, so free SQL is off for people too.
+        assert!(!c.free_sql);
+        assert_eq!(c.verbs, ["select", "insert"]);
+        assert!(!c.export && !c.monitor);
+
+        let rel = relation_access(
+            &state,
+            "policy-test-erp",
+            &[(None, "invoices".into()), (None, "payroll".into())],
+        );
+        assert!(rel[0].visible);
+        assert_eq!(rel[0].verbs, ["select", "insert"]);
+        assert!(!rel[1].visible);
+        assert!(require(
+            &state,
+            "policy-test-erp",
+            &Need::Relation {
+                schema: None,
+                name: "invoices".into(),
+                verbs: Verbs::DELETE,
+            },
+            Subject::Human,
+        )
+        .is_err());
     }
 }

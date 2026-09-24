@@ -34,6 +34,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the app is the next phase. See [`docs/POLICY.md`](docs/POLICY.md) and
   `CLAUDE.md` gotcha #94.
 
+- **Managed policy now applies to people too, as a guardrail.** The `human`
+  permissions a role carries were read and shown, and bounded the AI, but the
+  app's own commands did not apply them. Now every command that touches a
+  database checks them first — 60-odd, each naming what it does: listings are
+  filtered so a hidden database or relation is never named (foreign keys
+  pointing in from a hidden table included), reads, inserts, updates, deletes
+  and DDL are refused per relation and per verb, `export` guards every way rows
+  leave to a file, and `monitor` guards Pulse, sessions and the Security panel.
+  Free-form SQL is refused under a rule that limits relations, and so is
+  everything that is free SQL without looking like it: the query panel's
+  hand-written `WHERE` expression (a subquery reads any table), a view's body,
+  a MongoDB pipeline that joins other collections through `$lookup` /
+  `$unionWith` / `$graphLookup`, a foreign-key picker reading its target, a
+  rename that moves a collection to another database. A broken or unreadable
+  policy leaves a person able to open the app and its settings but not to read
+  or write any connection. It is a guardrail and says so: a person holding the
+  database password can use another client, which per-person database users
+  (the next phase) are what close. A test fails when a new command is
+  registered without stating what the policy asks of it, and another when a
+  command that touches a database never calls the guard. Locking the matching
+  controls in the interface is the next change. See `CLAUDE.md` gotcha #95.
+
 ### Fixed
 
 - **An empty MongoDB collection still had no way to insert its first

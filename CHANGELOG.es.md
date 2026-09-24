@@ -37,6 +37,31 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `human` a las personas en la app es la siguiente fase. Ver
   [`docs/POLICY.es.md`](docs/POLICY.es.md) y el gotcha #94 de `CLAUDE.md`.
 
+- **La política gestionada ahora se aplica también a las personas, como
+  guardarraíl.** Los permisos `human` de un rol se leían, se mostraban y
+  limitaban a la IA, pero los comandos de la propia app no los aplicaban. Ahora
+  todos los comandos que tocan una base de datos los comprueban antes —unos
+  sesenta, cada uno diciendo lo que hace—: los listados se filtran para que
+  nunca se nombre una base de datos o relación oculta (tampoco las claves
+  ajenas que llegan desde una tabla oculta); lecturas, inserciones,
+  actualizaciones, borrados y DDL se rechazan por relación y por verbo; `export`
+  protege todas las formas de sacar filas a un fichero, y `monitor` protege
+  Pulse, las sesiones y el panel de Seguridad. El SQL libre se rechaza en una
+  regla que limita relaciones, y también todo lo que es SQL libre sin
+  parecerlo: la expresión `WHERE` escrita a mano del panel de consulta (una
+  subconsulta lee cualquier tabla), el cuerpo de una vista, un pipeline de
+  MongoDB que une otras colecciones con `$lookup` / `$unionWith` /
+  `$graphLookup`, el selector de claves ajenas leyendo su tabla destino, un
+  renombrado que mueve una colección a otra base de datos. Con una política
+  rota o ilegible, una persona puede abrir la app y sus ajustes, pero no leer
+  ni escribir en ninguna conexión. Es un guardarraíl y lo dice: quien tiene la
+  contraseña de la base de datos puede usar otro cliente, y eso lo cierran los
+  usuarios de base de datos por persona (la siguiente fase). Un test falla si
+  se registra un comando nuevo sin decir qué le pide la política, y otro si un
+  comando que toca una base de datos nunca llama a la comprobación. Bloquear
+  los controles correspondientes en la interfaz es el siguiente cambio. Ver el
+  gotcha #95 de `CLAUDE.md`.
+
 ### Corregido
 
 - **Una colección de MongoDB vacía seguía sin poder recibir su primer

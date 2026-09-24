@@ -16,14 +16,17 @@ MCP connector (`huginndb-mcp`) or the in-app AI panel — passes through one
 point where the policy is checked. If the policy refuses it, the AI cannot do
 it. That holds whether the app is running or the connector is running alone.
 
-**For people, this version does not enforce the policy yet.** The `human`
-permissions are read, shown in Settings → Policy, and they bound the AI (an AI
-never gets more than the person it works for), but the app's own screens do not
-apply them. That is the next phase. Keep in mind what it will and will not be
-able to do: a person who holds a database password can always open another
-client, so the way to make people's restrictions impossible to bypass is for
+**For people, the policy is applied by the app, as a guardrail.** Every
+command the app runs against a database checks the person's `human`
+permissions first: the explorer only lists what their role may see, a write
+they may not make is refused, and free-form queries — the query editor, the
+query panel's hand-written expression, a view's body, a MongoDB pipeline that
+joins other collections — are refused under a rule that limits relations. It is
+a guardrail and not a wall, and it is worth being plain about why: a person who
+holds a database password can open another client and ignore HuginnDB
+entirely. The way to make people's restrictions impossible to bypass is for
 each person to connect with their **own database user** whose grants match the
-policy.
+policy; generating those grants from the policy is the next phase.
 
 The policy only ever **narrows**. The per-connection settings users already
 have — which connections are exposed to MCP, their MCP write level, whether the
@@ -66,11 +69,12 @@ reaches running installations without a restart.
 
 It **blocks**. If an anchor exists but the file it points to cannot be read
 (the share is down, the file was moved) or is not valid, every AI request is
-refused with a message naming the file and the error, and Settings → Policy
+refused, and a person can open the app and its settings but no connection reads
+or writes — each refusal names the file and the error, and Settings → Policy
 shows it in red. HuginnDB never falls back to "no policy", and it keeps no
 local copy to fall back to.
 
-While a policy on a share is being read for the first time, the AI is paused
+While a policy on a share is being read for the first time, both are paused
 the same way, usually for well under a second.
 
 ## The format
@@ -156,7 +160,7 @@ allows there.
   | `insert`, `update`, `delete` | each row-level write, separately |
   | `ddl` | schema changes: create, alter, drop, truncate, indexes, views |
   | `monitor` | Pulse, server sessions, users and privileges — they show *other people's* statements, which can carry data this role cannot read |
-  | `export` | exporting data (reserved for the people phase) |
+  | `export` | writing a table's rows out to a file — needs `select` on it too |
 
   The AI never gets more than the person: whatever `ai` lists beyond `human` is
   ignored, and Settings → Policy shows a warning.

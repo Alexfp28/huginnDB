@@ -846,6 +846,9 @@ pub async fn connect(
     password: Option<String>,
     ssh_secret: Option<String>,
 ) -> AppResult<()> {
+    // A connection the person's role cannot reach is not even opened, so the
+    // refusal comes with the policy's reason rather than as an empty explorer.
+    crate::commands::guard::endpoint(state.inner(), &id)?;
     connect_inner(
         &app,
         state.inner(),
@@ -1261,6 +1264,7 @@ pub async fn open_database_view(
     parent_id: String,
     database: String,
 ) -> AppResult<String> {
+    crate::commands::guard::database(state.inner(), &parent_id, &database)?;
     open_database_view_inner(
         &app,
         state.inner(),

@@ -2,17 +2,17 @@
 //! and what a request needs, is it allowed? Everything that reads disks, the
 //! registry or the clock lives elsewhere, so this can be tested exhaustively.
 
-use super::model::{EndpointPattern, Grant, PolicyDoc, Rule, Unmanaged};
+use super::model::{EndpointPattern, Grant, PolicyDoc, Rule, Subject, Unmanaged};
 use crate::db::sql::Verbs;
 use crate::state::{ConnectionProfile, Driver};
 
-/// What one AI request needs, in the terms a rule speaks.
+/// What one request needs, in the terms a rule speaks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Need {
-    /// Only that the AI may reach this endpoint at all: opening a connection,
-    /// asking the server version, the plumbing requests.
+    /// Only that the subject may reach this endpoint at all: opening a
+    /// connection, asking the server version, the plumbing requests.
     Endpoint,
-    /// That a database is visible (the Mongo per-database target).
+    /// That a database is visible (a per-database view, the Mongo target).
     Database(String),
     /// A named relation, for these verbs.
     Relation {
@@ -25,11 +25,20 @@ pub enum Need {
     FreeSql(Verbs),
     /// Pulse, sessions, users and privileges.
     Monitor,
+    /// Writing a relation's rows out of the app, to a file. Needs `export`
+    /// *and* `select` on it: exporting is reading, plus letting it leave.
+    Export {
+        schema: Option<String>,
+        name: String,
+    },
+    /// Creating or dropping a database (or a MongoDB collection in one): DDL
+    /// granted by a rule that covers that database by name.
+    DatabaseDdl(String),
 }
 
 /// Why a request was refused — worded for the person who reads it in the
-/// Console or in the AI's answer, so it names the role and says who can
-/// change it (gotcha #77).
+/// Console, in a locked control, or in the AI's answer, so it names the role
+/// and says who can change it (gotcha #77).
 pub type Refusal = String;
 
 /// The context a need is judged in.
@@ -40,6 +49,10 @@ pub struct Ctx<'a> {
     /// The database the request is addressed to, when there is one to name:
     /// the `::db::` part of a per-database view, else the profile's own.
     pub database: Option<&'a str>,
+    /// Who is asking: the person using the app, or the AI acting for them.
+    /// Picks the permission block a rule is read through (`human` / `ai`) and
+    /// the wording of a refusal.
+    pub subject: Subject,
 }
 
 /// What the rules say about one endpoint for one user.
@@ -54,6 +67,10 @@ enum Coverage<'a> {
 impl<'a> Ctx<'a> {
     fn role(&self) -> &'a str {
         self.doc.role_for(self.user).0
+    }
+
+    fn grant(&self, rule: &Rule) -> Grant {
+        rule.grant_for(self.subject)
     }
 
     fn coverage(&self) -> Coverage<'a> {
@@ -102,6 +119,24 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// "the AI" / "you", for the refusal text.
+    fn actor(&self) -> &'static str {
+        match self.subject {
+            Subject::Ai => "the AI",
+            Subject::Human => "you",
+        }
+    }
+
+    /// What to do instead of free SQL, for whoever was refused it.
+    fn free_sql_alternative(&self) -> &'static str {
+        match self.subject {
+            Subject::Ai => {
+                "Use the table tools instead (list_tables, describe_table, browse_table)"
+            }
+            Subject::Human => "Browse the tables from the explorer instead",
+        }
+    }
+
     fn refuse(&self, what: impl std::fmt::Display) -> Refusal {
         format!(
             "{what} — refused by your organization's HuginnDB policy (role {:?}). Ask your \
@@ -119,21 +154,24 @@ impl<'a> Ctx<'a> {
 
     /// Decide one need. `Ok(())` also when the endpoint is unmanaged and the
     /// policy allows unmanaged connections: then only the local settings
-    /// (`mcp_write`, `mcp_exposed`, `ai_enabled`) govern, as without a policy.
+    /// govern, as without a policy.
     pub fn decide(&self, need: &Need) -> Result<(), Refusal> {
         let Some(rules) = self.rules_for_database(match need {
-            Need::Database(db) => Some(db.as_str()),
-            Need::Relation { schema, .. } => self.database_for(schema.as_deref()),
+            Need::Database(db) | Need::DatabaseDdl(db) => Some(db.as_str()),
+            Need::Relation { schema, .. } | Need::Export { schema, .. } => {
+                self.database_for(schema.as_deref())
+            }
             _ => self.database,
         }) else {
             return Ok(());
         };
         let connection = self.connection_label();
-        let reachable = |rules: &[&Rule]| rules.iter().any(|r| !r.ai_grant().is_empty());
+        let actor = self.actor();
+        let reachable = |rules: &[&Rule]| rules.iter().any(|r| !self.grant(r).is_empty());
         match need {
             Need::Endpoint => {
                 // The endpoint check ignores the database: any rule on the
-                // server that gives the AI anything makes it reachable.
+                // server that gives the subject anything makes it reachable.
                 let on_endpoint = match self.coverage() {
                     Coverage::Unmanaged => return Ok(()),
                     Coverage::Rules(r) => r,
@@ -141,7 +179,7 @@ impl<'a> Ctx<'a> {
                 if reachable(&on_endpoint) {
                     Ok(())
                 } else {
-                    Err(self.refuse(format!("the AI may not use {connection}")))
+                    Err(self.refuse(format!("{actor} may not use {connection}")))
                 }
             }
             Need::Database(db) => {
@@ -149,7 +187,7 @@ impl<'a> Ctx<'a> {
                     Ok(())
                 } else {
                     Err(self.refuse(format!(
-                        "database {db:?} on {connection} is not available to the AI"
+                        "database {db:?} on {connection} is not available to {actor}"
                     )))
                 }
             }
@@ -162,44 +200,72 @@ impl<'a> Ctx<'a> {
                     .iter()
                     .filter(|r| relation_allowed(r, schema.as_deref(), name))
                     .collect();
-                if visible.iter().any(|r| r.ai_grant().verbs.contains(*verbs)) {
+                if visible.iter().any(|r| self.grant(r).verbs.contains(*verbs)) {
                     Ok(())
-                } else if visible.iter().any(|r| !r.ai_grant().is_empty()) {
+                } else if visible.iter().any(|r| !self.grant(r).is_empty()) {
                     Err(self.refuse(format!(
-                        "the AI may not {} {:?}",
+                        "{actor} may not {} {:?}",
                         verbs_phrase(*verbs),
                         qualified(schema.as_deref(), name)
                     )))
                 } else {
                     Err(self.refuse(format!(
-                        "{:?} on {connection} is not available to the AI",
+                        "{:?} on {connection} is not available to {actor}",
                         qualified(schema.as_deref(), name)
+                    )))
+                }
+            }
+            Need::Export { schema, name } => {
+                let exportable = rules.iter().any(|r| {
+                    let g = self.grant(r);
+                    relation_allowed(r, schema.as_deref(), name)
+                        && g.export
+                        && g.verbs.contains(Verbs::SELECT)
+                });
+                if exportable {
+                    Ok(())
+                } else {
+                    Err(self.refuse(format!(
+                        "{actor} may not export {:?} from {connection}",
+                        qualified(schema.as_deref(), name)
+                    )))
+                }
+            }
+            Need::DatabaseDdl(db) => {
+                if rules
+                    .iter()
+                    .any(|r| self.grant(r).verbs.contains(Verbs::DDL))
+                {
+                    Ok(())
+                } else {
+                    Err(self.refuse(format!(
+                        "{actor} may not create or drop database {db:?} on {connection}"
                     )))
                 }
             }
             Need::FreeSql(verbs) => {
                 if rules
                     .iter()
-                    .any(|r| !r.is_scoped() && r.ai_grant().verbs.contains(*verbs))
+                    .any(|r| !r.is_scoped() && self.grant(r).verbs.contains(*verbs))
                 {
                     Ok(())
                 } else if rules
                     .iter()
-                    .any(|r| r.is_scoped() && !r.ai_grant().is_empty())
+                    .any(|r| r.is_scoped() && !self.grant(r).is_empty())
                 {
                     Err(self.refuse(format!(
                         "free-form queries are disabled on {connection}, because the policy \
-                         limits which databases or relations the AI may see and a query's text \
-                         cannot be checked against that. Use the table tools instead \
-                         (list_tables, describe_table, browse_table)"
+                         limits which databases or relations {actor} may see and a query's text \
+                         cannot be checked against that. {}",
+                        self.free_sql_alternative()
                     )))
                 } else if reachable(&rules) {
                     Err(self.refuse(format!(
-                        "this statement needs {}, which the AI may not do on {connection}",
+                        "this statement needs {}, which {actor} may not do on {connection}",
                         verbs_phrase(*verbs)
                     )))
                 } else {
-                    Err(self.refuse(format!("the AI may not use {connection}")))
+                    Err(self.refuse(format!("{actor} may not use {connection}")))
                 }
             }
             Need::Monitor => {
@@ -209,28 +275,49 @@ impl<'a> Ctx<'a> {
                     Coverage::Unmanaged => return Ok(()),
                     Coverage::Rules(r) => r,
                 };
-                if on_endpoint.iter().any(|r| r.ai_grant().monitor) {
+                if on_endpoint.iter().any(|r| self.grant(r).monitor) {
                     Ok(())
                 } else {
                     Err(self.refuse(format!(
                         "server monitoring, sessions and users on {connection} are not available \
-                         to the AI"
+                         to {actor}"
                     )))
                 }
             }
         }
     }
 
-    /// Whether the AI may *see* a relation at all — any verb, so that a
+    /// Whether the subject may *see* a relation at all — any verb, so that a
     /// relation it may only insert into is still listed. Used to filter
-    /// discovery, so a model does not learn the names of what it cannot reach.
+    /// discovery, so nobody learns the names of what they cannot reach.
     pub fn relation_visible(&self, schema: Option<&str>, name: &str) -> bool {
-        match self.rules_for_database(self.database_for(schema)) {
-            None => true,
-            Some(rules) => rules
+        self.relation_grant(schema, name)
+            .map_or(true, |g| !g.is_empty())
+    }
+
+    /// Everything the subject may do on one relation: the union of what every
+    /// rule covering it grants. `None` when the connection is unmanaged — the
+    /// policy has nothing to say about it.
+    pub fn relation_grant(&self, schema: Option<&str>, name: &str) -> Option<Grant> {
+        let rules = self.rules_for_database(self.database_for(schema))?;
+        Some(
+            rules
                 .iter()
-                .any(|r| relation_allowed(r, schema, name) && !r.ai_grant().is_empty()),
-        }
+                .filter(|r| relation_allowed(r, schema, name))
+                .fold(Grant::default(), |all, r| all.union(self.grant(r))),
+        )
+    }
+
+    /// Everything the subject may do somewhere in the addressed database — an
+    /// upper bound for one connection, which a single relation may narrow.
+    /// `None` when unmanaged.
+    pub fn database_grant(&self) -> Option<Grant> {
+        let rules = self.rules_for_database(self.database)?;
+        Some(
+            rules
+                .iter()
+                .fold(Grant::default(), |all, r| all.union(self.grant(r))),
+        )
     }
 
     pub fn database_visible(&self, database: &str) -> bool {
@@ -239,13 +326,13 @@ impl<'a> Ctx<'a> {
 
     /// Whether free SQL is withheld on this connection — every rule that could
     /// grant it is scoped. The AI panel drops `run_query` from its catalogue
-    /// when this holds, rather than offering a tool that will always refuse.
+    /// when this holds, and the app locks its query editor.
     pub fn free_sql_blocked(&self) -> bool {
         match self.rules_for_database(self.database) {
             None => false,
             Some(rules) => !rules
                 .iter()
-                .any(|r| !r.is_scoped() && r.ai_grant().verbs.contains(Verbs::SELECT)),
+                .any(|r| !r.is_scoped() && self.grant(r).verbs.contains(Verbs::SELECT)),
         }
     }
 
@@ -372,6 +459,10 @@ mod tests {
     use super::*;
     use crate::testkit;
 
+    fn doc_of(text: &str) -> PolicyDoc {
+        PolicyDoc::parse(text).unwrap().0
+    }
+
     fn doc(text: &str) -> PolicyDoc {
         PolicyDoc::parse(text).unwrap().0
     }
@@ -426,6 +517,19 @@ mod tests {
             user,
             profile: Some(profile),
             database,
+            subject: Subject::Ai,
+        }
+    }
+
+    fn person<'a>(
+        doc: &'a PolicyDoc,
+        user: &'a str,
+        profile: &'a ConnectionProfile,
+        database: Option<&'a str>,
+    ) -> Ctx<'a> {
+        Ctx {
+            subject: Subject::Human,
+            ..ctx(doc, user, profile, database)
         }
     }
 
@@ -639,6 +743,101 @@ mod tests {
         assert!(c.relation_visible(Some("public"), "orders"));
         assert!(!c.relation_visible(Some("public"), "secrets"));
         assert!(!c.relation_visible(Some("audit"), "orders"));
+    }
+
+    #[test]
+    fn a_person_is_judged_by_the_human_block() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let ana = person(&doc, "ana", &erp, Some("billing"));
+        // Sales people may insert and update billing; their AI may only read.
+        assert!(ana.decide(&rel("invoices", Verbs::INSERT)).is_ok());
+        assert!(ana.decide(&rel("invoices", Verbs::UPDATE)).is_ok());
+        assert!(ctx(&doc, "ana", &erp, Some("billing"))
+            .decide(&rel("invoices", Verbs::INSERT))
+            .is_err());
+        // But not delete, and the refusal speaks to them.
+        let err = ana.decide(&rel("invoices", Verbs::DELETE)).unwrap_err();
+        assert!(err.starts_with("you may not delete"), "{err}");
+        // Hidden relations stay hidden from people too.
+        assert!(!ana.relation_visible(None, "payroll"));
+        // A scoped rule takes free SQL from people as well, pointing them at
+        // the explorer rather than at MCP tools.
+        let err = ana.decide(&Need::FreeSql(Verbs::SELECT)).unwrap_err();
+        assert!(err.contains("from the explorer"), "{err}");
+        assert!(ana.free_sql_blocked());
+    }
+
+    #[test]
+    fn exporting_needs_export_and_select_on_the_relation() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let export = |name: &str| Need::Export {
+            schema: None,
+            name: name.into(),
+        };
+        // Sales may read invoices but was not granted `export`.
+        let ana = person(&doc, "ana", &erp, Some("billing"));
+        assert!(ana.decide(&export("invoices")).is_err());
+        // Give the admin's person block `export`; the AI block stays without.
+        let with_export = doc_of(&COMPANY.replacen(
+            r#""human": ["select", "insert", "update", "delete", "ddl", "monitor"]"#,
+            r#""human": ["select", "insert", "update", "delete", "ddl", "monitor", "export"]"#,
+            1,
+        ));
+        let admin = person(&with_export, "scara", &erp, Some("billing"));
+        assert!(admin.decide(&export("invoices")).is_ok());
+        assert!(ctx(&with_export, "scara", &erp, Some("billing"))
+            .decide(&export("invoices"))
+            .is_err());
+        // Without it, even an administrator may read but not export.
+        assert!(person(&doc, "scara", &erp, Some("billing"))
+            .decide(&export("invoices"))
+            .is_err());
+    }
+
+    #[test]
+    fn creating_a_database_needs_ddl_on_a_rule_that_covers_it() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let need = |db: &str| Need::DatabaseDdl(db.into());
+        assert!(person(&doc, "scara", &erp, None)
+            .decide(&need("new_db"))
+            .is_ok());
+        assert!(person(&doc, "ana", &erp, None)
+            .decide(&need("billing"))
+            .is_err());
+        assert!(person(&doc, "pau", &erp, None)
+            .decide(&need("prod_line"))
+            .is_err());
+    }
+
+    #[test]
+    fn a_relation_grant_is_everything_its_rules_allow() {
+        let doc = doc(COMPANY);
+        let erp = erp();
+        let ana = person(&doc, "ana", &erp, Some("billing"));
+        let grant = ana.relation_grant(None, "invoices").unwrap();
+        assert_eq!(grant.verbs, Verbs::SELECT | Verbs::INSERT | Verbs::UPDATE);
+        assert!(!grant.export);
+        assert!(ana.relation_grant(None, "payroll").unwrap().is_empty());
+        let db = ana.database_grant().unwrap();
+        assert_eq!(db.verbs, Verbs::SELECT | Verbs::INSERT | Verbs::UPDATE);
+
+        // An unmanaged connection has no answer: the policy says nothing.
+        let text = COMPANY.replacen(
+            "\"defaultRole\": \"none\",",
+            "\"defaultRole\": \"none\", \"unmanagedConnections\": \"allow\",",
+            1,
+        );
+        let open = doc_of(&text);
+        let elsewhere = ConnectionProfile {
+            host: "reports.local".into(),
+            ..erp.clone()
+        };
+        let free = person(&open, "ana", &elsewhere, None);
+        assert!(free.relation_grant(None, "anything").is_none());
+        assert!(free.database_grant().is_none());
     }
 
     #[test]

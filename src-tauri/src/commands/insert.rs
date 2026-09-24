@@ -456,6 +456,13 @@ pub async fn insert_rows(
     source: String,
 ) -> AppResult<InsertRowsSummary> {
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::relation(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::INSERT,
+    )?;
     insert_rows_inner(&sink, state.inner(), connection_id, schema, table, source).await
 }
 
