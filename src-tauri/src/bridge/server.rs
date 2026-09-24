@@ -8,7 +8,9 @@
 
 use crate::bridge::protocol::{BridgeRequest, BridgeResponse, Hello, HelloAck, PROTOCOL_VERSION};
 use crate::bridge::{publish, unpublish, Discovery};
+#[cfg(test)]
 use crate::db::sql::StmtClass;
+use crate::db::sql::Verbs;
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{self, LogEntry, LogKind, LogSink};
 use crate::state::{AppState, McpWritePolicy};
@@ -368,46 +370,56 @@ fn policy_id_of(request: &BridgeRequest) -> Option<&str> {
     }
 }
 
-/// The tier a request needs, or `None` when it needs no policy at all.
+/// What a request does, or `None` when it needs no policy at all.
 ///
 /// Split out of [`check_policy`] so it can be tested: this and the sidecar's
-/// own `require_class` are the only two places in the product that decide
-/// whether an operation counts as DDL, and getting it wrong here is not a
+/// own `require_verbs` are the only two places in the product that decide
+/// what a structured operation needs, and getting it wrong here is not a
 /// compile error.
-fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
+///
+/// Each structured write names its own verb — `InsertRow` inserts,
+/// `UpdateCell` updates, `DeleteRows` deletes — rather than the one
+/// `DataWrite` tier they shared, so a policy that grants the writes separately
+/// can tell them apart. The per-connection MCP policy grants all three
+/// together (`McpWritePolicy::verbs`), so for it nothing changes.
+fn verbs_of_request(request: &BridgeRequest) -> Option<Verbs> {
     match request {
         // Driver-aware on purpose: the SQL keyword heuristic alone reports
-        // every mongosh statement as `DataWrite`, which refused a `read-only`
+        // every mongosh statement as a write, which refused a `read-only`
         // MongoDB connection its own reads and, once the grammar grew DDL,
         // would have let a `data` one drop a collection. One classifier, shared
         // with the sidecar's own check — see `crate::db::classify`.
-        BridgeRequest::RunStatement { sql, .. } => {
-            Some(crate::db::classify::classify_statement(sql))
-        }
-        BridgeRequest::FetchTableData { .. } => Some(StmtClass::Read),
-        BridgeRequest::InsertRow { .. }
-        | BridgeRequest::UpdateCell { .. }
-        | BridgeRequest::DeleteRows { .. } => Some(StmtClass::DataWrite),
+        BridgeRequest::RunStatement { sql, .. } => Some(crate::db::classify::verbs_of(sql)),
+        BridgeRequest::FetchTableData { .. } => Some(Verbs::SELECT),
+        BridgeRequest::InsertRow { .. } => Some(Verbs::INSERT),
+        BridgeRequest::UpdateCell { .. } => Some(Verbs::UPDATE),
+        BridgeRequest::DeleteRows { .. } => Some(Verbs::DELETE),
         // A dry run builds statements and executes nothing.
-        BridgeRequest::PreviewViewChange { .. } => Some(StmtClass::Read),
+        BridgeRequest::PreviewViewChange { .. } => Some(Verbs::SELECT),
         // A view is schema, so creating, redefining or dropping one is the same
         // tier `db::sql::classify` already assigns to the `CREATE OR REPLACE
         // VIEW` / `DROP VIEW` a caller could write by hand through
         // `run_query`. Anything lower would let a `data` connection reach
         // through these requests what `run_query` refuses it.
-        BridgeRequest::ApplyViewChange { .. } | BridgeRequest::DropView { .. } => {
-            Some(StmtClass::Ddl)
-        }
+        BridgeRequest::ApplyViewChange { .. } | BridgeRequest::DropView { .. } => Some(Verbs::DDL),
         // An index is schema. `db.c.createIndex(…)` through `run_query` is
-        // `Ddl` (see `MongoOp::class`), so anything lower here would hand a
+        // DDL (see `MongoOp::verbs`), so anything lower here would hand a
         // `data` connection through a tool exactly what the statement path
         // denies it — the privilege escalation the view tools' tier argument
         // was forced by.
         BridgeRequest::CreateMongoIndex { .. } | BridgeRequest::DropMongoIndex { .. } => {
-            Some(StmtClass::Ddl)
+            Some(Verbs::DDL)
         }
         _ => None,
     }
+}
+
+/// The tier a request needs — [`verbs_of_request`] seen through
+/// [`Verbs::class`]. Kept for the tests that pin tiers, which are the
+/// characterisation that the verb split changed nothing.
+#[cfg(test)]
+fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
+    verbs_of_request(request).map(Verbs::class)
 }
 
 /// Re-check the connection's write policy, from disk, for a mutating call.
@@ -423,13 +435,13 @@ fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
 /// different transport and are built from a different catalogue but land on the
 /// same [`BridgeRequest`] enum. That is the whole reason the check lives on the
 /// request rather than at either entry point — and it is why the AI catalogue
-/// keeps its own exhaustive mapping instead of extending `class_of`'s
+/// keeps its own exhaustive mapping instead of extending `verbs_of_request`'s
 /// `_ => None` (gotcha #49).
 pub(crate) fn check_policy(state: &AppState, request: &BridgeRequest) -> AppResult<()> {
     let Some(policy_id) = policy_id_of(request) else {
         return Ok(());
     };
-    let Some(class) = class_of(request) else {
+    let Some(needed) = verbs_of_request(request) else {
         return Ok(());
     };
     let policy = crate::store::load_profiles()
@@ -445,7 +457,7 @@ pub(crate) fn check_policy(state: &AppState, request: &BridgeRequest) -> AppResu
                 .map(|p| p.mcp_write)
         })
         .unwrap_or(McpWritePolicy::ReadOnly);
-    if policy.allows(class) {
+    if policy.allows(needed) {
         return Ok(());
     }
     Err(AppError::InvalidInput(format!(
@@ -719,12 +731,12 @@ mod tests {
         // tier: a view is not row data, and `data` must not reach it.
         for policy in [McpWritePolicy::ReadOnly, McpWritePolicy::Data] {
             assert!(
-                !policy.allows(StmtClass::Ddl),
+                !policy.allows(Verbs::DDL),
                 "{} must not admit view management",
                 policy.label()
             );
         }
-        assert!(McpWritePolicy::Full.allows(StmtClass::Ddl));
+        assert!(McpWritePolicy::Full.allows(Verbs::DDL));
     }
 
     /// The app-side half of the escalation guard. `class_of` used to derive a
@@ -801,5 +813,49 @@ mod tests {
         }
         // Distinct Console labels, like preview-vs-apply.
         assert_ne!(create.label(), drop.label());
+    }
+
+    /// The structured writes used to share one `DataWrite` tier, which is all
+    /// the per-connection policy could tell apart. A managed policy grants them
+    /// separately, so each has to name its own verb — and the `data` policy,
+    /// which grants all three, must still admit every one of them.
+    #[test]
+    fn structured_writes_name_their_own_verb() {
+        let insert = BridgeRequest::InsertRow {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: None,
+            table: "t".into(),
+            pk_column: None,
+            values: serde_json::json!({"a": 1}),
+        };
+        let update = BridgeRequest::UpdateCell {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: None,
+            table: "t".into(),
+            pk_columns: vec!["id".into()],
+            pk_values: vec![serde_json::json!(1)],
+            column: "a".into(),
+            value: Some("2".into()),
+            column_type: None,
+        };
+        let delete = BridgeRequest::DeleteRows {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            schema: None,
+            table: "t".into(),
+            pk_columns: vec!["id".into()],
+            pk_value_rows: vec![vec![serde_json::json!(1)]],
+        };
+        for (request, verb) in [
+            (&insert, Verbs::INSERT),
+            (&update, Verbs::UPDATE),
+            (&delete, Verbs::DELETE),
+        ] {
+            assert_eq!(verbs_of_request(request), Some(verb));
+            assert!(McpWritePolicy::Data.allows(verb));
+            assert!(!McpWritePolicy::ReadOnly.allows(verb));
+        }
     }
 }
