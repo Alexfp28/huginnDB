@@ -6,6 +6,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Managed policy: an administrator decides, once, what the AI may reach on
+  every installation.** Built for organizations deploying HuginnDB to many
+  workstations, where configuring each one by hand was the objection. A
+  policy — in `HKLM\SOFTWARE\Policies\HuginnDB` or `managed-policy.json` in
+  the system policy folder, either inline or pointing to a file on a share —
+  gives each OS account one role, and each role rules per server: which
+  databases and relations are visible, and whether the AI may select, insert,
+  update, delete or change schema, each granted separately, plus `monitor` for
+  Pulse, sessions and users. This version applies it **to the AI**, where it is
+  enforced rather than advisory: the model never holds a credential, and every
+  request from the MCP connector (with or without the app running) and from
+  the AI panel's agent and assisted tasks passes through the one function the
+  policy is checked in. Discovery is filtered, so the AI does not learn the
+  names of what it cannot reach; free-form queries are withheld wherever a rule
+  limits which relations may be seen, since no query text can be checked
+  against that; and the AI never gets more than its user's own `human`
+  permissions. It only ever narrows the per-connection MCP and AI settings.
+  An unreadable or invalid policy blocks every AI request instead of falling
+  back to none, a typo in the file is an error rather than a missing
+  restriction, and the account is read from the operating system, never from
+  `USERNAME`. **Settings → Policy** shows where the policy came from, the
+  account and role, and what each connection allows; the MCP audit log now
+  records `user=` and `role=`. Applying the `human` permissions to people in
+  the app is the next phase. See [`docs/POLICY.md`](docs/POLICY.md) and
+  `CLAUDE.md` gotcha #94.
+
 ### Fixed
 
 - **An empty MongoDB collection still had no way to insert its first

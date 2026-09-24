@@ -425,6 +425,11 @@ impl Verbs {
         self.0 & other.0 != 0
     }
 
+    /// The verbs both sets hold.
+    pub fn intersection(self, other: Verbs) -> Verbs {
+        Verbs(self.0 & other.0)
+    }
+
     /// The tier this set needs: any DDL makes it `Ddl`, any row write
     /// `DataWrite`, otherwise it is a `Read`.
     pub fn class(self) -> StmtClass {

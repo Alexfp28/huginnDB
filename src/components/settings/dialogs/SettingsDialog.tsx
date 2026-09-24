@@ -31,6 +31,7 @@ import {
   FileText,
   Keyboard,
   Palette,
+  ShieldCheck,
   Sparkles,
   Table2,
   Info,
@@ -62,6 +63,7 @@ import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSectio
 import { McpSection } from "@/components/settings/sections/McpSection";
 import { PulseSection } from "@/components/settings/sections/PulseSection";
 import { AiSection } from "@/components/settings/sections/AiSection";
+import { PolicySection } from "@/components/settings/sections/PolicySection";
 import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSection";
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
@@ -95,6 +97,9 @@ const SECTIONS: {
   // about what HuginnDB is allowed to reach and what leaves the machine, which
   // is the question a user comes to this rail with.
   { id: "ai", icon: Bot },
+  // Last of that group: it is not a knob but the answer to "who decided
+  // what the AI may reach here?" when an organization manages the machine.
+  { id: "policy", icon: ShieldCheck },
   { id: "about", icon: Info },
 ];
 
@@ -190,6 +195,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
             {section === "mcp" && <McpSection />}
             {section === "pulse" && <PulseSection />}
             {section === "ai" && <AiSection />}
+            {section === "policy" && <PolicySection />}
             {section === "about" && <AboutSection />}
           </main>
         </DialogBody>

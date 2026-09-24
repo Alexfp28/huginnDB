@@ -25,6 +25,10 @@ pub async fn execute(
     request: &BridgeRequest,
 ) -> AppResult<Value> {
     use BridgeRequest::*;
+    // Every caller of this function acts for an AI, so this is where the
+    // organization's policy binds it — before anything is read. See
+    // `crate::policy` for the paths that do not come through here.
+    crate::policy::enforce(state, request)?;
     let value = match request {
         EnsureConnected { .. } => {
             // Opening a pool differs per side — the app goes through
@@ -62,7 +66,11 @@ pub async fn execute(
         // per-connection setting on the profile, and `profiles.json` is the one
         // thing the app and the sidecar genuinely share, so an MCP client
         // against a slow server inherits the user's answer for free.
-        ListDatabases { connection_id } => serde_json::to_value(
+        // Filtered on the typed list, before it is serialised: what the
+        // policy hides, the AI does not get to know the name of.
+        ListDatabases { connection_id } => serde_json::to_value(crate::policy::filter_databases(
+            state,
+            connection_id,
             crate::error::with_timeout_for(
                 state,
                 connection_id,
@@ -70,8 +78,10 @@ pub async fn execute(
                 crate::commands::schema::list_databases_inner(state, connection_id),
             )
             .await?,
-        )?,
-        ListTables { connection_id } => serde_json::to_value(
+        ))?,
+        ListTables { connection_id } => serde_json::to_value(crate::policy::filter_tables(
+            state,
+            connection_id,
             crate::error::with_timeout_for(
                 state,
                 connection_id,
@@ -79,7 +89,7 @@ pub async fn execute(
                 crate::commands::schema::list_tables_inner(state, connection_id),
             )
             .await?,
-        )?,
+        ))?,
         // `describe_relation_inner`, not `get_table_structure_inner`: the reply
         // gains an optional `view` key when the relation is a view. The
         // *request* shape is unchanged, and bridge payloads are opaque

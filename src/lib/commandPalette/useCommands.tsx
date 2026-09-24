@@ -54,6 +54,7 @@ import {
   RefreshCw,
   RotateCcw,
   Settings,
+  ShieldCheck,
   Sparkles,
   SquareTerminal,
   Star,
@@ -136,6 +137,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   mcp: <Cable className="h-4 w-4" />,
   pulse: <Activity className="h-4 w-4" />,
   ai: <Bot className="h-4 w-4" />,
+  policy: <ShieldCheck className="h-4 w-4" />,
   about: <Info className="h-4 w-4" />,
 };
 

@@ -1270,6 +1270,46 @@ export interface AiDelta {
   text: string;
 }
 
+/**
+ * This machine's managed policy as it applies to the current user, from the
+ * `policy_status` command (Settings → Policy). Read-only: the policy is
+ * written by an administrator, in a place the user cannot write.
+ */
+export interface PolicyStatus {
+  state: "unmanaged" | "pending" | "active" | "broken";
+  /** Where the policy was read from (the anchor, and the share it names). */
+  source: string | null;
+  /** Why a `broken` policy could not be applied. */
+  error: string | null;
+  /** Allowed but probably unintended, e.g. `ai` granting more than `human`. */
+  warnings: string[];
+  /** The OS account, as the operating system reports it. */
+  user: string;
+  role: string | null;
+  unmanagedConnections: "allow" | "deny" | null;
+  connections: ConnectionPolicy[];
+}
+
+export interface ConnectionPolicy {
+  id: string;
+  name: string;
+  /** No rule of the role names this connection. */
+  unmatched: boolean;
+  /** Unmatched and the policy leaves such connections to the local settings. */
+  leftAlone: boolean;
+  rules: RulePolicy[];
+}
+
+export interface RulePolicy {
+  databases: string[] | null;
+  allow: string[] | null;
+  deny: string[];
+  human: string[];
+  /** What the AI effectively gets: `ai ∩ human`. */
+  ai: string[];
+  freeSql: boolean;
+}
+
 /** Live pool footprint, from the `connection_pool_stats` command. */
 export interface PoolStats {
   /** Top-level pools, whoever opened them. */

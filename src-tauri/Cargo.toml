@@ -119,6 +119,11 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 url = "2"
 parking_lot = "0.12"
+# The OS account a managed policy assigns a role to (`policy::current_user`). Read
+# from the operating system (`GetUserNameW`, `getpwuid`), never from `USERNAME`
+# / `USER`, which whoever launches the process controls. Already in the tree
+# through `sqlx-mysql` / `sqlx-postgres`, so declaring it adds no crate.
+whoami = { version = "1.6", default-features = false }
 russh = { version = "0.60", default-features = false, features = [
     "ring",
     "flate2",
@@ -170,6 +175,11 @@ anyhow = { version = "1", optional = true }
 # SQL Server auth mode limited to SQL logins; see `db::mssql::auth`.
 [target.'cfg(windows)'.dependencies]
 tiberius = { version = "0.12", default-features = false, features = ["winauth"] }
+# Reads the managed-policy anchor under `HKLM\SOFTWARE\Policies\HuginnDB`
+# (`policy::source`) — the key Group Policy / Intune write and a standard user
+# cannot. Already in the tree through `hickory-resolver` → `ipconfig`, so
+# declaring it adds no crate.
+windows-registry = "0.6"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

@@ -311,7 +311,7 @@ fn log_served(app: &AppHandle, request: &BridgeRequest, start: Instant, error: O
     log_bus::broadcast(app, entry);
 }
 
-fn connection_id_of(request: &BridgeRequest) -> String {
+pub(crate) fn connection_id_of(request: &BridgeRequest) -> String {
     use BridgeRequest::*;
     match request {
         EnsureConnected { connection_id }
@@ -546,6 +546,10 @@ async fn dispatch(
     // will ever disconnect it, and until the marker existed the app's reaper
     // skipped it as "a connection the user opened". See gotcha #67.
     if let BridgeRequest::EnsureConnected { connection_id } = request {
+        // The one request `bridge::exec::execute` never sees, so the policy
+        // is applied here: a connection the AI's role cannot reach is not
+        // even opened.
+        crate::policy::enforce(state, request)?;
         crate::commands::connection::connect_inner(
             app,
             state,

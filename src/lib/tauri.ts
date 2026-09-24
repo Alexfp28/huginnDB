@@ -56,6 +56,7 @@ import type {
   ImportResult,
   IndexInfo,
   InsertRowsSummary,
+  PolicyStatus,
   PoolStats,
   Preferences,
   PrivilegeInfo,
@@ -342,6 +343,12 @@ export const api = {
    * an actionable error if the user can see their own contribution to it.
    */
   connectionPoolStats: () => invoke<PoolStats>("connection_pool_stats"),
+
+  /**
+   * This machine's managed policy — its source, the current user's role and
+   * what each connection allows. Read-only; see `commands::policy`.
+   */
+  policyStatus: () => invoke<PolicyStatus>("policy_status"),
 
   /**
    * Close every per-database pool, keeping the top-level connections the user

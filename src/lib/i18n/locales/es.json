@@ -1309,6 +1309,10 @@
       "ai": {
         "label": "IA",
         "desc": "Asistente local"
+      },
+      "policy": {
+        "label": "Política",
+        "desc": "Gestionada por tu organización"
       }
     },
     "general": {
@@ -1853,6 +1857,43 @@
       "notesConnection": "Conexión",
       "notesNone": "Activa una conexión arriba para darle notas.",
       "notesSaved": "Notas guardadas"
+    },
+    "policy": {
+      "intro": "Cuando tu organización gestiona HuginnDB, un administrador decide, por rol, a qué puede acceder la IA en cada conexión. Aquí ves lo que se te aplica; es de solo lectura.",
+      "refresh": "Actualizar",
+      "loadFailed": "No se pudo leer el estado de la política: {{error}}",
+      "stateLabel": "Estado",
+      "state": {
+        "unmanaged": "Sin gestionar",
+        "pending": "Cargando",
+        "active": "Activa",
+        "broken": "No se pudo aplicar"
+      },
+      "unmanagedHint": "No hay ninguna política instalada en este equipo, así que HuginnDB funciona como siempre. Un administrador la instala en el registro (HKLM\\SOFTWARE\\Policies\\HuginnDB) o como managed-policy.json en la carpeta de políticas del sistema.",
+      "pendingHint": "La política todavía se está leyendo de su origen. La IA queda en pausa hasta entonces.",
+      "brokenHint": "La política no se pudo aplicar, así que la IA está bloqueada en todas las conexiones. Pide a tu administrador que la corrija.",
+      "source": "Origen",
+      "user": "Cuenta",
+      "role": "Rol",
+      "unmanagedConnections": "Conexiones que la política no nombra",
+      "unmanagedAllow": "las deciden los ajustes locales",
+      "unmanagedDeny": "bloqueadas para la IA",
+      "warnings": "Avisos",
+      "connections": "Conexiones",
+      "noConnections": "No tienes conexiones guardadas.",
+      "unmatchedDeny": "Ninguna regla de tu rol nombra esta conexión, así que la IA no puede usarla.",
+      "unmatchedAllow": "Ninguna regla de tu rol nombra esta conexión; deciden los ajustes locales.",
+      "databases": "Bases de datos",
+      "relations": "Relaciones",
+      "never": "Nunca",
+      "all": "todas",
+      "ai": "IA",
+      "human": "Personas",
+      "nothing": "nada",
+      "freeSql": "Consultas libres",
+      "freeSqlOn": "permitidas",
+      "freeSqlOff": "desactivadas: la regla se limita a algunas bases de datos o relaciones, y el texto de una consulta no se puede comprobar contra eso",
+      "humanNotEnforced": "Lo que pueden hacer las personas se muestra como referencia: esta versión aplica la política solo a la IA."
     }
   },
   "notifications": {
@@ -2355,6 +2396,10 @@
       "ai": {
         "title": "Panel de IA",
         "description": "Asistente local"
+      },
+      "policy": {
+        "title": "Política gestionada",
+        "description": "Lo que una organización deja alcanzar a la IA"
       }
     }
   },

@@ -23,6 +23,7 @@ export type SettingsSection =
   | "mcp"
   | "pulse"
   | "ai"
+  | "policy"
   | "about";
 
 interface SettingsDialogState {
