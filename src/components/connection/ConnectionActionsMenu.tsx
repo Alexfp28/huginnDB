@@ -67,6 +67,7 @@ import {
 import { isServerWide } from "@/lib/connectionLabel";
 import { supportsCreateDatabase, supportsSqlDump } from "@/lib/db/driver";
 import { profileIntent } from "@/lib/cli/startupArgs";
+import { usePolicyLocker } from "@/lib/policy/access";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
 import { openSecurityTab } from "@/lib/tabs/openSecurityTab";
 import { api } from "@/lib/tauri";
@@ -94,6 +95,7 @@ export function ConnectionActionsMenu({
     s.profiles.find((p) => p.id === connectionId),
   );
   const isActive = useConnections((s) => s.active.has(connectionId));
+  const lock = usePolicyLocker(connectionId);
   const cs = useSchema((s) => s.byConnection[connectionId]);
   const refresh = useSchema((s) => s.refresh);
   const refreshTree = useSchema((s) => s.refreshTree);
@@ -203,6 +205,7 @@ export function ConnectionActionsMenu({
                 <ContextMenuAction
                   icon={DatabaseZap}
                   label={t("schema.createDatabase.title")}
+                  locked={lock("ddl")}
                   onSelect={() => setCreateDbOpen(true)}
                 />
               )}
@@ -236,11 +239,14 @@ export function ConnectionActionsMenu({
                   <ContextMenuAction
                     icon={Download}
                     label={t("schema.exportDatabase.title")}
+                    locked={lock("export")}
                     onSelect={() => setExportOpen(true)}
                   />
                   <ContextMenuAction
                     icon={Upload}
                     label={t("schema.importSql.title")}
+                    // A .sql file runs as a batch of free statements.
+                    locked={lock("freeSql")}
                     onSelect={() =>
                       void pickAndSplitSqlFile(t).then((statements) => {
                         if (statements) setImportStatements(statements);
@@ -253,6 +259,7 @@ export function ConnectionActionsMenu({
               <ContextMenuAction
                 icon={ShieldCheck}
                 label={t("security.title")}
+                locked={lock("monitor")}
                 onSelect={() => openSecurityTab(connectionId, t("security.title"))}
               />
               {/* Tail group: where this connection *lives*, rather than what
@@ -287,6 +294,9 @@ export function ConnectionActionsMenu({
                 <ContextMenuAction
                   icon={Plug}
                   label={t("connectionsTree.connect")}
+                  // A connection the role may not use, or any while the
+                  // policy is broken, refuses to open (`guard::endpoint`).
+                  locked={lock("connect")}
                   onSelect={onConnect}
                 />
               )}

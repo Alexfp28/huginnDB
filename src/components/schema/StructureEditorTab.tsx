@@ -17,12 +17,14 @@ import {
   ChevronDown,
   ChevronUp,
   KeyRound,
+  Lock,
   Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { notify } from "@/lib/notify";
+import { usePolicyLock } from "@/lib/policy/access";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
@@ -144,6 +146,14 @@ export function StructureEditorTab({
   // is missing). Both reject preview/apply, so the Apply action is replaced by
   // a badge instead of failing on click.
   const isReadOnly = !supportsDdlEditing(driver);
+  // Whether the managed policy lets the person change this table's structure
+  // (or, for a new one, create tables here). The tab opens either way: reading
+  // a structure is `select`, and only Apply needs `ddl`.
+  const ddlLock = usePolicyLock(
+    connectionId,
+    "ddl",
+    mode === "edit" && table ? { schema, name: table } : null,
+  );
 
   /**
    * `4.3 MB · 12.1k rows` beside the table name, in edit mode.
@@ -454,6 +464,11 @@ export function StructureEditorTab({
               {ddlReadOnlyReason(driver) === "mssql"
                 ? t("structure.readOnlySqlServer")
                 : t("structure.readOnlyMongo")}
+            </span>
+          ) : ddlLock ? (
+            <span className="flex items-center gap-1 rounded-sm bg-muted px-2 py-1 text-2xs text-muted-foreground">
+              <Lock aria-hidden className="h-3 w-3 shrink-0" />
+              {ddlLock}
             </span>
           ) : (
             <Button

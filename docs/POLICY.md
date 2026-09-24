@@ -28,6 +28,14 @@ entirely. The way to make people's restrictions impossible to bypass is for
 each person to connect with their **own database user** whose grants match the
 policy; generating those grants from the policy is the next phase.
 
+What a person sees: a table or database their role does not reach is not
+listed at all, and an action it does not allow stays where it was, disabled,
+with a lock and the reason — in a menu, under the item's label; on a button,
+on hover. A tab whose whole purpose is not allowed (the query editor without
+free-form queries, Security or Pulse without `monitor`) shows a locked page
+instead. While the policy is loading or cannot be applied, a bar across the
+window says so and links to Settings → Policy.
+
 The policy only ever **narrows**. The per-connection settings users already
 have — which connections are exposed to MCP, their MCP write level, whether the
 AI panel is enabled — still apply. What the AI may do is the policy *and* those.

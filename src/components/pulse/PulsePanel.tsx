@@ -42,6 +42,8 @@ import {
 } from "@/lib/connectionLabel";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
+import { PolicyLockedState } from "@/components/common/PolicyLock";
+import { usePolicyLock } from "@/lib/policy/access";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { usePulse, type PulseSectionId } from "@/stores/session/pulse";
 import { useConnections } from "@/stores/session/connections";
@@ -234,9 +236,13 @@ export function PulsePanel({ active }: { active: boolean }) {
   // server health is a property of the server, not of one database on it.
   const raw = pinned ?? selected;
   const connectionId = raw ? parentConnectionId(raw) : null;
+  // Monitoring is its own permission (`monitor`), server-wide. Without it the
+  // live poll stands down rather than fail every tick.
+  const monitorLock = usePolicyLock(connectionId, "monitor");
+  const polling = active && !monitorLock;
 
-  usePulseLive(connectionId, active);
-  const { refresh } = usePulseDetail(connectionId, active);
+  usePulseLive(connectionId, polling);
+  const { refresh } = usePulseDetail(connectionId, polling);
   const view = usePulseView(connectionId);
 
   function expand() {
@@ -257,6 +263,20 @@ export function PulsePanel({ active }: { active: boolean }) {
         subtitle=""
       >
         <EmptyState size="sm" icon={Activity} title={t("pulse.noConnection")} />
+      </PanelFrame>
+    );
+  }
+
+  if (monitorLock) {
+    return (
+      <PanelFrame
+        pinned={pinned !== null}
+        onTogglePin={() => setPinned(pinned ? null : connectionId)}
+        onRefresh={null}
+        onExpand={null}
+        subtitle={resolveConnectionLabel(profiles, connectionId)}
+      >
+        <PolicyLockedState size="sm" reason={monitorLock} />
       </PanelFrame>
     );
   }

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ChevronRight, type LucideIcon } from "lucide-react";
+import { ChevronRight, Lock, type LucideIcon } from "lucide-react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import { cn } from "@/lib/utils";
 import { MENU_ITEM, MENU_PANEL, MENU_SUBTRIGGER } from "@/components/ui/styles";
@@ -99,22 +99,57 @@ const ContextMenuAction = React.forwardRef<
     /** Red styling for irreversible actions (drop, delete, …). */
     destructive?: boolean;
     shortcut?: string;
+    /**
+     * Why the managed policy does not allow this (`usePolicyLock`). Disables
+     * the item and says so under its label, with a lock — a disabled menu item
+     * gets no hover, so a tooltip could never show the reason.
+     */
+    locked?: string | null;
   }
->(({ icon: Icon, label, onSelect, disabled, destructive, shortcut }, ref) => (
-  <ContextMenuItem
-    ref={ref}
-    disabled={disabled}
-    onSelect={onSelect}
-    className={cn(
-      destructive &&
-        "text-destructive focus:bg-destructive/10 focus:text-destructive",
-    )}
-  >
-    <Icon className="mr-2 h-3.5 w-3.5 shrink-0" />
-    <span className="truncate">{label}</span>
-    {shortcut && <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>}
-  </ContextMenuItem>
-));
+>(
+  (
+    { icon: Icon, label, onSelect, disabled, destructive, shortcut, locked },
+    ref,
+  ) => (
+    <ContextMenuItem
+      ref={ref}
+      disabled={disabled || !!locked}
+      onSelect={onSelect}
+      className={cn(
+        destructive &&
+          !locked &&
+          "text-destructive focus:bg-destructive/10 focus:text-destructive",
+        // Muted rather than half-transparent: the generic disabled fade
+        // would take the reason line down with it, and the reason is the
+        // point of the item.
+        locked &&
+          "items-start text-muted-foreground data-[disabled]:opacity-100",
+      )}
+    >
+      <Icon
+        className={cn(
+          "mr-2 h-3.5 w-3.5 shrink-0",
+          // Level with the label's line, not the middle of two lines.
+          locked && "mt-px opacity-60",
+        )}
+      />
+      {locked ? (
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate">{label}</span>
+          <span className="flex items-center gap-1 text-3xs leading-tight text-muted-foreground/80">
+            <Lock aria-hidden className="h-2.5 w-2.5 shrink-0" />
+            <span>{locked}</span>
+          </span>
+        </span>
+      ) : (
+        <span className="truncate">{label}</span>
+      )}
+      {!locked && shortcut && (
+        <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
+      )}
+    </ContextMenuItem>
+  ),
+);
 ContextMenuAction.displayName = "ContextMenuAction";
 
 const ContextMenuLabel = React.forwardRef<

@@ -61,9 +61,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   contraseña de la base de datos puede usar otro cliente, y eso lo cierran los
   usuarios de base de datos por persona (la siguiente fase). Un test falla si
   se registra un comando nuevo sin decir qué le pide la política, y otro si un
-  comando que toca una base de datos nunca llama a la comprobación. Bloquear
-  los controles correspondientes en la interfaz es el siguiente cambio. Ver el
+  comando que toca una base de datos nunca llama a la comprobación. Ver el
   gotcha #95 de `CLAUDE.md`.
+- **Lo que la política gestionada no permite aparece bloqueado en la
+  interfaz, con el motivo.** Los comandos ya lo rechazaban; ahora los controles
+  lo dicen antes de usarse. Un elemento de menú que el rol de la persona no
+  permite sigue en su sitio, deshabilitado, con un candado y una línea bajo su
+  nombre que dice qué no permite la política: borrar y renombrar, nueva tabla
+  y vista, importar, exportar, Seguridad, crear y borrar base de datos,
+  conectar. Una pestaña cuyo propósito entero se rechaza muestra un estado
+  vacío bloqueado en vez de fallar en cada petición: el editor de consultas
+  sin SQL libre (también las pestañas de consulta restauradas de la sesión
+  anterior), Seguridad y Pulse sin `monitor`, y cualquier pestaña mientras la
+  política carga o está rota. En el grid, editar, insertar, duplicar, borrar
+  y la edición masiva siguen cada uno su verbo, y una línea sobre las filas
+  dice qué falta; exportar sigue a `export`; en SQL, la expresión escrita a
+  mano del panel de consulta se bloquea en una regla que limita relaciones, y
+  una ya aplicada sigue visible, y se puede quitar, sin enviarse. Los editores
+  de estructura, vistas, agregaciones e índices bloquean Aplicar, Guardar y
+  Crear; la vista previa en vivo de una vista dice por qué en vez de ejecutar
+  su cuerpo. Una barra en la ventana avisa cuando la política está cargando o
+  no se pudo aplicar, con un enlace a Ajustes → Política, cuyo texto ahora
+  habla de las personas además de la IA. En una máquina sin política no
+  cambia nada: allí basta una llamada para saberlo y nunca se pregunta por
+  ninguna relación. Ver el gotcha #96 de `CLAUDE.md`.
 
 ### Corregido
 

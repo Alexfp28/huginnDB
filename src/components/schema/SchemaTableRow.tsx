@@ -42,6 +42,7 @@ import { tableTabTitle } from "@/lib/connectionLabel";
 import { supportsDdlEditing, supportsRenameTable } from "@/lib/db/driver";
 import { selectSnippet } from "@/lib/grid/copyFormats";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
+import { usePolicyLocker } from "@/lib/policy/access";
 import { useConnections } from "@/stores/session/connections";
 import { tableKey } from "@/stores/session/schema";
 import { tableTabKey } from "@/lib/schema/useOpenTableKeys";
@@ -158,6 +159,11 @@ export const TableRow = memo(function TableRow({
   // See `ConnectionActionsMenu`'s matching state/comment: keeps the row
   // looking targeted once the pointer has moved off it onto the open menu.
   const [menuOpen, setMenuOpen] = useState(false);
+  // What the managed policy lets the person do on this relation. Hidden
+  // relations never reach the tree (the listing is filtered in Rust), so the
+  // locks here are about verbs: a visible table that is read-only for them.
+  const lock = usePolicyLocker(connectionId, { schema: t.schema, name: t.name });
+  const ddlLock = lock("ddl");
 
   const thisTableKey = tableTabKey(connectionId, t.schema, t.name);
   // Reflect the currently-open table tab so the tree shows "you are here".
@@ -364,6 +370,7 @@ export const TableRow = memo(function TableRow({
         <ContextMenuAction
           icon={ExternalLink}
           label={ct("schema.context.open")}
+          locked={lock("read")}
           onSelect={() =>
             actions.openTab({
               kind: "table",
@@ -386,6 +393,7 @@ export const TableRow = memo(function TableRow({
         <ContextMenuAction
           icon={SquareTerminal}
           label={ct("schema.context.queryTableHere")}
+          locked={lock("freeSql")}
           onSelect={() => actions.onOpenQuery(t)}
         />
         <ContextMenuAction
@@ -427,6 +435,7 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={Workflow}
               label={ct("schema.context.newAggregation")}
+              locked={lock("read")}
               onSelect={() =>
                 actions.openTab({
                   kind: "aggregation",
@@ -445,6 +454,7 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={KeyRound}
               label={ct("schema.context.manageIndexes")}
+              locked={lock("read")}
               onSelect={() =>
                 actions.openTab({
                   kind: "indexes",
@@ -460,18 +470,21 @@ export const TableRow = memo(function TableRow({
               <ContextMenuAction
                 icon={PencilLine}
                 label={ct("schema.context.rename")}
+                locked={ddlLock}
                 onSelect={() => actions.onRename(t)}
               />
             )}
             <ContextMenuAction
               icon={Eraser}
               label={ct("schema.context.empty")}
+              locked={ddlLock}
               onSelect={() => actions.onEmpty(t)}
             />
             <ContextMenuAction
               icon={Trash2}
               destructive
               label={ct("schema.context.drop")}
+              locked={ddlLock}
               onSelect={() => actions.onDrop(t)}
             />
           </>
@@ -488,6 +501,7 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={Workflow}
               label={ct("schema.context.editViewPipeline")}
+              locked={lock("read")}
               onSelect={() =>
                 actions.openTab({
                   kind: "aggregation",
@@ -506,6 +520,7 @@ export const TableRow = memo(function TableRow({
               icon={Trash2}
               destructive
               label={ct("schema.context.dropView")}
+              locked={ddlLock}
               onSelect={() => actions.onDropView(t)}
             />
           </>
@@ -525,6 +540,7 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={SquarePen}
               label={ct("schema.context.editStructure")}
+              locked={lock("read")}
               onSelect={() =>
                 actions.openTab({
                   kind: "structure",
@@ -542,6 +558,7 @@ export const TableRow = memo(function TableRow({
               <ContextMenuAction
                 icon={PencilLine}
                 label={ct("schema.context.rename")}
+                locked={ddlLock}
                 onSelect={() => actions.onRename(t)}
               />
             )}
@@ -549,12 +566,14 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={Eraser}
               label={ct("schema.context.empty")}
+              locked={ddlLock}
               onSelect={() => actions.onEmpty(t)}
             />
             <ContextMenuAction
               icon={Trash2}
               destructive
               label={ct("schema.context.drop")}
+              locked={ddlLock}
               onSelect={() => actions.onDrop(t)}
             />
           </>
@@ -569,6 +588,7 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={SquarePen}
               label={ct("schema.context.editView")}
+              locked={lock("read")}
               onSelect={() =>
                 actions.openTab({
                   kind: "view",
@@ -583,6 +603,7 @@ export const TableRow = memo(function TableRow({
             <ContextMenuAction
               icon={PencilLine}
               label={ct("schema.context.renameView")}
+              locked={ddlLock}
               onSelect={() => actions.onRenameView(t)}
             />
             <ContextMenuSeparator />
@@ -590,6 +611,7 @@ export const TableRow = memo(function TableRow({
               icon={Trash2}
               destructive
               label={ct("schema.context.dropView")}
+              locked={ddlLock}
               onSelect={() => actions.onDropView(t)}
             />
           </>

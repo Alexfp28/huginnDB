@@ -35,6 +35,7 @@ import {
   Table2,
   Braces,
   FilePlus2,
+  Lock,
   Upload,
   ZoomIn,
   ZoomOut,
@@ -112,6 +113,8 @@ import { isNarrowing, wireProjection } from "@/lib/grid/projection";
 import { SortByMenuItems, type SortField } from "@/components/grid/SortControls";
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
+import { PolicyLockHint, PolicyVerbNotice } from "@/components/common/PolicyLock";
+import { usePolicyLocker } from "@/lib/policy/access";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -197,6 +200,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // identifier quoting (backticks for MySQL, brackets for SQL Server, double
   // quotes for PG/SQLite).
   const driver = useConnectionDriver(connectionId);
+  // What the managed policy lets the person do on this relation. The browse
+  // itself is gated one level up (`PolicyGate`), so everything here is about
+  // the verbs of a table they may read.
+  const lock = usePolicyLocker(connectionId, { schema, name: table });
+  const insertLock = lock("insert");
+  const updateLock = lock("update");
+  const deleteLock = lock("delete");
+  const exportLock = lock("export");
+  // On SQL the query panel's expression is a `WHERE` fragment — free SQL, a
+  // subquery reads any table — so a rule that limits relations refuses it
+  // (`guard::raw_filter`). On MongoDB it is a filter over this one collection.
+  const rawLock = driver === "mongodb" ? null : lock("freeSql");
   const tableKey = `${schema ?? ""}.${table}`;
   // Subscribe to THIS tab's own column entry, not the whole per-connection
   // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
@@ -329,7 +344,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     () => restoredViewState?.rawFilter ?? "",
   );
   /** The expression as the backend should see it: blank is none. */
-  const raw = rawFilter.trim() ? rawFilter : undefined;
+  // A restored expression the policy no longer allows is kept (the panel shows
+  // it, locked) but not sent: sending it would refuse the whole browse.
+  const raw = rawFilter.trim() && !rawLock ? rawFilter : undefined;
   /**
    * The query panel's *Advanced* row, applied: a collation (a name on SQL, a
    * document on MongoDB) and an index hint. Blank is none, like `rawFilter`.
@@ -1522,17 +1539,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         id: "export-data",
         bar: (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 gap-1 px-2 text-xs"
-              >
-                <Download className="h-3.5 w-3.5" />
-                {t("tableData.exportData.label")}
-                <ChevronDown className="h-3 w-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
+            <PolicyLockHint reason={exportLock}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  disabled={!!exportLock}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  {t("tableData.exportData.label")}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+            </PolicyLockHint>
             <DropdownMenuContent align="start">
               <DropdownMenuItem onSelect={() => void exportFull()}>
                 {isMongo
@@ -1550,9 +1570,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         // submenu with the very same two choices.
         menu: (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="text-xs">
+            <DropdownMenuSubTrigger className="text-xs" disabled={!!exportLock}>
               <Download className="mr-2 h-3.5 w-3.5" />
               {t("tableData.exportData.label")}
+              {exportLock && <Lock className="ml-2 h-3 w-3 opacity-70" />}
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuItem
@@ -1573,7 +1594,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </DropdownMenuSub>
         ),
       },
-      ...(hasPk
+      ...(hasPk && !updateLock
         ? [
             {
               id: "bulk-update",
@@ -1602,7 +1623,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           ]
         : []),
     ],
-    [isMongo, hasPk, t, importCollectionJsonForTab, exportFull, exportFiltered],
+    [
+      isMongo,
+      hasPk,
+      updateLock,
+      exportLock,
+      t,
+      importCollectionJsonForTab,
+      exportFull,
+      exportFiltered,
+    ],
   );
 
   // Trailing (right-aligned) HEADER content, rendered after `insertExtra` —
@@ -1770,11 +1800,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           {error}
         </div>
       )}
+      {hasPk && (
+        <PolicyVerbNotice
+          locked={{
+            insert: !!insertLock,
+            update: !!updateLock,
+            delete: !!deleteLock,
+          }}
+        />
+      )}
       <div className="flex-1 overflow-hidden">
         {result ? (
           <DataGrid
             result={result}
-            editable={hasPk}
+            editable={hasPk && !updateLock}
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
@@ -1807,12 +1846,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onAddFilter={onAddFilter}
             onRemoveFilter={onRemoveFilter}
             onEditFilter={onEditFilter}
-            onInsertRow={hasPk ? onInsertRow : undefined}
+            onInsertRow={hasPk && !insertLock ? onInsertRow : undefined}
             // A duplicate copies the row as the page holds it, so under a
             // projection it would silently drop every hidden column's value.
-            onDuplicateRow={hasPk && !projected ? onDuplicateRow : undefined}
-            onDeleteRow={hasPk ? onDeleteRow : undefined}
-            onBulkDelete={hasPk ? onBulkDelete : undefined}
+            onDuplicateRow={
+              hasPk && !projected && !insertLock ? onDuplicateRow : undefined
+            }
+            onDeleteRow={hasPk && !deleteLock ? onDeleteRow : undefined}
+            onBulkDelete={hasPk && !deleteLock ? onBulkDelete : undefined}
             getRowKey={getRowKey}
             onSelectionChange={onSelectionChange}
             draftRow={draft}
@@ -1844,6 +1885,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                   indexNames={indexNames}
                   document={isMongo}
                   keyColumns={pkColumnNames}
+                  rawLocked={rawLock}
                   preview={{
                     connectionId,
                     schema,

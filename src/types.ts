@@ -1310,6 +1310,48 @@ export interface RulePolicy {
   freeSql: boolean;
 }
 
+/** A verb a managed policy grants, as `policy::model::verb_names` spells it. */
+export type PolicyVerb = "select" | "insert" | "update" | "delete" | "ddl";
+
+/**
+ * What the person using the app may do, from `policy_access`. Decides which
+ * controls are locked; the backend refuses on its own either way.
+ */
+export interface PolicyAccess {
+  state: PolicyStatus["state"];
+  /** Why everything is locked, when the policy is pending or broken. */
+  reason: string | null;
+  connections: ConnectionAccess[];
+}
+
+export interface ConnectionAccess {
+  /** As asked: a profile id or a `<parent>::db::<name>` view id. */
+  id: string;
+  /** Whether the policy governs this connection at all. */
+  managed: boolean;
+  /** Whether the person may use it (and, for a view id, its database). */
+  visible: boolean;
+  freeSql: boolean;
+  /** An upper bound: one relation may allow less (`policy_relation_access`). */
+  verbs: PolicyVerb[];
+  export: boolean;
+  monitor: boolean;
+  /** The refusal, when `visible` is false. */
+  reason: string | null;
+}
+
+/** A relation, as `policy_relation_access` is asked about it. */
+export interface RelationRef {
+  schema: string | null;
+  name: string;
+}
+
+export interface RelationAccess {
+  visible: boolean;
+  verbs: PolicyVerb[];
+  export: boolean;
+}
+
 /** Live pool footprint, from the `connection_pool_stats` command. */
 export interface PoolStats {
   /** Top-level pools, whoever opened them. */

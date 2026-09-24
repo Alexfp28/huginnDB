@@ -270,7 +270,7 @@ function ConnectionList({ status }: { status: PolicyStatus }) {
         </>
       )}
       <p className="mt-1 text-2xs text-muted-foreground">
-        {t("settings.policy.humanNotEnforced")}
+        {t("settings.policy.humanGuardrail")}
       </p>
     </div>
   );
@@ -306,8 +306,9 @@ function ConnectionRow({
     );
   }
 
-  // One line: the AI's effective permissions across the connection's rules,
-  // and whether any of them leaves free SQL on. The detail is one click away.
+  // One line: what people and the AI get across the connection's rules, and
+  // whether any of them leaves free SQL on. The detail is one click away.
+  const humanPerms = [...new Set(connection.rules.flatMap((r) => r.human))];
   const aiPerms = [...new Set(connection.rules.flatMap((r) => r.ai))];
   const freeSql = connection.rules.some((r) => r.freeSql);
   const Chevron = open ? ChevronDown : ChevronRight;
@@ -325,6 +326,10 @@ function ConnectionRow({
         </span>
         <span className="shrink-0 text-2xs text-muted-foreground">
           {t("settings.policy.rowSummary", {
+            human:
+              humanPerms.length > 0
+                ? humanPerms.join(", ")
+                : t("settings.policy.nothing"),
             ai:
               aiPerms.length > 0
                 ? aiPerms.join(", ")

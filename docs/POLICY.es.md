@@ -32,6 +32,15 @@ persona se conecte con **su propio usuario de base de datos**, con permisos que
 coincidan con la política; generar esos permisos a partir de la política es la
 siguiente fase.
 
+Lo que ve una persona: una tabla o base de datos a la que su rol no llega no
+aparece en ningún listado, y una acción que no permite sigue en su sitio,
+deshabilitada, con un candado y el motivo: en un menú, bajo el nombre del
+elemento; en un botón, al pasar el ratón. Una pestaña cuyo propósito entero no
+está permitido (el editor de consultas sin consultas libres, Seguridad o Pulse
+sin `monitor`) muestra una página bloqueada en su lugar. Mientras la política
+carga o no se puede aplicar, una barra en la ventana lo dice y enlaza a
+Ajustes → Política.
+
 La política solo **restringe**, nunca amplía. Los ajustes por conexión que ya
 tienen los usuarios —qué conexiones se exponen al MCP, su nivel de escritura
 MCP, si el panel de IA está activado— siguen aplicándose. Lo que puede hacer la

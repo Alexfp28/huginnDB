@@ -1859,7 +1859,7 @@
       "notesSaved": "Notes saved"
     },
     "policy": {
-      "intro": "When your organization manages HuginnDB, an administrator decides, per role, what the AI may reach on each connection. This view shows what applies to you; it is read-only.",
+      "intro": "When your organization manages HuginnDB, an administrator decides, per role, what people and the AI may reach on each connection. This view shows what applies to you; it is read-only.",
       "refresh": "Refresh",
       "loadFailed": "Could not read the policy status: {{error}}",
       "stateLabel": "State",
@@ -1870,14 +1870,14 @@
         "broken": "Could not be applied"
       },
       "unmanagedHint": "No policy is installed on this machine, so HuginnDB behaves as usual. An administrator installs one in the registry (HKLM\\SOFTWARE\\Policies\\HuginnDB) or as managed-policy.json in the system policy folder.",
-      "pendingHint": "The policy is still being read from its source. The AI is paused until it is.",
-      "brokenHint": "The policy could not be applied, so the AI is blocked on every connection. Ask your administrator to fix it.",
+      "pendingHint": "The policy is still being read from its source. Connections and the AI are paused until it is.",
+      "brokenHint": "The policy could not be applied, so no connection can be read or written — by you or by the AI. Ask your administrator to fix it.",
       "source": "Source",
       "user": "Account",
       "role": "Role",
       "unmanagedConnections": "Connections the policy does not name",
       "unmanagedAllow": "left to the local settings",
-      "unmanagedDeny": "blocked for the AI",
+      "unmanagedDeny": "blocked",
       "warnings": "Warnings",
       "connections": "Connections",
       "noConnections": "You have no saved connections.",
@@ -1891,7 +1891,7 @@
       "freeSql": "Free-form queries",
       "freeSqlOn": "allowed",
       "freeSqlOff": "disabled — the rule is limited to some databases or relations, and a query's text cannot be checked against that",
-      "humanNotEnforced": "What people may do is shown for reference: this version applies the policy to the AI only.",
+      "humanGuardrail": "For people, the app applies the policy as a guardrail: someone who holds a database password can still use another client. A database user per person, with matching grants, is what closes that.",
       "connectionCounts": "{{total}} connections · {{managed}} with rules · {{unmatched}} without",
       "searchPlaceholder": "Filter connections",
       "clearSearch": "Clear filter",
@@ -1901,8 +1901,8 @@
       "filterAll": "All",
       "noMatches": "No connection matches.",
       "unmatchedAllowShort": "no rule — local settings decide",
-      "unmatchedDenyShort": "no rule — blocked for the AI",
-      "rowSummary": "AI: {{ai}} · free SQL: {{freeSql}}",
+      "unmatchedDenyShort": "no rule — blocked",
+      "rowSummary": "People: {{human}} · AI: {{ai}} · free SQL: {{freeSql}}",
       "freeSqlShortOn": "yes",
       "freeSqlShortOff": "no"
     }
@@ -3339,5 +3339,35 @@
     "inUse": "In use",
     "page": "Page {{page}} of ~{{pages}}",
     "chooseVariants": "Choose variants…"
+  },
+  "policy": {
+    "lockedTitle": "Locked by your organization's policy",
+    "lock": {
+      "pending": "The managed policy is still loading",
+      "broken": "The managed policy could not be applied",
+      "connection": "Your role may not use this connection",
+      "need": "Your organization's policy doesn't allow {{what}}"
+    },
+    "what": {
+      "read": "reading this",
+      "freeSql": "free-form queries here",
+      "insert": "adding rows here",
+      "update": "editing rows here",
+      "delete": "deleting rows here",
+      "ddl": "changing the structure here",
+      "export": "exporting from here",
+      "monitor": "monitoring this server"
+    },
+    "rows": {
+      "insert": "adding rows",
+      "update": "editing rows",
+      "delete": "deleting rows",
+      "notice": "Your organization's policy doesn't allow {{what}} in this table"
+    },
+    "ribbon": {
+      "pending": "Reading your organization's policy — connections are paused until it loads.",
+      "broken": "Your organization's policy could not be applied, so no connection can be read or written.",
+      "details": "Details"
+    }
   }
 }

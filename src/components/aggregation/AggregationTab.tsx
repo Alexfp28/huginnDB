@@ -33,6 +33,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
+import { usePolicyLock } from "@/lib/policy/access";
 import {
   Braces,
   Code2,
@@ -121,6 +123,15 @@ export function AggregationTab({
   const [source, setSource] = useState(collection ?? "");
   const [boundView, setBoundView] = useState<string | undefined>(
     mode === "edit" ? view : undefined,
+  );
+  // Saving a view is DDL (`collMod` / `create`), on the bound view when there
+  // is one. Running the pipeline is a read of its source, which the tab's
+  // gate has already checked — one that joins other collections is refused by
+  // the backend under a rule that limits relations, and says so.
+  const saveLock = usePolicyLock(
+    connectionId,
+    "ddl",
+    boundView ? { schema, name: boundView } : null,
   );
 
   const [stages, setStages] = useState<PipelineStage[]>(() => [
@@ -581,16 +592,18 @@ export function AggregationTab({
 
           {boundView ? (
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="sm"
-                  className="h-7 text-xs"
-                  disabled={saving}
-                  icon={Save}
-                >
-                  {t("aggregation.save")}
-                </Button>
-              </DropdownMenuTrigger>
+              <PolicyLockHint reason={saveLock}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={saving || !!saveLock}
+                    icon={Save}
+                  >
+                    {t("aggregation.save")}
+                  </Button>
+                </DropdownMenuTrigger>
+              </PolicyLockHint>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   className="text-xs"
@@ -607,15 +620,17 @@ export function AggregationTab({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <Button
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => setSaveOpen(true)}
-              disabled={!source}
-            >
-              <Save className="mr-1.5 h-3.5 w-3.5" />
-              {t("aggregation.saveView.titleCreate")}
-            </Button>
+            <PolicyLockHint reason={saveLock}>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setSaveOpen(true)}
+                disabled={!source || !!saveLock}
+              >
+                <Save className="mr-1.5 h-3.5 w-3.5" />
+                {t("aggregation.saveView.titleCreate")}
+              </Button>
+            </PolicyLockHint>
           )}
         </div>
       </div>

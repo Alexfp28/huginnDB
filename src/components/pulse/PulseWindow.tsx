@@ -48,6 +48,9 @@ import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
 import { NotificationHosts } from "@/components/shell/NotificationHosts";
 import { ConfirmHost } from "@/components/common/ConfirmHost";
 import { useBridge } from "@/lib/bridges/useBridge";
+import { PolicyLockedState } from "@/components/common/PolicyLock";
+import { usePolicyLock } from "@/lib/policy/access";
+import { startPolicyBridge } from "@/lib/bridges/policy-bridge";
 import { startWindowListBridge } from "@/lib/bridges/window-list-bridge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { AlertList } from "@/components/pulse/sections/AlertList";
@@ -823,11 +826,16 @@ function PulseBody({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const [viewId, setViewId] = useState<ViewId>("status");
 
+  // Without `monitor` the window shows why, and polls nothing.
+  const monitorLock = usePolicyLock(connectionId, "monitor");
+
   // This window exists to show Pulse, so it is always the active surface —
   // `usePulseLive` still stands down while the window is minimised.
-  usePulseLive(connectionId, true);
-  const { refresh } = usePulseDetail(connectionId, true);
+  usePulseLive(connectionId, !monitorLock);
+  const { refresh } = usePulseDetail(connectionId, !monitorLock);
   const view = usePulseView(connectionId);
+
+  if (monitorLock) return <PolicyLockedState reason={monitorLock} />;
 
   if (isUnsupported(view.error) && !view.latest) {
     return (
@@ -947,6 +955,7 @@ export function PulseWindow() {
   }, [language]);
 
   useBridge(startWindowListBridge);
+  useBridge(startPolicyBridge);
 
   return (
     <TooltipProvider>
