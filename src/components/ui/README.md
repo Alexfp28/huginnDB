@@ -57,8 +57,8 @@ It gives an objective answer to the question that used to be settled by feel:
 
 | File                  | Exports                                | Notes                                                                                                       |
 | --------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `button.tsx`          | `Button`, `buttonVariants`             | `cva`; the base every other control borrows from. `icon` takes the component, `loading` owns the busy state |
-| `icon-button.tsx`     | `IconButton`                           | square, dense, `label` required and `title` omitted from the type                                           |
+| `button.tsx`          | `Button`, `buttonVariants`             | `cva`; the base every other control borrows from. `icon` takes the component, `loading` owns the busy state, `flat` drops the hairline edge |
+| `icon-button.tsx`     | `IconButton`                           | square, dense, `label` required and `title` omitted from the type; `revealOnHover` implies `flat`            |
 | `input.tsx`           | `Input`, `inputVariants`               | `cva`; the density canon                                                                                    |
 | `textarea.tsx`        | `Textarea`                             | shares the field focus language                                                                             |
 | `checkbox.tsx`        | `Checkbox`                             | the native input, with `indeterminate` via ref; no wrapper unless given a `label`                           |

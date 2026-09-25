@@ -184,6 +184,7 @@ export function UsersPane({
                 <td className="px-1 py-1">
                   {!readOnly && (
                     <IconButton
+                      flat
                       size="xs"
                       icon={Trash2}
                       label={t("policyEditor.users.remove")}

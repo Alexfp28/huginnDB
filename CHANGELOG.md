@@ -137,6 +137,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Policy value; an inline policy moves to a file the same way. See `CLAUDE.md`
   gotcha #100.
 
+### Changed
+
+- **Every button now has a visible edge.** Toolbar icon buttons and `ghost`
+  buttons used to be invisible until the pointer found them, so an action
+  such as Refresh or Export read as a loose glyph beside the grid. Every
+  button now carries a 1px hairline taken from the text colour rather than
+  from the theme's border token, so it stays legible on imported VS Code
+  themes whose border colour is close to invisible. Filled buttons (Run,
+  Save, Delete) get an edge in a darker shade of their own fill, plus a faint
+  inner highlight, instead of the old 2px outline and hover lift. Corners
+  move onto the `--radius` scale: 10px at full size, 8px on dense and icon
+  buttons. Dense chrome stays flat on purpose: row actions that appear on
+  hover, the cross inside a filter chip or search field, menu-bar triggers
+  and inline controls. Outlining those would put a box inside a box.
+  `Button` and `IconButton` take a typed `flat` prop for this, and
+  `revealOnHover` implies it.
+
 ### Fixed
 
 - **"Edit at origin" in the connection manager no longer stacks the origin

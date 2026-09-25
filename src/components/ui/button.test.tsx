@@ -72,6 +72,36 @@ describe("Button variants", () => {
   });
 });
 
+describe("Button edge", () => {
+  it("frames every unfilled variant with the foreground-derived hairline", () => {
+    // Derived from the text colour rather than `--border`, so it stays legible
+    // on an imported theme whose border token is near-invisible.
+    for (const variant of ["outline", "secondary", "ghost", "quiet"] as const) {
+      expect(buttonVariants({ variant })).toContain("border-foreground/15");
+    }
+  });
+
+  it("leaves the link variant unframed — it is text, not a control", () => {
+    // Per class, not by substring: the base transition list names `border-color`.
+    const classes = buttonVariants({ variant: "link" }).split(" ");
+    expect(classes).not.toContain("border");
+    expect(classes.some((c) => c.startsWith("border-foreground"))).toBe(false);
+  });
+
+  it("flat drops the edge on the rendered element, not just in the string", () => {
+    // Same reason as the className test above: `cva` concatenates both colours
+    // and only the `cn` merge decides which survives.
+    render(
+      <Button variant="ghost" flat>
+        Save
+      </Button>,
+    );
+    expect(button().className).toContain("border-transparent");
+    expect(button().className).not.toContain("border-foreground/15");
+    expect(button().className).not.toContain("hover:border-foreground/25");
+  });
+});
+
 describe("Button loading", () => {
   it("disables itself and reports aria-busy", () => {
     render(<Button loading>Save</Button>);

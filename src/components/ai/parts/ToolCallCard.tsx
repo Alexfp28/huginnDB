@@ -111,6 +111,7 @@ export function ToolCallCard({
             overrides are the density this card needs (`h-auto`, a 2xs label),
             which the shared sizes do not carry. */}
         <Button
+          flat
           variant="ghost"
           size="sm"
           onClick={() => setOpen((v) => !v)}

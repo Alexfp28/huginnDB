@@ -82,11 +82,12 @@ input[type="password"]::-ms-clear {
        white page and darken an already-dark one. */
     --scrim: light-dark(hsl(222 47% 11%), hsl(229 84% 5%));
     /* 10px. The brand language is built on rounded corners, but this is a
-       dense desktop tool: `lg` (10px) covers panels/dialogs/buttons-at-rest,
-       `md` (8px) inputs and chips, `sm` (6px) micro-tags. Controls that the
-       brief pins at 12px (primary buttons) ask for `rounded-xl` explicitly —
-       Tailwind's own 0.75rem, deliberately outside this scale. Not a colour,
-       unaffected by light-dark(). */
+       dense desktop tool: `lg` (10px) covers panels, dialogs and full-size
+       buttons, `md` (8px) inputs, chips and dense/icon buttons, `sm` (6px)
+       micro-tags and the 24px icon square. Buttons used to step outside the
+       scale to `rounded-xl` (12px); the hairline-edged buttons sit on it,
+       because an outlined 12px corner on a 32px control reads as a pill. Not a
+       colour, unaffected by light-dark(). */
     --radius: 0.625rem;
   }
 

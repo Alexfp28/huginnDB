@@ -1403,8 +1403,8 @@ const FieldRow = memo(function FieldRow({
               size="xs"
               icon={Plus}
               revealOnHover="field"
+              flat={false}
               label={labels.addField}
-              className="border border-border"
               onClick={() => actionsRef.current.addAfter(f)}
             />
           </>

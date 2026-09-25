@@ -294,6 +294,7 @@ export function Console() {
             )}
             {selected.error && (
               <Button
+                flat
                 size="sm"
                 variant="ghost"
                 className="ml-auto h-5 gap-1 px-1.5 text-2xs"
@@ -309,6 +310,7 @@ export function Console() {
               </Button>
             )}
             <IconButton
+              flat
               size="xs"
               icon={X}
               label={t("console.closeDetail")}

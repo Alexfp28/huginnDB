@@ -49,7 +49,7 @@ export function ViewMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs">
+        <Button flat variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs">
           <Eye className="h-3.5 w-3.5" />
           {t("menu.view.label")}
           <ChevronDown className="h-3 w-3 opacity-60" />

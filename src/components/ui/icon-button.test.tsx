@@ -56,6 +56,30 @@ describe("IconButton", () => {
     expect(button.querySelector(".animate-spin")).not.toBeNull();
   });
 
+  it("carries the hairline edge by default", () => {
+    mount(<IconButton icon={Trash2} label="a" />);
+    expect(screen.getByRole("button").className).toContain("border-foreground/15");
+  });
+
+  it("goes flat on its own when it reveals on hover — a row action is dense chrome", () => {
+    mount(<IconButton icon={Trash2} label="a" revealOnHover="row" />);
+    expect(screen.getByRole("button").className).toContain("border-transparent");
+    cleanup();
+    // …unless the call site asks for the edge back.
+    mount(<IconButton icon={Trash2} label="a" revealOnHover="row" flat={false} />);
+    expect(screen.getByRole("button").className).toContain("border-foreground/15");
+  });
+
+  it("does not grow a tone edge back on a flat button", () => {
+    // TONE is merged through className, which wins over the variant — so the
+    // destructive edge colour has to be withheld, not merely overridden.
+    mount(<IconButton icon={Trash2} label="a" tone="destructive" flat />);
+    expect(screen.getByRole("button").className).not.toContain("hover:border-destructive");
+    cleanup();
+    mount(<IconButton icon={Trash2} label="a" tone="destructive" />);
+    expect(screen.getByRole("button").className).toContain("hover:border-destructive/40");
+  });
+
   it("hides behind its row's hover when asked, but stays reachable by keyboard", () => {
     mount(<IconButton icon={Trash2} label="a" revealOnHover="row" />);
     const cls = screen.getByRole("button").className;

@@ -176,6 +176,7 @@ export function ServerFilterChip({
         // `quiet`: dropping a filter destroys no data, and gotcha #61 says red
         // at rest is read as decoration.
         <IconButton
+          flat
           size="xs"
           icon={X}
           label={t("dataGrid.removeFilter")}

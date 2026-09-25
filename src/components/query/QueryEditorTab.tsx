@@ -854,6 +854,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                     </span>
                     {history.length > 0 && (
                       <IconButton
+                        flat
                         size="xs"
                         icon={Trash2}
                         label={t("query.clearHistory")}
@@ -915,6 +916,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                         </div>
                       </button>
                       <IconButton
+                        flat
                         size="xs"
                         icon={Play}
                         label={t("query.runAgain")}
