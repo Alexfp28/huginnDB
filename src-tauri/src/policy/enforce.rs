@@ -421,39 +421,53 @@ pub fn access(state: &AppState, connection_ids: &[String]) -> PolicyAccess {
                 };
             };
             let profile = profile_for(state, id, Subject::Human);
-            let ctx = Ctx {
-                doc,
-                user: current_user(),
-                profile: profile.as_ref(),
-                database: database_of(id, profile.as_ref()),
-                subject: Subject::Human,
-            };
-            let refusal = ctx.decide(&Need::Endpoint).err().or_else(|| {
-                crate::state::split_database_view(id)
-                    .and_then(|(_, db)| ctx.decide(&Need::Database(db.to_string())).err())
-            });
-            let grant = if refusal.is_some() {
-                Grant::default()
-            } else {
-                ctx.database_grant().unwrap_or_else(full_grant)
-            };
-            ConnectionAccess {
-                id: id.clone(),
-                managed: !ctx.is_unmanaged(),
-                visible: refusal.is_none(),
-                free_sql: refusal.is_none() && !ctx.free_sql_blocked(),
-                verbs: verb_names(grant.verbs),
-                export: grant.export,
-                // Server-wide, so not the per-database grant.
-                monitor: refusal.is_none() && ctx.decide(&Need::Monitor).is_ok(),
-                reason: refusal,
-            }
+            connection_access(doc, current_user(), profile.as_ref(), id, Subject::Human)
         })
         .collect();
     PolicyAccess {
         state: label,
         reason: None,
         connections,
+    }
+}
+
+/// What `user` may do on connection `id` under `doc`, for `subject` — the
+/// decision [`access`] makes for the person using the app, open to any
+/// document and any user, which is what the policy editor's "view as" preview
+/// needs for a draft that is not in force yet.
+pub(super) fn connection_access(
+    doc: &super::model::PolicyDoc,
+    user: &str,
+    profile: Option<&ConnectionProfile>,
+    id: &str,
+    subject: Subject,
+) -> ConnectionAccess {
+    let ctx = Ctx {
+        doc,
+        user,
+        profile,
+        database: database_of(id, profile),
+        subject,
+    };
+    let refusal = ctx.decide(&Need::Endpoint).err().or_else(|| {
+        crate::state::split_database_view(id)
+            .and_then(|(_, db)| ctx.decide(&Need::Database(db.to_string())).err())
+    });
+    let grant = if refusal.is_some() {
+        Grant::default()
+    } else {
+        ctx.database_grant().unwrap_or_else(full_grant)
+    };
+    ConnectionAccess {
+        id: id.to_string(),
+        managed: !ctx.is_unmanaged(),
+        visible: refusal.is_none(),
+        free_sql: refusal.is_none() && !ctx.free_sql_blocked(),
+        verbs: verb_names(grant.verbs),
+        export: grant.export,
+        // Server-wide, so not the per-database grant.
+        monitor: refusal.is_none() && ctx.decide(&Need::Monitor).is_ok(),
+        reason: refusal,
     }
 }
 

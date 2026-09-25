@@ -1,9 +1,11 @@
-//! Settings → Policy: the read-only view of this machine's managed policy —
-//! where it was read from, who this is, which role that makes them, and what
-//! each connection allows. See `crate::policy`.
+//! Settings → Policy: this machine's managed policy — where it was read from,
+//! who this is, which role that makes them, and what each connection allows;
+//! the grants a role needs; and the editor. See `crate::policy`.
 //!
-//! Read-only on purpose. The policy is written by an administrator, in a
-//! place a standard user cannot write; nothing in the app edits it.
+//! The view is read-only for everyone. The editor saves only where the share
+//! accepts a real write from this machine: the policy is written by whoever
+//! the share's permissions let write it, and the app never decides who that
+//! is (`policy::editor`).
 
 use crate::state::AppState;
 use tauri::State;
@@ -142,4 +144,113 @@ pub async fn policy_generate_grants(
         source,
         generated_at: chrono::Utc::now().to_rfc3339(),
     }))
+}
+
+// ---------------------------------------------------------------------------
+// The policy editor (phase 4). None of these touches a database, and none
+// decides who may edit: the share's permissions do, through a real write
+// (`policy::editor`). All run off the main thread, since a share can take its
+// SMB timeout to answer.
+// ---------------------------------------------------------------------------
+
+/// The policy as it stands, with what this machine may do with it.
+#[tauri::command]
+pub async fn policy_open_for_edit() -> crate::error::AppResult<crate::policy::editor::PolicyEditDoc>
+{
+    tauri::async_runtime::spawn_blocking(crate::policy::editor::open)
+        .await
+        .map_err(|e| crate::error::AppError::InvalidInput(format!("policy editor: {e}")))
+}
+
+/// A draft checked by the parser that applies it, and, for `preview_user`,
+/// what that person and their AI would get on every saved connection under
+/// it. Pure: reads the profiles in memory and nothing else.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PolicyDraftCheck {
+    pub validation: crate::policy::editor::Validation,
+    pub preview: Option<crate::policy::editor::Preview>,
+}
+
+#[tauri::command]
+pub fn policy_validate(
+    state: State<'_, AppState>,
+    text: String,
+    preview_user: Option<String>,
+) -> PolicyDraftCheck {
+    let (doc, validation) = crate::policy::editor::validate(&text);
+    let preview = match (doc, preview_user.as_deref().map(str::trim)) {
+        (Some(doc), Some(user)) if !user.is_empty() => {
+            let profiles = state.profiles.read().clone();
+            Some(crate::policy::editor::preview(&doc, user, &profiles))
+        }
+        _ => None,
+    };
+    PolicyDraftCheck {
+        validation,
+        preview,
+    }
+}
+
+/// Save a draft over the policy file this machine's anchor names. The path is
+/// read from the anchor here, never taken from the caller: the editor saves
+/// the policy, not an arbitrary file.
+#[tauri::command]
+pub async fn policy_save(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    base_sha256: String,
+) -> crate::error::AppResult<crate::policy::editor::SaveOutcome> {
+    use crate::error::AppError;
+    use tauri::Emitter;
+    let anchor = crate::policy::editor::anchor_info();
+    let Some(path) = anchor.path.filter(|_| anchor.kind == "file") else {
+        return Err(AppError::InvalidInput(
+            "this machine's policy is not a file HuginnDB can edit; export it to a file first"
+                .into(),
+        ));
+    };
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        crate::policy::editor::save(std::path::Path::new(&path), &text, &base_sha256)
+    })
+    .await
+    .map_err(|e| AppError::InvalidInput(format!("policy editor: {e}")))??;
+    if matches!(outcome, crate::policy::editor::SaveOutcome::Saved { .. }) {
+        // Apply it here at once rather than at the next five-minute read, and
+        // tell every window, whose locks may have just changed.
+        let shared = state.policy.clone();
+        let _ =
+            tauri::async_runtime::spawn_blocking(move || crate::policy::reload_now(&shared)).await;
+        let _ = app.emit(crate::policy::CHANGED_EVENT, ());
+    }
+    Ok(outcome)
+}
+
+/// Write a new policy file at `path` (the "Create policy" wizard, or moving an
+/// inline policy to a file), and say how to point the machines at it.
+#[tauri::command]
+pub async fn policy_create(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+    text: String,
+) -> crate::error::AppResult<crate::policy::editor::CreatedPolicy> {
+    use crate::error::AppError;
+    use tauri::Emitter;
+    let created = tauri::async_runtime::spawn_blocking(move || {
+        crate::policy::editor::create(std::path::Path::new(path.trim()), &text)
+    })
+    .await
+    .map_err(|e| AppError::InvalidInput(format!("policy editor: {e}")))??;
+    // Only a machine already pointed at this path changes; for any other the
+    // reload finds the same anchor and nothing moves.
+    let shared = state.policy.clone();
+    let changed = tauri::async_runtime::spawn_blocking(move || crate::policy::reload_now(&shared))
+        .await
+        .unwrap_or(false);
+    if changed {
+        let _ = app.emit(crate::policy::CHANGED_EVENT, ());
+    }
+    Ok(created)
 }

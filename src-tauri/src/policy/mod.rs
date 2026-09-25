@@ -1,6 +1,7 @@
 //! Managed policy: per-role permissions an administrator sets once, for every
 //! installation in an organization. `docs/POLICY_ROADMAP.md` is the
-//! specification; this is phase 1 of it — the part that binds **the AI**.
+//! specification. This module holds the document, where it is read from, and
+//! the decisions made on it; phase 1 is the part that binds **the AI**.
 //!
 //! For the AI this is an enforcement point, not a guardrail: the model never
 //! holds a database credential, and every request it can make is a
@@ -17,10 +18,13 @@
 //! `mcp_write`, `ai_enabled` — are still checked where they always were, so
 //! what the AI may do is the policy ∩ the local settings.
 //!
-//! People are phase 2: the `human` blocks are read, shown in the diagnostics,
-//! and bound the `ai` ones (an AI never gets more than its user), but the
-//! app's own commands do not enforce them yet.
+//! People (phase 2) are bound by the `human` blocks in every command, as a
+//! guardrail (`commands::guard`); phase 3 gives each person their own database
+//! user (`crate::credentials`) and writes the grants that make the database
+//! agree ([`grants`]); phase 4 is the in-app [`editor`], which saves only where
+//! the share's permissions allow.
 
+pub mod editor;
 mod enforce;
 pub(crate) mod grants;
 pub mod model;
@@ -114,7 +118,8 @@ pub fn install(shared: &SharedPolicy, on_change: Option<OnChange>) {
     let _ = std::thread::Builder::new()
         .name("huginndb-policy".into())
         .spawn(move || loop {
-            let next = load();
+            let prev = shared.read().clone();
+            let next = settle(&prev, load, RETRY_PAUSE);
             // `Debug` is a fingerprint of everything the state says — source,
             // error, the whole document — and this runs every five minutes, so
             // comparing it costs nothing and needs no hashing of its own.
@@ -127,6 +132,56 @@ pub fn install(shared: &SharedPolicy, on_change: Option<OnChange>) {
             }
             std::thread::sleep(RELOAD_EVERY);
         });
+}
+
+/// How many times a read that failed is tried again, before a policy that was
+/// in force is declared broken, and how long to wait between tries.
+const RETRIES: usize = 3;
+const RETRY_PAUSE: Duration = Duration::from_millis(400);
+
+/// Whether a state is a *read* failure — the file or the share did not answer
+/// — rather than a policy that was read and is wrong. Every read error the
+/// anchors and `fetch` produce starts with this.
+fn is_read_failure(state: &PolicyState) -> bool {
+    matches!(state, PolicyState::Broken { error, .. } if error.starts_with("cannot read"))
+}
+
+/// `load`, tolerant of a moment's absence. A policy that was in force and now
+/// cannot be *read* is tried again a few times before it is declared broken:
+/// a share that blinks, or a save by another machine caught mid-replace, must
+/// not lock every connection here until the next read, five minutes away.
+/// A policy that reads but does not parse is broken at once — retrying would
+/// only read the same mistake again.
+fn settle(
+    prev: &PolicyState,
+    mut load: impl FnMut() -> PolicyState,
+    pause: Duration,
+) -> PolicyState {
+    let mut next = load();
+    if !matches!(prev, PolicyState::Active { .. }) {
+        return next;
+    }
+    for _ in 0..RETRIES {
+        if !is_read_failure(&next) {
+            break;
+        }
+        std::thread::sleep(pause);
+        next = load();
+    }
+    next
+}
+
+/// Read the policy now instead of at the next five-minute tick, and say
+/// whether what is in force changed. The policy editor calls this right after
+/// saving, so this machine applies — and every window shows — the new policy
+/// at once; the app then emits [`CHANGED_EVENT`]. Other machines, and the MCP
+/// sidecar, still read it on their own tick.
+pub fn reload_now(shared: &SharedPolicy) -> bool {
+    let prev = shared.read().clone();
+    let next = settle(&prev, load, RETRY_PAUSE);
+    let changed = format!("{next:?}") != format!("{prev:?}");
+    *shared.write() = next;
+    changed
 }
 
 fn load() -> PolicyState {
@@ -190,4 +245,82 @@ pub fn audit_identity(state: &crate::state::AppState) -> String {
     };
     let user = if user.is_empty() { "?" } else { user };
     format!("user={user} role={role}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn active() -> PolicyState {
+        let (doc, _) = model::PolicyDoc::parse(
+            r#"{ "version": 1, "defaultRole": "r", "roles": { "r": {} } }"#,
+        )
+        .unwrap();
+        PolicyState::Active {
+            doc: Arc::new(doc),
+            source: "share".into(),
+            warnings: Vec::new(),
+        }
+    }
+
+    fn unreadable() -> PolicyState {
+        PolicyState::Broken {
+            source: "share".into(),
+            error: r"cannot read \\srv\p.json: not found".into(),
+        }
+    }
+
+    /// A share that blinks while the policy was in force is read again before
+    /// every connection is locked; the policy comes back on the second read.
+    #[test]
+    fn a_momentary_read_failure_does_not_break_a_policy_in_force() {
+        let mut reads = vec![active(), unreadable()];
+        let next = settle(&active(), || reads.pop().unwrap(), Duration::ZERO);
+        assert!(matches!(next, PolicyState::Active { .. }), "{next:?}");
+    }
+
+    #[test]
+    fn a_policy_that_stays_unreadable_is_broken_after_the_retries() {
+        let mut calls = 0;
+        let next = settle(
+            &active(),
+            || {
+                calls += 1;
+                unreadable()
+            },
+            Duration::ZERO,
+        );
+        assert!(is_read_failure(&next));
+        assert_eq!(calls, 1 + RETRIES);
+    }
+
+    /// Retrying a policy that reads but is wrong would only read the same
+    /// mistake again; and nothing retries when there was no policy in force.
+    #[test]
+    fn only_read_failures_of_a_policy_in_force_are_retried() {
+        let wrong = || PolicyState::Broken {
+            source: "share".into(),
+            error: "the policy is not valid: unknown field `relatons`".into(),
+        };
+        let mut calls = 0;
+        settle(
+            &active(),
+            || {
+                calls += 1;
+                wrong()
+            },
+            Duration::ZERO,
+        );
+        assert_eq!(calls, 1);
+        let mut calls = 0;
+        settle(
+            &PolicyState::Unmanaged,
+            || {
+                calls += 1;
+                unreadable()
+            },
+            Duration::ZERO,
+        );
+        assert_eq!(calls, 1);
+    }
 }

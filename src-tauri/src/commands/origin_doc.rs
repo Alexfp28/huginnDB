@@ -73,26 +73,8 @@ pub struct PublishProgress {
 // DTOs
 // ---------------------------------------------------------------------------
 
-/// Whether this machine can actually write the document, as opposed to whether
-/// the user said it may.
-///
-/// The probe *creates and deletes a file* in the destination directory rather
-/// than reading permission bits. On a Windows share the bits describe the local
-/// mount, not what the server will accept, and the failure they hide is the
-/// worst possible one: an editor that lets somebody compose a revision and then
-/// refuses it at the last step.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WritableProbe {
-    /// Does the document itself exist yet? A publisher creating one is the
-    /// legitimate `false` case.
-    pub exists: bool,
-    /// Did a real write succeed?
-    pub writable: bool,
-    /// The OS's own message when it did not, verbatim — "access is denied" and
-    /// "the network path was not found" call for completely different actions.
-    pub reason: Option<String>,
-}
+/// Re-exported: the probe moved to `state_file` so the policy editor shares it.
+pub use crate::state_file::WritableProbe;
 
 /// An opened document, plus everything the editor's header needs.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -155,37 +137,7 @@ pub struct SaveReport {
 /// state the editor renders rather than a command that failed.
 #[tauri::command]
 pub fn probe_origin_writable(path: String) -> AppResult<WritableProbe> {
-    Ok(probe(Path::new(&path)))
-}
-
-fn probe(path: &Path) -> WritableProbe {
-    let exists = path.exists();
-    let Some(dir) = path.parent() else {
-        return WritableProbe {
-            exists,
-            writable: false,
-            reason: Some("the path has no parent directory".into()),
-        };
-    };
-    // A real write, not a permission read: see the type doc. Named so a stray
-    // one is recognisable, and unique so two windows probing at once cannot
-    // delete each other's.
-    let canary = dir.join(format!(".huginndb-write-probe-{}", uuid::Uuid::new_v4()));
-    match std::fs::File::create(&canary) {
-        Ok(_) => {
-            let _ = std::fs::remove_file(&canary);
-            WritableProbe {
-                exists,
-                writable: true,
-                reason: None,
-            }
-        }
-        Err(e) => WritableProbe {
-            exists,
-            writable: false,
-            reason: Some(e.to_string()),
-        },
-    }
+    Ok(state_file::probe_writable(Path::new(&path)))
 }
 
 /// This machine's own environments, shaped as bundles the editor can copy into
@@ -301,7 +253,7 @@ pub fn create_origin_document(
             "{path} already exists — register it as an origin and switch its role to publisher instead"
         )));
     }
-    let probe = probe(target);
+    let probe = state_file::probe_writable(target);
     if !probe.writable {
         return Err(AppError::InvalidInput(format!(
             "cannot write to {path}: {}",
@@ -508,7 +460,7 @@ fn save_inner(
         )));
     }
     let path = Path::new(&origin.path);
-    let probe = probe(path);
+    let probe = state_file::probe_writable(path);
     if !probe.writable {
         return Err(AppError::InvalidInput(format!(
             "cannot write to {}: {}",
@@ -562,8 +514,8 @@ fn save_inner(
     }
 
     let new_base = DraftBase {
-        sha256: sha256_hex(&bytes),
-        mtime: mtime_of(path),
+        sha256: state_file::sha256_hex(&bytes),
+        mtime: state_file::mtime_of(path),
         revision: draft.meta.revision.unwrap_or_default(),
     };
     let maintainer = draft.meta.maintainer.clone();
@@ -725,7 +677,11 @@ fn read_file(path: &Path) -> AppResult<Option<(EnvironmentExportFile, String, Op
         ))
     })?;
     transfer::check_meta(&file.meta, KIND_ENVIRONMENT)?;
-    Ok(Some((file, sha256_hex(&bytes), mtime_of(path))))
+    Ok(Some((
+        file,
+        state_file::sha256_hex(&bytes),
+        state_file::mtime_of(path),
+    )))
 }
 
 fn load_document(origin: &Origin) -> AppResult<OriginDocument> {
@@ -760,7 +716,7 @@ fn load_document(origin: &Origin) -> AppResult<OriginDocument> {
         role: origin.role,
         draft,
         base,
-        writable: probe(path),
+        writable: state_file::probe_writable(path),
         has_passphrase: keychain::get_password(&crate::commands::origins::passphrase_account(
             &origin.id,
         ))
@@ -777,16 +733,4 @@ fn write_document(path: &Path, draft: &OriginDraft) -> AppResult<Vec<u8>> {
     let bytes = serde_json::to_vec_pretty(&file)?;
     state_file::write_atomic(path, &bytes)?;
     Ok(bytes)
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    let mut h = Sha256::new();
-    h.update(bytes);
-    transfer::hex_lower(&h.finalize())
-}
-
-fn mtime_of(path: &Path) -> Option<String> {
-    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
-    Some(chrono::DateTime::<chrono::Utc>::from(modified).to_rfc3339())
 }

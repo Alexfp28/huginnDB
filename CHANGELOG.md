@@ -117,6 +117,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A managed policy no longer breaks for five minutes because its share
+  blinked.** A policy in force that could momentarily not be read — the share
+  did not answer, or another machine was replacing the file at that instant —
+  was declared broken on the spot, and a broken policy locks every connection
+  until the next read, five minutes later. A policy that was in force is now
+  read again a few times before being declared broken; one that reads but is
+  not valid is still broken at once, since reading it again only reads the
+  same mistake. The groundwork for the in-app policy editor lands alongside:
+  it opens, checks, previews for any user, and saves the policy with the
+  shared-origin editor's safeguards (a real write test on the share, a
+  conflict check against the file as opened, a `.bak`) and a replace that
+  never leaves the path without a file. See `CLAUDE.md` gotcha #99.
+
 - **An empty MongoDB collection still had no way to insert its first
   document.** 1.25.0 fixed half of this: `infer_columns` seeds `_id` as the
   primary key when the sample comes back empty. But the grid's write gate

@@ -129,6 +129,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Una política gestionada ya no se rompe cinco minutos porque la carpeta
+  compartida parpadee.** Una política en vigor que un instante no se podía
+  leer —la carpeta no respondía, u otro equipo estaba sustituyendo el fichero
+  justo entonces— se daba por rota en el acto, y una política rota bloquea
+  todas las conexiones hasta la siguiente lectura, cinco minutos después.
+  Ahora una política que estaba en vigor se vuelve a leer unas cuantas veces
+  antes de darla por rota; una que se lee pero no es válida sigue rota al
+  momento, porque leerla otra vez solo lee el mismo error. Llega a la vez la
+  base del editor de la política en la app: la abre, la comprueba, la
+  previsualiza para cualquier usuario y la guarda con las salvaguardas del
+  editor de orígenes (una prueba de escritura real en la carpeta, la detección
+  de conflictos contra el fichero tal como se abrió y un `.bak`) y un
+  reemplazo que nunca deja la ruta sin fichero. Ver el gotcha #99 de
+  `CLAUDE.md`.
+
 - **Una colección de MongoDB vacía seguía sin poder recibir su primer
   documento.** La 1.25.0 arregló la mitad: `infer_columns` siembra `_id` como
   clave primaria cuando la muestra sale vacía. Pero la condición de escritura
