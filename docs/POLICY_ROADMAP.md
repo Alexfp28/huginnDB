@@ -350,8 +350,10 @@ edit the managed source — which holds here too.
    origin connection, with the shared secret no longer landed), and the
    `GRANT` / `createRole` script generated from a role against the live
    catalog (§7), which HuginnDB never runs.
-4. **Authoring.** An in-app editor for the policy document (today: a JSON file
-   validated by the shipped JSON Schema), ADMX/ADML templates for GPO.
+4. **Authoring.** The in-app editor — *shipped* (gotchas #99–#100): form and
+   JSON over one draft, validated by the parser that applies it, "view as"
+   under the draft, saved only where the share accepts a write, and a "create
+   policy" wizard. ADMX/ADML templates for GPO — *open*.
 
 Not in any phase: AD/LDAP identity, a gateway server, filtering free SQL.
 

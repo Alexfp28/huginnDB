@@ -57,7 +57,11 @@ import type {
   ImportResult,
   IndexInfo,
   InsertRowsSummary,
+  CreatedPolicy,
   PolicyAccess,
+  PolicyDraftCheck,
+  PolicyEditDoc,
+  PolicySaveOutcome,
   PersonalCredentials,
   PolicyStatus,
   PoolStats,
@@ -367,6 +371,25 @@ export const api = {
    *  script to review and run. HuginnDB never runs it. */
   policyGenerateGrants: (connectionId: string, role: string) =>
     invoke<GrantScript>("policy_generate_grants", { connectionId, role }),
+
+  // The policy editor (managed policy phase 4) ------------------------------
+
+  /** The policy as it stands and what this machine may do with it. */
+  policyOpenForEdit: () => invoke<PolicyEditDoc>("policy_open_for_edit"),
+
+  /** Check a draft with the parser that applies it; with `previewUser`, what
+   *  that person and their AI would get on every saved connection under it. */
+  policyValidate: (text: string, previewUser?: string | null) =>
+    invoke<PolicyDraftCheck>("policy_validate", { text, previewUser }),
+
+  /** Save over the file the anchor names. A `conflict` outcome carries the
+   *  file as someone else left it. */
+  policySave: (text: string, baseSha256: string) =>
+    invoke<PolicySaveOutcome>("policy_save", { text, baseSha256 }),
+
+  /** Write a new policy file and say how to point the machines at it. */
+  policyCreate: (path: string, text: string) =>
+    invoke<CreatedPolicy>("policy_create", { path, text }),
 
   /** Per-relation access, in one call per listing or tab. */
   policyRelationAccess: (connectionId: string, relations: RelationRef[]) =>

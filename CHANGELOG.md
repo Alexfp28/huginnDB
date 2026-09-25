@@ -115,6 +115,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   commented) — and that `export` has no database equivalent. HuginnDB never
   runs it: the dialog offers Copy and Save. See `CLAUDE.md` gotcha #98.
 
+- **The managed policy can be edited in HuginnDB instead of by hand.** It was
+  a JSON file an administrator wrote on a share, and one typo locked every
+  computer out, since the policy fails closed. Settings → Policy → **Edit
+  policy** opens it as a form — roles and their rules (server, databases,
+  tables, what the person and their AI may do, their database user), accounts,
+  the default role — with the JSON one pane away; both edit one draft, and a
+  field this version does not know rides along untouched. Every change is
+  checked by the parser that applies the policy, and a draft that is not valid
+  cannot be saved. **View as** shows what any account and its AI would get on
+  each saved connection under the draft. Names are suggested from the saved
+  connections and an open connection's catalog, and can always be typed.
+  Who may save is decided by the share: the editor saves only where Windows
+  lets the account write the policy's folder, and is read-only elsewhere with
+  Windows' reason. A save keeps a `.bak`, never overwrites a change someone
+  else made meanwhile (your text goes to the clipboard), and applies here at
+  once. **Create policy** starts an unmanaged organization from a template
+  that keeps its author in and hands over the `reg add` command and the Group
+  Policy value; an inline policy moves to a file the same way. See `CLAUDE.md`
+  gotcha #100.
+
 ### Fixed
 
 - **A managed policy no longer breaks for five minutes because its share

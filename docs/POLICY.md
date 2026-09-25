@@ -253,6 +253,33 @@ the script from the server's catalog —
 **HuginnDB never runs the script.** Copy it or save it, review it, and run it
 yourself as an administrator.
 
+## Editing the policy in HuginnDB
+
+You do not have to write the JSON by hand. **Settings → Policy → Edit policy**
+opens it as a form — roles and their rules, accounts, the default role — with
+the JSON one pane away; both edit the same draft.
+
+- **Who can save is decided by the share, not by HuginnDB.** The editor opens on
+  any computer, and saves only where Windows lets that account write the
+  policy's folder; everywhere else it is read-only and shows Windows' own
+  reason. That is the same permission that already protects the file.
+- **A draft that is not a valid policy cannot be saved.** Every change is
+  checked by the same parser that applies the policy, and the error names the
+  role and rule. A typo can no longer lock every computer out.
+- **View as** shows what any account — and its AI — would get on each saved
+  connection under the draft, before anything is saved.
+- Server, database and table names are suggested from the saved connections
+  and, when one is open, from its catalog; a pattern can always be typed.
+- Saving keeps the previous version as `<file>.bak`, refuses to overwrite a
+  change someone else saved in the meantime (your version goes to the
+  clipboard), and applies on this computer at once — on the others within five
+  minutes.
+- **No policy yet?** *Create policy* starts from a template in which nobody
+  unlisted gets anything and you keep full access, writes it where you choose,
+  and gives you the `reg add` command and the Group Policy value that point the
+  computers at it. A policy embedded in the registry or in Program Files can be
+  moved to a file the same way, to be edited here from then on.
+
 ## Checking it
 
 - **Settings → Policy** on any machine shows where the policy was read from,
