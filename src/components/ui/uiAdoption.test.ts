@@ -89,6 +89,64 @@ function census(count: (src: string) => number): Record<string, number> {
   return out;
 }
 
+/**
+ * Every JSX opening tag in `src`, as `[name, attributes]`, where `attributes`
+ * is the tag's own attribute text with its `{…}` expression containers cut out.
+ *
+ * A regex cannot find where a tag ends. `<([A-Za-z][\w.]*)\b([^>]*?)>` stops at
+ * the first `>`, and the first `>` in `<button onClick={() => go()} title=…>`
+ * is the one inside `=>`, so every attribute written after an inline handler
+ * was invisible to it. This walks the tag instead: string literals are skipped
+ * whole, braces are counted, and only a `>` at depth zero outside a string
+ * closes the tag.
+ *
+ * Two consequences worth knowing. What is inside a `{…}` is dropped from the
+ * result, so `icon={<Foo title="x" />}` does not credit the outer tag with
+ * `Foo`'s `title` — and the scan resumes right after each tag *name*, not after
+ * the whole tag, so `Foo` is still found and counted as the element it is.
+ * And a `<` that only looks like a tag (`i<n`, a generic) is abandoned on the
+ * first character an attribute list cannot contain at depth zero, rather than
+ * being allowed to swallow the real tag that follows it.
+ */
+function openingTags(src: string): [string, string][] {
+  const out: [string, string][] = [];
+  const start = /<([A-Za-z][\w.]*)\b/g;
+  for (let m; (m = start.exec(src)); ) {
+    let depth = 0;
+    let attrs = "";
+    let closed = false;
+    for (let i = start.lastIndex; i < src.length; i++) {
+      const c = src[i];
+      if (c === '"' || c === "'") {
+        // JSX attribute strings have no escapes; JS strings inside `{…}` do.
+        let j = i + 1;
+        while (j < src.length && src[j] !== c)
+          j += depth > 0 && src[j] === "\\" ? 2 : 1;
+        if (depth === 0) attrs += src.slice(i, j + 1);
+        i = j;
+      } else if (depth > 0 && c === "/" && src[i + 1] === "/") {
+        // A trailing line comment inside a multi-line handler; `code()` only
+        // strips comments that start a line.
+        const eol = src.indexOf("\n", i);
+        i = eol < 0 ? src.length : eol;
+      } else if (c === "{") {
+        depth++;
+      } else if (c === "}") {
+        depth--;
+      } else if (depth === 0) {
+        if (c === ">") {
+          closed = true;
+          break;
+        }
+        if ("<();".includes(c)) break;
+        attrs += c;
+      }
+    }
+    if (closed) out.push([m[1], attrs]);
+  }
+  return out;
+}
+
 const total = (o: Record<string, number>) =>
   Object.values(o).reduce((a, b) => a + b, 0);
 
@@ -255,51 +313,76 @@ describe("the OS tooltip outside ui/", () => {
    * this is the "documented exception" the header describes, and it is why this
    * rule could not have been written as a contract even with the migration
    * finished.
+   *
+   * **Why the headline went from 47 to 72.** Not because debt grew — no
+   * `title=` was added to get there. The first version of this rule found
+   * tags with a regex that ended a tag at its first `>`, and in
+   * `<button onClick={() => …} title=…>` that is the `>` of the arrow, so any
+   * `title` written after an inline handler (or after a `a > b` inside a
+   * `className={cn(…)}`) was never seen. `openingTags` walks the attribute
+   * list instead, and the 25 elements it added were all there before it:
+   * the grid's pin-column toggle, the query editor's Run / Save / History
+   * buttons, the Pulse EXPLAIN toggle, and so on. The rule got more accurate;
+   * the old number was an undercount, not a better score.
    */
   const SPREADS_TO_DOM = new Set(["Button", "Switch", "SelectTrigger"]);
 
   const BUDGET: Record<string, number> = {
-    "src/components/connection/EnvironmentSwitcher.tsx": 4,
-    "src/components/pulse/PulseWindow.tsx": 4,
-    "src/components/aggregation/StageCard.tsx": 3,
+    "src/components/query/QueryEditorTab.tsx": 6,
+    "src/components/pulse/PulseWindow.tsx": 5,
     // Was 8. `MatchBadge`'s six arms became one `SimpleTooltip` — every one of
     // them explains a state the glyph cannot carry ("—" means four different
     // things across them), so the label was the point of the badge and the OS
     // tooltip the wrong vehicle. The three left are the row's own controls.
-    "src/components/connection/ConnectionTreeRow.tsx": 3,
+    // The fourth, found by the tag walker, is the row `div`'s own title — the
+    // one the raw-button budget's entry for this file is waiting on.
+    "src/components/connection/ConnectionTreeRow.tsx": 4,
+    "src/components/connection/EnvironmentSwitcher.tsx": 4,
+    "src/components/grid/DocumentListView.tsx": 4,
+    // Three of the four are the colour swatches inside `ContextMenuContent`,
+    // which is the menu-content case `tooltip.tsx` reserves for the OS
+    // tooltip. They are host elements rather than `ContextMenuItem`s, so the
+    // exemption does not reach them; the close cross is the real debt.
+    "src/components/shell/WorkspaceTab.tsx": 4,
+    "src/components/aggregation/StageCard.tsx": 3,
+    "src/components/grid/CellPreview.tsx": 3,
+    "src/components/grid/FkCombobox.tsx": 3,
     "src/components/connection/ConnectionRailRow.tsx": 2,
     "src/components/connection/StatusConnections.tsx": 2,
     "src/components/connection/TreeFilterBox.tsx": 2,
-    "src/components/grid/DocumentListView.tsx": 2,
+    "src/components/grid/DataGrid.tsx": 2,
+    "src/components/grid/TableDataTab.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
-    "src/components/query/QueryEditorTab.tsx": 2,
+    "src/components/query/Console.tsx": 2,
+    "src/components/schema/SchemaTableRow.tsx": 2,
     "src/components/schema/StructureEditorTab.tsx": 2,
     "src/components/settings/sections/ShortcutRow.tsx": 2,
+    "src/components/aggregation/AggregationTab.tsx": 1,
+    "src/components/aggregation/StageRail.tsx": 1,
     "src/components/common/DriverBadge.tsx": 1,
     "src/components/common/VanishedOriginNotice.tsx": 1,
+    "src/components/connection/ConnectionsTree.tsx": 1,
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 1,
-    "src/components/grid/CellPreview.tsx": 1,
     "src/components/grid/DraftCellControl.tsx": 1,
-    "src/components/grid/FkCombobox.tsx": 1,
     "src/components/grid/GridRow.tsx": 1,
     "src/components/grid/GridToolbar.tsx": 1,
-    "src/components/grid/TableDataTab.tsx": 1,
     "src/components/grid/dialogs/CellEditor.tsx": 1,
     "src/components/origins/OriginEditorHeader.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/origins/sections/SchemasPane.tsx": 1,
-    "src/components/query/Console.tsx": 1,
-    "src/components/schema/SchemaTableRow.tsx": 1,
+    "src/components/schema/MultiDbExplorer.tsx": 1,
     "src/components/settings/sections/JsonSchemasSection.tsx": 1,
-    "src/components/shell/WorkspaceTab.tsx": 1,
+    // Documented exception, the same one the raw-button budget records for
+    // this file: a Radix tooltip portals below Sonner's toaster, so the file
+    // link keeps its native title.
+    "src/components/shell/NotificationCard.tsx": 1,
   };
 
-  it(`is down to ${47} in ${29} files`, () => {
+  it(`is down to ${72} in ${35} files`, () => {
     const measured = census((src) => {
       let n = 0;
-      for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
-        const tag = m[1];
-        if (!/\btitle=/.test(m[2])) continue;
+      for (const [tag, attrs] of openingTags(src)) {
+        if (!/\btitle=/.test(attrs)) continue;
         if (/^[a-z]/.test(tag) || SPREADS_TO_DOM.has(tag)) n++;
       }
       return n;
@@ -308,7 +391,7 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(47);
+    expect(total(BUDGET)).toBeLessThanOrEqual(72);
   });
 });
 
