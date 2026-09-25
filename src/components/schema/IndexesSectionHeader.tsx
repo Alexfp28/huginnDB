@@ -6,6 +6,8 @@
 
 import { ChevronDown, ChevronRight, LayoutList } from "lucide-react";
 
+import { TreeRow } from "@/components/ui/tree-row";
+
 export function IndexesSectionHeader({
   label,
   sectionKey,
@@ -21,8 +23,9 @@ export function IndexesSectionHeader({
 }) {
   const isOpen = expanded.has(sectionKey);
   return (
-    <button
-      className="flex w-full items-center gap-1 py-1 pl-5 pr-2 hover:bg-accent"
+    <TreeRow
+      className="py-1 pl-5"
+      aria-expanded={isOpen}
       onClick={() => toggleNode(connectionId, sectionKey)}
     >
       {isOpen ? (
@@ -32,6 +35,6 @@ export function IndexesSectionHeader({
       )}
       <LayoutList className="h-3 w-3 text-muted-foreground/70" />
       <span className="text-2xs text-muted-foreground">{label}</span>
-    </button>
+    </TreeRow>
   );
 }

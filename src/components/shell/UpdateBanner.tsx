@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { useUpdateStore } from "@/stores/update";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 
 interface Props {
   version: string;
@@ -100,14 +101,12 @@ export function UpdateBanner({ version }: Props) {
             {isInstalling && <Spinner size="xs" />}
             {installLabel}
           </Button>
-          <button
-            aria-label={t("common.close")}
+          <IconButton
+            icon={X}
+            label={t("common.close")}
             onClick={dismiss}
             disabled={isInstalling}
-            className="text-muted-foreground/60 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          />
         </div>
       </div>
     </div>

@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   ACTION_BY_ID,
   chordFromEvent,
@@ -140,42 +141,46 @@ export function CaptureShortcutDialog({
 
         <DialogBody className="space-y-3">
         {/* The display *is* the re-record button; while armed it is already
-            recording, so there is nothing to click. */}
-        <button
-          type="button"
-          disabled={armed}
-          title={armed ? undefined : t("settings.shortcuts.recordAgainHint")}
-          onClick={() => {
-            appending.current = false;
-            setArmed(true);
-          }}
-          className={cn(
-            "flex min-h-[3.5rem] w-full flex-wrap items-center justify-center gap-1.5 rounded-md border p-3 text-left transition-colors",
-            armed
-              ? "border-brand bg-brand/5"
-              : "border-border bg-muted/40 hover:border-brand focus-visible:border-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand/20",
-          )}
-        >
-          {chords.length === 0 ? (
-            <span className="animate-pulse text-xs text-muted-foreground">
-              {t("settings.shortcuts.listening")}
-            </span>
-          ) : (
-            chords.map((chord, i) => (
-              <span key={`${chord}-${i}`} className="flex items-center gap-1.5">
-                {i > 0 && (
-                  <span className="text-2xs text-muted-foreground">
-                    {t("settings.shortcuts.then")}
-                  </span>
-                )}
-                <Kbd className="px-1.5 py-1 text-xs">{formatForDisplay(chord)}</Kbd>
+            recording, so there is nothing to click. The tooltip stays mounted
+            either way — a disabled button gets no pointer events, so it simply
+            cannot open while armed, and toggling the wrapper would remount the
+            button under the user's click. */}
+        <SimpleTooltip label={t("settings.shortcuts.recordAgainHint")}>
+          <button
+            type="button"
+            disabled={armed}
+            onClick={() => {
+              appending.current = false;
+              setArmed(true);
+            }}
+            className={cn(
+              "flex min-h-[3.5rem] w-full flex-wrap items-center justify-center gap-1.5 rounded-md border p-3 text-left transition-colors",
+              armed
+                ? "border-brand bg-brand/5"
+                : "border-border bg-muted/40 hover:border-brand focus-visible:border-brand focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand/20",
+            )}
+          >
+            {chords.length === 0 ? (
+              <span className="animate-pulse text-xs text-muted-foreground">
+                {t("settings.shortcuts.listening")}
               </span>
-            ))
-          )}
-          {armed && chords.length > 0 && (
-            <span className="text-xs text-muted-foreground">…</span>
-          )}
-        </button>
+            ) : (
+              chords.map((chord, i) => (
+                <span key={`${chord}-${i}`} className="flex items-center gap-1.5">
+                  {i > 0 && (
+                    <span className="text-2xs text-muted-foreground">
+                      {t("settings.shortcuts.then")}
+                    </span>
+                  )}
+                  <Kbd className="px-1.5 py-1 text-xs">{formatForDisplay(chord)}</Kbd>
+                </span>
+              ))
+            )}
+            {armed && chords.length > 0 && (
+              <span className="text-xs text-muted-foreground">…</span>
+            )}
+          </button>
+        </SimpleTooltip>
 
         {/* Its own row rather than a footer button: the footer is for
             committing, and four buttons of Spanish-length labels do not fit in

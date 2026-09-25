@@ -258,14 +258,15 @@ export function ConnectionRail({
               className="h-8 pl-7 pr-7 text-xs"
             />
             {search && (
-              <button
+              <IconButton
                 type="button"
+                flat
+                size="xs"
+                icon={X}
+                label={t("common.clear")}
                 onClick={() => setSearch("")}
-                aria-label={t("common.clear")}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+              />
             )}
           </div>
         </div>

@@ -170,6 +170,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   Enmarcarlos sería meter una caja dentro de otra. `Button` e `IconButton`
   aceptan para ello una prop tipada `flat`, que `revealOnHover` activa sola.
 
+- **Sesenta botones hechos a mano pasan a usar `Button` e `IconButton`.**
+  Toman la misma altura, hover, anillo de foco y borde que el resto de la
+  app, y los botones de icono muestran el tooltip propio de la app en lugar
+  del del sistema operativo. Casi todo el cambio es invisible; lo que se
+  nota: la barra de estado, la barra de actividad, la campana de
+  notificaciones y los conmutadores de disposición son controles de verdad
+  con tooltips del tema; el rango 24 h / 7 d / 30 d de Pulse y el selector de
+  conflictos al importar son controles segmentados, así que cada uno es una
+  sola parada de Tab y se mueve con las flechas; el chevron para desplegar
+  del árbol de esquema, los botones de borrar índice y clave foránea del
+  editor de estructura (que no tenían nombre accesible) y los de duplicar,
+  borrar y pantalla completa de la biblioteca de JSON Schema son botones de
+  icono con etiqueta, y el de borrar queda apagado hasta pasar el ratón. Las
+  cabeceras plegables de los selectores de conexiones de IA, MCP y Pulse
+  comparten un primitivo nuevo, `FoldRow`. Lo que sigue hecho a mano queda
+  documentado junto a su recuento en `uiAdoption.test.ts`: filas enteras
+  clicables, chips por debajo del mínimo de 24 px y los controles de los
+  toasts, donde un tooltip del tema quedaría detrás de la notificación.
+
 ### Corregido
 
 - **«Editar en el origen» en el gestor de conexiones ya no apila encima el

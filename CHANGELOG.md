@@ -154,6 +154,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `Button` and `IconButton` take a typed `flat` prop for this, and
   `revealOnHover` implies it.
 
+- **Sixty hand-built buttons now use the shared `Button` and `IconButton`.**
+  They pick up the same heights, hover, focus ring and edge as the rest of
+  the app, and icon buttons show the app's own tooltip instead of the
+  operating system's. Most of the change is invisible; the parts you may
+  notice: the status bar, activity bar, notification bell and layout toggles
+  are all proper controls with themed tooltips; Pulse's 24 h / 7 d / 30 d
+  range and the import conflict chooser are segmented controls, so each is
+  one Tab stop moved with the arrow keys; the schema tree's expand chevron,
+  the index and foreign-key delete buttons in the structure editor (which
+  had no accessible name) and the JSON Schema library's duplicate, delete
+  and full-screen buttons are labelled icon buttons, with delete muted until
+  hovered. The collapsible headers of the AI, MCP and Pulse connection
+  pickers share one new `FoldRow` primitive. What stays hand-built is
+  documented next to its count in `uiAdoption.test.ts`: whole clickable rows,
+  chips below the 24px floor, and toast controls, where a themed tooltip
+  would render behind the notification.
+
 ### Fixed
 
 - **"Edit at origin" in the connection manager no longer stacks the origin

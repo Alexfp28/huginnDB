@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { create } from "zustand";
 import { useTranslation } from "react-i18next";
 import { MICRO_HEADING } from "@/components/ui/styles";
+import { IconButton } from "@/components/ui/icon-button";
 import { OverlayPalette } from "@/components/shell/OverlayPalette";
 import { useListNavigation } from "@/lib/useListNavigation";
 import {
@@ -278,37 +279,35 @@ export function TabSwitcher() {
                     </span>
                   </button>
 
-                  <button
+                  {/* A pinned tab keeps its pin on screen — it is the row's
+                      state, not only an action — so it reveals on hover only
+                      while unpinned. */}
+                  <IconButton
                     type="button"
-                    title={
+                    flat
+                    size="xs"
+                    icon={e.tab.pinned ? PinOff : Pin}
+                    label={
                       e.tab.pinned
                         ? t("tabSwitcher.unpin")
                         : t("tabSwitcher.pin")
                     }
+                    revealOnHover={e.tab.pinned ? undefined : "row"}
                     onClick={() =>
                       useTabs.getState().setPinned(e.tab.id, !e.tab.pinned)
                     }
-                    className={cn(
-                      "shrink-0 rounded-sm p-1 transition-colors hover:bg-accent hover:text-foreground",
-                      e.tab.pinned
-                        ? "text-brand"
-                        : "text-muted-foreground/60 opacity-0 group-hover/row:opacity-100",
-                    )}
-                  >
-                    {e.tab.pinned ? (
-                      <PinOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Pin className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                  <button
+                    className={cn("shrink-0", e.tab.pinned && "text-brand")}
+                  />
+                  <IconButton
                     type="button"
-                    title={t("tabSwitcher.close")}
+                    size="xs"
+                    tone="destructive"
+                    icon={X}
+                    label={t("tabSwitcher.close")}
+                    revealOnHover="row"
                     onClick={() => closeTab(e.tab.id)}
-                    className="shrink-0 rounded-sm p-1 text-muted-foreground/60 opacity-0 transition-colors hover:bg-destructive/15 hover:text-destructive group-hover/row:opacity-100"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                    className="shrink-0"
+                  />
                 </div>
               </div>
             );

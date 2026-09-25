@@ -9,7 +9,7 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Console } from "@/components/query/Console";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   flushPanelLayoutStorage,
   useSessionPanelLayout,
@@ -49,15 +49,15 @@ export function ConsoleDock() {
             <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
               {t("panels.console")}
             </span>
-            <SimpleTooltip label={t("shell.console.collapse")} side="top">
-              <button
-                type="button"
-                onClick={toggleConsole}
-                className="flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </button>
-            </SimpleTooltip>
+            <IconButton
+              type="button"
+              flat
+              size="xs"
+              icon={ChevronDown}
+              label={t("shell.console.collapse")}
+              side="top"
+              onClick={toggleConsole}
+            />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
             <Console />

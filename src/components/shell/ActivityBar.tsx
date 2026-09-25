@@ -12,6 +12,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface ActivityBarButton {
@@ -49,14 +50,19 @@ export function ActivityBar({
           label={btn.label}
           side={side === "left" ? "right" : "left"}
         >
-          <button
+          {/* Flat: a rail is a strip of toggles, like a tab strip — the
+              active marker and the brand glyph carry the state, and an edge
+              on every square would box the rail in. */}
+          <Button
             type="button"
+            flat
+            variant="quiet"
+            size="icon"
+            icon={btn.icon}
             onClick={btn.onClick}
             aria-pressed={btn.active}
             className={cn(
-              "relative flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150",
-              "hover:bg-accent hover:text-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+              "relative",
               // Selected: the icon itself goes brand blue over a quiet surface.
               // The colour is the signal, not a loud fill.
               btn.active && "bg-accent/70 text-brand",
@@ -76,8 +82,7 @@ export function ActivityBar({
                 )}
               />
             )}
-            <btn.icon className="h-[17px] w-[17px]" />
-          </button>
+          </Button>
         </SimpleTooltip>
       ))}
       {footer && (

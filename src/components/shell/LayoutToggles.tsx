@@ -16,11 +16,11 @@
 import { PanelBottom, PanelLeft, PanelRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 
 function ToggleButton({
-  icon: Icon,
+  icon,
   label,
   active,
   onClick,
@@ -31,20 +31,17 @@ function ToggleButton({
   onClick: () => void;
 }) {
   return (
-    <SimpleTooltip label={label} side="bottom">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={active}
-        className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors",
-          "hover:bg-foreground/[0.06] hover:text-foreground",
-          active && "bg-foreground/[0.08] text-foreground",
-        )}
-      >
-        <Icon className="h-4 w-4" />
-      </button>
-    </SimpleTooltip>
+    // Flat, like the menu-bar triggers that share the header with it.
+    <IconButton
+      type="button"
+      flat
+      icon={icon}
+      label={label}
+      side="bottom"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(active && "bg-accent text-foreground")}
+    />
   );
 }
 

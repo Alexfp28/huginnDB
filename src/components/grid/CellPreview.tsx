@@ -22,6 +22,7 @@ import {
   selectGridPrefs,
 } from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
+import { IconButton } from "@/components/ui/icon-button";
 import type { CellValue } from "@/types";
 
 /** Maps a detected content language to the badge label shown in the header. */
@@ -137,7 +138,7 @@ export function CellPreview({
       )}
     >
       {/* Header: column name + content-type badge + close button */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
+      <div className="flex items-center justify-between border-b border-border py-1 pl-3 pr-1.5">
         <div className="flex items-center gap-2 text-xs">
           <span className="text-muted-foreground">{t("cellPreview.cell")}</span>
           <span className="text-muted-foreground/40">·</span>
@@ -147,13 +148,12 @@ export function CellPreview({
           <span className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-3xs text-muted-foreground">
             {LANG_BADGE[lang] ?? "TEXT"}
           </span>
-          <button
+          <IconButton
+            size="xs"
+            icon={X}
+            label={t("cellPreview.closeEsc")}
             onClick={onClose}
-            className="text-muted-foreground/60 hover:text-muted-foreground"
-            title={t("cellPreview.closeEsc")}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
+          />
         </div>
       </div>
 

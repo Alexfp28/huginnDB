@@ -8,6 +8,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
 import type { ConflictAction } from "@/types";
 
 const ACTIONS: ConflictAction[] = ["rename", "overwrite", "skip"];
@@ -26,13 +27,15 @@ export function ConflictBulkActions({ onSelect }: Props) {
       </span>
       <div className="flex gap-1.5">
         {ACTIONS.map((action) => (
-          <button
+          <Button
             key={action}
+            type="button"
+            variant="outline"
+            size="xs"
             onClick={() => onSelect(action)}
-            className="rounded-sm px-2 py-0.5 text-3xs uppercase font-medium text-muted-foreground bg-muted hover:bg-muted/80 transition-colors"
           >
             {t(`transfer.import.action.${action}`)}
-          </button>
+          </Button>
         ))}
       </div>
     </div>

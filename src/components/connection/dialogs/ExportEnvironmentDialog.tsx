@@ -137,14 +137,17 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
               <Label className="text-xs text-muted-foreground">
                 {t("transfer.exportEnvironment.environments")}
               </Label>
-              <button
+              <Button
+                type="button"
+                variant="link"
+                size="xs"
+                className="h-auto p-0"
                 onClick={toggleAll}
-                className="text-xs text-brand underline-offset-2 hover:underline"
               >
                 {allSelected
                   ? t("transfer.export.deselectAll")
                   : t("transfer.export.selectAll")}
-              </button>
+              </Button>
             </div>
             <div className="rounded-md border border-border divide-y divide-border max-h-48 overflow-y-auto">
               {environments.map((env) => (

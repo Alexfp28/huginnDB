@@ -35,6 +35,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { buttonVariants } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { InferSchemaDialog } from "@/components/jsonSchema/dialogs/InferSchemaDialog";
 import {
   useJsonSchemas,
@@ -186,63 +187,68 @@ export function SchemaBindingBadge({
     ? cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")
     : "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-3xs leading-none transition-colors";
   const bound = Boolean(resolved);
+  const tooltip = declared
+    ? t("jsonSchemas.badge.ownSchemaTooltip", { uri: declared })
+    : resolved
+      ? resolved.exact
+        ? t("jsonSchemas.badge.boundTooltip", {
+            name: resolved.name,
+            scope,
+          })
+        : t("jsonSchemas.badge.inheritedTooltip", { scope })
+      : t("jsonSchemas.badge.noneTooltip");
 
+  // Still a hand-rolled `<button>` on purpose: one trigger serves two shapes —
+  // `header` rides `buttonVariants` so it reads as a toolbar peer, `compact` is
+  // the rounded data chip of the structure editor's row — and `Button` would
+  // own only the first. The tooltip is the themed one, outermost, per
+  // `SimpleTooltip`'s note on wrapping a menu trigger.
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={busy}>
-          <button
-            type="button"
-            title={
-              declared
-                ? t("jsonSchemas.badge.ownSchemaTooltip", { uri: declared })
-                : resolved
-                  ? resolved.exact
-                    ? t("jsonSchemas.badge.boundTooltip", {
-                        name: resolved.name,
-                        scope,
-                      })
-                    : t("jsonSchemas.badge.inheritedTooltip", { scope })
-                  : t("jsonSchemas.badge.noneTooltip")
-            }
-            className={cn(
-              triggerBase,
-              bound &&
-                (isHeader
-                  ? "border-brand/40 bg-brand/10 text-brand hover:border-brand/40 hover:bg-brand/20 hover:text-brand"
-                  : "border-brand/40 bg-brand/10 text-brand hover:bg-brand/20"),
-              !bound &&
-                !isHeader &&
-                "border-border/60 text-muted-foreground/70 hover:text-foreground",
-              // A document declaring its own `$schema` wins over any binding, so
-              // say so rather than showing a chip that is quietly not in effect.
-              declared &&
-                (isHeader
-                  ? "border-warning/50 bg-warning/10 text-warning hover:border-warning/50 hover:bg-warning/20 hover:text-warning"
-                  : "border-warning/50 bg-warning/10 text-warning"),
-              variant === "compact" && "px-1.5",
-              className,
-            )}
-          >
-            <FileJson
-              className={cn("shrink-0", isHeader ? "h-3.5 w-3.5" : "h-3 w-3")}
-            />
-            {declared ? (
-              <span>{t("jsonSchemas.badge.ownSchema")}</span>
-            ) : resolved ? (
-              <>
-                <span className="max-w-[14ch] truncate">{resolved.name}</span>
-                {!resolved.exact && (
-                  <span className="opacity-70">
-                    {t("jsonSchemas.badge.inherited")}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span>{t("jsonSchemas.badge.none")}</span>
-            )}
-          </button>
-        </DropdownMenuTrigger>
+        <SimpleTooltip label={tooltip}>
+          <DropdownMenuTrigger asChild disabled={busy}>
+            <button
+              type="button"
+              className={cn(
+                triggerBase,
+                bound &&
+                  (isHeader
+                    ? "border-brand/40 bg-brand/10 text-brand hover:border-brand/40 hover:bg-brand/20 hover:text-brand"
+                    : "border-brand/40 bg-brand/10 text-brand hover:bg-brand/20"),
+                !bound &&
+                  !isHeader &&
+                  "border-border/60 text-muted-foreground/70 hover:text-foreground",
+                // A document declaring its own `$schema` wins over any binding, so
+                // say so rather than showing a chip that is quietly not in effect.
+                declared &&
+                  (isHeader
+                    ? "border-warning/50 bg-warning/10 text-warning hover:border-warning/50 hover:bg-warning/20 hover:text-warning"
+                    : "border-warning/50 bg-warning/10 text-warning"),
+                variant === "compact" && "px-1.5",
+                className,
+              )}
+            >
+              <FileJson
+                className={cn("shrink-0", isHeader ? "h-3.5 w-3.5" : "h-3 w-3")}
+              />
+              {declared ? (
+                <span>{t("jsonSchemas.badge.ownSchema")}</span>
+              ) : resolved ? (
+                <>
+                  <span className="max-w-[14ch] truncate">{resolved.name}</span>
+                  {!resolved.exact && (
+                    <span className="opacity-70">
+                      {t("jsonSchemas.badge.inherited")}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span>{t("jsonSchemas.badge.none")}</span>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+        </SimpleTooltip>
 
         <DropdownMenuContent align="start" className="w-64">
           <div className="px-2 py-1.5 font-mono text-2xs text-muted-foreground">

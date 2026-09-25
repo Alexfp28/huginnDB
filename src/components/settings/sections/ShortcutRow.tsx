@@ -16,6 +16,7 @@
 import { useTranslation } from "react-i18next";
 import { Plus, RotateCcw, X } from "lucide-react";
 import { IconButton } from "@/components/ui/icon-button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { formatForDisplay, type ActionSpec } from "@/lib/keybindings";
 import { PrefRow } from "./PrefRow";
 
@@ -75,22 +76,28 @@ export function ShortcutRow({
             key={binding}
             className="group flex items-center rounded-sm border border-border bg-muted font-mono text-2xs text-muted-foreground focus-within:border-brand hover:border-brand"
           >
-            <button
-              type="button"
-              onClick={() => onEdit(binding)}
-              title={t("settings.shortcuts.rebind")}
-              className="px-1.5 py-0.5 hover:text-foreground"
-            >
-              {formatForDisplay(binding)}
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemove(binding)}
-              title={t("settings.shortcuts.removeBinding")}
-              className="px-1 py-0.5 text-muted-foreground/50 hover:text-destructive"
-            >
-              <X className="h-2.5 w-2.5" />
-            </button>
+            {/* Both halves stay hand-rolled: the chip is ~18px tall, and
+                `IconButton`'s 24px floor would make it the tallest chip in a
+                row of otherwise identical ones. */}
+            <SimpleTooltip label={t("settings.shortcuts.rebind")}>
+              <button
+                type="button"
+                onClick={() => onEdit(binding)}
+                className="px-1.5 py-0.5 hover:text-foreground"
+              >
+                {formatForDisplay(binding)}
+              </button>
+            </SimpleTooltip>
+            <SimpleTooltip label={t("settings.shortcuts.removeBinding")}>
+              <button
+                type="button"
+                onClick={() => onRemove(binding)}
+                aria-label={t("settings.shortcuts.removeBinding")}
+                className="px-1 py-0.5 text-muted-foreground/50 hover:text-destructive"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </SimpleTooltip>
           </span>
         ))}
 

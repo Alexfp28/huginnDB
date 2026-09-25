@@ -13,7 +13,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, ChevronUp, PlugZap, RotateCw } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { IconButton } from "@/components/ui/icon-button";
 import { useConnections } from "@/stores/session/connections";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
@@ -186,24 +186,25 @@ export function StatusConnections() {
             {t("connections.reconnect")}
           </button>
         ) : (
-          <button
+          // `nativeTitle`: this sits inside open menu content, the one place
+          // the OS tooltip is correct (see `tooltip.tsx`).
+          <IconButton
             type="button"
-            title={t("statusBar.disconnect")}
-            disabled={disconnecting.has(p.id)}
-            className="ml-0.5 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive"
+            flat
+            nativeTitle
+            size="xs"
+            tone="destructive"
+            icon={PlugZap}
+            label={t("statusBar.disconnect")}
+            loading={disconnecting.has(p.id)}
+            className="ml-0.5"
             onClick={(e) => {
               // Don't let the click bubble to the row's onSelect (jump).
               e.preventDefault();
               e.stopPropagation();
               void handleDisconnect(p.id);
             }}
-          >
-            {disconnecting.has(p.id) ? (
-              <Spinner size="sm" />
-            ) : (
-              <PlugZap className="h-3.5 w-3.5" />
-            )}
-          </button>
+          />
         )}
       </DropdownMenuItem>
     );
