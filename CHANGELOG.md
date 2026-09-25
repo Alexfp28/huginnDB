@@ -173,6 +173,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The grid's search box and the foreign-key picker speak the interface
+  language.** With the app in Spanish, the search box's clear and
+  recent-searches buttons still announced themselves in English, and the
+  foreign-key picker on insert drafts showed its placeholder, "Loading…",
+  "No matches", the "showing first N rows" hint and its lookup-failed tooltip
+  in English too, as did the "auto" marker on an auto-generated key column in
+  the insert draft. All of them now come from the locale files, in English and
+  Spanish.
+
 - **A segmented control with nothing selected can be reached with Tab again.**
   Segmented controls keep only their selected segment in the Tab order, so when
   the current value matched none of the segments — a custom duration typed

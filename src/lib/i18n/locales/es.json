@@ -624,6 +624,8 @@
     "ctxFilterNotInSelected": "Excluir los {{count}} valores seleccionados de {{column}}",
     "filterValueCount": "{{count}} valores",
     "filterRows": "Filtrar filas… (Enter)",
+    "clearFilter": "Borrar filtro",
+    "recentSearches": "Búsquedas recientes en esta conexión",
     "serverSideFilter": "Filtro del servidor",
     "removeFilter": "Quitar filtro",
     "editFilter": "Editar filtro",
@@ -724,7 +726,17 @@
     },
     "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado",
     "saveFailed": "No se pudo guardar el cambio",
-    "rowsCopied": "{{count}} filas copiadas"
+    "rowsCopied": "{{count}} filas copiadas",
+    "autoValue": "auto",
+    "autoValueHint": "Generado automáticamente por la base de datos",
+    "fkLookup": {
+      "loading": "Cargando…",
+      "noMatches": "Sin coincidencias",
+      "search": "Buscar en {{table}}…",
+      "filter": "Filtrar {{table}}…",
+      "showingFirst": "Mostrando las primeras {{count}} filas · escribe para buscar en todas",
+      "unavailable": "Búsqueda de clave foránea no disponible: {{message}}"
+    }
   },
   "tableData": {
     "refresh": "Actualizar",

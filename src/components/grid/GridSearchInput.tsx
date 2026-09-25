@@ -58,7 +58,7 @@ export function GridSearchInput({
           flat
           size="xs"
           icon={X}
-          label="Clear filter"
+          label={t("dataGrid.clearFilter")}
           className="self-center"
           onClick={() => {
             // Clear immediately + apply, so the grid actually refetches
@@ -79,7 +79,7 @@ export function GridSearchInput({
                 flat
                 size="xs"
                 icon={ChevronDown}
-                label="Recent searches on this connection"
+                label={t("dataGrid.recentSearches")}
               />
             </DropdownMenuTrigger>
             <DropdownMenuContent
