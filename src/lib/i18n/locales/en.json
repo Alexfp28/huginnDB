@@ -3409,5 +3409,173 @@
       "cleared": "Back to the shared credentials",
       "clearedHint": "The shared password comes back with the next sync of the origin.",
       "clearFailed": "Couldn't go back to the shared credentials"
+    },
+  "policyEditor": {
+    "open": "Edit policy",
+    "openCreate": "Create policy",
+    "title": "Edit the policy",
+    "titleCreate": "Create a policy",
+    "titleExport": "Move the policy to a file",
+    "createIntro": "No policy is installed on this machine. Start from this one — everybody unlisted gets nothing, and you keep full access — then choose where the file goes.",
+    "exportIntro": "This machine's policy is embedded in {{origin}}, which only an administrator of the machine can change. Save it to a file on a share to edit it here from now on.",
+    "notWritable": "Read-only: this computer cannot write the policy's folder ({{reason}}). Only whoever the share lets write it can save.",
+    "conflict": {
+      "title": "Someone else saved the policy first",
+      "copied": "Your version is on the clipboard, so nothing you typed is lost.",
+      "banner": "The policy changed on the share since you opened it.",
+      "reload": "Load their version"
+    },
+    "discard": "Discard changes",
+    "save": "Save…",
+    "create": "Create…",
+    "createPath": "Save the policy as",
+    "browse": "Browse…",
+    "invalid": "Not a valid policy:",
+    "fixJsonFirst": "The JSON is not valid, so the form cannot show it. Fix it in the JSON pane.",
+    "saved": "Policy saved",
+    "savedBackup": "The previous version was kept as a .bak next to it.",
+    "confirmTitle": "Save the policy?",
+    "confirmBody": "It applies on this computer at once, and on every other one the next time it reads the policy — within five minutes.",
+    "confirmCreateTitle": "Create the policy?",
+    "confirmCreateBody": "The policy is written to {{path}}. Machines follow it once they are pointed at that file.",
+    "warn": {
+      "dbUser": "This adds dbUser. Versions of HuginnDB older than this one read it as a broken policy and block every connection: update every computer first.",
+      "ownRole": "Your own role changes: {{from}} → {{to}}.",
+      "appliesSoon": "Saving refuses anything that is not a valid policy, and keeps the previous version as a .bak."
+    },
+    "change": {
+      "rolesAdded": "Roles added",
+      "rolesRemoved": "Roles removed",
+      "rulesChanged": "Rules changed",
+      "usersAdded": "Accounts added",
+      "usersRemoved": "Accounts removed",
+      "formatOnly": "Only the formatting changes."
+    },
+    "createdTitle": "Policy created",
+    "createdBody": "It is at {{path}}. Point every computer at it — once per computer, or once for all through Group Policy or Intune.",
+    "createdOneMachine": "On one computer, in a prompt run as administrator",
+    "createdGpo": "Through Group Policy or Intune",
+    "createdKey": "Key",
+    "createdValue": "Value",
+    "createdData": "Data",
+    "createdCopied": "Copied",
+    "copy": "Copy",
+    "panes": {
+      "roles": {
+        "label": "Roles",
+        "desc": "What each department may do"
+      },
+      "users": {
+        "label": "Accounts",
+        "desc": "Who is in which role"
+      },
+      "general": {
+        "label": "General",
+        "desc": "Default role, unnamed servers"
+      },
+      "preview": {
+        "label": "View as",
+        "desc": "What one person would get"
+      },
+      "json": {
+        "label": "JSON",
+        "desc": "The file itself"
+      }
+    },
+    "roles": {
+      "title": "Roles",
+      "rename": "Rename role",
+      "remove": "Remove role",
+      "inUse": "In use: it is the default role or someone is in it",
+      "add": "Add role",
+      "none": "The policy has no roles yet."
+    },
+    "rules": {
+      "title": "Rules",
+      "none": "No rules: this role reaches nothing.",
+      "remove": "Remove rule",
+      "add": "Add rule",
+      "pick": "Pick a rule to edit it."
+    },
+    "rule": {
+      "onlyThese": "Only these",
+      "patternPlaceholder": "One per line — * is a wildcard",
+      "suggestions": "From the server:",
+      "endpoint": "Server",
+      "endpointHint": "Rules match the server, not the saved connection, so re-creating a connection by hand does not escape them.",
+      "endpointAny": "Every server",
+      "endpointServer": "A server",
+      "endpointFile": "A SQLite file",
+      "host": "Host",
+      "driver": "Driver",
+      "anyDriver": "Any driver",
+      "port": "Port",
+      "anyPort": "Any port",
+      "path": "File path",
+      "fromConnection": "Fill from a saved connection…",
+      "noCatalog": "Connect to this server to get its databases and tables as suggestions.",
+      "permissions": "Permissions",
+      "permissionsHint": "The AI never gets more than the person, so an AI permission the person lacks cannot be ticked.",
+      "permission": "Permission",
+      "databases": "Databases",
+      "allDatabases": "Every database",
+      "allow": "Tables and views",
+      "allowHint": "With a dot, a pattern matches schema.name (public.*); without one, the name alone.",
+      "allRelations": "Every one",
+      "deny": "Never",
+      "denyHint": "Always wins over the list above.",
+      "dbUser": "Database user",
+      "dbUserHint": "Optional. The user each person signs in to this server as; {user} is their Windows account without the domain.",
+      "dbUserExample": "{{account}} signs in as {{user}}"
+    },
+    "perm": {
+      "select": "read",
+      "insert": "add rows",
+      "update": "edit rows",
+      "delete": "delete rows",
+      "ddl": "change the structure",
+      "export": "export to a file",
+      "monitor": "Pulse, sessions, users"
+    },
+    "general": {
+      "defaultRole": "Default role",
+      "defaultRoleHint": "For every account the policy does not list. Make it the most restrictive one.",
+      "unmanaged": "Servers no rule names",
+      "unmanagedHint": "Blocked is the safe choice: reaching a server under another name (an IP address) then gets nothing.",
+      "unmanagedDeny": "Blocked",
+      "unmanagedAllow": "Left to the local settings",
+      "version": "Format version"
+    },
+    "users": {
+      "intro": "Windows accounts, with or without the domain; case does not matter. An account has exactly one role.",
+      "clearSearch": "Clear search",
+      "search": "Search accounts or roles",
+      "account": "Account",
+      "add": "Add",
+      "count_one": "{{count}} account",
+      "count_other": "{{count}} accounts",
+      "taken": "That account is already in the policy.",
+      "role": "Role",
+      "duplicate": "same account as another",
+      "remove": "Remove account",
+      "none": "No accounts yet: everybody gets the default role.",
+      "noMatch": "No account matches."
+    },
+    "preview": {
+      "intro": "What one person — and their AI — would get on every saved connection if this draft were saved. Nothing is saved to see it.",
+      "user": "Account",
+      "pick": "Pick an account…",
+      "other": "Another account",
+      "show": "Show",
+      "invalid": "Fix the policy first: an invalid draft cannot be previewed.",
+      "loading": "Working it out…",
+      "role": "{{user}} is in role {{role}}.",
+      "defaultRole": "{{user}} is not listed, so they get the default role, {{role}}.",
+      "connection": "Connection",
+      "reaches": "Reaches",
+      "dbUser": "Signs in as",
+      "unmanaged": "(not governed)",
+      "noConnections": "There are no saved connections on this computer to preview."
     }
+  }
 }

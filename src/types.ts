@@ -1310,6 +1310,76 @@ export interface PolicyStatus {
   roles: { name: string; members: string[] }[];
 }
 
+/** This machine's policy anchor, as the editor sees it (`policy::editor`). */
+export interface PolicyAnchorInfo {
+  /** `file` is the one kind edited in place; `registry` and `systemFile` are
+   *  inline policies that can only be exported to a file. */
+  kind: "none" | "file" | "registry" | "systemFile" | "error";
+  path: string | null;
+  origin: string | null;
+  error: string | null;
+}
+
+export interface PolicyEditBase {
+  /** `""` for a file that does not exist yet. */
+  sha256: string;
+  mtime: string | null;
+}
+
+export interface PolicyValidation {
+  error: string | null;
+  warnings: string[];
+}
+
+/** A real write test on a folder — the same probe the origin editor uses
+ *  (`state_file::probe_writable`). */
+export type WritableProbe = OriginWritableProbe;
+
+/** What `policy_open_for_edit` answers. */
+export interface PolicyEditDoc {
+  anchor: PolicyAnchorInfo;
+  text: string;
+  base: PolicyEditBase | null;
+  writable: WritableProbe | null;
+  readError: string | null;
+  validation: PolicyValidation;
+}
+
+export interface PolicyPreviewConnection {
+  id: string;
+  name: string;
+  human: ConnectionAccess;
+  ai: ConnectionAccess;
+  dbUser: string | null;
+}
+
+/** "View as": what one user would get under a draft. */
+export interface PolicyPreview {
+  user: string;
+  role: string;
+  /** Named in the draft, or falling to `defaultRole`. */
+  listed: boolean;
+  connections: PolicyPreviewConnection[];
+}
+
+export interface PolicyDraftCheck {
+  validation: PolicyValidation;
+  preview: PolicyPreview | null;
+}
+
+export type PolicySaveOutcome =
+  | { status: "saved"; base: PolicyEditBase; backup: boolean }
+  | { status: "conflict"; text: string; base: PolicyEditBase };
+
+export interface CreatedPolicy {
+  path: string;
+  base: PolicyEditBase;
+  regCommand: string;
+  registryKey: string;
+  registryValue: string;
+  warnings: string[];
+}
+
 /** A role's database permissions for one server, from
  *  `policy_generate_grants`. For an administrator to review and run. */
 export interface GrantScript {

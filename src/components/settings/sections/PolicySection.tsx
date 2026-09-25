@@ -16,11 +16,13 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
+  FilePen,
   KeyRound,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GrantScriptDialog } from "@/components/settings/dialogs/GrantScriptDialog";
+import { PolicyEditorDialog } from "@/components/settings/dialogs/PolicyEditorDialog";
 import { SearchField } from "@/components/ui/search-field";
 import { Segmented } from "@/components/ui/segmented";
 import { TreeRow } from "@/components/ui/tree-row";
@@ -33,6 +35,7 @@ export function PolicySection() {
   const [status, setStatus] = useState<PolicyStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [grantsOpen, setGrantsOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -53,6 +56,20 @@ export function PolicySection() {
           {t("settings.policy.intro")}
         </p>
         <div className="flex shrink-0 gap-2">
+          {/* Open to anyone: the editor saves only where the share accepts a
+              write from this machine, and says why when it does not. */}
+          {status && (
+            <Button
+              variant="outline"
+              size="sm"
+              icon={FilePen}
+              onClick={() => setEditorOpen(true)}
+            >
+              {status.state === "unmanaged"
+                ? t("policyEditor.openCreate")
+                : t("policyEditor.open")}
+            </Button>
+          )}
           {status?.state === "active" && status.roles.length > 0 && (
             <Button
               variant="outline"
@@ -69,6 +86,14 @@ export function PolicySection() {
           </Button>
         </div>
       </div>
+      {status && editorOpen && (
+        <PolicyEditorDialog
+          open={editorOpen}
+          onOpenChange={setEditorOpen}
+          status={status}
+          onSaved={load}
+        />
+      )}
       {status?.state === "active" && grantsOpen && (
         <GrantScriptDialog
           open={grantsOpen}

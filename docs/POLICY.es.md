@@ -269,6 +269,36 @@ servidor:
 **HuginnDB nunca ejecuta el script.** Cópialo o guárdalo, revísalo y ejecútalo
 tú como administrador.
 
+## Editar la política desde HuginnDB
+
+No hace falta escribir el JSON a mano. **Ajustes → Política → Editar
+política** la abre como un formulario —roles y sus reglas, cuentas, rol por
+defecto— con el JSON a un clic; los dos editan el mismo borrador.
+
+- **Quién puede guardar lo decide la carpeta compartida, no HuginnDB.** El
+  editor se abre en cualquier equipo, y solo guarda donde Windows deja a esa
+  cuenta escribir en la carpeta de la política; en el resto es de solo lectura
+  y muestra el motivo que da Windows. Es el mismo permiso que ya protege el
+  fichero.
+- **Un borrador que no es una política válida no se puede guardar.** Cada
+  cambio lo comprueba el mismo analizador que aplica la política, y el error
+  nombra el rol y la regla. Una errata ya no puede bloquear todos los equipos.
+- **Ver como** enseña lo que tendría cualquier cuenta —y su IA— en cada conexión
+  guardada con el borrador, antes de guardar nada.
+- Los nombres de servidores, bases de datos y tablas se sugieren a partir de
+  las conexiones guardadas y, si hay una abierta, de su catálogo; siempre se
+  puede escribir un patrón.
+- Al guardar se conserva la versión anterior como `<fichero>.bak`, no se
+  sobrescribe un cambio que otra persona haya guardado mientras tanto (tu
+  versión va al portapapeles), y se aplica en este equipo al instante; en el
+  resto, como mucho en cinco minutos.
+- **¿Todavía no hay política?** *Crear política* parte de una plantilla en la
+  que quien no esté en la lista no tiene nada y tú conservas acceso completo, la
+  escribe donde elijas y te da el comando `reg add` y el valor de directiva de
+  grupo que apuntan los equipos a ella. Una política incrustada en el registro
+  o en Program Files se pasa a un fichero de la misma forma, para editarla aquí
+  a partir de entonces.
+
 ## Cómo comprobarla
 
 - **Ajustes → Política**, en cualquier equipo, muestra de dónde se ha leído la

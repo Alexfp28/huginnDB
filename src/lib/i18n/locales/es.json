@@ -3409,5 +3409,173 @@
       "cleared": "De vuelta a las credenciales compartidas",
       "clearedHint": "La contraseña compartida vuelve con la próxima sincronización del origen.",
       "clearFailed": "No se pudo volver a las credenciales compartidas"
+    },
+  "policyEditor": {
+    "open": "Editar política",
+    "openCreate": "Crear política",
+    "title": "Editar la política",
+    "titleCreate": "Crear una política",
+    "titleExport": "Pasar la política a un fichero",
+    "createIntro": "Este equipo no tiene política. Parte de esta —quien no esté en la lista no tiene nada y tú conservas acceso completo— y elige dónde se guarda el fichero.",
+    "exportIntro": "La política de este equipo está incrustada en {{origin}}, que solo un administrador del equipo puede cambiar. Guárdala en un fichero de una carpeta compartida para editarla aquí a partir de ahora.",
+    "notWritable": "Solo lectura: este equipo no puede escribir en la carpeta de la política ({{reason}}). Solo puede guardar quien tenga permiso de escritura en esa carpeta.",
+    "conflict": {
+      "title": "Otra persona guardó la política antes",
+      "copied": "Tu versión está en el portapapeles, así que no pierdes lo que escribiste.",
+      "banner": "La política ha cambiado en la carpeta desde que la abriste.",
+      "reload": "Cargar su versión"
+    },
+    "discard": "Descartar cambios",
+    "save": "Guardar…",
+    "create": "Crear…",
+    "createPath": "Guardar la política como",
+    "browse": "Examinar…",
+    "invalid": "No es una política válida:",
+    "fixJsonFirst": "El JSON no es válido, así que el formulario no puede mostrarlo. Corrígelo en el panel JSON.",
+    "saved": "Política guardada",
+    "savedBackup": "La versión anterior se ha guardado como .bak a su lado.",
+    "confirmTitle": "¿Guardar la política?",
+    "confirmBody": "Se aplica en este equipo al instante, y en el resto la próxima vez que la lean, como mucho en cinco minutos.",
+    "confirmCreateTitle": "¿Crear la política?",
+    "confirmCreateBody": "La política se escribe en {{path}}. Los equipos la siguen en cuanto se les apunte a ese fichero.",
+    "warn": {
+      "dbUser": "Esto añade dbUser. Las versiones de HuginnDB anteriores a esta la leen como una política rota y bloquean todas las conexiones: actualiza antes todos los equipos.",
+      "ownRole": "Cambia tu propio rol: {{from}} → {{to}}.",
+      "appliesSoon": "Guardar rechaza cualquier cosa que no sea una política válida, y conserva la versión anterior como .bak."
+    },
+    "change": {
+      "rolesAdded": "Roles añadidos",
+      "rolesRemoved": "Roles quitados",
+      "rulesChanged": "Reglas cambiadas",
+      "usersAdded": "Cuentas añadidas",
+      "usersRemoved": "Cuentas quitadas",
+      "formatOnly": "Solo cambia el formato."
+    },
+    "createdTitle": "Política creada",
+    "createdBody": "Está en {{path}}. Apunta todos los equipos a ella: uno a uno, o todos a la vez con una directiva de grupo o Intune.",
+    "createdOneMachine": "En un equipo, en una consola ejecutada como administrador",
+    "createdGpo": "Con una directiva de grupo o Intune",
+    "createdKey": "Clave",
+    "createdValue": "Valor",
+    "createdData": "Dato",
+    "createdCopied": "Copiado",
+    "copy": "Copiar",
+    "panes": {
+      "roles": {
+        "label": "Roles",
+        "desc": "Qué puede hacer cada departamento"
+      },
+      "users": {
+        "label": "Cuentas",
+        "desc": "Quién está en cada rol"
+      },
+      "general": {
+        "label": "General",
+        "desc": "Rol por defecto, servidores sin regla"
+      },
+      "preview": {
+        "label": "Ver como",
+        "desc": "Lo que tendría una persona"
+      },
+      "json": {
+        "label": "JSON",
+        "desc": "El propio fichero"
+      }
+    },
+    "roles": {
+      "title": "Roles",
+      "rename": "Renombrar rol",
+      "remove": "Quitar rol",
+      "inUse": "En uso: es el rol por defecto o hay alguien en él",
+      "add": "Añadir rol",
+      "none": "La política todavía no tiene roles."
+    },
+    "rules": {
+      "title": "Reglas",
+      "none": "Sin reglas: este rol no llega a nada.",
+      "remove": "Quitar regla",
+      "add": "Añadir regla",
+      "pick": "Elige una regla para editarla."
+    },
+    "rule": {
+      "onlyThese": "Solo estas",
+      "patternPlaceholder": "Una por línea; * es un comodín",
+      "suggestions": "Del servidor:",
+      "endpoint": "Servidor",
+      "endpointHint": "Las reglas casan con el servidor, no con la conexión guardada, así que recrear una conexión a mano no se las salta.",
+      "endpointAny": "Todos los servidores",
+      "endpointServer": "Un servidor",
+      "endpointFile": "Un fichero SQLite",
+      "host": "Host",
+      "driver": "Driver",
+      "anyDriver": "Cualquier driver",
+      "port": "Puerto",
+      "anyPort": "Cualquier puerto",
+      "path": "Ruta del fichero",
+      "fromConnection": "Rellenar desde una conexión guardada…",
+      "noCatalog": "Conéctate a este servidor para tener sus bases de datos y tablas como sugerencias.",
+      "permissions": "Permisos",
+      "permissionsHint": "La IA nunca tiene más que la persona, así que no se puede marcar para la IA un permiso que la persona no tiene.",
+      "permission": "Permiso",
+      "databases": "Bases de datos",
+      "allDatabases": "Todas",
+      "allow": "Tablas y vistas",
+      "allowHint": "Con un punto, el patrón casa con esquema.nombre (public.*); sin él, solo con el nombre.",
+      "allRelations": "Todas",
+      "deny": "Nunca",
+      "denyHint": "Siempre gana sobre la lista de arriba.",
+      "dbUser": "Usuario de base de datos",
+      "dbUserHint": "Opcional. El usuario con el que cada persona entra en este servidor; {user} es su cuenta de Windows sin el dominio.",
+      "dbUserExample": "{{account}} entra como {{user}}"
+    },
+    "perm": {
+      "select": "leer",
+      "insert": "añadir filas",
+      "update": "editar filas",
+      "delete": "borrar filas",
+      "ddl": "cambiar la estructura",
+      "export": "exportar a un fichero",
+      "monitor": "Pulse, sesiones, usuarios"
+    },
+    "general": {
+      "defaultRole": "Rol por defecto",
+      "defaultRoleHint": "Para toda cuenta que la política no nombra. Que sea el más restrictivo.",
+      "unmanaged": "Servidores sin regla",
+      "unmanagedHint": "Bloqueados es la opción segura: llegar a un servidor por otro nombre (una IP) no da entonces nada.",
+      "unmanagedDeny": "Bloqueados",
+      "unmanagedAllow": "Según los ajustes locales",
+      "version": "Versión del formato"
+    },
+    "users": {
+      "intro": "Cuentas de Windows, con o sin dominio; da igual mayúsculas o minúsculas. Cada cuenta tiene un único rol.",
+      "clearSearch": "Borrar búsqueda",
+      "search": "Buscar cuentas o roles",
+      "account": "Cuenta",
+      "add": "Añadir",
+      "count_one": "{{count}} cuenta",
+      "count_other": "{{count}} cuentas",
+      "taken": "Esa cuenta ya está en la política.",
+      "role": "Rol",
+      "duplicate": "es la misma cuenta que otra",
+      "remove": "Quitar cuenta",
+      "none": "Todavía no hay cuentas: todo el mundo tiene el rol por defecto.",
+      "noMatch": "Ninguna cuenta coincide."
+    },
+    "preview": {
+      "intro": "Lo que tendría una persona —y su IA— en cada conexión guardada si se guardara este borrador. No hace falta guardar nada para verlo.",
+      "user": "Cuenta",
+      "pick": "Elige una cuenta…",
+      "other": "Otra cuenta",
+      "show": "Mostrar",
+      "invalid": "Corrige antes la política: un borrador no válido no se puede previsualizar.",
+      "loading": "Calculándolo…",
+      "role": "{{user}} está en el rol {{role}}.",
+      "defaultRole": "{{user}} no está en la lista, así que tiene el rol por defecto, {{role}}.",
+      "connection": "Conexión",
+      "reaches": "Llega",
+      "dbUser": "Entra como",
+      "unmanaged": "(sin gobernar)",
+      "noConnections": "No hay conexiones guardadas en este equipo para previsualizar."
     }
+  }
 }
