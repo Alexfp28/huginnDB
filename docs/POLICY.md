@@ -268,8 +268,11 @@ the JSON one pane away; both edit the same draft.
   role and rule. A typo can no longer lock every computer out.
 - **View as** shows what any account — and its AI — would get on each saved
   connection under the draft, before anything is saved.
-- Server, database and table names are suggested from the saved connections
-  and, when one is open, from its catalog; a pattern can always be typed.
+- A rule's server is picked from this computer's saved connections, and its
+  databases and tables from that server's own list (the rule offers to connect
+  to it). A pattern such as `v_factura_*` can also be added: the field shows
+  which real names it matches first, and flags a name the server does not have.
+  A server with no saved connection can still be given by hand.
 - Saving keeps the previous version as `<file>.bak`, refuses to overwrite a
   change someone else saved in the meantime (your version goes to the
   clipboard), and applies on this computer at once — on the others within five

@@ -31,6 +31,8 @@ vi.mock("@monaco-editor/react", () => ({
 }));
 const clipboard = vi.hoisted(() => ({ copyToClipboard: vi.fn(async () => {}) }));
 vi.mock("@/lib/clipboard", () => clipboard);
+const confirm = vi.hoisted(() => ({ confirmDestructive: vi.fn(async (_message: string) => true) }));
+vi.mock("@/lib/confirmDestructive", () => confirm);
 
 import { PolicyEditorDialog } from "./PolicyEditorDialog";
 import type { PolicyEditDoc, PolicyStatus } from "@/types";
@@ -95,6 +97,26 @@ describe("PolicyEditorDialog", () => {
     fireEvent.click(screen.getByText("JSON"));
     const json = screen.getByLabelText("json") as HTMLTextAreaElement;
     expect(JSON.parse(json.value).users).toEqual({ ana: "sales", bob: "none" });
+  });
+
+  it("asks before removing a rule, and keeps it on a no", async () => {
+    api.policyOpenForEdit.mockResolvedValue(fileDoc());
+    renderEditor();
+    fireEvent.click(await screen.findByText("sales"));
+    confirm.confirmDestructive.mockResolvedValueOnce(false);
+    fireEvent.click(screen.getByRole("button", { name: "Remove rule" }));
+    await waitFor(() => expect(confirm.confirmDestructive).toHaveBeenCalledTimes(1));
+    expect(confirm.confirmDestructive.mock.calls[0]![0]).toContain("sales");
+    fireEvent.click(screen.getByText("JSON"));
+    expect(JSON.parse((screen.getByLabelText("json") as HTMLTextAreaElement).value).roles.sales.rules).toHaveLength(1);
+    // A yes removes it.
+    fireEvent.click(screen.getByText("Roles"));
+    fireEvent.click(screen.getByText("sales"));
+    fireEvent.click(screen.getByRole("button", { name: "Remove rule" }));
+    fireEvent.click(await screen.findByText("JSON"));
+    await waitFor(() =>
+      expect(JSON.parse((screen.getByLabelText("json") as HTMLTextAreaElement).value).roles.sales.rules).toHaveLength(0),
+    );
   });
 
   it("will not save a draft the parser rejects", async () => {

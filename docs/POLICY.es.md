@@ -285,9 +285,12 @@ defecto— con el JSON a un clic; los dos editan el mismo borrador.
   nombra el rol y la regla. Una errata ya no puede bloquear todos los equipos.
 - **Ver como** enseña lo que tendría cualquier cuenta —y su IA— en cada conexión
   guardada con el borrador, antes de guardar nada.
-- Los nombres de servidores, bases de datos y tablas se sugieren a partir de
-  las conexiones guardadas y, si hay una abierta, de su catálogo; siempre se
-  puede escribir un patrón.
+- El servidor de una regla se elige entre las conexiones guardadas en este
+  equipo, y sus bases de datos y tablas de la lista del propio servidor (la
+  regla ofrece conectarse a él). También se puede añadir un patrón como
+  `v_factura_*`: el campo enseña antes con qué nombres reales coincide, y marca
+  un nombre que el servidor no tiene. Un servidor sin conexión guardada se puede
+  seguir indicando a mano.
 - Al guardar se conserva la versión anterior como `<fichero>.bak`, no se
   sobrescribe un cambio que otra persona haya guardado mientras tanto (tu
   versión va al portapapeles), y se aplica en este equipo al instante; en el

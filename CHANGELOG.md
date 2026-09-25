@@ -124,8 +124,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   field this version does not know rides along untouched. Every change is
   checked by the parser that applies the policy, and a draft that is not valid
   cannot be saved. **View as** shows what any account and its AI would get on
-  each saved connection under the draft. Names are suggested from the saved
-  connections and an open connection's catalog, and can always be typed.
+  each saved connection under the draft. A rule's server is picked from the
+  saved connections, and its databases and tables from that server's catalog
+  (connectable from the rule itself); a pattern such as `v_factura_*` can be
+  added too, and the field says which real names it matches before it is.
   Who may save is decided by the share: the editor saves only where Windows
   lets the account write the policy's folder, and is read-only elsewhere with
   Windows' reason. A save keeps a `.bak`, never overwrites a change someone

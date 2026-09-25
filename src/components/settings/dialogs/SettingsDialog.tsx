@@ -52,7 +52,6 @@ import {
   selectUpdateNotificationVisible,
   useUpdateStore,
 } from "@/stores/update";
-import { cn } from "@/lib/utils";
 import { GeneralSection } from "@/components/settings/sections/GeneralSection";
 import { EditorSection } from "@/components/settings/sections/EditorSection";
 import { GridSection } from "@/components/settings/sections/GridSection";
@@ -68,6 +67,7 @@ import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSe
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
 import { AboutSection } from "@/components/settings/sections/AboutSection";
 import { Kbd } from "@/components/ui/kbd";
+import { NavRailItem } from "@/components/ui/nav-rail";
 import { useShortcutLabel } from "@/lib/keybindings";
 
 interface Props {
@@ -146,40 +146,24 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
 
         <DialogBody className="grid grid-cols-[200px_1fr]">
           <aside className="overflow-y-auto border-r border-border bg-card/40 py-1">
-            {SECTIONS.map((s) => {
-              const Icon = s.icon;
-              const active = s.id === section;
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSection(s.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
-                    active
-                      ? "border-primary bg-accent/40"
-                      : "border-transparent hover:bg-accent",
-                  )}
-                >
-                  <div className="relative">
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    {s.id === "about" && showUpdateDot && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
-                      />
-                    )}
-                  </div>
-                  <div className="flex flex-1 flex-col leading-tight">
-                    <span className="text-sm">
-                      {t(`settings.sections.${s.id}.label`)}
-                    </span>
-                    <span className="text-3xs text-muted-foreground">
-                      {t(`settings.sections.${s.id}.desc`)}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+            {SECTIONS.map((s) => (
+              <NavRailItem
+                key={s.id}
+                icon={s.icon}
+                active={s.id === section}
+                label={t(`settings.sections.${s.id}.label`)}
+                description={t(`settings.sections.${s.id}.desc`)}
+                badge={
+                  s.id === "about" && showUpdateDot ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-destructive ring-2 ring-background"
+                    />
+                  ) : undefined
+                }
+                onClick={() => setSection(s.id)}
+              />
+            ))}
           </aside>
 
           <main className="overflow-y-auto px-5 py-4">

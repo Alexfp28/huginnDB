@@ -45,6 +45,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NavRailItem } from "@/components/ui/nav-rail";
 import { Spinner } from "@/components/ui/spinner";
 import { RolesPane } from "@/components/settings/policyEditor/RolesPane";
 import {
@@ -210,24 +211,22 @@ export function PolicyEditorDialog({
   }
 
   const header = doc && (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
-      <div className="min-w-0">
-        <DialogHeader>
-          <DialogTitle>
-            {creating
-              ? doc.anchor.kind === "none"
-                ? t("policyEditor.titleCreate")
-                : t("policyEditor.titleExport")
-              : t("policyEditor.title")}
-          </DialogTitle>
-          <DialogDescription className="text-2xs">
-            {creating
-              ? t(doc.anchor.kind === "none" ? "policyEditor.createIntro" : "policyEditor.exportIntro", {
-                  origin: doc.anchor.origin ?? "",
-                })
-              : doc.anchor.path}
-          </DialogDescription>
-        </DialogHeader>
+    <DialogHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+      <div className="min-w-0 flex-1 space-y-1">
+        <DialogTitle>
+          {creating
+            ? doc.anchor.kind === "none"
+              ? t("policyEditor.titleCreate")
+              : t("policyEditor.titleExport")
+            : t("policyEditor.title")}
+        </DialogTitle>
+        <DialogDescription className={cn("text-2xs", !creating && "font-mono")}>
+          {creating
+            ? t(doc.anchor.kind === "none" ? "policyEditor.createIntro" : "policyEditor.exportIntro", {
+                origin: doc.anchor.origin ?? "",
+              })
+            : doc.anchor.path}
+        </DialogDescription>
         {!creating && doc.writable && !doc.writable.writable && (
           <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
             <Lock aria-hidden className="h-3 w-3 shrink-0" />
@@ -266,7 +265,7 @@ export function PolicyEditorDialog({
           {creating ? t("policyEditor.create") : t("policyEditor.save")}
         </Button>
       </div>
-    </div>
+    </DialogHeader>
   );
 
   return (
@@ -305,31 +304,17 @@ export function PolicyEditorDialog({
               <p className="border-b border-border px-5 py-2 text-2xs text-destructive">{doc.readError}</p>
             )}
             <div className="grid min-h-0 flex-1 grid-cols-[200px_1fr] overflow-hidden">
-              <aside className="flex flex-col gap-0.5 overflow-y-auto border-r border-border bg-card/40 p-1">
-                {PANES.map((p) => {
-                  const Icon = p.icon;
-                  return (
-                    <Button
-                      key={p.id}
-                      variant="ghost"
-                      size="sm"
-                      aria-current={p.id === pane ? "page" : undefined}
-                      className={cn(
-                        "h-auto justify-start gap-2 rounded-md px-3 py-2 text-left",
-                        p.id === pane && "bg-accent",
-                      )}
-                      onClick={() => setPane(p.id)}
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="flex flex-col leading-tight">
-                        <span className="text-sm">{t(`policyEditor.panes.${p.id}.label`)}</span>
-                        <span className="text-3xs font-normal text-muted-foreground">
-                          {t(`policyEditor.panes.${p.id}.desc`)}
-                        </span>
-                      </span>
-                    </Button>
-                  );
-                })}
+              <aside className="overflow-y-auto border-r border-border bg-card/40 py-1">
+                {PANES.map((p) => (
+                  <NavRailItem
+                    key={p.id}
+                    icon={p.icon}
+                    active={p.id === pane}
+                    label={t(`policyEditor.panes.${p.id}.label`)}
+                    description={t(`policyEditor.panes.${p.id}.desc`)}
+                    onClick={() => setPane(p.id)}
+                  />
+                ))}
               </aside>
               <main className="flex min-h-0 flex-col gap-3 overflow-hidden px-5 py-4">
                 {validationError && (

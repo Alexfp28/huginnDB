@@ -1,23 +1,25 @@
 /**
  * Roles and their rules: the heart of the policy. Master/detail — the roles
  * on the left, the selected role's rules in the middle, the selected rule's
- * fields on the right — the same shape as the origin editor's environments
- * pane, so a role with twelve rules stays one screen.
+ * fields on the right — so a role with twelve rules stays one screen.
  *
- * Names of databases and relations are suggested from the catalog of an open
- * connection to the rule's server, and can always be typed: a pattern
- * (`v_factura_*`) or a table that does not exist yet is a legitimate rule.
+ * Names of databases and relations are picked from the catalog of the rule's
+ * server when that server is one of this computer's saved connections (and it
+ * can be opened from here to get it), and can always be given as a pattern:
+ * `v_factura_*`, or a table that does not exist yet, is a legitimate rule.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
-import { TreeRow } from "@/components/ui/tree-row";
+import { MICRO_HEADING, REVEAL_ON_HOVER } from "@/components/ui/styles";
 import { databaseViewId } from "@/lib/connectionLabel";
+import { connectAndWarm } from "@/lib/connection/connectFlow";
+import { confirmDestructive } from "@/lib/confirmDestructive";
 import {
   addRole,
   canRemoveRole,
@@ -36,55 +38,48 @@ import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
 import type { ConnectionProfile } from "@/types";
-import { EndpointField, Field, PatternListField, PermissionGrid } from "./fields";
+import {
+  EndpointField,
+  Field,
+  FieldGroup,
+  isPattern,
+  NamePicker,
+  PermissionGrid,
+  profileFor,
+} from "./fields";
 
-function endpointLabel(e: EndpointJson, anyLabel: string): string {
-  if (e === "*") return anyLabel;
-  if (e.path !== undefined) return e.path || "…";
-  return [e.driver, e.host || "…", e.port].filter(Boolean).join(" · ");
-}
-
-/** An open connection to the rule's server, if there is one — the source of
- *  the name suggestions. */
-function connectionFor(
-  endpoint: EndpointJson,
+function endpointLabel(
+  e: EndpointJson,
   profiles: ConnectionProfile[],
-  active: Set<string>,
-): ConnectionProfile | undefined {
-  if (endpoint === "*") return undefined;
-  const open = profiles.filter((p) => active.has(p.id));
-  if (endpoint.path !== undefined) {
-    const want = endpoint.path.trim().replace(/\\/g, "/").toLowerCase();
-    return open.find(
-      (p) => p.driver === "sqlite" && p.database.replace(/\\/g, "/").toLowerCase() === want,
-    );
-  }
-  const host = (endpoint.host ?? "").trim().toLowerCase();
-  return open.find(
-    (p) =>
-      p.driver !== "sqlite" &&
-      p.host.trim().toLowerCase() === host &&
-      (!endpoint.driver || endpoint.driver === p.driver),
-  );
+  anyLabel: string,
+): string {
+  if (e === "*") return anyLabel;
+  const p = profileFor(e, profiles);
+  if (p) return p.name;
+  if (e.path !== undefined) return e.path || "…";
+  return [e.host || "…", e.port].filter(Boolean).join(":");
 }
 
 /** Database and relation names on the rule's server, best effort. */
 function useCatalog(
   profile: ConnectionProfile | undefined,
   databases: string[] | undefined,
-): { databases: string[]; relations: string[] } {
-  const [dbs, setDbs] = useState<string[]>([]);
-  const [rels, setRels] = useState<string[]>([]);
+): { databases: string[] | null; relations: string[] | null; loading: boolean } {
+  const [dbs, setDbs] = useState<string[] | null>(null);
+  const [rels, setRels] = useState<string[] | null>(null);
+  const [pending, setPending] = useState(0);
   const id = profile?.id;
   const sqlite = profile?.driver === "sqlite";
   useEffect(() => {
-    setDbs([]);
+    setDbs(null);
     if (!id || sqlite) return;
     let live = true;
+    setPending((n) => n + 1);
     api
       .listDatabases(id)
       .then((list) => live && setDbs(list.map((d) => d.name)))
-      .catch(() => {});
+      .catch(() => live && setDbs([]))
+      .finally(() => setPending((n) => n - 1));
     return () => {
       live = false;
     };
@@ -94,14 +89,15 @@ function useCatalog(
   const targets = useMemo(() => {
     if (!id) return [] as string[];
     if (sqlite) return [id];
-    const named = (databases ?? []).filter((d) => !d.includes("*")).slice(0, 4);
+    const named = (databases ?? []).filter((d) => !isPattern(d)).slice(0, 4);
     return named.length > 0 ? named.map((d) => databaseViewId(id, d)) : [id];
   }, [id, sqlite, databases]);
   const key = targets.join("|");
   useEffect(() => {
-    setRels([]);
+    setRels(null);
     if (targets.length === 0) return;
     let live = true;
+    setPending((n) => n + 1);
     Promise.all(targets.map((t) => api.listTables(t).catch(() => [])))
       .then((lists) => {
         if (!live) return;
@@ -109,14 +105,86 @@ function useCatalog(
         for (const list of lists) for (const t of list) names.add(t.name);
         setRels([...names].sort((a, b) => a.localeCompare(b)));
       })
-      .catch(() => {});
+      .catch(() => live && setRels([]))
+      .finally(() => setPending((n) => n - 1));
     return () => {
       live = false;
     };
     // `key` stands for `targets`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return { databases: dbs, relations: rels };
+  return { databases: dbs, relations: rels, loading: pending > 0 };
+}
+
+/**
+ * A selectable entry of the roles or rules list: a small bordered button,
+ * tinted when selected, with its actions inside the same outline so the hover
+ * covers the whole thing rather than a strip of it.
+ */
+function PickItem({
+  active,
+  onSelect,
+  actions,
+  children,
+}: {
+  active: boolean;
+  onSelect: () => void;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "group/row flex items-center rounded-lg border transition-colors",
+        active
+          ? "border-brand/40 bg-brand/10"
+          : "border-transparent hover:border-border hover:bg-accent/50",
+      )}
+    >
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-pressed={active}
+        className="h-auto min-w-0 flex-1 justify-start rounded-lg px-2.5 py-1.5 text-left font-normal hover:bg-transparent"
+        onClick={onSelect}
+      >
+        <span className="flex w-full min-w-0 items-center gap-2">{children}</span>
+      </Button>
+      {actions && (
+        <span className={cn("flex shrink-0 items-center pr-1", !active && REVEAL_ON_HOVER.row)}>
+          {actions}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A column of the master/detail: a titled, bordered list. */
+function ListPanel({
+  title,
+  count,
+  addLabel,
+  onAdd,
+  children,
+}: {
+  title: string;
+  count?: number;
+  addLabel: string;
+  onAdd?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card/30">
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border pl-3 pr-1.5">
+        <span className={MICRO_HEADING}>
+          {title}
+          {count !== undefined && <span className="ml-1.5 font-normal">{count}</span>}
+        </span>
+        {onAdd && <IconButton size="xs" icon={Plus} label={addLabel} onClick={onAdd} />}
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5">{children}</div>
+    </div>
+  );
 }
 
 function RuleEditor({
@@ -134,8 +202,17 @@ function RuleEditor({
 }) {
   const { t } = useTranslation();
   const active = useConnections((s) => s.active);
-  const profile = connectionFor(rule.endpoint, profiles, active);
-  const catalog = useCatalog(profile, rule.databases);
+  const connecting = useConnections((s) => s.connecting);
+  const match = profileFor(rule.endpoint, profiles);
+  const open = match && active.has(match.id) ? match : undefined;
+  const catalog = useCatalog(open, rule.databases);
+  const source = open?.name;
+  const noCatalogHint =
+    rule.endpoint === "*"
+      ? t("policyEditor.rule.noCatalogAny")
+      : match
+        ? t("policyEditor.rule.noCatalogClosed", { name: match.name })
+        : t("policyEditor.rule.noCatalogManual");
   const patch = (p: Partial<RuleJson>) => {
     const next: RuleJson = { ...rule, ...p };
     for (const k of Object.keys(p) as (keyof RuleJson)[]) {
@@ -150,75 +227,100 @@ function RuleEditor({
     if (r.deny && r.deny.length > 0) clean.deny = r.deny;
     patch({ relations: Object.keys(clean).length > 0 ? clean : undefined });
   };
+  const sqlite = open?.driver === "sqlite" || (rule.endpoint !== "*" && rule.endpoint.path !== undefined);
 
   return (
-    <div className="grid gap-4">
-      <EndpointField
-        value={rule.endpoint}
-        profiles={profiles}
-        readOnly={readOnly}
-        onChange={(endpoint) => patch({ endpoint })}
-      />
-      {rule.endpoint !== "*" && !profile && (
-        <p className="text-3xs text-muted-foreground">
-          {t("policyEditor.rule.noCatalog")}
-        </p>
-      )}
-      <PatternListField
-        id="policy-rule-databases"
-        label={t("policyEditor.rule.databases")}
-        allLabel={t("policyEditor.rule.allDatabases")}
-        value={rule.databases}
-        suggestions={catalog.databases}
-        readOnly={readOnly}
-        onChange={(databases) => patch({ databases })}
-      />
-      <PatternListField
-        id="policy-rule-allow"
-        label={t("policyEditor.rule.allow")}
-        hint={t("policyEditor.rule.allowHint")}
-        allLabel={t("policyEditor.rule.allRelations")}
-        value={relations.allow}
-        suggestions={catalog.relations}
-        readOnly={readOnly}
-        onChange={(allow) => setRelations({ ...relations, allow })}
-      />
-      <PatternListField
-        id="policy-rule-deny"
-        label={t("policyEditor.rule.deny")}
-        hint={t("policyEditor.rule.denyHint")}
-        value={relations.deny ?? []}
-        suggestions={catalog.relations}
-        readOnly={readOnly}
-        onChange={(deny) => setRelations({ ...relations, deny: deny ?? [] })}
-      />
-      <PermissionGrid
-        human={rule.human ?? []}
-        ai={rule.ai ?? []}
-        readOnly={readOnly}
-        onChange={({ human, ai }) => patch({ human, ai })}
-      />
-      <Field
-        label={t("policyEditor.rule.dbUser")}
-        hint={
-          rule.dbUser?.trim()
-            ? t("policyEditor.rule.dbUserExample", {
-                account: exampleUser,
-                user: expandDbUser(rule.dbUser, exampleUser),
-              })
-            : t("policyEditor.rule.dbUserHint")
-        }
-      >
-        <Input
-          size="sm"
-          className="font-mono"
-          aria-label={t("policyEditor.rule.dbUser")}
-          placeholder="{user}"
+    <div className="grid max-w-3xl gap-6">
+      <FieldGroup title={t("policyEditor.rule.groupWhere")}>
+        <EndpointField
+          value={rule.endpoint}
+          profiles={profiles}
           readOnly={readOnly}
-          value={rule.dbUser ?? ""}
-          onChange={(e) => patch({ dbUser: e.target.value === "" ? undefined : e.target.value })}
+          active={!!open}
+          connecting={!!match && connecting.has(match.id)}
+          onConnect={(id) => void connectAndWarm(id)}
+          onChange={(endpoint) => patch({ endpoint })}
         />
-      </Field>
+      </FieldGroup>
+
+      <FieldGroup title={t("policyEditor.rule.groupWhat")}>
+        {!sqlite && (
+          <NamePicker
+            label={t("policyEditor.rule.databases")}
+            allLabel={t("policyEditor.rule.allDatabases")}
+            allExplain={t("policyEditor.rule.allDatabasesExplain")}
+            emptyLabel={t("policyEditor.rule.noDatabases")}
+            emptyIsWarning
+            value={rule.databases}
+            catalog={catalog.databases}
+            catalogLoading={catalog.loading && catalog.databases === null}
+            catalogSource={source}
+          noCatalogHint={noCatalogHint}
+            readOnly={readOnly}
+            onChange={(databases) => patch({ databases })}
+          />
+        )}
+        <NamePicker
+          label={t("policyEditor.rule.allow")}
+          hint={t("policyEditor.rule.allowHint")}
+          allLabel={t("policyEditor.rule.allRelations")}
+          allExplain={t("policyEditor.rule.allRelationsExplain")}
+          emptyLabel={t("policyEditor.rule.noRelations")}
+          emptyIsWarning
+          value={relations.allow}
+          catalog={catalog.relations}
+          catalogLoading={catalog.loading && catalog.relations === null}
+          catalogSource={source}
+          noCatalogHint={noCatalogHint}
+          readOnly={readOnly}
+          onChange={(allow) => setRelations({ ...relations, allow })}
+        />
+        <NamePicker
+          label={t("policyEditor.rule.deny")}
+          hint={t("policyEditor.rule.denyHint")}
+          emptyLabel={t("policyEditor.rule.noDeny")}
+          value={relations.deny ?? []}
+          catalog={catalog.relations}
+          catalogLoading={catalog.loading && catalog.relations === null}
+          catalogSource={source}
+          noCatalogHint={noCatalogHint}
+          readOnly={readOnly}
+          onChange={(deny) => setRelations({ ...relations, deny: deny ?? [] })}
+        />
+      </FieldGroup>
+
+      <FieldGroup title={t("policyEditor.rule.groupCan")}>
+        <PermissionGrid
+          human={rule.human ?? []}
+          ai={rule.ai ?? []}
+          readOnly={readOnly}
+          onChange={({ human, ai }) => patch({ human, ai })}
+        />
+      </FieldGroup>
+
+      <FieldGroup title={t("policyEditor.rule.groupAs")}>
+        <Field
+          label={t("policyEditor.rule.dbUser")}
+          hint={
+            rule.dbUser?.trim()
+              ? t("policyEditor.rule.dbUserExample", {
+                  account: exampleUser,
+                  user: expandDbUser(rule.dbUser, exampleUser),
+                })
+              : t("policyEditor.rule.dbUserHint")
+          }
+        >
+          <Input
+            size="sm"
+            className="max-w-sm font-mono"
+            aria-label={t("policyEditor.rule.dbUser")}
+            placeholder="{user}"
+            readOnly={readOnly}
+            value={rule.dbUser ?? ""}
+            onChange={(e) => patch({ dbUser: e.target.value === "" ? undefined : e.target.value })}
+          />
+        </Field>
+      </FieldGroup>
     </div>
   );
 }
@@ -244,6 +346,7 @@ export function RolesPane({
   const selected = role && roles.includes(role) ? role : (roles[0] ?? null);
   const rules = selected ? rulesOf(doc, selected) : [];
   const rule = rules[Math.min(ruleIndex, rules.length - 1)];
+  const anyLabel = t("policyEditor.rule.endpointAny");
 
   const commitRename = () => {
     if (renaming && newName.trim() && newName !== renaming) {
@@ -253,13 +356,37 @@ export function RolesPane({
     setRenaming(null);
   };
 
+  const addNewRole = () => {
+    let n = 1;
+    while (roleNames(doc).includes(`role${n}`)) n += 1;
+    onChange(addRole(doc, `role${n}`));
+    setRole(`role${n}`);
+    setRuleIndex(0);
+    setRenaming(`role${n}`);
+    setNewName(`role${n}`);
+  };
+
+  /** "2 databases · select, insert" — what a rule grants, at a glance. */
+  const summary = (r: RuleJson) => {
+    const dbs =
+      r.databases === undefined
+        ? t("policyEditor.rules.allDbs")
+        : t("policyEditor.rules.dbCount", { count: r.databases.length });
+    const human = r.human ?? [];
+    return `${dbs} · ${human.length > 0 ? human.join(", ") : t("policyEditor.rules.nothing")}`;
+  };
+
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[200px_220px_minmax(0,1fr)] gap-4 overflow-hidden">
-      {/* Roles */}
-      <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
-        <span className="text-3xs uppercase tracking-wider text-muted-foreground">
-          {t("policyEditor.roles.title")}
-        </span>
+    <div className="grid min-h-0 flex-1 grid-cols-[210px_250px_minmax(0,1fr)] gap-3 overflow-hidden">
+      <ListPanel
+        title={t("policyEditor.roles.title")}
+        count={roles.length}
+        addLabel={t("policyEditor.roles.add")}
+        onAdd={readOnly ? undefined : addNewRole}
+      >
+        {roles.length === 0 && (
+          <p className="px-2 py-1.5 text-2xs text-muted-foreground">{t("policyEditor.roles.none")}</p>
+        )}
         {roles.map((r) =>
           renaming === r ? (
             <Input
@@ -276,115 +403,111 @@ export function RolesPane({
               }}
             />
           ) : (
-            <div key={r} className="group flex items-center">
-              <TreeRow
-                className={cn("flex-1 gap-2 px-2", r === selected && "bg-accent")}
-                onClick={() => {
-                  setRole(r);
-                  setRuleIndex(0);
-                }}
-              >
-                <span className="min-w-0 flex-1 truncate text-left text-xs">{r}</span>
-                <span className="text-3xs text-muted-foreground">
-                  {rulesOf(doc, r).length}
-                </span>
-              </TreeRow>
-              {!readOnly && (
-                <>
-                  <IconButton
-                    size="xs"
-                    icon={Pencil}
-                    label={t("policyEditor.roles.rename")}
-                    onClick={() => {
-                      setRenaming(r);
-                      setNewName(r);
-                    }}
-                  />
-                  <IconButton
-                    size="xs"
-                    icon={Trash2}
-                    label={
-                      canRemoveRole(doc, r)
-                        ? t("policyEditor.roles.remove")
-                        : t("policyEditor.roles.inUse")
-                    }
-                    disabled={!canRemoveRole(doc, r)}
-                    onClick={() => onChange(removeRole(doc, r))}
-                  />
-                </>
-              )}
-            </div>
+            <PickItem
+              key={r}
+              active={r === selected}
+              onSelect={() => {
+                setRole(r);
+                setRuleIndex(0);
+              }}
+              actions={
+                !readOnly && (
+                  <>
+                    <IconButton
+                      size="xs"
+                      icon={Pencil}
+                      label={t("policyEditor.roles.rename")}
+                      onClick={() => {
+                        setRenaming(r);
+                        setNewName(r);
+                      }}
+                    />
+                    <IconButton
+                      size="xs"
+                      icon={Trash2}
+                      tone="destructive"
+                      label={
+                        canRemoveRole(doc, r)
+                          ? t("policyEditor.roles.remove")
+                          : t("policyEditor.roles.inUse")
+                      }
+                      disabled={!canRemoveRole(doc, r)}
+                      onClick={async () => {
+                        const count = rulesOf(doc, r).length;
+                        const ok = await confirmDestructive(
+                          t("policyEditor.roles.confirmRemove", { role: r, count }),
+                        );
+                        if (ok) onChange(removeRole(doc, r));
+                      }}
+                    />
+                  </>
+                )
+              }
+            >
+              <span className="min-w-0 flex-1 truncate text-xs">{r}</span>
+              <span className="shrink-0 text-3xs tabular-nums text-muted-foreground">
+                {rulesOf(doc, r).length}
+              </span>
+            </PickItem>
           ),
         )}
-        {!readOnly && (
-          <Button
-            size="xs"
-            variant="ghost"
-            icon={Plus}
-            className="justify-start"
-            onClick={() => {
-              let n = 1;
-              while (roleNames(doc).includes(`role${n}`)) n += 1;
-              onChange(addRole(doc, `role${n}`));
-              setRole(`role${n}`);
-              setRenaming(`role${n}`);
-              setNewName(`role${n}`);
-            }}
-          >
-            {t("policyEditor.roles.add")}
-          </Button>
-        )}
-      </div>
+      </ListPanel>
 
-      {/* Rules of the role */}
-      <div className="flex min-h-0 flex-col gap-1 overflow-y-auto border-l border-border pl-4">
-        <span className="text-3xs uppercase tracking-wider text-muted-foreground">
-          {t("policyEditor.rules.title")}
-        </span>
+      <ListPanel
+        title={t("policyEditor.rules.title")}
+        count={selected ? rules.length : undefined}
+        addLabel={t("policyEditor.rules.add")}
+        onAdd={
+          selected && !readOnly
+            ? () => {
+                onChange(setRules(doc, selected, [...rules, newRule()]));
+                setRuleIndex(rules.length);
+              }
+            : undefined
+        }
+      >
         {selected && rules.length === 0 && (
-          <p className="text-2xs text-muted-foreground">{t("policyEditor.rules.none")}</p>
+          <p className="px-2 py-1.5 text-2xs text-muted-foreground">{t("policyEditor.rules.none")}</p>
         )}
         {rules.map((r, i) => (
-          <div key={i} className="group flex items-center">
-            <TreeRow
-              className={cn("flex-1 gap-2 px-2", i === ruleIndex && "bg-accent")}
-              onClick={() => setRuleIndex(i)}
-            >
-              <span className="min-w-0 flex-1 truncate text-left font-mono text-2xs">
-                {endpointLabel(r.endpoint, t("policyEditor.rule.endpointAny"))}
-              </span>
-            </TreeRow>
-            {!readOnly && (
-              <IconButton
-                size="xs"
-                icon={Trash2}
-                label={t("policyEditor.rules.remove")}
-                onClick={() => {
-                  onChange(setRules(doc, selected!, rules.filter((_, j) => j !== i)));
-                  setRuleIndex(Math.max(0, i - 1));
-                }}
-              />
-            )}
-          </div>
-        ))}
-        {selected && !readOnly && (
-          <Button
-            size="xs"
-            variant="ghost"
-            icon={Plus}
-            className="justify-start"
-            onClick={() => {
-              onChange(setRules(doc, selected, [...rules, newRule()]));
-              setRuleIndex(rules.length);
-            }}
+          <PickItem
+            key={i}
+            active={i === ruleIndex}
+            onSelect={() => setRuleIndex(i)}
+            actions={
+              !readOnly && (
+                <IconButton
+                  size="xs"
+                  icon={Trash2}
+                  tone="destructive"
+                  label={t("policyEditor.rules.remove")}
+                  onClick={async () => {
+                    const ok = await confirmDestructive(
+                      t("policyEditor.rules.confirmRemove", {
+                        rule: endpointLabel(r.endpoint, profiles, anyLabel),
+                        role: selected!,
+                        grants: summary(r),
+                      }),
+                    );
+                    if (!ok) return;
+                    onChange(setRules(doc, selected!, rules.filter((_, j) => j !== i)));
+                    setRuleIndex(Math.max(0, i - 1));
+                  }}
+                />
+              )
+            }
           >
-            {t("policyEditor.rules.add")}
-          </Button>
-        )}
-      </div>
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
+              <span className="truncate text-xs">
+                {endpointLabel(r.endpoint, profiles, anyLabel)}
+              </span>
+              <span className="truncate text-3xs text-muted-foreground">{summary(r)}</span>
+            </span>
+          </PickItem>
+        ))}
+      </ListPanel>
 
-      {/* The rule */}
-      <div className="min-h-0 overflow-y-auto border-l border-border pl-4 pr-1">
+      <div className="min-h-0 overflow-y-auto rounded-lg border border-border px-5 py-4">
         {selected && rule ? (
           <RuleEditor
             key={`${selected}:${ruleIndex}`}
