@@ -14,6 +14,11 @@
  * by the parser that applies the policy (`policy_validate`, debounced), which
  * is also what the save refuses to skip.
  *
+ * Mounted in `App` by `PolicyEditorHost`, as a sibling of Settings rather than
+ * inside Settings → Policy: two stacked workbenches trap focus in whichever
+ * mounted last. Opening it puts Settings aside and closing it gives Settings
+ * back on the Policy section (`stores/dialogs/policyEditor.ts`).
+ *
  * Same skeleton as the shared-origin editor (`OriginEditorOverlay`): a
  * `workbench` dialog, a rail of panes, the draft local to the dialog, a
  * confirmation that says what changes, and a conflict that keeps the user's
@@ -66,6 +71,7 @@ import {
 } from "@/lib/policy/draft";
 import { api } from "@/lib/tauri";
 import { useDebouncedPreview } from "@/lib/useDebouncedPreview";
+import { usePolicyEditor } from "@/stores/dialogs/policyEditor";
 import { cn } from "@/lib/utils";
 import type {
   CreatedPolicy,
@@ -83,6 +89,14 @@ const PANES: { id: Pane; icon: typeof Users }[] = [
   { id: "json", icon: Braces },
 ];
 
+/** The editor as `App` mounts it: open while `usePolicyEditor` holds a status. */
+export function PolicyEditorHost() {
+  const status = usePolicyEditor((s) => s.status);
+  const close = usePolicyEditor((s) => s.close);
+  if (!status) return null;
+  return <PolicyEditorDialog open status={status} onOpenChange={(next) => !next && close()} />;
+}
+
 export function PolicyEditorDialog({
   open,
   onOpenChange,
@@ -93,8 +107,9 @@ export function PolicyEditorDialog({
   onOpenChange: (open: boolean) => void;
   /** For the current account (the template's author, "your role changes"). */
   status: PolicyStatus;
-  /** After a save or a create, so the panel re-reads the policy. */
-  onSaved: () => void;
+  /** After a save or a create. Optional: Settings → Policy re-reads the
+   *  status anyway when it comes back (`usePolicyEditor.close`). */
+  onSaved?: () => void;
 }) {
   const { t } = useTranslation();
   const [doc, setDoc] = useState<PolicyEditDoc | null>(null);
@@ -174,7 +189,7 @@ export function PolicyEditorDialog({
         const result = await api.policyCreate(createPath, text);
         setCreated(result);
         setConfirming(false);
-        onSaved();
+        onSaved?.();
         return;
       }
       const outcome = await api.policySave(text, doc.base?.sha256 ?? "");
@@ -193,7 +208,7 @@ export function PolicyEditorDialog({
       notify.success(t("policyEditor.saved"), {
         description: outcome.backup ? t("policyEditor.savedBackup") : undefined,
       });
-      onSaved();
+      onSaved?.();
       await load();
     } catch (e) {
       setSaveError(String(e));
