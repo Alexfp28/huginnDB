@@ -2,9 +2,11 @@
  * The shared-origin document editor (#155).
  *
  * A full-screen surface, mounted as a **sibling** of `SettingsDialog` rather
- * than inside it: opening it puts Settings aside (`useOriginEditor.open`), so
- * there is never a dialog trapping focus on top of another one, and closing it
- * brings Settings back on Origins when that is where it was opened from.
+ * than inside it: opening it puts aside whichever workbench it was opened from
+ * — Settings, or the connection manager — (`useOriginEditor.open`), so there is
+ * never a dialog trapping focus on top of another one, and closing it brings
+ * that surface back where it was: Settings on Origins, the manager on the
+ * connection whose "edit at origin" link was followed.
  *
  * The draft lives here, in local state, and that is the feature's first
  * invariant: it is a *document* being composed, never this machine's own state.

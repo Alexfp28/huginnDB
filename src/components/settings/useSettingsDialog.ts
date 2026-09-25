@@ -11,7 +11,9 @@
  * mounted last, so the editors are siblings of Settings (mounted in `App`),
  * never its children.
  * - Opening an editor calls `suspend()`, which closes Settings and remembers
- *   the section it was on.
+ *   the section it was on. It reports whether it did, so the origin editor —
+ *   which can also be opened from the connection dialog — knows which surface
+ *   to give back (`stores/dialogs/originEditor.ts`).
  * - Closing an editor calls `resume()`, which reopens Settings on that
  *   section, but only if `suspend()` was what closed it.
  *
@@ -57,15 +59,16 @@ interface SettingsDialogState {
   openAtPref: (section: SettingsSection, prefId: PrefId) => void;
   setOpen: (open: boolean) => void;
   /** Close Settings for a full-screen surface opened from it, remembering the
-   *  section. Does nothing when Settings is not open. */
-  suspend: () => void;
+   *  section. Does nothing when Settings is not open; returns whether it
+   *  closed it. */
+  suspend: () => boolean;
   /** Reopen Settings where `suspend` left it. Does nothing if it did not. */
   resume: () => void;
   setSection: (section: SettingsSection) => void;
   clearHighlight: () => void;
 }
 
-export const useSettingsDialog = create<SettingsDialogState>()((set) => ({
+export const useSettingsDialog = create<SettingsDialogState>()((set, get) => ({
   open: false,
   section: "general",
   highlightPrefId: null,
@@ -81,8 +84,12 @@ export const useSettingsDialog = create<SettingsDialogState>()((set) => ({
   openAtPref: (section, prefId) =>
     set({ open: true, section, highlightPrefId: prefId, suspendedAt: null }),
   setOpen: (open) => set({ open, suspendedAt: null }),
-  suspend: () =>
-    set((s) => (s.open ? { open: false, suspendedAt: s.section } : {})),
+  suspend: () => {
+    const { open, section } = get();
+    if (!open) return false;
+    set({ open: false, suspendedAt: section });
+    return true;
+  },
   resume: () =>
     set((s) =>
       s.suspendedAt

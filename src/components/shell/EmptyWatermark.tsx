@@ -9,19 +9,18 @@
  * command palette.
  */
 
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 
 import { WorkspacePicker } from "@/components/connection/WorkspacePicker";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
-import { ConnectionDialog } from "@/components/connection/dialogs/ConnectionDialog";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { isMainWindow } from "@/lib/window";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
+import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
 import { useEnvironments } from "@/stores/session/environments";
@@ -55,7 +54,9 @@ export function EmptyWatermark() {
   const showEnvironments = isMainWindow() && environments.length > 1;
   const showPicker = hasProfiles || showEnvironments;
 
-  const [connDialogOpen, setConnDialogOpen] = useState(false);
+  // The File menu's manager, not a dialog of our own: a private instance was
+  // out of reach of the store, so the origin editor could not put it aside.
+  const openNewConnection = useConnectionDialog((s) => s.openNew);
   const togglePalette = useCommandPalette((s) => s.toggle);
   const openSettings = useSettingsDialog((s) => s.openAt);
   const paletteCombo = usePreferences((s) =>
@@ -139,7 +140,7 @@ export function EmptyWatermark() {
             </div>
           </>
         ) : (
-          <Button className="gap-1.5" onClick={() => setConnDialogOpen(true)}>
+          <Button className="gap-1.5" onClick={() => openNewConnection()}>
             <Plus className="h-4 w-4" />
             {t("menu.file.newConnection")}
           </Button>
@@ -168,12 +169,6 @@ export function EmptyWatermark() {
           {t("settings.title")}
         </button>
       </div>
-
-      <ConnectionDialog
-        open={connDialogOpen}
-        onOpenChange={setConnDialogOpen}
-        initial={null}
-      />
     </div>
   );
 }

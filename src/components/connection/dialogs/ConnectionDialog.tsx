@@ -75,6 +75,7 @@ import { originScope } from "@/lib/origins/scope";
 import { PersonalCredentialsNotice } from "@/components/connection/PersonalCredentialsNotice";
 import { SecretOverrideNotice } from "@/components/connection/SecretOverrideNotice";
 import { notify } from "@/lib/notify";
+import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useOriginEditor } from "@/stores/dialogs/originEditor";
 import { useOriginRepublish } from "@/stores/dialogs/originRepublish";
 import { useOriginName, useOrigins } from "@/stores/sync/origins";
@@ -240,6 +241,14 @@ export function ConnectionDialog({
     if (!open) return;
     setEditingId(initial?.id ?? null);
   }, [open, initial]);
+
+  // Tell the store which profile is on screen, so a full-screen editor opened
+  // from here (the origin editor) can put the manager aside and bring it back
+  // on this profile rather than the one it was opened on (gotcha #101).
+  const reportFocus = useConnectionDialog((s) => s.focus);
+  useEffect(() => {
+    if (open) reportFocus(editingId);
+  }, [open, editingId, reportFocus]);
 
   // Load the editor whenever the selection changes. We read the profile list
   // imperatively (rather than depending on `profiles`) so that a save/delete
@@ -735,7 +744,9 @@ export function ConnectionDialog({
                         consumer at an editor that will open read-only is worse
                         than saying nothing. `canEditInPlace` already covers
                         every case this could show for, since it implies
-                        `originIsPublished`. */}
+                        `originIsPublished`. Opening the editor puts this
+                        manager aside, and closing it reopens the manager on
+                        this profile (`useOriginEditor`, gotcha #101). */}
                       {canEditInPlace && stored?.origin_id && (
                         <button
                           className="ml-1 underline"
