@@ -34,6 +34,15 @@ const TONE = {
   brand: "hover:bg-brand/10 hover:text-brand",
 } as const;
 
+/** The edge follows the tone under the pointer. Kept apart from `TONE` because
+ *  a `flat` button must not grow one back: `className` is merged last, so an
+ *  edge colour here would beat the variant's `hover:border-transparent`. */
+const TONE_EDGE: Record<keyof typeof TONE, string> = {
+  quiet: "",
+  destructive: "hover:border-destructive/40",
+  brand: "hover:border-brand/40",
+};
+
 export interface IconButtonProps extends Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "children" | "title"
@@ -51,6 +60,14 @@ export interface IconButtonProps extends Omit<
   revealOnHover?: keyof typeof REVEAL_ON_HOVER;
   /** Swap the icon for a spinner and disable the button. */
   loading?: boolean;
+  /**
+   * Drop the hairline edge. Defaults to on for `revealOnHover` — a row action
+   * that only appears under the pointer is dense chrome by definition, and
+   * three outlined squares per row is what turns a list into a grid of boxes.
+   * Pass it for the other places a second outline would be a box inside a box:
+   * inside a chip, inside an input, in a list row.
+   */
+  flat?: boolean;
   /**
    * Emit a native `title=` instead of the themed tooltip. The escape hatch for
    * the one place it is correct: inside open menu content (a `DropdownMenuItem`,
@@ -70,23 +87,27 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       side,
       revealOnHover,
       loading = false,
+      flat,
       nativeTitle = false,
       className,
       ...props
     },
     ref,
   ) => {
+    const isFlat = flat ?? revealOnHover !== undefined;
     const button = (
       <Button
         ref={ref}
         variant="quiet"
         size={size === "xs" ? "icon-xs" : "icon-sm"}
+        flat={isFlat}
         icon={icon}
         loading={loading}
         aria-label={label}
         title={nativeTitle ? label : undefined}
         className={cn(
           TONE[tone],
+          !isFlat && TONE_EDGE[tone],
           revealOnHover && REVEAL_ON_HOVER[revealOnHover],
           className,
         )}

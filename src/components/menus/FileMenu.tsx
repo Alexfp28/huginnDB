@@ -111,6 +111,7 @@ export function FileMenu({ selectedConnectionId, onSelect }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
+            flat
             variant="ghost"
             size="sm"
             className="h-7 gap-1.5 px-2 text-xs"

@@ -105,12 +105,14 @@ export function SavedQueriesPanel({
               </div>
               <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                 <IconButton
+                  flat
                   size="xs"
                   icon={Play}
                   label={t("saved.openInTab")}
                   onClick={() => runQuery(q)}
                 />
                 <IconButton
+                  flat
                   size="xs"
                   icon={Pencil}
                   label={t("saved.edit")}
@@ -120,6 +122,7 @@ export function SavedQueriesPanel({
                   }}
                 />
                 <IconButton
+                  flat
                   size="xs"
                   icon={Trash2}
                   label={t("saved.delete")}

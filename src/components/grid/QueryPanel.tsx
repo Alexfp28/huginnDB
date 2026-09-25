@@ -744,6 +744,7 @@ function ProjectionEditor({
                 >
                   {f}
                   <IconButton
+                    flat
                     size="xs"
                     icon={X}
                     label={t("tableData.query.removeField", { field: f })}

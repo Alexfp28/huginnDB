@@ -552,6 +552,7 @@ export function GridToolbar({
               <span className="flex items-center gap-0.5 rounded-full border border-border bg-muted/40 py-0.5 pl-1 pr-1 font-mono text-2xs">
                 <SimpleTooltip label={c.editLabel}>
                   <Button
+                    flat
                     variant="ghost"
                     size="xs"
                     className="h-4 max-w-[24rem] rounded-full px-1 font-mono text-2xs hover:bg-transparent hover:text-foreground"
@@ -561,6 +562,7 @@ export function GridToolbar({
                   </Button>
                 </SimpleTooltip>
                 <IconButton
+                  flat
                   size="xs"
                   icon={X}
                   label={c.removeLabel}

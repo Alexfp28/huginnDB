@@ -419,6 +419,7 @@ function ModelPicker({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          flat
           variant="quiet"
           size="xs"
           className="h-auto min-w-0 gap-1 px-1 py-0.5 text-2xs font-normal"

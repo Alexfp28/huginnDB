@@ -142,6 +142,7 @@ function PickItem({
       )}
     >
       <Button
+        flat
         variant="ghost"
         size="xs"
         aria-pressed={active}
@@ -414,6 +415,7 @@ export function RolesPane({
                 !readOnly && (
                   <>
                     <IconButton
+                      flat
                       size="xs"
                       icon={Pencil}
                       label={t("policyEditor.roles.rename")}
@@ -423,6 +425,7 @@ export function RolesPane({
                       }}
                     />
                     <IconButton
+                      flat
                       size="xs"
                       icon={Trash2}
                       tone="destructive"
@@ -477,6 +480,7 @@ export function RolesPane({
             actions={
               !readOnly && (
                 <IconButton
+                  flat
                   size="xs"
                   icon={Trash2}
                   tone="destructive"

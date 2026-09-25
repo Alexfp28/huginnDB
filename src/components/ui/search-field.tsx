@@ -84,6 +84,7 @@ export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
         />
         {onClear && value && (
           <IconButton
+            flat
             size="xs"
             icon={X}
             label={clearLabel}

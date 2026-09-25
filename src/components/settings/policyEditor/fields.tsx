@@ -415,6 +415,7 @@ function Chip({
       <span className="truncate">{name}</span>
       {onRemove && (
         <IconButton
+          flat
           size="xs"
           icon={X}
           label={removeLabel}

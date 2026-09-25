@@ -152,6 +152,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   grupo; una política incrustada se pasa a un fichero igual. Ver el gotcha #100
   de `CLAUDE.md`.
 
+### Cambiado
+
+- **Ahora todos los botones tienen un borde visible.** Los botones de icono de
+  las barras y los botones `ghost` no se veían hasta pasar el ratón por
+  encima, así que una acción como Refrescar o Exportar parecía un icono suelto
+  junto a la rejilla. Todos llevan ahora un filete de 1 px sacado del color
+  del texto, no del token de borde del tema, para que siga viéndose en temas
+  de VS Code importados cuyo color de borde es casi invisible. Los botones
+  rellenos (Ejecutar, Guardar, Borrar) llevan un borde en un tono más oscuro
+  de su propio relleno y un brillo interior tenue, en lugar del antiguo
+  contorno de 2 px y la elevación al pasar el ratón. Las esquinas pasan a la
+  escala de `--radius`: 10 px a tamaño completo y 8 px en los botones densos
+  y de icono. Los controles densos se quedan planos a propósito: las acciones
+  de fila que aparecen al pasar el ratón, la cruz dentro de un chip de filtro
+  o de un buscador, los menús de la barra superior y los controles en línea.
+  Enmarcarlos sería meter una caja dentro de otra. `Button` e `IconButton`
+  aceptan para ello una prop tipada `flat`, que `revealOnHover` activa sola.
+
 ### Corregido
 
 - **«Editar en el origen» en el gestor de conexiones ya no apila encima el

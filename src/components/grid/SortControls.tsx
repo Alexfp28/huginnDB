@@ -76,6 +76,7 @@ export function SortChip({
     <span className="flex items-center gap-0.5 rounded-full border border-brand/40 bg-brand/10 py-0.5 pl-1 pr-1 font-mono text-2xs">
       <SimpleTooltip label={tip}>
         <Button
+          flat
           variant="ghost"
           size="xs"
           className="h-4 gap-1 rounded-full px-1 font-mono text-2xs hover:bg-transparent hover:text-foreground"
@@ -90,6 +91,7 @@ export function SortChip({
         </Button>
       </SimpleTooltip>
       <IconButton
+        flat
         size="xs"
         icon={X}
         label={t("dataGrid.sort.chipRemove", { field: spec.column })}
