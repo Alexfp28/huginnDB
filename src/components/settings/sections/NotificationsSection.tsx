@@ -23,6 +23,7 @@
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -187,23 +188,20 @@ export function NotificationsSection() {
         htmlFor="prefs-notifications-duration"
       >
         <div className="flex items-center gap-2">
-          <div className="flex gap-0.5 rounded-lg border border-border bg-background p-0.5">
-            {DURATION_PRESETS.map((ms) => (
-              <button
-                key={ms}
-                type="button"
-                onClick={() => update({ durationMs: ms })}
-                className={cn(
-                  "inline-flex h-[26px] items-center rounded-md px-2.5 font-mono text-2xs transition-colors",
-                  prefs.durationMs === ms
-                    ? "bg-brand font-semibold text-brand-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-              >
-                {ms === 0 ? "∞" : `${ms / 1000} s`}
-              </button>
-            ))}
-          </div>
+          {/* The value can be a custom number typed in the input beside it, in
+              which case no preset is selected — `Segmented` keeps the strip in
+              the Tab order anyway. Its options are strings, so the presets
+              round-trip through `String`/`Number`. */}
+          <Segmented
+            size="sm"
+            aria-label={t("settings.notifications.duration.label")}
+            value={String(prefs.durationMs)}
+            onValueChange={(v) => update({ durationMs: Number(v) })}
+            options={DURATION_PRESETS.map((ms) => ({
+              value: String(ms),
+              label: <span className="font-mono">{ms === 0 ? "∞" : `${ms / 1000} s`}</span>,
+            }))}
+          />
           <Input
             id="prefs-notifications-duration"
             type="number"

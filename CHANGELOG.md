@@ -173,6 +173,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A segmented control with nothing selected can be reached with Tab again.**
+  Segmented controls keep only their selected segment in the Tab order, so when
+  the current value matched none of the segments — a custom duration typed
+  next to the notification presets, for instance — every segment was skipped
+  and the whole strip was out of reach from the keyboard. The first segment now
+  takes the Tab stop when nothing is selected, as a radio group should, and the
+  arrow keys move from whichever segment has focus, carrying the focus with the
+  selection instead of leaving it behind. The notification duration presets in
+  Settings → Notifications now use this control rather than their own buttons,
+  so they are reachable and arrow-navigable too; they take its neutral raised
+  style in place of the brand-filled one.
+
 - **"Edit at origin" in the connection manager no longer stacks the origin
   editor on top of it.** The link a publisher gets on a connection their
   origin shares opened the full-screen origin editor while the connection

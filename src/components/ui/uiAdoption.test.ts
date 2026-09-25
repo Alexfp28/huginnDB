@@ -210,13 +210,12 @@ describe("raw <button> outside ui/", () => {
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
     "src/components/settings/sections/AppearanceSection.tsx": 1,
     "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
-    "src/components/settings/sections/NotificationsSection.tsx": 1,
     "src/components/settings/sections/ShortcutsSection.tsx": 1,
     "src/components/shell/TabSwitcher.tsx": 1,
     "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${70} in ${42} files`, () => {
+  it(`is down to ${69} in ${41} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -224,7 +223,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(70);
+    expect(total(BUDGET)).toBeLessThanOrEqual(69);
   });
 });
 
