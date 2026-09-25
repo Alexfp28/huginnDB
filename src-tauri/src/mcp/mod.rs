@@ -998,10 +998,12 @@ impl Huginn {
                     // The app answered, and the answer was a failure. Report it:
                     // re-running against a local pool could double-apply a write
                     // whose reply was merely lost. See `BridgeClient::call`.
+                    // `Bridged`, not a prefixed variant: the app already
+                    // rendered its error, prefix and all.
                     if audit {
                         AuditSink::new(&self.state).log(audit_entry(&request, Some(&message)));
                     }
-                    return Err(crate::error::AppError::InvalidInput(message));
+                    return Err(crate::error::AppError::Bridged(message));
                 }
                 Err(BridgeError::Unreachable(why)) => {
                     // The request never left this process — the app shut down,
@@ -3605,5 +3607,23 @@ mod tests {
         assert!(huginn
             .require_verbs("mongo-conn::db::shop", needs(StmtClass::Ddl))
             .is_err());
+    }
+
+    /// A failure the desktop app reports over the bridge must reach the MCP
+    /// client exactly as the sidecar's own no-app path would word it. The app
+    /// sends its `AppError` already rendered, prefix included; wrapping that
+    /// in `InvalidInput` again used to print `invalid input: invalid input: …`.
+    #[test]
+    fn a_bridged_error_reads_like_the_same_error_raised_locally() {
+        let local = crate::error::AppError::InvalidInput(
+            "\"payroll\" on connection \"Policy Test\" is not available to the AI".into(),
+        );
+        // What `bridge::server::handle` puts on the wire.
+        let wire = local.to_string();
+        let bridged = to_err(crate::error::AppError::Bridged(wire.clone()));
+
+        assert_eq!(bridged.message, to_err(local).message);
+        assert_eq!(bridged.message, wire);
+        assert!(!bridged.message.contains("invalid input: invalid input:"));
     }
 }

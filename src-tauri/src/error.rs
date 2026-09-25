@@ -153,6 +153,26 @@ pub enum AppError {
     /// Tauri window-management failure (e.g. creating a new window).
     #[error("window error: {0}")]
     Window(#[from] tauri::Error),
+
+    /// A failure the desktop app reported over the MCP bridge, carried to the
+    /// sidecar's client **verbatim**.
+    ///
+    /// The payload is not a detail to be prefixed: it is already a rendered
+    /// [`AppError`] — `bridge::server::handle` serialises the app-side error
+    /// with its `Display`, variant prefix included. Wrapping it in any other
+    /// variant (it used to be [`Self::InvalidInput`]) prints that prefix a
+    /// second time, so a policy refusal read `invalid input: invalid input:
+    /// …` through the bridge and `invalid input: …` on the sidecar's own
+    /// no-app path. Rendering it unchanged is what makes the two paths read
+    /// the same, and it keeps the [`TOO_MANY_CONNECTIONS_TAG`] /
+    /// [`MISSING_PASSWORD_TAG`] markers at the start of the string, where a
+    /// matcher expects them.
+    ///
+    /// Only constructed by the MCP sidecar, hence the allowance in builds
+    /// without the `mcp` feature.
+    #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+    #[error("{0}")]
+    Bridged(String),
 }
 
 /// Stable marker prefixed to every [`AppError::TooManyConnections`] message.
@@ -447,5 +467,26 @@ mod tests {
         let error: AppError = sqlx::Error::Io(io).into();
         assert!(!error.is_too_many_connections());
         assert!(matches!(error, AppError::Database(_)));
+    }
+
+    /// The bridge carries an app-side error as its rendered string, and the
+    /// sidecar rewraps it in `Bridged`. The rewrap must add nothing: a remote
+    /// `invalid input: X` surfaces as `invalid input: X`, and the markers the
+    /// frontend and callers match on stay at the start of the message.
+    #[test]
+    fn a_bridged_error_renders_the_remote_message_unchanged() {
+        assert_eq!(
+            AppError::Bridged("invalid input: X".into()).to_string(),
+            "invalid input: X"
+        );
+        for original in [
+            AppError::InvalidInput("X".into()),
+            AppError::NotFound("profile abc".into()),
+            AppError::TooManyConnections("server said so".into()),
+            AppError::MissingPassword("abc::huginn".into()),
+        ] {
+            let wire = original.to_string();
+            assert_eq!(AppError::Bridged(wire.clone()).to_string(), wire);
+        }
     }
 }
