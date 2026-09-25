@@ -154,6 +154,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **«Editar en el origen» en el gestor de conexiones ya no apila encima el
+  editor de orígenes.** El enlace que recibe quien publica un origen en una de
+  sus conexiones abría el editor de orígenes, a pantalla completa, con el
+  gestor de conexiones —también a pantalla completa— abierto debajo: la
+  combinación que atrapa el foco del teclado en el último de los dos que se
+  abrió. Ahora el gestor se aparta mientras el editor está abierto y vuelve en
+  la misma conexión al cerrarlo, guardando o sin guardar; lo mismo cuando el
+  aviso de republicación pasa un conflicto al editor. Los cambios sin guardar
+  del formulario del gestor no sobreviven al viaje: vuelve con la conexión tal
+  y como está guardada. El botón «Nueva conexión» del espacio de trabajo vacío
+  abre ahora el gestor del menú Archivo en lugar de una copia propia, que es lo
+  que permite al editor alcanzarlo, y conectar desde ahí selecciona la nueva
+  conexión, como ya hacía el menú. Ver el gotcha #101 de `CLAUDE.md`.
+
 - **Los errores del conector MCP ya no repiten su prefijo con la app
   abierta.** Con la aplicación de escritorio en marcha, el conector le delega
   el trabajo, y un rechazo volvía duplicado —`invalid input: invalid input:

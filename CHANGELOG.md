@@ -139,6 +139,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **"Edit at origin" in the connection manager no longer stacks the origin
+  editor on top of it.** The link a publisher gets on a connection their
+  origin shares opened the full-screen origin editor while the connection
+  manager, also full-screen, stayed open underneath — the pairing that traps
+  keyboard focus in whichever of the two opened last. The manager now steps
+  aside while the editor is open and comes back on the same connection when
+  it closes, saved or not; the same holds when the republish prompt hands a
+  conflict to the editor. The unsaved edits in the manager's form are not kept
+  across the trip: it reopens on the connection as it is saved. The empty
+  workspace's "New connection" button now opens the File menu's manager
+  instead of a private copy of it, which is what lets the editor reach it, and
+  connecting from there now selects the new connection as the menu already
+  did. See `CLAUDE.md` gotcha #101.
+
 - **Errors from the MCP connector no longer repeat their prefix when the app
   is open.** With the desktop app running, the connector hands its work to the
   app, and a refusal came back doubled — `invalid input: invalid input:

@@ -17,7 +17,7 @@ const status = { user: "alopez", state: "unmanaged" } as unknown as PolicyStatus
 
 beforeEach(() => {
   useSettingsDialog.setState({ open: false, section: "general", suspendedAt: null });
-  useOriginEditor.setState({ originId: null });
+  useOriginEditor.setState({ originId: null, returnTo: null });
   usePolicyEditor.setState({ status: null });
 });
 
