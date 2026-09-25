@@ -154,6 +154,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Al salir del editor de orígenes compartidos se vuelve a Ajustes.** Abrir el
+  editor desde Ajustes → Orígenes cerraba Ajustes, como debe ser: no se pueden
+  apilar dos diálogos a pantalla completa. Pero al salir del editor, guardando
+  o sin guardar, acababas en la ventana principal. Ahora Ajustes se aparta
+  mientras el editor está abierto y vuelve en Orígenes al cerrarlo. Si el
+  editor se abre desde el aviso «editar en el origen» de una conexión, Ajustes
+  sigue cerrado al salir. El nuevo editor de la política funciona igual. Ver el
+  gotcha #101 de `CLAUDE.md`.
+
 - **Una política gestionada ya no se rompe cinco minutos porque la carpeta
   compartida parpadee.** Una política en vigor que un instante no se podía
   leer —la carpeta no respondía, u otro equipo estaba sustituyendo el fichero

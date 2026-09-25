@@ -139,6 +139,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Leaving the shared-origin editor returns to Settings.** Opening the editor
+  from Settings → Origins closed Settings, as it should: two full-screen
+  dialogs must not be stacked. But leaving the editor, saved or not, then
+  dropped you on the main window. Settings now steps aside while the editor
+  is open and comes back on Origins when it closes. Opened from a
+  connection's "edit at origin" banner instead, the editor still leaves
+  Settings closed. The new policy editor works the same way. See `CLAUDE.md`
+  gotcha #101.
+
 - **A managed policy no longer breaks for five minutes because its share
   blinked.** A policy in force that could momentarily not be read — the share
   did not answer, or another machine was replacing the file at that instant —

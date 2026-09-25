@@ -2,8 +2,9 @@
  * The shared-origin document editor (#155).
  *
  * A full-screen surface, mounted as a **sibling** of `SettingsDialog` rather
- * than inside it: opening it closes Settings (`useOriginEditor.open`), so there
- * is never a dialog trapping focus on top of another one.
+ * than inside it: opening it puts Settings aside (`useOriginEditor.open`), so
+ * there is never a dialog trapping focus on top of another one, and closing it
+ * brings Settings back on Origins when that is where it was opened from.
  *
  * The draft lives here, in local state, and that is the feature's first
  * invariant: it is a *document* being composed, never this machine's own state.

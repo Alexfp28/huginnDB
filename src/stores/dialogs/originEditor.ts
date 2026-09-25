@@ -12,8 +12,11 @@
  * `origin_doc`'s first invariant forbids — a draft that leaks into (or reads
  * from) this machine's own `profiles.json` / `tab_state.json`.
  *
- * `open` closes the Settings dialog on the way in (`closeSettings`), because the
- * overlay is a full-screen sibling of it and not a dialog stacked on one.
+ * `open` puts the Settings dialog aside on the way in (`suspend`), because the
+ * overlay is a full-screen sibling of it, not a dialog stacked on one. `close`
+ * gives it back (`resume`): leaving the editor, saved or not, returns to
+ * Settings → Origins when that is where it was opened from. It used to leave
+ * the user on the main window.
  */
 
 import { create } from "zustand";
@@ -33,8 +36,11 @@ export const useOriginEditor = create<OriginEditorState>((set) => ({
   open: (originId) => {
     // Never a dialog on top of a dialog: this is a full-screen surface, and
     // Radix would trap focus in whichever mounted last.
-    useSettingsDialog.getState().setOpen(false);
+    useSettingsDialog.getState().suspend();
     set({ originId });
   },
-  close: () => set({ originId: null }),
+  close: () => {
+    set({ originId: null });
+    useSettingsDialog.getState().resume();
+  },
 }));

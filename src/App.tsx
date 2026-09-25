@@ -63,6 +63,7 @@ import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { TabSwitcher, useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { SettingsDialog } from "@/components/settings/dialogs/SettingsDialog";
 import { OriginEditorOverlay } from "@/components/origins/OriginEditorOverlay";
+import { PolicyEditorHost } from "@/components/settings/dialogs/PolicyEditorDialog";
 import { OriginRepublishDialog } from "@/components/origins/dialogs/OriginRepublishDialog";
 import { EnvironmentEditorDialog } from "@/components/connection/dialogs/EnvironmentEditorDialog";
 import { EnvironmentDeleteConfirmDialog } from "@/components/connection/dialogs/EnvironmentDeleteConfirmDialog";
@@ -560,10 +561,12 @@ export default function App() {
           </div>
         </header>
         <SettingsDialog />
-        {/* A sibling of Settings, not a child: the origin editor is a
-            full-screen surface, and `useOriginEditor.open` closes Settings on
-            the way in so focus is never trapped in two dialogs at once. */}
+        {/* Siblings of Settings, not children: both editors are full-screen
+            surfaces. Opening one puts Settings aside (`suspend`) so focus is
+            never trapped in two dialogs at once, and closing it brings
+            Settings back where it was (`resume`). */}
         <OriginEditorOverlay />
+        <PolicyEditorHost />
         {/* Raised by `ConnectionDialog` after a publisher corrects one of its
             own origin's connections, and mounted out here because connecting
             closes that dialog — see `stores/dialogs/originRepublish`. */}

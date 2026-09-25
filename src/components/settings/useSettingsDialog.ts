@@ -4,6 +4,19 @@
  * Lives in its own tiny store so `ViewMenu`, `ThemeMenu`, the keyboard
  * shortcut handler (`Ctrl/Cmd+,`), and the topbar button can all open the
  * dialog without prop-drilling through `App.tsx`.
+ *
+ * **A full-screen editor opened from Settings puts it aside, then gives it
+ * back.** Settings is a workbench dialog, and so are the shared-origin and
+ * policy editors. Stacking one workbench on another traps focus in whichever
+ * mounted last, so the editors are siblings of Settings (mounted in `App`),
+ * never its children.
+ * - Opening an editor calls `suspend()`, which closes Settings and remembers
+ *   the section it was on.
+ * - Closing an editor calls `resume()`, which reopens Settings on that
+ *   section, but only if `suspend()` was what closed it.
+ *
+ * So an editor reached from somewhere else (a connection's banner) leaves
+ * Settings closed on the way out, as it found it.
  */
 
 import { create } from "zustand";
@@ -36,10 +49,18 @@ interface SettingsDialogState {
    * once per request rather than every time that section is revisited.
    */
   highlightPrefId: PrefId | null;
+  /** The section to return to while a full-screen editor opened from Settings
+   *  has it put aside (`suspend`); `null` otherwise. */
+  suspendedAt: SettingsSection | null;
   openAt: (section?: SettingsSection) => void;
   /** Open `section` and highlight the row registered under `prefId`. */
   openAtPref: (section: SettingsSection, prefId: PrefId) => void;
   setOpen: (open: boolean) => void;
+  /** Close Settings for a full-screen surface opened from it, remembering the
+   *  section. Does nothing when Settings is not open. */
+  suspend: () => void;
+  /** Reopen Settings where `suspend` left it. Does nothing if it did not. */
+  resume: () => void;
   setSection: (section: SettingsSection) => void;
   clearHighlight: () => void;
 }
@@ -48,15 +69,26 @@ export const useSettingsDialog = create<SettingsDialogState>()((set) => ({
   open: false,
   section: "general",
   highlightPrefId: null,
+  suspendedAt: null,
+  // Any explicit open or close supersedes a pending return.
   openAt: (section) =>
     set((s) => ({
       open: true,
       section: section ?? s.section,
       highlightPrefId: null,
+      suspendedAt: null,
     })),
   openAtPref: (section, prefId) =>
-    set({ open: true, section, highlightPrefId: prefId }),
-  setOpen: (open) => set({ open }),
+    set({ open: true, section, highlightPrefId: prefId, suspendedAt: null }),
+  setOpen: (open) => set({ open, suspendedAt: null }),
+  suspend: () =>
+    set((s) => (s.open ? { open: false, suspendedAt: s.section } : {})),
+  resume: () =>
+    set((s) =>
+      s.suspendedAt
+        ? { open: true, section: s.suspendedAt, suspendedAt: null }
+        : {},
+    ),
   // Switching section by hand abandons any pending highlight: the user is
   // navigating somewhere else, and a stale flash on return would be noise.
   setSection: (section) => set({ section, highlightPrefId: null }),

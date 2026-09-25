@@ -4,8 +4,10 @@
  * the system policy folder) that decides what the AI may reach on each
  * connection, per role. This panel answers "who decided that, and what does it
  * say for me?": where the policy was read from, which account and role this
- * is, and what each connection allows. Nothing here edits the policy — it
- * lives where a standard user cannot write, on purpose.
+ * is, and what each connection allows. The panel itself edits nothing: "Edit
+ * policy" opens `PolicyEditorDialog`, a workbench of its own mounted beside
+ * Settings (`stores/dialogs/policyEditor.ts`), which saves only where the
+ * share accepts a write.
  *
  * Phase 1 applies the policy to the AI only (`docs/POLICY_ROADMAP.md`); what
  * people may do is shown for reference and labelled as such.
@@ -22,11 +24,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GrantScriptDialog } from "@/components/settings/dialogs/GrantScriptDialog";
-import { PolicyEditorDialog } from "@/components/settings/dialogs/PolicyEditorDialog";
 import { SearchField } from "@/components/ui/search-field";
 import { Segmented } from "@/components/ui/segmented";
 import { TreeRow } from "@/components/ui/tree-row";
 import { api } from "@/lib/tauri";
+import { usePolicyEditor } from "@/stores/dialogs/policyEditor";
 import { cn } from "@/lib/utils";
 import type { ConnectionPolicy, PolicyStatus, RulePolicy } from "@/types";
 
@@ -35,7 +37,7 @@ export function PolicySection() {
   const [status, setStatus] = useState<PolicyStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [grantsOpen, setGrantsOpen] = useState(false);
-  const [editorOpen, setEditorOpen] = useState(false);
+  const openEditor = usePolicyEditor((s) => s.open);
 
   const load = useCallback(() => {
     api
@@ -63,7 +65,7 @@ export function PolicySection() {
               variant="outline"
               size="sm"
               icon={FilePen}
-              onClick={() => setEditorOpen(true)}
+              onClick={() => openEditor(status)}
             >
               {status.state === "unmanaged"
                 ? t("policyEditor.openCreate")
@@ -86,14 +88,6 @@ export function PolicySection() {
           </Button>
         </div>
       </div>
-      {status && editorOpen && (
-        <PolicyEditorDialog
-          open={editorOpen}
-          onOpenChange={setEditorOpen}
-          status={status}
-          onSaved={load}
-        />
-      )}
       {status?.state === "active" && grantsOpen && (
         <GrantScriptDialog
           open={grantsOpen}
