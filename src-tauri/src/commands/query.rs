@@ -778,7 +778,17 @@ pub struct RowValue {
     /// columns). Used to detect columns that need special binding (see
     /// `insert_row`'s MySQL BIT handling). `None` when the frontend has no
     /// type information (safe default: no special handling).
-    #[serde(default)]
+    ///
+    /// Spelled `columnType` on the wire, with `column_type` accepted as an
+    /// alias. Tauri renames a command's *top-level* arguments from camelCase
+    /// but leaves the fields of a nested struct to serde, and a `RowValue`
+    /// always arrives nested (`values: Vec<RowValue>`, `setValues: …`). The
+    /// frontend sends `columnType`, so without the rename serde dropped it as
+    /// an unknown field and every hint read as `None`: a MongoDB insert or
+    /// duplicate wrote each field as a string (`string_to_bson`'s fallback
+    /// arm), SQL Server lost its binary `CONVERT`, and MySQL only kept `BIT`
+    /// working because of the catalogue fallback in `insert_row_inner`.
+    #[serde(default, rename = "columnType", alias = "column_type")]
     pub column_type: Option<String>,
 }
 
@@ -4123,6 +4133,44 @@ mod read_barrier_tests {
             .execute(&pool)
             .await
             .expect("the user's own write must not inherit query_only");
+    }
+}
+
+#[cfg(test)]
+mod row_value_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// The shape `src/lib/tauri.ts` actually sends. Tauri does not rename the
+    /// fields of a nested struct, so this is the spelling that has to work.
+    #[test]
+    fn row_value_reads_the_frontends_camel_case_type_hint() {
+        let rv: RowValue = serde_json::from_value(
+            json!({ "column": "atnId", "value": "5", "columnType": "long" }),
+        )
+        .unwrap();
+        assert_eq!(rv.column_type.as_deref(), Some("long"));
+    }
+
+    #[test]
+    fn row_value_still_accepts_the_snake_case_spelling() {
+        let rv: RowValue =
+            serde_json::from_value(json!({ "column": "b", "value": "1", "column_type": "BIT" }))
+                .unwrap();
+        assert_eq!(rv.column_type.as_deref(), Some("BIT"));
+    }
+
+    /// The bridge serializes a `RowValue` in one process and deserializes it
+    /// in another, so the hint must survive its own round trip.
+    #[test]
+    fn row_value_type_hint_survives_a_serde_round_trip() {
+        let rv = RowValue {
+            column: "ts".into(),
+            value: Some("1790338189273".into()),
+            column_type: Some("long".into()),
+        };
+        let back: RowValue = serde_json::from_value(serde_json::to_value(&rv).unwrap()).unwrap();
+        assert_eq!(back.column_type.as_deref(), Some("long"));
     }
 }
 
