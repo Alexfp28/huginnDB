@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { useThemeStore } from "@/stores/preferences/theme";
 import { monacoThemeId } from "@/lib/vscodeTheme";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ import {
   getMonacoPreviewColors,
 } from "@/lib/monaco/monaco-themes";
 import type { EditorPrefs } from "@/types";
+import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 
 export function EditorSection() {
@@ -47,174 +49,180 @@ export function EditorSection() {
   );
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-5">
       {/* Live-ish preview: a static SQL sample rendered with the chosen font,
           size, wrap and theme colours (no real Monaco — cheaper, no workers). */}
       <EditorPreview editor={editor} />
 
-      {/* Theme picker — One Dark Pro, GitHub, Monokai, Solarized, plus
-          the two Monaco built-ins. Defined in `lib/monaco-themes.ts`
-          and registered at app boot from `monaco-setup.ts`. */}
-      <PrefRow
-        label={t("settings.editor.theme")}
-        prefId="editor.theme"
-        htmlFor="prefs-editor-theme"
-      >
-        <Select
-          value={editor.theme}
-          onValueChange={(v) => updateEditor({ theme: v })}
+      <PrefGroup title={t("settings.rowGroups.themeType")}>
+        {/* Theme picker — One Dark Pro, GitHub, Monokai, Solarized, plus
+            the two Monaco built-ins. Defined in `lib/monaco-themes.ts`
+            and registered at app boot from `monaco-setup.ts`. */}
+        <PrefRow
+          label={t("settings.editor.theme")}
+          prefId="editor.theme"
+          htmlFor="prefs-editor-theme"
         >
-          <SelectTrigger id="prefs-editor-theme" className="h-8 w-56 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MONACO_THEME_OPTIONS.map((opt) => (
-              <SelectItem key={opt.id} value={opt.id} className="text-xs">
-                {opt.label}
-              </SelectItem>
-            ))}
-            {importedThemeOptions.map((opt) => (
-              <SelectItem key={opt.id} value={opt.id} className="text-xs">
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </PrefRow>
+          <Select
+            value={editor.theme}
+            onValueChange={(v) => updateEditor({ theme: v })}
+          >
+            <SelectTrigger id="prefs-editor-theme" className="h-8 w-56 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MONACO_THEME_OPTIONS.map((opt) => (
+                <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+              {importedThemeOptions.map((opt) => (
+                <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.fontFamily")}
-        prefId="editor.fontFamily"
-        htmlFor="prefs-editor-font-family"
-      >
-        <Input
-          id="prefs-editor-font-family"
-          value={editor.fontFamily}
-          onChange={(e) => updateEditor({ fontFamily: e.target.value })}
-          className="h-8 w-56 font-mono text-xs"
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.fontFamily")}
+          prefId="editor.fontFamily"
+          htmlFor="prefs-editor-font-family"
+        >
+          <Input
+            id="prefs-editor-font-family"
+            value={editor.fontFamily}
+            onChange={(e) => updateEditor({ fontFamily: e.target.value })}
+            className="h-8 w-56 font-mono text-xs"
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.fontSize")}
-        prefId="editor.fontSize"
-        htmlFor="prefs-editor-font-size"
-      >
-        <Input
-          id="prefs-editor-font-size"
-          type="number"
-          min={9}
-          max={32}
-          value={editor.fontSize}
-          onChange={(e) => {
-            const n = Number.parseInt(e.target.value, 10);
-            if (Number.isFinite(n) && n > 0) updateEditor({ fontSize: n });
-          }}
-          className="h-8 w-20 text-right font-mono text-xs"
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.fontSize")}
+          prefId="editor.fontSize"
+          htmlFor="prefs-editor-font-size"
+        >
+          <Input
+            id="prefs-editor-font-size"
+            type="number"
+            min={9}
+            max={32}
+            value={editor.fontSize}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n > 0) updateEditor({ fontSize: n });
+            }}
+            className="h-8 w-20 text-right font-mono text-xs"
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.tabSize")}
-        prefId="editor.tabSize"
-        htmlFor="prefs-editor-tab-size"
-      >
-        <Input
-          id="prefs-editor-tab-size"
-          type="number"
-          min={1}
-          max={8}
-          value={editor.tabSize}
-          onChange={(e) => {
-            const n = Number.parseInt(e.target.value, 10);
-            if (Number.isFinite(n) && n > 0) updateEditor({ tabSize: n });
-          }}
-          className="h-8 w-20 text-right font-mono text-xs"
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.tabSize")}
+          prefId="editor.tabSize"
+          htmlFor="prefs-editor-tab-size"
+        >
+          <Input
+            id="prefs-editor-tab-size"
+            type="number"
+            min={1}
+            max={8}
+            value={editor.tabSize}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n > 0) updateEditor({ tabSize: n });
+            }}
+            className="h-8 w-20 text-right font-mono text-xs"
+          />
+        </PrefRow>
+      </PrefGroup>
 
-      <PrefRow
-        label={t("settings.editor.wordWrap.label")}
-        prefId="editor.wordWrap"
-        description={t("settings.editor.wordWrap.desc")}
-      >
-        <Switch
-          checked={editor.wordWrap}
-          onCheckedChange={(v) => updateEditor({ wordWrap: v })}
-        />
-      </PrefRow>
+      <PrefGroup title={t("settings.rowGroups.display")}>
+        <PrefRow
+          label={t("settings.editor.wordWrap.label")}
+          prefId="editor.wordWrap"
+          description={t("settings.editor.wordWrap.desc")}
+        >
+          <Switch
+            checked={editor.wordWrap}
+            onCheckedChange={(v) => updateEditor({ wordWrap: v })}
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.minimap.label")}
-        prefId="editor.minimap"
-        description={t("settings.editor.minimap.desc")}
-      >
-        <Switch
-          checked={editor.minimap}
-          onCheckedChange={(v) => updateEditor({ minimap: v })}
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.minimap.label")}
+          prefId="editor.minimap"
+          description={t("settings.editor.minimap.desc")}
+        >
+          <Switch
+            checked={editor.minimap}
+            onCheckedChange={(v) => updateEditor({ minimap: v })}
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.lineNumbers")}
-        prefId="editor.lineNumbers"
-      >
-        <Switch
-          checked={editor.lineNumbers}
-          onCheckedChange={(v) => updateEditor({ lineNumbers: v })}
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.lineNumbers")}
+          prefId="editor.lineNumbers"
+        >
+          <Switch
+            checked={editor.lineNumbers}
+            onCheckedChange={(v) => updateEditor({ lineNumbers: v })}
+          />
+        </PrefRow>
+      </PrefGroup>
 
-      <PrefRow
-        label={t("settings.editor.formatOnPaste.label")}
-        prefId="editor.formatOnPaste"
-        description={t("settings.editor.formatOnPaste.desc")}
-      >
-        <Switch
-          checked={editor.formatOnPaste}
-          onCheckedChange={(v) => updateEditor({ formatOnPaste: v })}
-        />
-      </PrefRow>
+      <PrefGroup title={t("settings.rowGroups.formatting")}>
+        <PrefRow
+          label={t("settings.editor.formatOnPaste.label")}
+          prefId="editor.formatOnPaste"
+          description={t("settings.editor.formatOnPaste.desc")}
+        >
+          <Switch
+            checked={editor.formatOnPaste}
+            onCheckedChange={(v) => updateEditor({ formatOnPaste: v })}
+          />
+        </PrefRow>
 
-      {/* Auto-format on open, one switch per content type the app detects.
-          Three rows rather than one grouped control because they are three
-          independent wants — a column of JSON blobs is a different situation
-          from a column of XML — and because `PrefId` derives from the key
-          names, so three keys is what makes each of them individually
-          reachable from the command palette. `plaintext` is absent by
-          construction: there is nothing to format. */}
-      <PrefRow
-        label={t("settings.editor.autoFormatJson.label")}
-        prefId="editor.autoFormatJson"
-        description={t("settings.editor.autoFormatJson.desc")}
-      >
-        <Switch
-          checked={editor.autoFormatJson}
-          onCheckedChange={(v) => updateEditor({ autoFormatJson: v })}
-        />
-      </PrefRow>
+        {/* Auto-format on open, one switch per content type the app detects.
+            Three rows rather than one grouped control because they are three
+            independent wants — a column of JSON blobs is a different situation
+            from a column of XML — and because `PrefId` derives from the key
+            names, so three keys is what makes each of them individually
+            reachable from the command palette. `plaintext` is absent by
+            construction: there is nothing to format. */}
+        <PrefRow
+          label={t("settings.editor.autoFormatJson.label")}
+          prefId="editor.autoFormatJson"
+          description={t("settings.editor.autoFormatJson.desc")}
+        >
+          <Switch
+            checked={editor.autoFormatJson}
+            onCheckedChange={(v) => updateEditor({ autoFormatJson: v })}
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.autoFormatXml.label")}
-        prefId="editor.autoFormatXml"
-        description={t("settings.editor.autoFormatXml.desc")}
-      >
-        <Switch
-          checked={editor.autoFormatXml}
-          onCheckedChange={(v) => updateEditor({ autoFormatXml: v })}
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.autoFormatXml.label")}
+          prefId="editor.autoFormatXml"
+          description={t("settings.editor.autoFormatXml.desc")}
+        >
+          <Switch
+            checked={editor.autoFormatXml}
+            onCheckedChange={(v) => updateEditor({ autoFormatXml: v })}
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.editor.autoFormatSql.label")}
-        prefId="editor.autoFormatSql"
-        description={t("settings.editor.autoFormatSql.desc")}
-      >
-        <Switch
-          checked={editor.autoFormatSql}
-          onCheckedChange={(v) => updateEditor({ autoFormatSql: v })}
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.editor.autoFormatSql.label")}
+          prefId="editor.autoFormatSql"
+          description={t("settings.editor.autoFormatSql.desc")}
+        >
+          <Switch
+            checked={editor.autoFormatSql}
+            onCheckedChange={(v) => updateEditor({ autoFormatSql: v })}
+          />
+        </PrefRow>
+      </PrefGroup>
     </div>
   );
 }
@@ -250,8 +258,8 @@ function EditorPreview({ editor }: { editor: EditorPrefs }) {
   const c = getMonacoPreviewColors(editor.theme);
   const colorFor = (kind?: Tok["kind"]) => (kind ? c[kind] : c.foreground);
   return (
-    <div className="mb-3">
-      <div className="mb-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
+    <div>
+      <div className={cn(MICRO_HEADING, "mb-2 px-0.5")}>
         {t("settings.editor.preview")}
       </div>
       <div

@@ -280,12 +280,11 @@ export function JsonSchemasSection() {
 
   return (
     <div className="space-y-4">
-      <header className="space-y-1">
-        <h3 className="text-sm font-semibold">{t("jsonSchemas.title")}</h3>
-        <p className="text-xs text-muted-foreground">
-          {t("jsonSchemas.description")}
-        </p>
-      </header>
+      {/* The title comes from the dialog's section header; this keeps only
+          the explanation, which says more than the rail's one-liner. */}
+      <p className="text-xs text-muted-foreground">
+        {t("jsonSchemas.description")}
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button

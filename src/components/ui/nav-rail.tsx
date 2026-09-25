@@ -3,13 +3,19 @@ import { cn } from "@/lib/utils";
 import { CONTROL_FOCUS_TIGHT } from "@/components/ui/styles";
 
 /**
- * One entry of a workbench's left rail: icon, a label and a one-line
- * description, full width, with the active entry marked by a 2px edge.
+ * One entry of a workbench's left rail: icon, a label and an optional one-line
+ * description, with the active entry drawn as a brand-tinted pill.
  *
  * Settings and the shared-origin editor each wrote this out by hand, and the
- * policy editor's third copy, made from `Button`, drifted: rounded corners, an
- * inset, and a hover that no longer lined up with the other two. One primitive
- * keeps the three rails the same rail.
+ * policy editor's third copy, made from `Button`, drifted. One primitive keeps
+ * the three rails the same rail — which is why the pill look, when Settings
+ * moved to it, moved all three at once rather than Settings alone. The rail
+ * container is expected to pad its entries (`p-2`), since a rounded pill
+ * running into the rail's edge reads as clipped.
+ *
+ * The active state is `brand`, not `primary`: `--primary` is near-white on a
+ * dark theme and near-black on a light one (gotcha #60), which is how the old
+ * 2px edge read as a grey line rather than as "you are here".
  */
 export interface NavRailItemProps
   extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
@@ -18,35 +24,44 @@ export interface NavRailItemProps
   label: React.ReactNode;
   description?: React.ReactNode;
   active?: boolean;
-  /** Drawn over the icon's corner (Settings' "update available" dot). */
+  /** Drawn over the icon's corner. */
   badge?: React.ReactNode;
+  /** Right-aligned after the label: a count, a status word, a dot. */
+  trailing?: React.ReactNode;
 }
 
 export const NavRailItem = React.forwardRef<HTMLButtonElement, NavRailItemProps>(
-  ({ icon: Icon, label, description, active, badge, className, ...props }, ref) => (
+  (
+    { icon: Icon, label, description, active, badge, trailing, className, ...props },
+    ref,
+  ) => (
     <button
       ref={ref}
       type="button"
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors",
+        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors",
         CONTROL_FOCUS_TIGHT,
-        "focus-visible:ring-inset",
-        active ? "border-primary bg-accent/40" : "border-transparent hover:bg-accent",
+        active
+          ? "bg-brand/10 text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
         className,
       )}
       {...props}
     >
       <span aria-hidden className="relative shrink-0">
-        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+        <Icon
+          className={cn("h-3.5 w-3.5", active ? "text-brand" : "text-muted-foreground")}
+        />
         {badge}
       </span>
       <span className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="text-sm">{label}</span>
+        <span className={cn("truncate text-sm", active && "font-medium")}>{label}</span>
         {description && (
           <span className="text-3xs text-muted-foreground">{description}</span>
         )}
       </span>
+      {trailing && <span className="flex shrink-0 items-center">{trailing}</span>}
     </button>
   ),
 );

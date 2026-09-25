@@ -40,6 +40,7 @@ import { notify, MAX_DURATION_MS, MIN_DURATION_MS } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { NotificationDensity } from "@/types";
 import { NotificationPositionPicker } from "./NotificationPositionPicker";
+import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 
 /** The presets offered next to the raw input. `0` is "until dismissed". */
@@ -51,9 +52,9 @@ export function NotificationsSection() {
   const { t } = useTranslation();
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-5">
       {/* Preview ------------------------------------------------------------ */}
-      <div className="mb-3 flex gap-4 rounded-lg border border-border bg-background/60 p-3.5">
+      <div className="flex gap-4 rounded-lg border border-border bg-background/60 p-3.5">
         <div className="relative h-[138px] w-[232px] shrink-0 overflow-hidden rounded-md border border-border bg-background">
           <div className="h-3.5 border-b border-border bg-card" />
           <div className="flex h-[108px]">
@@ -155,183 +156,189 @@ export function NotificationsSection() {
         </div>
       </div>
 
-      {/* Position ----------------------------------------------------------- */}
-      <PrefRow
-        label={t("settings.notifications.position.label")}
-        description={t("settings.notifications.position.desc")}
-        prefId="notifications.position"
-      >
-        <NotificationPositionPicker
-          value={prefs.position}
-          onChange={(position) => update({ position })}
-        />
-      </PrefRow>
-
-      {/* Pill position ------------------------------------------------------ */}
-      <PrefRow
-        label={t("settings.notifications.pillPosition.label")}
-        description={t("settings.notifications.pillPosition.desc")}
-        prefId="notifications.pillPosition"
-      >
-        <NotificationPositionPicker
-          value={prefs.pillPosition}
-          shape="pill"
-          onChange={(pillPosition) => update({ pillPosition })}
-        />
-      </PrefRow>
-
-      {/* Duration ----------------------------------------------------------- */}
-      <PrefRow
-        label={t("settings.notifications.duration.label")}
-        description={t("settings.notifications.duration.desc")}
-        prefId="notifications.durationMs"
-        htmlFor="prefs-notifications-duration"
-      >
-        <div className="flex items-center gap-2">
-          {/* The value can be a custom number typed in the input beside it, in
-              which case no preset is selected — `Segmented` keeps the strip in
-              the Tab order anyway. Its options are strings, so the presets
-              round-trip through `String`/`Number`. */}
-          <Segmented
-            size="sm"
-            aria-label={t("settings.notifications.duration.label")}
-            value={String(prefs.durationMs)}
-            onValueChange={(v) => update({ durationMs: Number(v) })}
-            options={DURATION_PRESETS.map((ms) => ({
-              value: String(ms),
-              label: <span className="font-mono">{ms === 0 ? "∞" : `${ms / 1000} s`}</span>,
-            }))}
+      <PrefGroup title={t("settings.rowGroups.placement")}>
+        {/* Position ----------------------------------------------------------- */}
+        <PrefRow
+          label={t("settings.notifications.position.label")}
+          description={t("settings.notifications.position.desc")}
+          prefId="notifications.position"
+        >
+          <NotificationPositionPicker
+            value={prefs.position}
+            onChange={(position) => update({ position })}
           />
+        </PrefRow>
+
+        {/* Pill position ------------------------------------------------------ */}
+        <PrefRow
+          label={t("settings.notifications.pillPosition.label")}
+          description={t("settings.notifications.pillPosition.desc")}
+          prefId="notifications.pillPosition"
+        >
+          <NotificationPositionPicker
+            value={prefs.pillPosition}
+            shape="pill"
+            onChange={(pillPosition) => update({ pillPosition })}
+          />
+        </PrefRow>
+      </PrefGroup>
+
+      <PrefGroup title={t("settings.rowGroups.timing")}>
+        {/* Duration ----------------------------------------------------------- */}
+        <PrefRow
+          label={t("settings.notifications.duration.label")}
+          description={t("settings.notifications.duration.desc")}
+          prefId="notifications.durationMs"
+          htmlFor="prefs-notifications-duration"
+        >
+          <div className="flex items-center gap-2">
+            {/* The value can be a custom number typed in the input beside it, in
+                which case no preset is selected — `Segmented` keeps the strip in
+                the Tab order anyway. Its options are strings, so the presets
+                round-trip through `String`/`Number`. */}
+            <Segmented
+              size="sm"
+              aria-label={t("settings.notifications.duration.label")}
+              value={String(prefs.durationMs)}
+              onValueChange={(v) => update({ durationMs: Number(v) })}
+              options={DURATION_PRESETS.map((ms) => ({
+                value: String(ms),
+                label: <span className="font-mono">{ms === 0 ? "∞" : `${ms / 1000} s`}</span>,
+              }))}
+            />
+            <Input
+              id="prefs-notifications-duration"
+              type="number"
+              min={0}
+              max={MAX_DURATION_MS}
+              step={500}
+              value={prefs.durationMs}
+              onChange={(e) => {
+                const n = Number.parseInt(e.target.value, 10);
+                if (!Number.isFinite(n) || n < 0) return;
+                // `0` is meaningful (until dismissed) and bypasses the floor;
+                // anything else is clamped so a stray keystroke can't produce a
+                // notification that is gone before it is painted.
+                update({
+                  durationMs: n === 0 ? 0 : Math.min(Math.max(n, MIN_DURATION_MS), MAX_DURATION_MS),
+                });
+              }}
+              className="h-8 w-20 text-right font-mono text-xs"
+            />
+            <span className="text-3xs text-muted-foreground">
+              {t("settings.notifications.duration.unit")}
+            </span>
+          </div>
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.notifications.errorsPersist.label")}
+          description={t("settings.notifications.errorsPersist.desc")}
+          prefId="notifications.errorsPersist"
+          htmlFor="prefs-notifications-errors-persist"
+        >
+          <Switch
+            id="prefs-notifications-errors-persist"
+            checked={prefs.errorsPersist}
+            onCheckedChange={(v) => update({ errorsPersist: v })}
+          />
+        </PrefRow>
+      </PrefGroup>
+
+      <PrefGroup title={t("settings.rowGroups.stackHistory")}>
+        <PrefRow
+          label={t("settings.notifications.maxVisible.label")}
+          description={t("settings.notifications.maxVisible.desc")}
+          prefId="notifications.maxVisible"
+          htmlFor="prefs-notifications-max-visible"
+        >
           <Input
-            id="prefs-notifications-duration"
+            id="prefs-notifications-max-visible"
             type="number"
-            min={0}
-            max={MAX_DURATION_MS}
-            step={500}
-            value={prefs.durationMs}
+            min={1}
+            max={8}
+            value={prefs.maxVisible}
             onChange={(e) => {
               const n = Number.parseInt(e.target.value, 10);
-              if (!Number.isFinite(n) || n < 0) return;
-              // `0` is meaningful (until dismissed) and bypasses the floor;
-              // anything else is clamped so a stray keystroke can't produce a
-              // notification that is gone before it is painted.
-              update({
-                durationMs: n === 0 ? 0 : Math.min(Math.max(n, MIN_DURATION_MS), MAX_DURATION_MS),
-              });
+              if (Number.isFinite(n) && n >= 1) {
+                update({ maxVisible: Math.min(n, 8) });
+              }
             }}
             className="h-8 w-20 text-right font-mono text-xs"
           />
-          <span className="text-3xs text-muted-foreground">
-            {t("settings.notifications.duration.unit")}
-          </span>
-        </div>
-      </PrefRow>
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.notifications.errorsPersist.label")}
-        description={t("settings.notifications.errorsPersist.desc")}
-        prefId="notifications.errorsPersist"
-        htmlFor="prefs-notifications-errors-persist"
-      >
-        <Switch
-          id="prefs-notifications-errors-persist"
-          checked={prefs.errorsPersist}
-          onCheckedChange={(v) => update({ errorsPersist: v })}
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.notifications.maxVisible.label")}
-        description={t("settings.notifications.maxVisible.desc")}
-        prefId="notifications.maxVisible"
-        htmlFor="prefs-notifications-max-visible"
-      >
-        <Input
-          id="prefs-notifications-max-visible"
-          type="number"
-          min={1}
-          max={8}
-          value={prefs.maxVisible}
-          onChange={(e) => {
-            const n = Number.parseInt(e.target.value, 10);
-            if (Number.isFinite(n) && n >= 1) {
-              update({ maxVisible: Math.min(n, 8) });
-            }
-          }}
-          className="h-8 w-20 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.notifications.expandOnHover.label")}
-        description={t("settings.notifications.expandOnHover.desc")}
-        prefId="notifications.expandOnHover"
-        htmlFor="prefs-notifications-expand"
-      >
-        <Switch
-          id="prefs-notifications-expand"
-          checked={prefs.expandOnHover}
-          onCheckedChange={(v) => update({ expandOnHover: v })}
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.notifications.density.label")}
-        description={t("settings.notifications.density.desc")}
-        prefId="notifications.density"
-      >
-        <Select
-          value={prefs.density}
-          onValueChange={(v) => update({ density: v as NotificationDensity })}
+        <PrefRow
+          label={t("settings.notifications.expandOnHover.label")}
+          description={t("settings.notifications.expandOnHover.desc")}
+          prefId="notifications.expandOnHover"
+          htmlFor="prefs-notifications-expand"
         >
-          <SelectTrigger className="h-8 w-36 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="comfortable">
-              {t("settings.notifications.density.comfortable")}
-            </SelectItem>
-            <SelectItem value="compact">
-              {t("settings.notifications.density.compact")}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </PrefRow>
+          <Switch
+            id="prefs-notifications-expand"
+            checked={prefs.expandOnHover}
+            onCheckedChange={(v) => update({ expandOnHover: v })}
+          />
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.notifications.historyLimit.label")}
-        description={t("settings.notifications.historyLimit.desc")}
-        prefId="notifications.historyLimit"
-        htmlFor="prefs-notifications-history"
-      >
-        <Input
-          id="prefs-notifications-history"
-          type="number"
-          min={0}
-          max={500}
-          value={prefs.historyLimit}
-          onChange={(e) => {
-            const n = Number.parseInt(e.target.value, 10);
-            if (Number.isFinite(n) && n >= 0) {
-              update({ historyLimit: Math.min(n, 500) });
-            }
-          }}
-          className="h-8 w-20 text-right font-mono text-xs"
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.notifications.density.label")}
+          description={t("settings.notifications.density.desc")}
+          prefId="notifications.density"
+        >
+          <Select
+            value={prefs.density}
+            onValueChange={(v) => update({ density: v as NotificationDensity })}
+          >
+            <SelectTrigger className="h-8 w-36 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="comfortable">
+                {t("settings.notifications.density.comfortable")}
+              </SelectItem>
+              <SelectItem value="compact">
+                {t("settings.notifications.density.compact")}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.notifications.showBell.label")}
-        description={t("settings.notifications.showBell.desc")}
-        prefId="notifications.showBell"
-        htmlFor="prefs-notifications-bell"
-      >
-        <Switch
-          id="prefs-notifications-bell"
-          checked={prefs.showBell}
-          onCheckedChange={(v) => update({ showBell: v })}
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.notifications.historyLimit.label")}
+          description={t("settings.notifications.historyLimit.desc")}
+          prefId="notifications.historyLimit"
+          htmlFor="prefs-notifications-history"
+        >
+          <Input
+            id="prefs-notifications-history"
+            type="number"
+            min={0}
+            max={500}
+            value={prefs.historyLimit}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n >= 0) {
+                update({ historyLimit: Math.min(n, 500) });
+              }
+            }}
+            className="h-8 w-20 text-right font-mono text-xs"
+          />
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.notifications.showBell.label")}
+          description={t("settings.notifications.showBell.desc")}
+          prefId="notifications.showBell"
+          htmlFor="prefs-notifications-bell"
+        >
+          <Switch
+            id="prefs-notifications-bell"
+            checked={prefs.showBell}
+            onCheckedChange={(v) => update({ showBell: v })}
+          />
+        </PrefRow>
+      </PrefGroup>
     </div>
   );
 }

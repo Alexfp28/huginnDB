@@ -1269,6 +1269,52 @@
   "settings": {
     "title": "Preferencias",
     "description": "Los cambios se aplican al instante. El fichero de preferencias vive en el directorio de configuración de tu sistema; el diálogo también se abre con",
+    "groups": {
+      "workspace": "Espacio de trabajo",
+      "data": "Datos y compartición",
+      "integrations": "Integraciones",
+      "organization": "Organización"
+    },
+    "search": {
+      "label": "Buscar ajustes",
+      "placeholder": "Buscar entre {{count}} ajustes",
+      "clear": "Borrar búsqueda",
+      "title": "Resultados para «{{query}}»",
+      "count_one": "{{count}} coincidencia — Intro abre la primera",
+      "count_other": "{{count}} coincidencias — Intro abre la primera",
+      "empty": "Ningún ajuste coincide. La paleta de comandos también busca atajos, temas y comandos.",
+      "sections": "Secciones"
+    },
+    "changed": "(cambiado respecto al valor por defecto)",
+    "changedCount_one": "{{count}} cambiado",
+    "changedCount_other": "{{count}} cambiados",
+    "resetSection": "Restablecer sección",
+    "resetSectionTitle": "¿Restablecer {{section}}?",
+    "resetSectionConfirm_one": "El ajuste que cambiaste aquí vuelve a su valor por defecto. Todo lo demás se queda como está.",
+    "resetSectionConfirm_other": "Los {{count}} ajustes que cambiaste aquí vuelven a su valor por defecto. Todo lo demás se queda como está.",
+    "resetToDefault": "Restablecer valor por defecto",
+    "resetToDefaultValue": "Restablecer valor por defecto ({{value}})",
+    "rowGroups": {
+      "languageDefaults": "Idioma y valores por defecto",
+      "safetySessions": "Seguridad y sesiones",
+      "workspace": "Espacio de trabajo",
+      "themeType": "Tema y tipografía",
+      "display": "Visualización",
+      "formatting": "Formato",
+      "pagingLayout": "Paginación y disposición",
+      "values": "Valores",
+      "sidebarTabs": "Barra lateral y pestañas",
+      "placement": "Posición",
+      "timing": "Duración",
+      "stackHistory": "Pila e historial",
+      "rightNow": "Ahora mismo",
+      "poolLimits": "Límites de pools",
+      "liveness": "Actividad y tiempos de espera",
+      "mcpBridge": "Conector MCP",
+      "sampling": "Muestreo",
+      "endpoint": "Endpoint",
+      "behaviour": "Comportamiento"
+    },
     "sections": {
       "general": {
         "label": "General",
