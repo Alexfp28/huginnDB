@@ -137,8 +137,11 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   se conserva tal cual. Cada cambio lo comprueba el analizador que aplica la
   política, y un borrador no válido no se puede guardar. **Ver como** enseña lo
   que tendría cualquier cuenta y su IA en cada conexión guardada con el
-  borrador. Los nombres se sugieren a partir de las conexiones guardadas y del
-  catálogo de una conexión abierta, y siempre se pueden escribir. Quién puede
+  borrador. El servidor de una regla se elige entre las conexiones guardadas, y
+  sus bases de datos y tablas del catálogo de ese servidor (al que se puede
+  conectar desde la propia regla); también se puede añadir un patrón como
+  `v_factura_*`, y el campo dice con qué nombres reales coincide antes de
+  añadirlo. Quién puede
   guardar lo decide la carpeta compartida: el editor solo guarda donde Windows
   deja a la cuenta escribir en la carpeta de la política, y en el resto es de
   solo lectura con el motivo de Windows. Al guardar se conserva un `.bak`,

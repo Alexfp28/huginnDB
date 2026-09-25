@@ -221,7 +221,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/grid/ServerFilterChips.tsx": 1,
     "src/components/jsonSchema/SchemaBindingBadge.tsx": 1,
     "src/components/origins/OriginEditorHeader.tsx": 1,
-    "src/components/origins/OriginEditorOverlay.tsx": 1,
     "src/components/origins/sections/ConnectionsPane.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/query/Console.tsx": 1,
@@ -230,7 +229,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/schema/SchemaTableSection.tsx": 1,
     "src/components/schema/SecurityTab.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
-    "src/components/settings/dialogs/SettingsDialog.tsx": 1,
     "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
     "src/components/settings/sections/NotificationsSection.tsx": 1,
     "src/components/settings/sections/ShortcutsSection.tsx": 1,
@@ -240,7 +238,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/UpdateBanner.tsx": 1,
   };
 
-  it(`is down to ${133} in ${72} files`, () => {
+  it(`is down to ${131} in ${70} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -248,7 +246,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(133);
+    expect(total(BUDGET)).toBeLessThanOrEqual(131);
   });
 });
 

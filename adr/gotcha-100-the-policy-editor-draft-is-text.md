@@ -34,8 +34,12 @@ The interface half of phase 4. It is the `PolicyEditorDialog` in `settings/dialo
 
   It warns in amber when a `dbUser` appears for the first time (older versions read it as Broken) and when the editing account's own role changes. It always says that the policy applies here at once and elsewhere within five minutes.
 - **A conflict keeps what was typed.** A `conflict` outcome means someone else saved first. The user's text goes to the clipboard, the header turns stale with "Load their version", and the form becomes read-only until the user reloads, so nothing is written over their save.
-- **Suggestions are best effort and never required.**
-  - The endpoint can be filled from a saved connection.
-  - Databases come from `list_databases`, and tables from `list_tables` on each named database's `::db::` view (the first four named). They are fetched only when an **open** connection matches the rule's host (and driver) or file.
-  - Both use the guarded commands, so the suggestions are what the editing person's own role can see. That is the right source for someone writing rules about data they can reach.
-  - A pattern (`v_factura_*`) or a table that does not exist yet can always be typed.
+- **Names are picked, not typed.** A rule naming a server or a table that does not exist grants nothing and says nothing, so the first version's free-text boxes were the dangerous path. (Alex caught it in review.)
+  - The server is picked from this computer's saved connections (`EndpointField`, mode "a saved connection"). Typing it is the second path ("by hand"), kept for a server this computer has no connection to.
+  - **Switching mode never writes an incomplete endpoint.** The first version wrote `{ host: "" }` the moment "a server" was chosen. The parser rejects that, so the editor flashed "the policy is not valid" at a user who had done nothing wrong. The rule now keeps its previous server until a connection is picked or a host is typed, and says so.
+  - Databases and tables are a `NamePicker`: chips for what the rule names, plus a searchable checklist of the server's catalog. The databases come from `list_databases`, and the tables from `list_tables` on each named database's `::db::` view (the first four named). The catalog is read only when the rule's saved connection is **open**, and the rule offers to connect it (`connectAndWarm`).
+  - Both reads use the guarded commands, so the names offered are what the editing person's own role can see. That is the right source for someone writing rules about data they can reach.
+  - A pattern (`v_factura_*`) is still added by typing, because the catalog cannot offer one. The field says which real names it matches before it is added.
+  - A chip the loaded catalog does not contain is amber, with a tooltip. It is a warning, not a refusal: a table that does not exist yet is a legitimate rule.
+  - `matchesOf` mirrors `glob_matches`: `*` is the only wildcard, and matching ignores case.
+- **The rail is `ui/nav-rail.tsx`.** The first version drew it with `Button`, and it drifted from the Settings and origin-editor rails (rounded corners, an inset, a hover that did not line up). `NavRailItem` is now what all three render, which also takes two raw `<button>`s off the adoption budget.

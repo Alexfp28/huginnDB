@@ -77,6 +77,7 @@ It gives an objective answer to the question that used to be settled by feel:
 | `dropdown.tsx`        | `DropdownMenu*`                        | Radix; `text-sm`, `min-w-[8rem]`                                                                            |
 | `context-menu.tsx`    | `ContextMenu*`, `ContextMenuAction`    | Radix; denser than the dropdown by design                                                                   |
 | `tooltip.tsx`         | `Tooltip*`, `SimpleTooltip`            | read its docstring before replacing a native `title=`                                                       |
+| `nav-rail.tsx`        | `NavRailItem`                          | a workbench rail entry: icon, label, description, 2px edge when active                                      |
 | `styles.ts`           | class fragments                        | strings and lookups only, no `cva`, no JSX                                                                  |
 | `uiContracts.test.ts` | —                                      | the drift guards, with the rejected rules listed and reasoned                                               |
 | `uiAdoption.test.ts`  | —                                      | the migration ratchet: per-file budgets for the two patterns that cannot be contracts yet                   |

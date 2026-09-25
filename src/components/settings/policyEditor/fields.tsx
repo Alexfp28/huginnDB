@@ -1,20 +1,38 @@
 /**
- * The policy editor's field controls: a list of name patterns, a server, and
- * the two permission blocks. Each edits one piece of a rule's JSON and hands
- * the new value back; none of them validates, since the backend parses every
- * draft with the parser that applies it (`policy_validate`).
+ * The policy editor's field controls: which server a rule is about, the names
+ * it lets through, and the two permission columns. Each edits one piece of a
+ * rule's JSON and hands the new value back; none of them validates, since the
+ * backend parses every draft with the parser that applies it
+ * (`policy_validate`).
+ *
+ * **Picked, not typed.** A rule that names a server or a table that does not
+ * exist grants nothing and says nothing, so every name here is chosen from
+ * something real first — a saved connection, the catalog of the server behind
+ * it — and typing is the second path, kept for the two things a list cannot
+ * offer: a pattern (`v_factura_*`) and a server this computer has no
+ * connection to. Even then the field shows what the typed text matches.
+ *
+ * **Never an invalid draft on the way.** Switching a rule to "a saved
+ * connection" or "by hand" does not write `{ host: "" }` — which the parser
+ * rejects, and which used to flash "the policy is not valid" at the user for
+ * doing nothing wrong. The rule keeps its previous server until a real one is
+ * chosen or typed.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus } from "lucide-react";
+import { Asterisk, Plug, Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { SearchField } from "@/components/ui/search-field";
 import { Segmented } from "@/components/ui/segmented";
-import { Textarea } from "@/components/ui/textarea";
+import { Spinner } from "@/components/ui/spinner";
+import { SimpleTooltip } from "@/components/ui/tooltip";
+import { MICRO_HEADING } from "@/components/ui/styles";
 import { PERMISSIONS, type EndpointJson } from "@/lib/policy/draft";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
@@ -23,190 +41,247 @@ import type { ConnectionProfile } from "@/types";
 export function Field({
   label,
   hint,
+  aside,
   children,
 }: {
   label: string;
   hint?: ReactNode;
+  /** Right-aligned on the label's line (a toggle, a count). */
+  aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="grid gap-1">
-      <span className="text-2xs font-medium text-muted-foreground">{label}</span>
+    <div className="grid gap-1.5">
+      <div className="flex min-h-7 items-center justify-between gap-3">
+        <span className="text-xs font-medium">{label}</span>
+        {aside}
+      </div>
       {children}
-      {hint && <span className="text-3xs text-muted-foreground">{hint}</span>}
+      {hint && <span className="text-3xs leading-snug text-muted-foreground">{hint}</span>}
     </div>
   );
 }
 
-const lines = (text: string) =>
-  text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-
-/**
- * Name patterns, one per line (`*` is the wildcard). With `allLabel`, the
- * list can also be absent — "every database", "every relation" — which is not
- * the same as an empty list ("none"), so the two are a toggle rather than an
- * empty box that means one or the other.
- */
-export function PatternListField({
-  id,
-  label,
-  hint,
-  value,
-  allLabel,
-  onlyLabel,
-  suggestions = [],
-  readOnly,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  hint?: string;
-  value: string[] | undefined;
-  /** When given, `undefined` means "all" and the field offers the toggle. */
-  allLabel?: string;
-  onlyLabel?: string;
-  suggestions?: string[];
-  readOnly: boolean;
-  onChange: (next: string[] | undefined) => void;
-}) {
-  const { t } = useTranslation();
-  const all = allLabel !== undefined && value === undefined;
-  // The text is local so a half-typed line is not trimmed away under the
-  // cursor; it follows the value whenever the value changes from outside.
-  const [text, setText] = useState((value ?? []).join("\n"));
-  useEffect(() => {
-    setText((prev) =>
-      lines(prev).join("\n") === (value ?? []).join("\n")
-        ? prev
-        : (value ?? []).join("\n"),
-    );
-  }, [value]);
-  const current = new Set((value ?? []).map((v) => v.toLowerCase()));
-  const offered = suggestions.filter((s) => !current.has(s.toLowerCase())).slice(0, 24);
-
+/** A titled group of fields inside the rule editor. */
+export function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Field label={label} hint={hint}>
-      {allLabel !== undefined && (
-        <Segmented<"all" | "only">
-          size="sm"
-          aria-label={label}
-          value={all ? "all" : "only"}
-          onValueChange={(v) => {
-            if (readOnly) return;
-            onChange(v === "all" ? undefined : (value ?? []));
-          }}
-          options={[
-            { value: "all", label: allLabel },
-            { value: "only", label: onlyLabel ?? t("policyEditor.rule.onlyThese") },
-          ]}
-        />
-      )}
-      {!all && (
-        <>
-          <Textarea
-            id={id}
-            rows={Math.min(6, Math.max(2, (value ?? []).length + 1))}
-            className="font-mono text-xs"
-            spellCheck={false}
-            readOnly={readOnly}
-            placeholder={t("policyEditor.rule.patternPlaceholder")}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              onChange(lines(e.target.value));
-            }}
-          />
-          {!readOnly && offered.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="text-3xs text-muted-foreground">
-                {t("policyEditor.rule.suggestions")}
-              </span>
-              {offered.map((s) => (
-                <Button
-                  key={s}
-                  size="xs"
-                  variant="outline"
-                  icon={Plus}
-                  className="h-6 px-1.5 font-mono text-3xs"
-                  onClick={() => onChange([...(value ?? []), s])}
-                >
-                  {s}
-                </Button>
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </Field>
+    <section className="grid gap-4 border-t border-border pt-4 first:border-t-0 first:pt-0">
+      <h3 className={MICRO_HEADING}>{title}</h3>
+      {children}
+    </section>
   );
 }
 
-const DRIVERS = ["postgres", "mysql", "sqlserver", "mongodb"] as const;
+// ---------------------------------------------------------------------------
+// Server
 
-type EndpointKind = "any" | "server" | "file";
+/** `*` is the policy's one wildcard (`policy::resolve::glob_matches`). */
+export const isPattern = (s: string) => s.includes("*");
 
-function kindOf(e: EndpointJson): EndpointKind {
-  if (e === "*") return "any";
-  return e.path !== undefined ? "file" : "server";
+function globRegex(pattern: string): RegExp {
+  const body = pattern
+    .split("")
+    .map((c) => (c === "*" ? ".*" : c.replace(/[.+?^${}()|[\]\\]/g, "\\$&")))
+    .join("");
+  return new RegExp(`^${body}$`, "i");
 }
 
-/** Which server a rule is about: every one, a host (optionally a driver and a
- *  port), or a SQLite file — filled from a saved connection or typed. */
+/** Which of `names` a pattern (or a plain name) lets through. */
+export function matchesOf(pattern: string, names: string[]): string[] {
+  const re = globRegex(pattern.trim());
+  return names.filter((n) => re.test(n));
+}
+
+const sameFile = (a: string, b: string) =>
+  a.trim().replace(/\\/g, "/").toLowerCase() === b.trim().replace(/\\/g, "/").toLowerCase();
+
+/** The saved connection a rule's server is, if there is one on this computer. */
+export function profileFor(
+  endpoint: EndpointJson,
+  profiles: ConnectionProfile[],
+): ConnectionProfile | undefined {
+  if (endpoint === "*") return undefined;
+  const saved = profiles.filter((p) => !p.ephemeral);
+  if (endpoint.path !== undefined) {
+    return saved.find((p) => p.driver === "sqlite" && sameFile(p.database, endpoint.path!));
+  }
+  const host = (endpoint.host ?? "").trim().toLowerCase();
+  return saved.find(
+    (p) =>
+      p.driver !== "sqlite" &&
+      p.host.trim().toLowerCase() === host &&
+      (!endpoint.driver || endpoint.driver === p.driver) &&
+      (endpoint.port === undefined || endpoint.port === p.port),
+  );
+}
+
+function endpointOf(p: ConnectionProfile): EndpointJson {
+  return p.driver === "sqlite"
+    ? { path: p.database }
+    : { driver: p.driver, host: p.host, ...(p.port ? { port: p.port } : {}) };
+}
+
+/** `mysql · erp.local:3306`, or the file of a SQLite connection. */
+export function whereOf(p: ConnectionProfile): string {
+  return p.driver === "sqlite"
+    ? p.database
+    : `${p.driver} · ${p.host}${p.port ? `:${p.port}` : ""}`;
+}
+
+const DRIVERS = ["postgres", "mysql", "sqlserver", "mongodb", "sqlite"] as const;
+
+type EndpointMode = "any" | "saved" | "manual";
+
+/**
+ * Which server a rule is about: every one, one of this computer's saved
+ * connections (the usual answer), or one typed by hand. The draft only ever
+ * receives a complete endpoint.
+ */
 export function EndpointField({
   value,
   profiles,
   readOnly,
+  active,
+  connecting,
+  onConnect,
   onChange,
 }: {
   value: EndpointJson;
   profiles: ConnectionProfile[];
   readOnly: boolean;
+  /** Is the matching saved connection open (its catalog feeds the lists)? */
+  active: boolean;
+  connecting: boolean;
+  onConnect: (id: string) => void;
   onChange: (next: EndpointJson) => void;
 }) {
   const { t } = useTranslation();
-  const kind = kindOf(value);
+  const saved = profiles.filter((p) => !p.ephemeral);
+  const match = profileFor(value, profiles);
+  const [mode, setMode] = useState<EndpointMode>(
+    value === "*" ? "any" : match ? "saved" : "manual",
+  );
+  // The typed server lives here, and reaches the draft only once it names
+  // something: an empty host is a parse error, not "no server yet".
   const obj = value === "*" ? {} : value;
-  const servers = profiles.filter((p) => !p.ephemeral && p.driver !== "sqlite");
-  const files = profiles.filter((p) => !p.ephemeral && p.driver === "sqlite");
+  const [driver, setDriver] = useState<string>(obj.path !== undefined ? "sqlite" : (obj.driver ?? ""));
+  const [host, setHost] = useState(obj.host ?? "");
+  const [port, setPort] = useState(obj.port !== undefined ? String(obj.port) : "");
+  const [path, setPath] = useState(obj.path ?? "");
+
+  const commitManual = (next: { driver?: string; host?: string; port?: string; path?: string }) => {
+    const d = next.driver ?? driver;
+    if (d === "sqlite") {
+      const p = (next.path ?? path).trim();
+      if (p) onChange({ path: p });
+      return;
+    }
+    const h = (next.host ?? host).trim();
+    if (!h) return;
+    const n = parseInt(next.port ?? port, 10);
+    onChange({ ...(d ? { driver: d } : {}), host: h, ...(Number.isFinite(n) ? { port: n } : {}) });
+  };
+
+  const pending =
+    (mode === "saved" && !match && value !== "*") || (mode !== "any" && value === "*");
 
   return (
-    <Field label={t("policyEditor.rule.endpoint")} hint={t("policyEditor.rule.endpointHint")}>
-      <Segmented<EndpointKind>
-        size="sm"
-        aria-label={t("policyEditor.rule.endpoint")}
-        value={kind}
-        onValueChange={(k) => {
-          if (readOnly || k === kind) return;
-          onChange(k === "any" ? "*" : k === "file" ? { path: "" } : { host: "" });
-        }}
-        options={[
-          { value: "any", label: t("policyEditor.rule.endpointAny") },
-          { value: "server", label: t("policyEditor.rule.endpointServer") },
-          { value: "file", label: t("policyEditor.rule.endpointFile") },
-        ]}
-      />
-      {kind === "server" && (
-        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
-          <Input
-            size="sm"
-            aria-label={t("policyEditor.rule.host")}
-            placeholder="erp.empresa.local"
-            className="font-mono"
-            readOnly={readOnly}
-            value={obj.host ?? ""}
-            onChange={(e) => onChange({ ...obj, host: e.target.value })}
-          />
+    <Field
+      label={t("policyEditor.rule.endpoint")}
+      hint={t("policyEditor.rule.endpointHint")}
+      aside={
+        <Segmented<EndpointMode>
+          size="sm"
+          aria-label={t("policyEditor.rule.endpoint")}
+          value={mode}
+          onValueChange={(m) => {
+            if (readOnly || m === mode) return;
+            setMode(m);
+            if (m === "any") onChange("*");
+          }}
+          options={[
+            { value: "any", label: t("policyEditor.rule.endpointAny") },
+            { value: "saved", label: t("policyEditor.rule.endpointSaved") },
+            { value: "manual", label: t("policyEditor.rule.endpointManual") },
+          ]}
+        />
+      }
+    >
+      {mode === "any" && (
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-2xs text-muted-foreground">
+          {t("policyEditor.rule.endpointAnyExplain")}
+        </p>
+      )}
+
+      {mode === "saved" &&
+        (saved.length === 0 ? (
+          <p className="rounded-md border border-dashed border-border px-3 py-2 text-2xs text-muted-foreground">
+            {t("policyEditor.rule.noSavedConnections")}
+          </p>
+        ) : (
+          <div className="grid gap-2">
+            <NativeSelect
+              size="sm"
+              aria-label={t("policyEditor.rule.endpointSaved")}
+              disabled={readOnly}
+              value={match?.id ?? ""}
+              onChange={(e) => {
+                const p = saved.find((x) => x.id === e.target.value);
+                if (p) onChange(endpointOf(p));
+              }}
+            >
+              <option value="" disabled>
+                {t("policyEditor.rule.pickConnection")}
+              </option>
+              {saved.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} — {whereOf(p)}
+                </option>
+              ))}
+            </NativeSelect>
+            {match && (
+              <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-2xs">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                    active ? "bg-success" : "bg-muted-foreground/40",
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
+                  {whereOf(match)}
+                </span>
+                {active ? (
+                  <span className="shrink-0 text-muted-foreground">
+                    {t("policyEditor.rule.catalogReady")}
+                  </span>
+                ) : (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    icon={Plug}
+                    loading={connecting}
+                    className="-my-1 h-6 shrink-0 px-2 text-2xs"
+                    onClick={() => onConnect(match.id)}
+                  >
+                    {t("policyEditor.rule.connectForNames")}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+      {mode === "manual" && (
+        <div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_6rem]">
           <NativeSelect
             size="sm"
             aria-label={t("policyEditor.rule.driver")}
             disabled={readOnly}
-            value={obj.driver ?? ""}
+            value={driver}
             onChange={(e) => {
-              const { driver: _d, ...rest } = obj;
-              onChange(e.target.value ? { ...rest, driver: e.target.value } : rest);
+              setDriver(e.target.value);
+              commitManual({ driver: e.target.value });
             }}
           >
             <option value="">{t("policyEditor.rule.anyDriver")}</option>
@@ -216,63 +291,338 @@ export function EndpointField({
               </option>
             ))}
           </NativeSelect>
-          <Input
-            size="sm"
-            type="number"
-            className="w-24"
-            aria-label={t("policyEditor.rule.port")}
-            placeholder={t("policyEditor.rule.anyPort")}
-            readOnly={readOnly}
-            value={obj.port ?? ""}
-            onChange={(e) => {
-              const { port: _p, ...rest } = obj;
-              const n = parseInt(e.target.value, 10);
-              onChange(Number.isFinite(n) ? { ...rest, port: n } : rest);
-            }}
-          />
+          {driver === "sqlite" ? (
+            <Input
+              size="sm"
+              className="font-mono sm:col-span-2"
+              aria-label={t("policyEditor.rule.path")}
+              placeholder={"\\\\srv\\datos\\ventas.db"}
+              readOnly={readOnly}
+              value={path}
+              onChange={(e) => {
+                setPath(e.target.value);
+                commitManual({ path: e.target.value });
+              }}
+            />
+          ) : (
+            <>
+              <Input
+                size="sm"
+                aria-label={t("policyEditor.rule.host")}
+                placeholder="erp.empresa.local"
+                className="font-mono"
+                readOnly={readOnly}
+                value={host}
+                onChange={(e) => {
+                  setHost(e.target.value);
+                  commitManual({ host: e.target.value });
+                }}
+              />
+              <Input
+                size="sm"
+                inputMode="numeric"
+                aria-label={t("policyEditor.rule.port")}
+                placeholder={t("policyEditor.rule.anyPort")}
+                readOnly={readOnly}
+                value={port}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "");
+                  setPort(v);
+                  commitManual({ port: v });
+                }}
+              />
+            </>
+          )}
         </div>
       )}
-      {kind === "file" && (
-        <Input
-          size="sm"
-          className="font-mono"
-          aria-label={t("policyEditor.rule.path")}
-          placeholder={"\\\\srv\\datos\\ventas.db"}
-          readOnly={readOnly}
-          value={obj.path ?? ""}
-          onChange={(e) => onChange({ path: e.target.value })}
-        />
-      )}
-      {kind !== "any" && !readOnly && (kind === "server" ? servers : files).length > 0 && (
-        <NativeSelect
-          size="xs"
-          aria-label={t("policyEditor.rule.fromConnection")}
-          value=""
-          onChange={(e) => {
-            const p = profiles.find((x) => x.id === e.target.value);
-            if (!p) return;
-            onChange(
-              p.driver === "sqlite"
-                ? { path: p.database }
-                : {
-                    driver: p.driver,
-                    host: p.host,
-                    ...(p.port ? { port: p.port } : {}),
-                  },
-            );
-          }}
-        >
-          <option value="">{t("policyEditor.rule.fromConnection")}</option>
-          {(kind === "server" ? servers : files).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </NativeSelect>
+
+      {pending && !readOnly && (
+        <p className="text-3xs text-muted-foreground">
+          {value === "*"
+            ? t("policyEditor.rule.pendingAny")
+            : t("policyEditor.rule.pendingKeeps")}
+        </p>
       )}
     </Field>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Name lists
+
+function Chip({
+  name,
+  tone,
+  tooltip,
+  removeLabel,
+  onRemove,
+}: {
+  name: string;
+  tone: "known" | "pattern" | "unknown";
+  tooltip?: string;
+  removeLabel: string;
+  onRemove?: () => void;
+}) {
+  const chip = (
+    <span
+      className={cn(
+        "inline-flex h-6 max-w-full items-center gap-1 rounded-md border pl-1.5 font-mono text-2xs",
+        onRemove ? "pr-0.5" : "pr-1.5",
+        tone === "known" && "border-border bg-background",
+        tone === "pattern" && "border-brand/40 bg-brand/10 text-brand",
+        tone === "unknown" && "border-warning/50 bg-warning/10 text-warning",
+      )}
+    >
+      {tone === "pattern" && <Asterisk aria-hidden className="h-3 w-3 shrink-0" />}
+      <span className="truncate">{name}</span>
+      {onRemove && (
+        <IconButton
+          size="xs"
+          icon={X}
+          label={removeLabel}
+          className="h-5 w-5 rounded-sm"
+          onClick={onRemove}
+        />
+      )}
+    </span>
+  );
+  return tooltip ? <SimpleTooltip label={tooltip}>{chip}</SimpleTooltip> : chip;
+}
+
+/**
+ * A list of names, picked from the server's catalog. With `allLabel` the list
+ * can also be absent — "every database", "every table" — which is not the same
+ * as an empty list ("none"), so the two are a toggle rather than an empty box
+ * that silently means one or the other.
+ */
+export function NamePicker({
+  label,
+  hint,
+  value,
+  allLabel,
+  allExplain,
+  emptyLabel,
+  emptyIsWarning,
+  catalog,
+  catalogLoading,
+  catalogSource,
+  noCatalogHint,
+  readOnly,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: string[] | undefined;
+  /** When given, `undefined` means "all" and the field offers the toggle. */
+  allLabel?: string;
+  allExplain?: string;
+  /** What an empty list means, in words. */
+  emptyLabel: string;
+  /** An empty allow-list grants nothing: say it in amber. */
+  emptyIsWarning?: boolean;
+  /** `null` when there is no open server to read names from. */
+  catalog: string[] | null;
+  catalogLoading: boolean;
+  /** The connection the names come from, for the search placeholder. */
+  catalogSource?: string;
+  /** Why there is no list to pick from, when there is none. */
+  noCatalogHint?: string;
+  readOnly: boolean;
+  onChange: (next: string[] | undefined) => void;
+}) {
+  const { t } = useTranslation();
+  const all = allLabel !== undefined && value === undefined;
+  const list = value ?? [];
+  const chosen = useMemo(() => new Set(list.map((v) => v.toLowerCase())), [list]);
+  const [filter, setFilter] = useState("");
+  const [pattern, setPattern] = useState("");
+  useEffect(() => setFilter(""), [catalogSource]);
+
+  const shown = useMemo(() => {
+    if (!catalog) return [];
+    const f = filter.trim().toLowerCase();
+    return f ? catalog.filter((n) => n.toLowerCase().includes(f)) : catalog;
+  }, [catalog, filter]);
+
+  const toggle = (name: string, on: boolean) =>
+    onChange(on ? [...list, name] : list.filter((v) => v.toLowerCase() !== name.toLowerCase()));
+
+  const typed = pattern.trim();
+  const typedMatches = catalog && typed ? matchesOf(typed, catalog) : null;
+  const addTyped = () => {
+    if (!typed || chosen.has(typed.toLowerCase())) return;
+    onChange([...list, typed]);
+    setPattern("");
+  };
+
+  const toneOf = (name: string): "known" | "pattern" | "unknown" => {
+    if (isPattern(name)) return "pattern";
+    if (catalog && !name.includes(".") && !catalog.some((c) => c.toLowerCase() === name.toLowerCase())) {
+      return "unknown";
+    }
+    return "known";
+  };
+
+  return (
+    <Field
+      label={label}
+      hint={hint}
+      aside={
+        allLabel !== undefined && (
+          <Segmented<"all" | "only">
+            size="sm"
+            aria-label={label}
+            value={all ? "all" : "only"}
+            onValueChange={(v) => {
+              if (readOnly) return;
+              onChange(v === "all" ? undefined : list);
+            }}
+            options={[
+              { value: "all", label: allLabel },
+              { value: "only", label: t("policyEditor.rule.onlyThese") },
+            ]}
+          />
+        )
+      }
+    >
+      {all ? (
+        <p className="rounded-md border border-dashed border-border px-3 py-2 text-2xs text-muted-foreground">
+          {allExplain}
+        </p>
+      ) : (
+        <div className="grid gap-2 rounded-md border border-border bg-card/30 p-2">
+          {/* What the rule names today. */}
+          {list.length === 0 ? (
+            <p
+              className={cn(
+                "px-1 py-0.5 text-2xs",
+                emptyIsWarning ? "text-warning" : "text-muted-foreground",
+              )}
+            >
+              {emptyLabel}
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {list.map((name) => {
+                const tone = toneOf(name);
+                const matched = tone === "pattern" && catalog ? matchesOf(name, catalog).length : null;
+                return (
+                  <Chip
+                    key={name}
+                    name={name}
+                    tone={tone}
+                    removeLabel={t("policyEditor.rule.removeName", { name })}
+                    tooltip={
+                      tone === "unknown"
+                        ? t("policyEditor.rule.notOnServer", { source: catalogSource ?? "" })
+                        : matched !== null
+                          ? t("policyEditor.rule.patternMatches", { count: matched })
+                          : undefined
+                    }
+                    onRemove={readOnly ? undefined : () => toggle(name, false)}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          {!readOnly && (
+            <>
+              {/* The catalog: the safe way to add a name. */}
+              {catalogLoading ? (
+                <p className="flex items-center gap-2 px-1 text-2xs text-muted-foreground">
+                  <Spinner size="sm" />
+                  {t("policyEditor.rule.catalogLoading")}
+                </p>
+              ) : catalog && catalog.length > 0 ? (
+                <div className="grid gap-1 border-t border-border pt-2">
+                  <SearchField
+                    size="xs"
+                    value={filter}
+                    onValueChange={setFilter}
+                    placeholder={t("policyEditor.rule.searchCatalog", { source: catalogSource ?? "" })}
+                    aria-label={t("policyEditor.rule.searchCatalog", { source: catalogSource ?? "" })}
+                    onClear={() => setFilter("")}
+                    clearLabel={t("common.clear")}
+                  />
+                  <div className="grid max-h-44 grid-cols-1 gap-x-3 overflow-y-auto px-1 py-0.5 sm:grid-cols-2 lg:grid-cols-3">
+                    {shown.map((name) => (
+                      <div key={name} className="min-w-0 overflow-hidden py-0.5">
+                        <Checkbox
+                          label={<span className="truncate font-mono text-2xs">{name}</span>}
+                          checked={chosen.has(name.toLowerCase())}
+                          onChange={(e) => toggle(name, e.target.checked)}
+                        />
+                      </div>
+                    ))}
+                    {shown.length === 0 && (
+                      <p className="col-span-full py-1 text-2xs text-muted-foreground">
+                        {t("policyEditor.rule.catalogNoMatch")}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ) : catalog === null && noCatalogHint ? (
+                <p className="border-t border-border px-1 pt-2 text-3xs text-muted-foreground">
+                  {noCatalogHint}
+                </p>
+              ) : null}
+
+              {/* A pattern: the one thing the catalog cannot offer. */}
+              <div className="grid gap-1 border-t border-border pt-2">
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    size="xs"
+                    className="min-w-0 flex-1 font-mono"
+                    aria-label={t("policyEditor.rule.addPattern")}
+                    placeholder={t("policyEditor.rule.patternPlaceholder")}
+                    value={pattern}
+                    onChange={(e) => setPattern(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addTyped();
+                      }
+                    }}
+                  />
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    icon={Plus}
+                    disabled={!typed || chosen.has(typed.toLowerCase())}
+                    onClick={addTyped}
+                  >
+                    {t("policyEditor.rule.add")}
+                  </Button>
+                </div>
+                {typed && (
+                  <p
+                    className={cn(
+                      "px-1 text-3xs",
+                      typedMatches && typedMatches.length === 0 ? "text-warning" : "text-muted-foreground",
+                    )}
+                  >
+                    {typedMatches === null
+                      ? t("policyEditor.rule.patternUnchecked")
+                      : typedMatches.length === 0
+                        ? t("policyEditor.rule.patternNone", { source: catalogSource ?? "" })
+                        : t("policyEditor.rule.patternSome", {
+                            count: typedMatches.length,
+                            names: typedMatches.slice(0, 4).join(", "),
+                          })}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Field>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Permissions
 
 /**
  * What the person (`human`) and their AI (`ai`) may do. The AI never gets
@@ -300,11 +650,11 @@ export function PermissionGrid({
         <table className="w-full text-xs">
           <thead className="bg-muted/40 text-3xs uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="px-2 py-1 text-left font-medium">
+              <th className="px-3 py-1.5 text-left font-medium">
                 {t("policyEditor.rule.permission")}
               </th>
-              <th className="px-2 py-1 font-medium">{t("settings.policy.human")}</th>
-              <th className="px-2 py-1 font-medium">{t("settings.policy.ai")}</th>
+              <th className="w-24 px-3 py-1.5 font-medium">{t("settings.policy.human")}</th>
+              <th className="w-24 px-3 py-1.5 font-medium">{t("settings.policy.ai")}</th>
             </tr>
           </thead>
           <tbody>
@@ -312,14 +662,14 @@ export function PermissionGrid({
               const h = human.includes(p);
               const a = ai.includes(p);
               return (
-                <tr key={p} className="border-t border-border">
-                  <td className="px-2 py-1">
+                <tr key={p} className="border-t border-border transition-colors hover:bg-accent/30">
+                  <td className="px-3 py-1.5">
                     <span className="font-mono">{p}</span>
                     <span className="ml-2 text-3xs text-muted-foreground">
                       {t(`policyEditor.perm.${p}`)}
                     </span>
                   </td>
-                  <td className="px-2 py-1 text-center">
+                  <td className="px-3 py-1.5 text-center">
                     <Checkbox
                       aria-label={`${t("settings.policy.human")}: ${p}`}
                       checked={h}
@@ -333,7 +683,7 @@ export function PermissionGrid({
                       }}
                     />
                   </td>
-                  <td className={cn("px-2 py-1 text-center", !h && "opacity-40")}>
+                  <td className={cn("px-3 py-1.5 text-center", !h && "opacity-40")}>
                     <Checkbox
                       aria-label={`${t("settings.policy.ai")}: ${p}`}
                       checked={a && h}

@@ -32,7 +32,7 @@ import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import { Cable, FileJson, Layers, Send } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { NavRailItem } from "@/components/ui/nav-rail";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { api } from "@/lib/tauri";
@@ -278,32 +278,16 @@ export function OriginEditorOverlay() {
 
             <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr] overflow-hidden">
               <aside className="overflow-y-auto border-r border-border bg-card/40 py-1">
-                {PANES.map((p) => {
-                  const Icon = p.icon;
-                  const active = p.id === pane;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => setPane(p.id)}
-                      className={cn(
-                        "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left",
-                        active
-                          ? "border-primary bg-accent/40"
-                          : "border-transparent hover:bg-accent",
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <div className="flex flex-1 flex-col leading-tight">
-                        <span className="text-sm">
-                          {t(`originEditor.panes.${p.id}.label`)}
-                        </span>
-                        <span className="text-3xs text-muted-foreground">
-                          {t(`originEditor.panes.${p.id}.desc`)}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
+                {PANES.map((p) => (
+                  <NavRailItem
+                    key={p.id}
+                    icon={p.icon}
+                    active={p.id === pane}
+                    label={t(`originEditor.panes.${p.id}.label`)}
+                    description={t(`originEditor.panes.${p.id}.desc`)}
+                    onClick={() => setPane(p.id)}
+                  />
+                ))}
               </aside>
 
               <main className="flex min-h-0 flex-col overflow-hidden px-5 py-4">
