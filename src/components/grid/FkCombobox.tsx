@@ -25,6 +25,7 @@
  */
 
 import * as React from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, X } from "lucide-react";
 import { api } from "@/lib/tauri";
 import {
@@ -76,6 +77,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
     },
     ref,
   ) {
+    const { t } = useTranslation();
     const [open, setOpen] = React.useState(false);
     const [query, setQuery] = React.useState("");
     const [prefetched, setPrefetched] = React.useState<FkOption[] | null>(null);
@@ -218,7 +220,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
           value={value ?? ""}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value)}
-          title={`FK lookup unavailable: ${fetchError}`}
+          title={t("dataGrid.fkLookup.unavailable", { message: fetchError })}
         />
       );
     }
@@ -288,14 +290,17 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                   }
                 }}
                 placeholder={
-                  tooLarge ? `Search ${refTable}…` : `Filter ${refTable}…`
+                  tooLarge
+                    ? t("dataGrid.fkLookup.search", { table: refTable })
+                    : t("dataGrid.fkLookup.filter", { table: refTable })
                 }
                 className="h-7 w-full rounded-sm border border-input bg-background px-2 text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
               />
               {tooLarge && !query.trim() && (
                 <div className="px-1 text-3xs italic text-muted-foreground">
-                  Showing first {prefetched?.length ?? 0} rows · type to search
-                  all
+                  {t("dataGrid.fkLookup.showingFirst", {
+                    count: prefetched?.length ?? 0,
+                  })}
                 </div>
               )}
             </div>
@@ -317,12 +322,12 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
               )}
               {loading && visible.length === 0 && (
                 <div className="px-2 py-1 text-xs italic text-muted-foreground">
-                  Loading…
+                  {t("dataGrid.fkLookup.loading")}
                 </div>
               )}
               {!loading && visible.length === 0 && (
                 <div className="px-2 py-1 text-xs italic text-muted-foreground">
-                  No matches
+                  {t("dataGrid.fkLookup.noMatches")}
                 </div>
               )}
               {visible.map((opt) => (

@@ -191,6 +191,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El buscador de la rejilla y el selector de clave foránea hablan el idioma
+  de la interfaz.** Con la aplicación en español, los botones de borrar y de
+  búsquedas recientes del buscador seguían anunciándose en inglés, y el
+  selector de clave foránea de los borradores de inserción mostraba en inglés
+  su texto de ayuda, «Loading…», «No matches», el aviso de «mostrando las
+  primeras N filas» y el tooltip de fallo de la búsqueda, igual que la marca
+  «auto» de una columna de clave autogenerada en el borrador de inserción.
+  Ahora todos salen de los ficheros de idioma, en inglés y en español.
+
 - **Un control segmentado sin nada seleccionado vuelve a alcanzarse con Tab.**
   Los controles segmentados dejan en el orden de tabulación solo el segmento
   seleccionado, así que cuando el valor actual no coincidía con ninguno —una
