@@ -173,6 +173,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Inserting or duplicating a MongoDB document from the grid keeps each
+  field's type.** A row added through the grid's insert draft, or duplicated
+  from an existing one, was written with every field as a string: a `Long`
+  such as `atnId: 5` became `"5"`, and booleans and timestamps went the same
+  way. The grid did send the column's type with each value, but the backend
+  read that hint under a different spelling and dropped it, so the insert fell
+  back to text. The same lost hint affected bulk updates, and SQL Server
+  binary columns written from an insert draft. Editing a cell that already
+  existed was never affected.
+
 - **The grid's search box and the foreign-key picker speak the interface
   language.** With the app in Spanish, the search box's clear and
   recent-searches buttons still announced themselves in English, and the

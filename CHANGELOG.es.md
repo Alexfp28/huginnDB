@@ -191,6 +191,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Insertar o duplicar un documento de MongoDB desde la rejilla respeta el
+  tipo de cada campo.** Una fila añadida con el borrador de inserción de la
+  rejilla, o duplicada a partir de otra, se escribía con todos los campos como
+  cadena: un `Long` como `atnId: 5` pasaba a ser `"5"`, y los booleanos y las
+  marcas de tiempo corrían la misma suerte. La rejilla sí enviaba el tipo de la
+  columna junto a cada valor, pero el backend leía esa pista con otro nombre y
+  la descartaba, así que la inserción acababa en texto. La misma pista perdida
+  afectaba a las actualizaciones masivas y a las columnas binarias de SQL
+  Server escritas desde un borrador de inserción. Editar una celda ya existente
+  nunca se vio afectado.
+
 - **El buscador de la rejilla y el selector de clave foránea hablan el idioma
   de la interfaz.** Con la aplicación en español, los botones de borrar y de
   búsquedas recientes del buscador seguían anunciándose en inglés, y el
