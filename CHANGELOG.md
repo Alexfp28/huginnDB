@@ -167,6 +167,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Security
 
+- **Documented: the managed policy assumes a single Windows domain.** An
+  account is matched without its domain, so `ITBACKING\alopez` and
+  `CLIENT\alopez` are the same user to the policy and get the same role.
+  `docs/POLICY.md` now says so, and says not to deploy the policy in a forest
+  of trusted domains with overlapping account names until domains are
+  compared too.
+
 - **Three statements that write were classified as reads, and ran under a
   read-only policy.** The tier a statement needs — what a `read-only` MCP
   connection and the AI panel's no-write rule check — is decided from its text,

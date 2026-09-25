@@ -143,7 +143,18 @@ nunca se interpreta como "sin restricción".
 
 - Un usuario es la **cuenta del sistema operativo** con la que se ejecuta
   HuginnDB, leída del propio sistema. Los nombres se comparan sin distinguir
-  mayúsculas, con o sin el prefijo `DOMINIO\`.
+  mayúsculas, con o sin el prefijo `DOMINIO\`. HuginnDB muestra la cuenta sin
+  el dominio (`alopez` para `ITBACKING\alopez`), y en la política vale
+  cualquiera de las dos formas.
+- **La política da por hecho un único dominio.** Como el dominio se descarta
+  antes de comparar, `ITBACKING\alopez` y `CLIENTE\alopez` son el mismo usuario
+  para la política y reciben el mismo rol. En una organización con un solo
+  dominio no importa. Si la tuya tiene varios dominios de confianza con nombres
+  de cuenta que se repiten, no despliegues la política hasta que HuginnDB
+  compare también el dominio: todavía no lo hace. Una cuenta local de Windows
+  con el mismo nombre que una del dominio no sirve para saltársela, porque
+  crearla exige ser administrador del equipo, y un administrador ya puede
+  quitar la política.
 - Cada usuario tiene **exactamente un rol**. Poner la misma cuenta dos veces
   (por ejemplo `ana` y `CORP\ana`) es un error.
 - Quien no aparezca en la lista recibe `defaultRole`. Haz que sea el rol más

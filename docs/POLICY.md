@@ -135,6 +135,16 @@ whole policy invalid, and it blocks. A misspelled restriction is never read as
 
 - A user is the **operating-system account** HuginnDB runs as, read from the OS
   itself. Names are compared ignoring case, with or without a `DOMAIN\` prefix.
+  HuginnDB shows the account without the domain (`alopez` for
+  `ITBACKING\alopez`), and either spelling in the policy matches it.
+- **The policy assumes one domain.** Because the domain is dropped before
+  comparing, `ITBACKING\alopez` and `CLIENT\alopez` are the same user to the
+  policy and get the same role. That is fine for an organization with a single
+  domain. If yours has several trusted domains with overlapping account names,
+  do not deploy the policy until HuginnDB compares domains too: it does not
+  yet. A local Windows account named like a domain one is not a way around
+  it, because creating one needs administrator rights on the computer, and an
+  administrator can already remove the policy.
 - Each user has **exactly one role**. Listing the same account twice (for
   example `ana` and `CORP\ana`) is an error.
 - Anyone not listed gets `defaultRole`. Make it the most restrictive role —
