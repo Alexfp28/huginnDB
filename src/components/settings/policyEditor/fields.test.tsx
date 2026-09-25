@@ -24,7 +24,18 @@ const erp = {
   database: "",
 } as unknown as ConnectionProfile;
 
+// Radix Select measures and captures the pointer; jsdom does neither.
+Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+
 afterEach(cleanup);
+
+/** Open a Radix Select by its trigger's label and choose an option. */
+function choose(trigger: string, option: RegExp) {
+  fireEvent.keyDown(screen.getByRole("combobox", { name: trigger }), { key: "Enter" });
+  fireEvent.keyDown(screen.getByRole("option", { name: option }), { key: "Enter" });
+}
 
 function endpoint(value: Parameters<typeof EndpointField>[0]["value"]) {
   const onChange = vi.fn();
@@ -54,18 +65,21 @@ describe("EndpointField", () => {
   it("writes the whole server of a picked connection", () => {
     const onChange = endpoint("*");
     fireEvent.click(screen.getByRole("radio", { name: "A saved connection" }));
-    fireEvent.change(screen.getByLabelText("A saved connection"), { target: { value: "c1" } });
+    choose("A saved connection", /ERP/);
     expect(onChange).toHaveBeenCalledWith({ driver: "mysql", host: "erp.local", port: 3306 });
   });
 
   it("commits a typed server only once it names a host", () => {
     const onChange = endpoint("*");
     fireEvent.click(screen.getByRole("radio", { name: "By hand" }));
+    // The driver picker is the connection form's, logos included.
+    choose("Driver", /MySQL/);
+    expect(onChange).not.toHaveBeenCalled();
     const host = screen.getByLabelText("Host");
     fireEvent.change(host, { target: { value: "   " } });
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.change(host, { target: { value: "db.local" } });
-    expect(onChange).toHaveBeenLastCalledWith({ host: "db.local" });
+    expect(onChange).toHaveBeenLastCalledWith({ driver: "mysql", host: "db.local" });
   });
 
   it("recognises a rule's server as a saved connection", () => {

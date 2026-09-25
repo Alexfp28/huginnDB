@@ -3488,7 +3488,9 @@
       "remove": "Remove role",
       "inUse": "In use: it is the default role or someone is in it",
       "add": "Add role",
-      "none": "The policy has no roles yet."
+      "none": "The policy has no roles yet.",
+      "confirmRemove_one": "Remove the role “{{role}}” and its {{count}} rule? It leaves the draft only; until you save, “Discard changes” brings it back.",
+      "confirmRemove_other": "Remove the role “{{role}}” and its {{count}} rules? It leaves the draft only; until you save, “Discard changes” brings it back."
     },
     "rules": {
       "title": "Rules",
@@ -3499,7 +3501,8 @@
       "allDbs": "every database",
       "dbCount_one": "{{count}} database",
       "dbCount_other": "{{count}} databases",
-      "nothing": "nothing"
+      "nothing": "nothing",
+      "confirmRemove": "Remove the rule for {{rule}} from “{{role}}” ({{grants}})? It leaves the draft only; until you save, “Discard changes” brings it back."
     },
     "rule": {
       "onlyThese": "Only these",

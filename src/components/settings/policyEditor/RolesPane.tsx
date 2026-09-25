@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { MICRO_HEADING, REVEAL_ON_HOVER } from "@/components/ui/styles";
 import { databaseViewId } from "@/lib/connectionLabel";
 import { connectAndWarm } from "@/lib/connection/connectFlow";
+import { confirmDestructive } from "@/lib/confirmDestructive";
 import {
   addRole,
   canRemoveRole,
@@ -431,7 +432,13 @@ export function RolesPane({
                           : t("policyEditor.roles.inUse")
                       }
                       disabled={!canRemoveRole(doc, r)}
-                      onClick={() => onChange(removeRole(doc, r))}
+                      onClick={async () => {
+                        const count = rulesOf(doc, r).length;
+                        const ok = await confirmDestructive(
+                          t("policyEditor.roles.confirmRemove", { role: r, count }),
+                        );
+                        if (ok) onChange(removeRole(doc, r));
+                      }}
                     />
                   </>
                 )
@@ -474,7 +481,15 @@ export function RolesPane({
                   icon={Trash2}
                   tone="destructive"
                   label={t("policyEditor.rules.remove")}
-                  onClick={() => {
+                  onClick={async () => {
+                    const ok = await confirmDestructive(
+                      t("policyEditor.rules.confirmRemove", {
+                        rule: endpointLabel(r.endpoint, profiles, anyLabel),
+                        role: selected!,
+                        grants: summary(r),
+                      }),
+                    );
+                    if (!ok) return;
                     onChange(setRules(doc, selected!, rules.filter((_, j) => j !== i)));
                     setRuleIndex(Math.max(0, i - 1));
                   }}

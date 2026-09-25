@@ -27,15 +27,16 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 import { SearchField } from "@/components/ui/search-field";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { Segmented } from "@/components/ui/segmented";
 import { Spinner } from "@/components/ui/spinner";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { MICRO_HEADING } from "@/components/ui/styles";
+import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
 import { PERMISSIONS, type EndpointJson } from "@/lib/policy/draft";
 import { cn } from "@/lib/utils";
-import type { ConnectionProfile } from "@/types";
+import type { ConnectionProfile, Driver } from "@/types";
 
 /** A label above its control, with an optional hint under it. */
 export function Field({
@@ -128,7 +129,20 @@ export function whereOf(p: ConnectionProfile): string {
     : `${p.driver} · ${p.host}${p.port ? `:${p.port}` : ""}`;
 }
 
-const DRIVERS = ["postgres", "mysql", "sqlserver", "mongodb", "sqlite"] as const;
+/** Same order as the connection form's driver picker. */
+const DRIVERS: Driver[] = ["postgres", "mysql", "sqlite", "mongodb", "sqlserver"];
+/** Radix reserves `""` for "no value", so "any driver" needs a name. */
+const ANY_DRIVER = "any";
+
+/** A driver's logo and name, as the connection form shows it. */
+function DriverOption({ driver, children }: { driver: Driver; children?: ReactNode }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      <DriverBadge driver={driver} />
+      {children ?? driverLabel(driver)}
+    </span>
+  );
+}
 
 type EndpointMode = "any" | "saved" | "manual";
 
@@ -220,25 +234,39 @@ export function EndpointField({
           </p>
         ) : (
           <div className="grid gap-2">
-            <NativeSelect
-              size="sm"
-              aria-label={t("policyEditor.rule.endpointSaved")}
-              disabled={readOnly}
+            <Select
               value={match?.id ?? ""}
-              onChange={(e) => {
-                const p = saved.find((x) => x.id === e.target.value);
+              disabled={readOnly}
+              onValueChange={(id) => {
+                const p = saved.find((x) => x.id === id);
                 if (p) onChange(endpointOf(p));
               }}
             >
-              <option value="" disabled>
-                {t("policyEditor.rule.pickConnection")}
-              </option>
-              {saved.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} — {whereOf(p)}
-                </option>
-              ))}
-            </NativeSelect>
+              <SelectTrigger
+                aria-label={t("policyEditor.rule.endpointSaved")}
+                className="h-8 text-xs"
+              >
+                {match ? (
+                  <DriverOption driver={match.driver}>
+                    <span className="truncate">{match.name}</span>
+                  </DriverOption>
+                ) : (
+                  <span className="text-muted-foreground">{t("policyEditor.rule.pickConnection")}</span>
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                {saved.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    <DriverOption driver={p.driver}>
+                      <span className="truncate">{p.name}</span>
+                      <span className="truncate font-mono text-3xs text-muted-foreground">
+                        {whereOf(p)}
+                      </span>
+                    </DriverOption>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {match && (
               <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5 text-2xs">
                 <span
@@ -273,24 +301,34 @@ export function EndpointField({
         ))}
 
       {mode === "manual" && (
-        <div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_6rem]">
-          <NativeSelect
-            size="sm"
-            aria-label={t("policyEditor.rule.driver")}
+        <div className="grid gap-2 sm:grid-cols-[11rem_minmax(0,1fr)_6rem]">
+          <Select
+            value={driver || ANY_DRIVER}
             disabled={readOnly}
-            value={driver}
-            onChange={(e) => {
-              setDriver(e.target.value);
-              commitManual({ driver: e.target.value });
+            onValueChange={(v) => {
+              const d = v === ANY_DRIVER ? "" : v;
+              setDriver(d);
+              commitManual({ driver: d });
             }}
           >
-            <option value="">{t("policyEditor.rule.anyDriver")}</option>
-            {DRIVERS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </NativeSelect>
+            <SelectTrigger aria-label={t("policyEditor.rule.driver")} className="h-8 text-xs">
+              {driver ? (
+                <DriverOption driver={driver as Driver} />
+              ) : (
+                <span>{t("policyEditor.rule.anyDriver")}</span>
+              )}
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY_DRIVER} className="text-xs">
+                {t("policyEditor.rule.anyDriver")}
+              </SelectItem>
+              {DRIVERS.map((d) => (
+                <SelectItem key={d} value={d} className="text-xs">
+                  <DriverOption driver={d} />
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {driver === "sqlite" ? (
             <Input
               size="sm"

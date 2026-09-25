@@ -3488,7 +3488,9 @@
       "remove": "Quitar rol",
       "inUse": "En uso: es el rol por defecto o hay alguien en él",
       "add": "Añadir rol",
-      "none": "La política todavía no tiene roles."
+      "none": "La política todavía no tiene roles.",
+      "confirmRemove_one": "¿Quitar el rol «{{role}}» y su {{count}} regla? Solo sale del borrador: hasta que guardes, «Descartar cambios» lo recupera.",
+      "confirmRemove_other": "¿Quitar el rol «{{role}}» y sus {{count}} reglas? Solo sale del borrador: hasta que guardes, «Descartar cambios» lo recupera."
     },
     "rules": {
       "title": "Reglas",
@@ -3499,7 +3501,8 @@
       "allDbs": "todas las BD",
       "dbCount_one": "{{count}} base de datos",
       "dbCount_other": "{{count}} bases de datos",
-      "nothing": "nada"
+      "nothing": "nada",
+      "confirmRemove": "¿Quitar la regla de {{rule}} del rol «{{role}}» ({{grants}})? Solo sale del borrador: hasta que guardes, «Descartar cambios» la recupera."
     },
     "rule": {
       "onlyThese": "Solo estas",
