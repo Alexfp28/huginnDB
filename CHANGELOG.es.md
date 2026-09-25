@@ -154,6 +154,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Los errores del conector MCP ya no repiten su prefijo con la app
+  abierta.** Con la aplicación de escritorio en marcha, el conector le delega
+  el trabajo, y un rechazo volvía duplicado —`invalid input: invalid input:
+  "payroll" … is not available to the AI`— porque el error de la app, ya
+  redactado, se envolvía en otro nuevo por el camino. Ahora se lee igual que
+  cuando el conector trabaja por su cuenta. Los fallos propios del puente (la
+  app no responde a tiempo o cierra antes de responder) pierden también un
+  `invalid input:` que nunca les correspondió.
+
 - **Al salir del editor de orígenes compartidos se vuelve a Ajustes.** Abrir el
   editor desde Ajustes → Orígenes cerraba Ajustes, como debe ser: no se pueden
   apilar dos diálogos a pantalla completa. Pero al salir del editor, guardando

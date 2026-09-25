@@ -139,6 +139,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Errors from the MCP connector no longer repeat their prefix when the app
+  is open.** With the desktop app running, the connector hands its work to the
+  app, and a refusal came back doubled — `invalid input: invalid input:
+  "payroll" … is not available to the AI` — because the app's error, already
+  worded, was wrapped as a new one on the way out. It now reads exactly as it
+  does when the connector works on its own. The connector's own bridge
+  failures (the app not answering in time, or closing before it answered) also
+  lose an `invalid input:` they never deserved.
+
 - **Leaving the shared-origin editor returns to Settings.** Opening the editor
   from Settings → Origins closed Settings, as it should: two full-screen
   dialogs must not be stacked. But leaving the editor, saved or not, then
