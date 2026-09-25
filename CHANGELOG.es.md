@@ -182,6 +182,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Seguridad
 
+- **Documentado: la política gestionada da por hecho un único dominio de
+  Windows.** Las cuentas se comparan sin el dominio, así que
+  `ITBACKING\alopez` y `CLIENTE\alopez` son el mismo usuario para la
+  política y reciben el mismo rol. `docs/POLICY.md` ya lo dice, y avisa de no
+  desplegar la política en un bosque de dominios de confianza con nombres de
+  cuenta que se repiten hasta que se compare también el dominio.
+
 - **Tres sentencias que escriben se clasificaban como lecturas y se ejecutaban
   con una política de solo lectura.** El nivel que necesita una sentencia —lo
   que comprueban una conexión MCP `read-only` y la regla de no escritura del
