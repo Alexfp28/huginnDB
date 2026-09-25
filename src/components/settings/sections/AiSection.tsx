@@ -53,6 +53,7 @@ import {
 } from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type { AiProbeReport, ConnectionProfile } from "@/types";
+import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 import { AiConnectionTree } from "./AiConnectionTree";
 import { ReasoningPicker } from "@/components/ai/ReasoningPicker";
@@ -231,7 +232,7 @@ export function AiSection() {
         {t("settings.ai.intro")}
       </p>
 
-      <div className="space-y-1">
+      <PrefGroup title={t("settings.rowGroups.endpoint")}>
         <PrefRow
           label={t("settings.ai.enabled.label")}
           prefId="ai.enabled"
@@ -314,13 +315,15 @@ export function AiSection() {
           />
         </PrefRow>
         {trustDiffersFromGuess && (
-          <p className="px-1 text-[12px] text-muted-foreground">
+          <p className="border-b border-border/60 px-4 py-2 text-2xs last:border-b-0 text-muted-foreground">
             {guessed === "trusted"
               ? t("settings.ai.trust.looksLocal")
               : t("settings.ai.trust.looksRemote")}
           </p>
         )}
+      </PrefGroup>
 
+      <PrefGroup title={t("settings.rowGroups.behaviour")}>
         <PrefRow
           label={t("settings.ai.mode.label")}
           prefId="ai.mode"
@@ -338,7 +341,7 @@ export function AiSection() {
           />
         </PrefRow>
         {ai.mode === "agent" && probe && !toolCapable && (
-          <p className="px-1 text-[12px] text-amber-500">
+          <p className="border-b border-border/60 px-4 py-2 text-2xs last:border-b-0 text-warning">
             {t("settings.ai.mode.notToolCapable")}
           </p>
         )}
@@ -400,7 +403,7 @@ export function AiSection() {
             className="h-8 w-24 text-right font-mono text-xs"
           />
         </PrefRow>
-      </div>
+      </PrefGroup>
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between gap-2">

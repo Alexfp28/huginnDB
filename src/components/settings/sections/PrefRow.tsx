@@ -10,13 +10,25 @@
  * halves are joined by that string alone. `PrefId` narrows it to a real
  * preference path so a mismatch is a compile error instead of "the section
  * opens, nothing is highlighted".
+ *
+ * The same id is what lets a row say it has **moved off its default**: a dot
+ * before the label and a reset button beside the control, with no per-row
+ * wiring, because a `PrefId` is already the path to read in both the live prefs
+ * and the defaults. Which settings get that treatment is `lib/prefDefaults.ts`'s
+ * call (the AI endpoint and the UI language do not).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { RotateCcw } from "lucide-react";
+import { IconButton } from "@/components/ui/icon-button";
 import { Label } from "@/components/ui/label";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import { DEFAULT_PREFS, usePreferences } from "@/stores/preferences/preferences";
+import { readPref, resettablePath } from "@/lib/prefDefaults";
 import type { PrefId } from "@/lib/prefId";
 import { cn } from "@/lib/utils";
+import { PrefGroupContext } from "./PrefGroup";
 
 /** How long the ring stays on after a jump. */
 const FLASH_MS = 1600;
@@ -37,10 +49,21 @@ export function PrefRow({
   prefId,
   children,
 }: Props) {
+  const { t } = useTranslation();
+  const inGroup = useContext(PrefGroupContext);
   const highlightPrefId = useSettingsDialog((s) => s.highlightPrefId);
   const clearHighlight = useSettingsDialog((s) => s.clearHighlight);
   const [flashing, setFlashing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+
+  const path = prefId ? resettablePath(prefId) : null;
+  // A boolean out of the selector, never the value: primitives keep the
+  // subscription stable, and the row only needs to re-render when it crosses
+  // the default, not on every keystroke in its own input.
+  const modified = usePreferences((s) =>
+    path ? !Object.is(readPref(s.prefs, path), readPref(DEFAULT_PREFS, path)) : false,
+  );
+  const resetPrefs = usePreferences((s) => s.resetPrefs);
 
   // Consume the request as soon as it lands: clearing the store immediately
   // (rather than after the timeout) keeps the flash tied to the navigation that
@@ -61,31 +84,69 @@ export function PrefRow({
     };
   }, [prefId, highlightPrefId, clearHighlight]);
 
+  const resetLabel = (() => {
+    if (!path) return "";
+    const value = readPref(DEFAULT_PREFS, path);
+    // Only values that read well out of context: "Reset to default (13)" helps,
+    // "Reset to default (modal)" would leak an enum's spelling into the UI.
+    if (typeof value === "number") return t("settings.resetToDefaultValue", { value });
+    if (typeof value === "boolean")
+      return t("settings.resetToDefaultValue", {
+        value: t(value ? "commandPalette.settings.on" : "commandPalette.settings.off"),
+      });
+    return t("settings.resetToDefault");
+  })();
+
   return (
     <div
       ref={ref}
       data-pref-id={prefId}
+      data-modified={modified || undefined}
       className={cn(
         "flex items-start justify-between gap-4 border-b border-border/60 py-3 last:border-b-0",
+        inGroup && "px-4",
         // One blue pulse on arrival (`animate-brand-flash`, ~0.5s) settling
         // into the persistent ring — the "small blue spark when an action
         // completes" microdetail of the brand language, on the one navigation
-        // that genuinely completes somewhere the user can't see yet.
+        // that genuinely completes somewhere the user can't see yet. Inside a
+        // group card the ring is inset instead: the card clips its children,
+        // and the negative margin that works on a flush row would be cut off.
         flashing &&
-          "-mx-2 animate-brand-flash rounded-md bg-brand/10 px-2 ring-1 ring-brand/60 transition-colors",
+          (inGroup
+            ? "animate-brand-flash bg-brand/10 ring-1 ring-inset ring-brand/60 transition-colors"
+            : "-mx-2 animate-brand-flash rounded-md bg-brand/10 px-2 ring-1 ring-brand/60 transition-colors"),
       )}
     >
       <div className="flex-1">
-        <Label htmlFor={htmlFor} className="text-sm font-medium">
-          {label}
-        </Label>
+        <div className="flex items-center gap-1.5">
+          {modified && (
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+          )}
+          <Label htmlFor={htmlFor} className="text-sm font-medium">
+            {label}
+          </Label>
+          {modified && <span className="sr-only">{t("settings.changed")}</span>}
+        </div>
         {description && (
           <div className="mt-0.5 text-2xs leading-snug text-muted-foreground">
             {description}
           </div>
         )}
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="flex shrink-0 items-start gap-1">
+        {modified && prefId && (
+          <IconButton
+            size="xs"
+            icon={RotateCcw}
+            label={resetLabel}
+            tone="brand"
+            flat
+            className="mt-0.5"
+            onClick={() => resetPrefs([prefId])}
+          />
+        )}
+        {children}
+      </div>
     </div>
   );
 }

@@ -252,12 +252,11 @@ export function OriginsSection() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-semibold">{t("origins.title")}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {t("origins.description")}
-        </p>
-      </div>
+      {/* The title comes from the dialog's section header; this keeps only
+          the explanation, which says more than the rail's one-liner. */}
+      <p className="text-xs text-muted-foreground">
+        {t("origins.description")}
+      </p>
 
       <div className="flex items-center gap-2">
         <Button
