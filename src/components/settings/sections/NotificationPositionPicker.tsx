@@ -17,6 +17,7 @@ import {
   NOTIFICATION_POSITIONS,
   POSITION_LABEL_KEYS,
 } from "@/lib/notificationPosition";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { NotificationPosition } from "@/types";
 
@@ -48,31 +49,35 @@ export function NotificationPositionPicker({
     <div className="grid grid-cols-3 gap-1.5">
       {NOTIFICATION_POSITIONS.map((pos) => {
         const active = value === pos;
+        const label = t(
+          `settings.notifications.position.${POSITION_LABEL_KEYS[pos]}`,
+        );
+        // The tile has no text, so the label is its accessible name as well as
+        // its tooltip — `title` used to be both.
         return (
-          <button
-            key={pos}
-            type="button"
-            aria-pressed={active}
-            title={t(
-              `settings.notifications.position.${POSITION_LABEL_KEYS[pos]}`,
-            )}
-            onClick={() => onChange(pos)}
-            className={cn(
-              "relative h-[42px] w-[62px] rounded-md border bg-background transition-colors",
-              active
-                ? "border-brand ring-1 ring-brand/35"
-                : "border-border hover:border-muted-foreground/40",
-            )}
-          >
-            <span
+          <SimpleTooltip key={pos} label={label}>
+            <button
+              type="button"
+              aria-pressed={active}
+              aria-label={label}
+              onClick={() => onChange(pos)}
               className={cn(
-                "absolute h-1.5 transition-colors",
-                shape === "pill" ? "w-3.5 rounded-full" : "w-5 rounded-sm",
-                TILE_BAR[pos],
-                active ? "bg-brand" : "bg-muted-foreground/40",
+                "relative h-[42px] w-[62px] rounded-md border bg-background transition-colors",
+                active
+                  ? "border-brand ring-1 ring-brand/35"
+                  : "border-border hover:border-muted-foreground/40",
               )}
-            />
-          </button>
+            >
+              <span
+                className={cn(
+                  "absolute h-1.5 transition-colors",
+                  shape === "pill" ? "w-3.5 rounded-full" : "w-5 rounded-sm",
+                  TILE_BAR[pos],
+                  active ? "bg-brand" : "bg-muted-foreground/40",
+                )}
+              />
+            </button>
+          </SimpleTooltip>
         );
       })}
     </div>

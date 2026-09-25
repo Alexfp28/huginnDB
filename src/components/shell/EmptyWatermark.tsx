@@ -148,26 +148,30 @@ export function EmptyWatermark() {
       </div>
 
       <div className="relative z-10 flex items-center gap-5 pb-1 text-xs text-muted-foreground">
-        <button
+        <Button
           type="button"
+          flat
+          variant="quiet"
+          size="xs"
           onClick={() => togglePalette()}
-          className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:text-foreground"
         >
           <Kbd className="px-1.5 py-0.5 text-3xs font-medium leading-normal text-muted-foreground">
             {formatComboForDisplay(paletteCombo)}
           </Kbd>
           {t("commandPalette.title")}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          flat
+          variant="quiet"
+          size="xs"
           onClick={() => openSettings()}
-          className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 hover:text-foreground"
         >
           <Kbd className="px-1.5 py-0.5 text-3xs font-medium leading-normal text-muted-foreground">
             {formatComboForDisplay(settingsCombo)}
           </Kbd>
           {t("settings.title")}
-        </button>
+        </Button>
       </div>
     </div>
   );

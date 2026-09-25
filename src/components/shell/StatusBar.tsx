@@ -43,6 +43,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -51,6 +53,13 @@ import { copyToClipboard } from "@/lib/clipboard";
 function Sep() {
   return <span className="text-muted-foreground/30">|</span>;
 }
+
+/**
+ * The bar's two labelled controls. The bar is flat chrome at `text-2xs` in a
+ * 28px strip, and `xs` — the smallest labelled size — is itself 28px at
+ * `text-xs`, so these keep the bar's own line box rather than the size's.
+ */
+const STATUS_TEXT_BUTTON = "h-auto px-1 py-0.5 text-2xs font-normal";
 
 /** Row-height presets driving the grid "density" quick toggle. */
 const DENSITY_PRESETS: { key: string; labelKey: string; rowHeight: number }[] =
@@ -114,13 +123,16 @@ export function StatusBar() {
       <div className="flex items-center gap-2">
         <PendingChordHint />
         <SimpleTooltip label={t("statusBar.commandPaletteTooltip")} side="top">
-          <button
+          <Button
             type="button"
+            flat
+            variant="quiet"
+            size="xs"
             onClick={() => useCommandPalette.getState().toggle()}
-            className="rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className={STATUS_TEXT_BUTTON}
           >
             {t("statusBar.commandPaletteHint")}
-          </button>
+          </Button>
         </SimpleTooltip>
         <Sep />
         <span>{t("statusBar.encoding")}</span>
@@ -166,13 +178,18 @@ function HistoryMenu({ count }: { count: number }) {
     <DropdownMenu>
       <SimpleTooltip label={t("statusBar.recentQueries")} side="top">
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
-            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            flat
+            variant="quiet"
+            size="xs"
+            className={cn(STATUS_TEXT_BUTTON, "gap-1")}
           >
+            {/* A child rather than `icon`: the bar's type is `text-2xs`, a
+                step below the smallest size whose glyph the button owns. */}
             <History className="h-3 w-3" />
             {t("statusBar.history")} {count}
-          </button>
+          </Button>
         </DropdownMenuTrigger>
       </SimpleTooltip>
       <DropdownMenuContent side="top" align="end" className="w-96">
@@ -224,16 +241,16 @@ function DensityMenu() {
 
   return (
     <DropdownMenu>
-      <SimpleTooltip label={t("statusBar.density")} side="top">
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-sm px-1 py-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <Rows3 className="h-3 w-3" />
-          </button>
-        </DropdownMenuTrigger>
-      </SimpleTooltip>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          type="button"
+          flat
+          size="xs"
+          icon={Rows3}
+          label={t("statusBar.density")}
+          side="top"
+        />
+      </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" className="w-40">
         <DropdownMenuLabel>{t("statusBar.density")}</DropdownMenuLabel>
         {DENSITY_PRESETS.map((d) => (
@@ -261,24 +278,19 @@ function ConsoleToggle() {
   const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
   const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
   return (
-    <SimpleTooltip
+    <IconButton
+      type="button"
+      flat
+      size="xs"
+      icon={SquareTerminal}
       label={
         consoleOpen ? t("shell.console.collapse") : t("shell.console.expand")
       }
       side="top"
-    >
-      <button
-        type="button"
-        onClick={toggleConsole}
-        aria-pressed={consoleOpen}
-        className={cn(
-          "flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-          consoleOpen && "text-foreground",
-        )}
-      >
-        <SquareTerminal className="h-3 w-3" />
-      </button>
-    </SimpleTooltip>
+      onClick={toggleConsole}
+      aria-pressed={consoleOpen}
+      className={cn(consoleOpen && "text-foreground")}
+    />
   );
 }
 
@@ -288,19 +300,15 @@ function ThemeToggle() {
   const mode = useThemeStore(selectActiveMode);
   const setMode = useThemeStore((s) => s.setActiveMode);
   return (
-    <SimpleTooltip label={t("statusBar.toggleTheme")} side="top">
-      <button
-        type="button"
-        onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-        className="flex items-center rounded-sm p-0.5 outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        {mode === "dark" ? (
-          <Sun className="h-3 w-3" />
-        ) : (
-          <Moon className="h-3 w-3" />
-        )}
-      </button>
-    </SimpleTooltip>
+    <IconButton
+      type="button"
+      flat
+      size="xs"
+      icon={mode === "dark" ? Sun : Moon}
+      label={t("statusBar.toggleTheme")}
+      side="top"
+      onClick={() => setMode(mode === "dark" ? "light" : "dark")}
+    />
   );
 }
 

@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -694,14 +695,17 @@ export function ConnectionDialog({
                     <span className="flex-1">
                       {t("connectionDialog.duplicatePasswordHint")}
                     </span>
-                    <button
+                    {/* `-my-1`: the 24px square would otherwise make a
+                        one-line notice taller than its text. */}
+                    <IconButton
                       type="button"
+                      flat
+                      size="xs"
+                      icon={X}
+                      label={t("common.clear")}
                       onClick={() => setDuplicateHint(false)}
-                      aria-label={t("common.clear")}
-                      className="shrink-0 rounded-sm p-0.5 hover:bg-warning/20"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                      className="-my-1 shrink-0"
+                    />
                   </div>
                 )}
                 <Tabs defaultValue="general" className="w-full">
@@ -748,12 +752,15 @@ export function ConnectionDialog({
                         manager aside, and closing it reopens the manager on
                         this profile (`useOriginEditor`, gotcha #101). */}
                       {canEditInPlace && stored?.origin_id && (
-                        <button
-                          className="ml-1 underline"
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="xs"
+                          className="ml-1 h-auto p-0 text-2xs"
                           onClick={() => openOriginEditor(stored.origin_id!)}
                         >
                           {t("connectionDialog.editAtOrigin")}
-                        </button>
+                        </Button>
                       )}
                       {/* The consumer's way out of a password the publisher
                         has not fixed yet. Not offered to a publisher: they can

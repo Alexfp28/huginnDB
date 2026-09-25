@@ -559,7 +559,11 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
           >
             public
           </span>
-          <button
+          {/* A picture of a button, not a control: it has no handler, and as a
+              real `<button>` it was a tab stop that did nothing. Painted from
+              the theme being edited, so it cannot be the `Button` primitive,
+              which reads the live theme's tokens. */}
+          <span
             className="ml-auto rounded-sm px-2 py-0.5 text-3xs font-medium"
             style={{
               background: colors.primary,
@@ -567,7 +571,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
             }}
           >
             Run
-          </button>
+          </span>
         </div>
         {/* Body */}
         <div className="flex gap-3 px-3 py-2">

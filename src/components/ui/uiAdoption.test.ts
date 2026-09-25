@@ -120,7 +120,7 @@ describe("raw <button> outside ui/", () => {
    * `IconButton` and `Button` exist so that a control's height, hover alpha,
    * focus ring and disabled treatment are decided once. Before them the app
    * had four hover alphas and three paddings across visually identical
-   * buttons, and that is what these 138 remaining elements still are: each one
+   * buttons, and that is what the elements still counted here are: each one
    * re-decides, in isolation, something the primitives already answer.
    *
    * Two examples of what the count is actually measuring, both found while
@@ -157,88 +157,66 @@ describe("raw <button> outside ui/", () => {
    * is a number to stop pushing on.
    */
   const BUDGET: Record<string, number> = {
-    "src/components/grid/CellPreview.tsx": 5,
-    "src/components/shell/NotificationCard.tsx": 5,
-    "src/components/shell/StatusBar.tsx": 5,
-    "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 4,
+    // Shortcut hints (F11 / Ctrl+S / NULL / Esc) in a `text-3xs` footer; the
+    // smallest labelled `Button` is as tall as the whole footer.
+    "src/components/grid/CellPreview.tsx": 4,
     "src/components/grid/DocumentListView.tsx": 4,
-    "src/components/pulse/PulseWindow.tsx": 4,
+    // The row `div` carries its own native `title=`, so an `IconButton` inside
+    // it would stack its themed tooltip over the row's OS one. These move
+    // together with that row title, not before it.
     "src/components/connection/ConnectionTreeRow.tsx": 3,
-    "src/components/connection/dialogs/ConnectionDialog.tsx": 3,
     "src/components/connection/EnvironmentRail.tsx": 3,
-    "src/components/connection/StatusConnections.tsx": 3,
+    "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 3,
+    // A field-shaped combobox trigger and two full-row options.
     "src/components/grid/FkCombobox.tsx": 3,
-    "src/components/schema/SchemaTableRow.tsx": 3,
+    // Key chips are ~18px, below `IconButton`'s 24px floor, and two of the
+    // three are words rather than chrome.
     "src/components/settings/sections/ShortcutRow.tsx": 3,
-    "src/components/shell/dialogs/DocsDialog.tsx": 3,
-    "src/components/shell/TabSwitcher.tsx": 3,
+    // The close cross is measured by dockview's overflow logic; the other two
+    // are colour swatches inside context-menu content.
     "src/components/shell/WorkspaceTab.tsx": 3,
-    "src/components/common/VanishedEnvironmentNotice.tsx": 2,
-    "src/components/common/VanishedOriginNotice.tsx": 2,
+    "src/components/shell/dialogs/DocsDialog.tsx": 3,
     "src/components/connection/ConnectionRailSection.tsx": 2,
-    "src/components/connection/ConnectionsTree.tsx": 2,
-    "src/components/connection/TreeFilterBox.tsx": 2,
-    "src/components/grid/GridSearchInput.tsx": 2,
-    "src/components/indexes/dialogs/IndexEditorDialog.tsx": 2,
-    "src/components/pulse/PulsePanel.tsx": 2,
-    "src/components/schema/dialogs/DatabaseVisibilityDialog.tsx": 2,
-    "src/components/schema/StructureEditorTab.tsx": 2,
-    // The two collapsible headers (provenance section, group folder) of
-    // Settings -> AI's connection picker. Identical markup to
-    // `PulseConnectionTree` and `McpConnectionTree` below, which is the point:
-    // three trees now carry the same six lines, so the fix is one `ui/` fold-row
-    // primitive adopted by all three — which takes these six to zero. Held back
-    // from the AI work on purpose: a primitive with one consumer is what gotcha
-    // #60 says not to build, and migrating two shipped pickers is its own change.
-    "src/components/settings/sections/AiConnectionTree.tsx": 2,
-    "src/components/settings/sections/AppearanceSection.tsx": 2,
+    "src/components/connection/StatusConnections.tsx": 2,
+    "src/components/pulse/PulseWindow.tsx": 2,
+    "src/components/schema/SchemaTableRow.tsx": 2,
     "src/components/settings/sections/JsonSchemasSection.tsx": 2,
-    "src/components/settings/sections/McpConnectionTree.tsx": 2,
-    "src/components/settings/sections/PulseConnectionTree.tsx": 2,
     "src/components/shell/AppShell.tsx": 2,
     "src/components/shell/CommandPalette.tsx": 2,
-    "src/components/shell/dialogs/WhatsNewDialog.tsx": 2,
-    "src/components/shell/EmptyWatermark.tsx": 2,
-    "src/components/shell/NotificationCenter.tsx": 2,
+    // Documented exception. Radix portals tooltips to `body` at `z-50`, below
+    // Sonner's toaster, so a themed tooltip on a toast control paints behind
+    // the stack. The file link and the dismiss cross keep native titles.
+    "src/components/shell/NotificationCard.tsx": 2,
     "src/components/aggregation/AggregationTab.tsx": 1,
-    "src/components/aggregation/StageCard.tsx": 1,
     "src/components/aggregation/StageRail.tsx": 1,
-    "src/components/common/PasswordInput.tsx": 1,
-    "src/components/connection/ConnectionRail.tsx": 1,
-    "src/components/connection/dialogs/ConflictBulkActions.tsx": 1,
-    "src/components/connection/dialogs/ConflictResolutionStep.tsx": 1,
-    "src/components/connection/dialogs/ExportEnvironmentDialog.tsx": 1,
-    "src/components/connection/dialogs/ExportProfilesDialog.tsx": 1,
+    "src/components/connection/ConnectionsTree.tsx": 1,
     "src/components/connection/EnvironmentSwitcher.tsx": 1,
     "src/components/connection/GroupHeader.tsx": 1,
+    "src/components/connection/TreeFilterBox.tsx": 1,
     "src/components/connection/WorkspacePicker.tsx": 1,
+    "src/components/connection/dialogs/ConnectionDialog.tsx": 1,
     "src/components/grid/CellInput.tsx": 1,
     "src/components/grid/DataGrid.tsx": 1,
-    "src/components/grid/dialogs/CellEditor.tsx": 1,
     "src/components/grid/DraftRowView.tsx": 1,
     // Was 2. The "N filters" summary chip went when the chips moved to a row
     // of their own under the toolbar, which can wrap instead of folding.
     "src/components/grid/ServerFilterChips.tsx": 1,
     "src/components/jsonSchema/SchemaBindingBadge.tsx": 1,
-    "src/components/origins/OriginEditorHeader.tsx": 1,
-    "src/components/origins/sections/ConnectionsPane.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
+    "src/components/pulse/PulsePanel.tsx": 1,
     "src/components/query/Console.tsx": 1,
     "src/components/query/QueryEditorTab.tsx": 1,
-    "src/components/schema/IndexesSectionHeader.tsx": 1,
-    "src/components/schema/SchemaTableSection.tsx": 1,
     "src/components/schema/SecurityTab.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
+    "src/components/settings/sections/AppearanceSection.tsx": 1,
     "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
     "src/components/settings/sections/NotificationsSection.tsx": 1,
     "src/components/settings/sections/ShortcutsSection.tsx": 1,
-    "src/components/shell/ActivityBar.tsx": 1,
-    "src/components/shell/ConsoleDock.tsx": 1,
-    "src/components/shell/LayoutToggles.tsx": 1,
-    "src/components/shell/UpdateBanner.tsx": 1,
+    "src/components/shell/TabSwitcher.tsx": 1,
+    "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${131} in ${70} files`, () => {
+  it(`is down to ${70} in ${42} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -246,7 +224,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(131);
+    expect(total(BUDGET)).toBeLessThanOrEqual(70);
   });
 });
 
@@ -256,13 +234,13 @@ describe("the OS tooltip outside ui/", () => {
    * look, no theme, and no coordination with the app's. `IconButton` omits
    * `title` from its props type to make that a compile error, and
    * `uiContracts.test.ts`'s rule H catches a `<Button size="icon" title=>`.
-   * Neither reaches the 79 counted here.
+   * Neither reaches the ones counted here.
    *
    * Rule H's shape is why: it fires only on `size="icon"`, so
    * `GridToolbar.tsx`'s `<Button size="sm" title={t("dataGrid.insertNewRow")}>`
    * — a labelled button showing an OS tooltip in the grid's main toolbar —
    * passes it cleanly. Widening rule H is not the fix, because a contract with
-   * 79 violations cannot be merged; counting them is.
+   * dozens of violations cannot be merged; counting them is.
    *
    * **What counts.** A `title` that reaches the DOM: any lowercase (host) tag,
    * plus `Button` / `Switch` / `SelectTrigger`, which spread their props onto
@@ -282,52 +260,42 @@ describe("the OS tooltip outside ui/", () => {
   const SPREADS_TO_DOM = new Set(["Button", "Switch", "SelectTrigger"]);
 
   const BUDGET: Record<string, number> = {
+    "src/components/connection/EnvironmentSwitcher.tsx": 4,
+    "src/components/pulse/PulseWindow.tsx": 4,
+    "src/components/aggregation/StageCard.tsx": 3,
     // Was 8. `MatchBadge`'s six arms became one `SimpleTooltip` — every one of
     // them explains a state the glyph cannot carry ("—" means four different
     // things across them), so the label was the point of the badge and the OS
     // tooltip the wrong vehicle. The three left are the row's own controls.
     "src/components/connection/ConnectionTreeRow.tsx": 3,
-    "src/components/aggregation/StageCard.tsx": 4,
-    "src/components/connection/EnvironmentSwitcher.tsx": 4,
-    "src/components/pulse/PulseWindow.tsx": 4,
-    "src/components/settings/sections/JsonSchemasSection.tsx": 4,
-    "src/components/connection/StatusConnections.tsx": 3,
-    "src/components/connection/TreeFilterBox.tsx": 3,
-    "src/components/common/VanishedOriginNotice.tsx": 2,
     "src/components/connection/ConnectionRailRow.tsx": 2,
-    "src/components/grid/CellPreview.tsx": 2,
+    "src/components/connection/StatusConnections.tsx": 2,
+    "src/components/connection/TreeFilterBox.tsx": 2,
     "src/components/grid/DocumentListView.tsx": 2,
-    "src/components/grid/GridSearchInput.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
     "src/components/query/QueryEditorTab.tsx": 2,
     "src/components/schema/StructureEditorTab.tsx": 2,
     "src/components/settings/sections/ShortcutRow.tsx": 2,
-    "src/components/shell/TabSwitcher.tsx": 2,
-    "src/components/grid/GridToolbar.tsx": 1,
     "src/components/common/DriverBadge.tsx": 1,
-    "src/components/common/PasswordInput.tsx": 1,
-    "src/components/common/VanishedEnvironmentNotice.tsx": 1,
+    "src/components/common/VanishedOriginNotice.tsx": 1,
     "src/components/connection/dialogs/EnvironmentEditorDialog.tsx": 1,
-    "src/components/grid/dialogs/CellEditor.tsx": 1,
+    "src/components/grid/CellPreview.tsx": 1,
     "src/components/grid/DraftCellControl.tsx": 1,
     "src/components/grid/FkCombobox.tsx": 1,
     "src/components/grid/GridRow.tsx": 1,
+    "src/components/grid/GridToolbar.tsx": 1,
     "src/components/grid/TableDataTab.tsx": 1,
-    "src/components/jsonSchema/SchemaBindingBadge.tsx": 1,
+    "src/components/grid/dialogs/CellEditor.tsx": 1,
     "src/components/origins/OriginEditorHeader.tsx": 1,
-    "src/components/origins/sections/ConnectionsPane.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/origins/sections/SchemasPane.tsx": 1,
     "src/components/query/Console.tsx": 1,
     "src/components/schema/SchemaTableRow.tsx": 1,
-    "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
-    "src/components/settings/sections/McpConnectionTree.tsx": 1,
-    "src/components/settings/sections/NotificationPositionPicker.tsx": 1,
-    "src/components/settings/sections/PulseConnectionTree.tsx": 1,
+    "src/components/settings/sections/JsonSchemasSection.tsx": 1,
     "src/components/shell/WorkspaceTab.tsx": 1,
   };
 
-  it(`is down to ${67} in ${39} files`, () => {
+  it(`is down to ${47} in ${29} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const m of src.matchAll(/<([A-Za-z][\w.]*)\b([^>]*?)>/gs)) {
@@ -341,7 +309,7 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(67);
+    expect(total(BUDGET)).toBeLessThanOrEqual(47);
   });
 });
 

@@ -17,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
+import { IconButton } from "@/components/ui/icon-button";
 
 export function GridSearchInput({
   value,
@@ -53,49 +54,53 @@ export function GridSearchInput({
         }}
       />
       {hasValue && (
-        <button
-          type="button"
-          className="flex items-center justify-center px-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-          title="Clear filter"
+        <IconButton
+          flat
+          size="xs"
+          icon={X}
+          label="Clear filter"
+          className="self-center"
           onClick={() => {
             // Clear immediately + apply, so the grid actually refetches
             // and the user sees the unfiltered rows.
             onChange?.("");
             onSubmit?.("");
           }}
-        >
-          <X className="h-3 w-3" />
-        </button>
+        />
       )}
       {hasHistory && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex items-center justify-center border-l border-input px-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-              title="Recent searches on this connection"
+        // The divider lives on a wrapper rather than on the trigger: a `flat`
+        // button's own border is transparent by design, and `DropdownMenu`
+        // renders no element of its own to carry it.
+        <div className="flex items-center border-l border-input">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton
+                flat
+                size="xs"
+                icon={ChevronDown}
+                label="Recent searches on this connection"
+              />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="max-h-72 overflow-y-auto"
             >
-              <ChevronDown className="h-3 w-3" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="max-h-72 overflow-y-auto"
-          >
-            {history.map((q) => (
-              <DropdownMenuItem
-                key={q}
-                onSelect={() => {
-                  onChange?.(q);
-                  onSubmit?.(q);
-                }}
-                className="font-mono text-xs"
-              >
-                <span className="truncate max-w-[20rem]">{q}</span>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {history.map((q) => (
+                <DropdownMenuItem
+                  key={q}
+                  onSelect={() => {
+                    onChange?.(q);
+                    onSubmit?.(q);
+                  }}
+                  className="font-mono text-xs"
+                >
+                  <span className="truncate max-w-[20rem]">{q}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       )}
     </div>
   );

@@ -597,19 +597,25 @@ export function ConnectionsTree() {
                 : t("connectionsTree.selectConnections.action")
             }
           >
-            <button
+            {/* A `Button` rather than an `IconButton` only because of the dot:
+                `IconButton` takes no children. Same shape and variant, so it
+                still matches the disconnect button beside it. */}
+            <Button
               type="button"
+              variant="quiet"
+              size="icon-sm"
+              icon={ListFilter}
               onClick={() => setVisibilityPickerOpen(true)}
               aria-label={t("connectionsTree.selectConnections.action")}
-              className="relative shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <ListFilter
-                className={cn("h-3.5 w-3.5", visibleSet && "text-brand")}
-              />
-              {visibleSet && (
-                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background" />
+              className={cn(
+                "relative shrink-0",
+                visibleSet && "text-brand hover:text-brand",
               )}
-            </button>
+            >
+              {visibleSet && (
+                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background" />
+              )}
+            </Button>
           </SimpleTooltip>
         </div>
         <TreeFilterBox

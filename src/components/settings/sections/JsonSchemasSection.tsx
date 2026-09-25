@@ -43,6 +43,7 @@ import {
 import { notify } from "@/lib/notify";
 
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { PrefRow } from "@/components/settings/sections/PrefRow";
 import { Switch } from "@/components/ui/switch";
@@ -394,24 +395,21 @@ export function JsonSchemasSection() {
                     className="h-7 text-xs"
                     placeholder={t("jsonSchemas.detail.namePlaceholder")}
                   />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    title={t("jsonSchemas.detail.duplicate")}
+                  <IconButton
+                    icon={Copy}
+                    label={t("jsonSchemas.detail.duplicate")}
+                    className="shrink-0"
                     onClick={() =>
                       void createFrom(`${selected.name} (copy)`, selected.body)
                     }
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    title={t("jsonSchemas.detail.delete")}
+                  />
+                  <IconButton
+                    icon={Trash2}
+                    tone="destructive"
+                    label={t("jsonSchemas.detail.delete")}
+                    className="shrink-0"
                     onClick={() => void removeSelected()}
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                  </Button>
+                  />
                 </div>
                 <Input
                   value={description}
@@ -441,18 +439,15 @@ export function JsonSchemasSection() {
                     >
                       {t("jsonSchemas.detail.format")}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      title={
+                    <IconButton
+                      icon={Maximize2}
+                      label={
                         fullscreen
                           ? t("jsonSchemas.detail.exitFullscreen")
                           : t("jsonSchemas.detail.fullscreen")
                       }
                       onClick={() => setFullscreen((v) => !v)}
-                    >
-                      <Maximize2 className="h-3.5 w-3.5" />
-                    </Button>
+                    />
                     <div className="ml-auto flex items-center gap-2">
                       {bodyDirty && (
                         <Button

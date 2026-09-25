@@ -180,13 +180,17 @@ export function WhatsNewDialog() {
           </DialogBody>
 
           <DialogFooter className="items-center px-7 py-4 sm:justify-between">
-            <button
+            {/* `px-0`: the link's text sits flush with the body's `px-7`
+                column above it, as plain link text does. */}
+            <Button
               type="button"
+              variant="link"
+              size="sm"
               onClick={() => void api.openUrl(CHANGELOG_URL)}
-              className="text-xs text-brand hover:text-brand-hover hover:underline"
+              className="px-0"
             >
               {t("whatsNew.viewChangelog")}
-            </button>
+            </Button>
             <Button size="sm" onClick={dismiss}>
               {t("whatsNew.gotIt")}
             </Button>

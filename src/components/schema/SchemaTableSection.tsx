@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import { TableRow } from "@/components/schema/SchemaTableRow";
+import { TreeRow } from "@/components/ui/tree-row";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { tableKey, useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -91,8 +92,9 @@ export const TableSection = memo(function TableSection({
 
   return (
     <div>
-      <button
-        className="flex w-full items-center gap-1 py-1 pl-5 pr-2 hover:bg-accent"
+      <TreeRow
+        className="py-1 pl-5"
+        aria-expanded={isOpen}
         onClick={() => toggleNode(connectionId, sectionKey)}
       >
         {isOpen ? (
@@ -107,7 +109,7 @@ export const TableSection = memo(function TableSection({
         <span className="ml-auto text-3xs tabular-nums text-muted-foreground/60">
           {items.length}
         </span>
-      </button>
+      </TreeRow>
 
       {isOpen && (
         <div

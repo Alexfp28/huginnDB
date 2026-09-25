@@ -47,6 +47,7 @@ import { Search, X } from "lucide-react";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { cn } from "@/lib/utils";
 import { fieldFocus } from "@/components/ui/styles";
+import { IconButton } from "@/components/ui/icon-button";
 import {
   TREE_SEARCH_DEBOUNCE_MS,
   useTreeSearch,
@@ -157,15 +158,15 @@ export const TreeFilterBox = forwardRef<
         onKeyDown={handleKeyDown}
       />
       {raw.length > 0 && (
-        <button
+        <IconButton
           type="button"
-          title={clearLabel}
-          aria-label={clearLabel}
-          className="shrink-0 rounded-sm p-0.5 text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+          flat
+          size="xs"
+          icon={X}
+          label={clearLabel}
+          className="shrink-0"
           onClick={clearText}
-        >
-          <X className="h-3 w-3" />
-        </button>
+        />
       )}
     </div>
   );

@@ -12,7 +12,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Trash2, Unlink } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { notify } from "@/lib/notify";
 import {
   useEnvironments,
@@ -81,20 +82,25 @@ export function VanishedEnvironmentNotice({
         </div>
       </div>
       <div className="mt-2 flex justify-end gap-1.5">
-        <button
+        <SimpleTooltip label={t("origins.vanishedEnvironments.keepTooltip")}>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            icon={Check}
+            loading={busy}
+            onClick={() => void run(() => adoptEnvironment(environmentId))}
+          >
+            {t("origins.vanishedEnvironments.keep")}
+          </Button>
+        </SimpleTooltip>
+        <Button
           type="button"
+          size="xs"
+          variant="outline"
+          icon={Trash2}
           disabled={busy}
-          title={t("origins.vanishedEnvironments.keepTooltip")}
-          className="flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-2xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
-          onClick={() => void run(() => adoptEnvironment(environmentId))}
-        >
-          {busy ? <Spinner size="xs" /> : <Check className="h-3 w-3" />}
-          {t("origins.vanishedEnvironments.keep")}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          className="flex items-center gap-1 rounded-sm px-2 py-1 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/15 disabled:opacity-50"
+          className="text-destructive hover:text-destructive"
           onClick={() => {
             void confirmIrreversible(
               t("origins.vanishedEnvironments.retireConfirm", { name }),
@@ -103,9 +109,8 @@ export function VanishedEnvironmentNotice({
             });
           }}
         >
-          <Trash2 className="h-3 w-3" />
           {t("origins.vanishedEnvironments.retire")}
-        </button>
+        </Button>
       </div>
     </div>
   );

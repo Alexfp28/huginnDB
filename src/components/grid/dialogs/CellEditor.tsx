@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/icon-button";
 import { Button } from "@/components/ui/button";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Select,
   SelectContent,
@@ -443,27 +444,28 @@ export function CellEditor({
               label={t("cellEditor.moveToSide")}
               onClick={moveToSidePanel}
             />
-            {/* Fullscreen reads as a small sticker chip carrying its own
-                shortcut rather than an anonymous icon button: F11 is already
-                bound here (see the keydown handler above), and the key was
-                discoverable only by trying it. */}
-            <button
-              type="button"
-              onClick={() => setFullscreen((v) => !v)}
-              title={
+            {/* Fullscreen reads as a small chip carrying its own shortcut
+                rather than an anonymous icon button: F11 is already bound here
+                (see the keydown handler above), and the key was discoverable
+                only by trying it. A labelled `Button`, not an `IconButton`,
+                because the "F11" is the point. */}
+            <SimpleTooltip
+              label={
                 fullscreen
                   ? t("cellEditor.exitFullscreen")
                   : t("cellEditor.fullscreen")
               }
-              className="brand-sticker flex h-7 shrink-0 items-center gap-1 rounded-lg bg-background px-2 text-2xs font-semibold text-muted-foreground transition-colors duration-150 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             >
-              {fullscreen ? (
-                <Minimize2 className="h-3.5 w-3.5" />
-              ) : (
-                <Maximize2 className="h-3.5 w-3.5" />
-              )}
-              F11
-            </button>
+              <Button
+                variant="quiet"
+                size="xs"
+                icon={fullscreen ? Minimize2 : Maximize2}
+                onClick={() => setFullscreen((v) => !v)}
+                className="shrink-0 font-semibold"
+              >
+                F11
+              </Button>
+            </SimpleTooltip>
           </div>
         </DialogHeader>
         <div className="min-h-0 flex-1 p-3">

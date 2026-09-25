@@ -41,6 +41,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { IconButton } from "@/components/ui/icon-button";
+import { Button } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
@@ -786,24 +788,15 @@ function RetroView({ connectionId }: { connectionId: string }) {
     <Panel
       title={t("pulse.section.retro")}
       action={
-        <div className="flex gap-1">
-          {(["24h", "7d", "30d"] as const).map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setRange(r)}
-              aria-pressed={range === r}
-              className={cn(
-                "rounded-md px-2 py-0.5 font-mono text-3xs",
-                range === r
-                  ? "bg-accent text-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              {t(`pulse.retro.range.${r}`)}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          size="sm"
+          value={range}
+          onValueChange={setRange}
+          options={(["24h", "7d", "30d"] as const).map((r) => ({
+            value: r,
+            label: t(`pulse.retro.range.${r}`),
+          }))}
+        />
       }
     >
       <div className="flex flex-col gap-2">
@@ -893,14 +886,15 @@ function PulseBody({ connectionId }: { connectionId: string }) {
           </button>
         ))}
         <div className="mt-auto flex flex-col gap-1 border-t border-border pt-2">
-          <button
-            type="button"
+          <Button
+            variant="quiet"
+            size="sm"
+            icon={RefreshCw}
             onClick={refresh}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            className="justify-start"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
             {t("pulse.refresh")}
-          </button>
+          </Button>
           <p className="px-2 pb-1 font-mono text-3xs leading-relaxed text-muted-foreground">
             {view.latest.driver} {view.latest.serverVersion}
           </p>

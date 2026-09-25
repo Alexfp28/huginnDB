@@ -32,6 +32,7 @@ import { api } from "@/lib/tauri";
 import { copyToClipboard } from "@/lib/clipboard";
 import { dirName } from "@/lib/filePath";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { NotificationFile } from "@/stores/notifications";
 import {
   NOTIFICATION_KIND_VISUALS,
@@ -203,39 +204,36 @@ export function NotificationCard({
             <div className="mt-2.5 flex items-center gap-2">
               {file && (
                 <>
-                  <button
+                  <Button
                     type="button"
+                    size="xs"
+                    icon={FolderOpen}
                     onClick={() => void reveal()}
                     disabled={missing}
-                    className="inline-flex h-[26px] items-center gap-1.5 rounded-md bg-brand px-2.5 text-2xs font-semibold text-brand-foreground transition-colors hover:bg-brand-hover disabled:pointer-events-none disabled:opacity-40"
                   >
-                    <FolderOpen className="h-3 w-3" />
                     {t("notifications.openFolder")}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="quiet"
+                    size="xs"
+                    icon={Copy}
                     onClick={() => void copyToClipboard(file.path)}
-                    className="inline-flex h-[26px] items-center gap-1.5 rounded-md px-2 text-2xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    <Copy className="h-3 w-3" />
                     {t("notifications.copyPath")}
-                  </button>
+                  </Button>
                 </>
               )}
               {actions?.map((action) => (
-                <button
+                <Button
                   key={action.label}
                   type="button"
+                  variant={action.variant === "primary" ? "default" : "quiet"}
+                  size="xs"
                   onClick={() => run(action)}
-                  className={cn(
-                    "inline-flex h-[26px] items-center rounded-md text-2xs transition-colors",
-                    action.variant === "primary"
-                      ? "bg-brand px-2.5 font-semibold text-brand-foreground hover:bg-brand-hover"
-                      : "px-2 font-medium text-muted-foreground hover:bg-accent hover:text-foreground",
-                  )}
                 >
                   {action.label}
-                </button>
+                </Button>
               ))}
               {file?.size && (
                 <span className="ml-auto font-mono text-3xs text-muted-foreground/70">

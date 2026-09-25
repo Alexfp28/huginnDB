@@ -30,6 +30,7 @@ import {
   Wand2,
 } from "lucide-react";
 
+import { IconButton } from "@/components/ui/icon-button";
 import { runAiTask } from "@/lib/ai/runTask";
 import {
   ContextMenu,
@@ -205,8 +206,16 @@ export const TableRow = memo(function TableRow({
               menuOpen && "ring-1 ring-inset ring-ring",
             )}
           >
-            <button
-              type="button"
+            <IconButton
+              size="xs"
+              flat
+              icon={tableOpen ? ChevronDown : ChevronRight}
+              label={
+                tableOpen
+                  ? ct("schema.collapseColumns")
+                  : ct("schema.expandColumns")
+              }
+              aria-expanded={tableOpen}
               onClick={() => {
                 toggleNode(connectionId, tableNodeKey);
                 // Don't auto-relaunch a failed load on every toggle — the
@@ -219,24 +228,10 @@ export const TableRow = memo(function TableRow({
               // the row opens the table in a tab (below). A single click
               // anywhere used to expand columns, which surprised users
               // coming from IDEs where clicking a table row opens it.
-              className="-my-1 -ml-1 shrink-0 rounded-sm p-1.5 hover:bg-accent"
-              aria-label={
-                tableOpen
-                  ? ct("schema.collapseColumns")
-                  : ct("schema.expandColumns")
-              }
-              title={
-                tableOpen
-                  ? ct("schema.collapseColumns")
-                  : ct("schema.expandColumns")
-              }
-            >
-              {tableOpen ? (
-                <ChevronDown className="h-3 w-3" />
-              ) : (
-                <ChevronRight className="h-3 w-3" />
-              )}
-            </button>
+              // The 24px square is the old `p-1.5` + 12px glyph exactly;
+              // `-my-1` keeps it from growing the 24px row.
+              className="-my-1 -ml-1 shrink-0"
+            />
             <button
               type="button"
               onClick={() =>

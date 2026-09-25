@@ -68,6 +68,7 @@ It gives an objective answer to the question that used to be settled by feel:
 | `label.tsx`           | `Label`                                | Radix passthrough                                                                                           |
 | `switch.tsx`          | `Switch`                               | Radix passthrough                                                                                           |
 | `segmented.tsx`       | `Segmented`                            | generic over the value union; single-choice toggle strip                                                    |
+| `fold-row.tsx`        | `FoldRow`                              | a picker's collapsible group header: chevron, label, `(count)`; `open` drives `aria-expanded`. The button only — its select-all checkbox stays at the call site |
 | `tabs.tsx`            | `Tabs*`                                | Radix                                                                                                       |
 | `badge.tsx`           | `Badge`, `badgeVariants`               | `tone` names the meaning, not a colour                                                                      |
 | `spinner.tsx`         | `Spinner`                              | `aria-hidden` unless given a `label`                                                                        |

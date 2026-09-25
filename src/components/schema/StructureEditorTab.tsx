@@ -1104,12 +1104,13 @@ function IndexesEditor({
             />
             {t("structure.idx.unique")}
           </label>
-          <button
-            className="text-muted-foreground/60 hover:text-destructive"
+          <IconButton
+            size="xs"
+            icon={Trash2}
+            tone="destructive"
+            label={t("common.delete")}
             onClick={() => onChange(indexes.filter((_, idx2) => idx2 !== i))}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          />
         </div>
       ))}
       <Button
@@ -1163,12 +1164,14 @@ function ForeignKeysEditor({
               placeholder={t("structure.fk.namePlaceholder")}
               className="h-6 w-40 text-xs"
             />
-            <button
-              className="ml-auto text-muted-foreground/60 hover:text-destructive"
+            <IconButton
+              size="xs"
+              icon={Trash2}
+              tone="destructive"
+              label={t("common.delete")}
+              className="ml-auto"
               onClick={() => onChange(fks.filter((_, idx) => idx !== i))}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
+            />
           </div>
           <div className="flex items-center gap-2">
             <Input

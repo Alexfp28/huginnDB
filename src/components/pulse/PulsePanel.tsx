@@ -30,7 +30,6 @@ import { AlertList } from "@/components/pulse/sections/AlertList";
 import { StatusTiles } from "@/components/pulse/sections/StatusTiles";
 import { StorageLegend } from "@/components/pulse/sections/StorageLegend";
 import { IconButton } from "@/components/ui/icon-button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import { runAiTask } from "@/lib/ai/runTask";
 import { usePulseLive } from "@/lib/pulse/usePulseLive";
 import { usePulseDetail } from "@/lib/pulse/usePulseDetail";
@@ -450,56 +449,32 @@ function PanelFrame({
         )}
         <div className="ml-auto flex shrink-0 items-center gap-0.5">
           {onRefresh && (
-            <HeaderButton label={t("pulse.refresh")} onClick={onRefresh}>
-              <RefreshCw className="h-3.5 w-3.5" />
-            </HeaderButton>
+            <IconButton
+              side="left"
+              icon={RefreshCw}
+              label={t("pulse.refresh")}
+              onClick={onRefresh}
+            />
           )}
           {onExpand && (
-            <HeaderButton label={t("pulse.expand")} onClick={onExpand}>
-              <Maximize2 className="h-3.5 w-3.5" />
-            </HeaderButton>
+            <IconButton
+              side="left"
+              icon={Maximize2}
+              label={t("pulse.expand")}
+              onClick={onExpand}
+            />
           )}
-          <HeaderButton
+          <IconButton
+            side="left"
+            icon={PinIcon}
             label={pinned ? t("pulse.unpin") : t("pulse.pin")}
             onClick={onTogglePin}
-            pressed={pinned}
-          >
-            <PinIcon className="h-3.5 w-3.5" />
-          </HeaderButton>
+            aria-pressed={pinned}
+            className={cn(pinned && "bg-accent/70 text-brand")}
+          />
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </div>
-  );
-}
-
-function HeaderButton({
-  label,
-  onClick,
-  pressed,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  pressed?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <SimpleTooltip side="left" label={label}>
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={pressed}
-        aria-label={label}
-        className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground",
-          "transition-colors hover:bg-accent hover:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
-          pressed && "bg-accent/70 text-brand",
-        )}
-      >
-        {children}
-      </button>
-    </SimpleTooltip>
   );
 }

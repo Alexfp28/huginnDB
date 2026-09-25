@@ -243,16 +243,18 @@ export function EnvironmentEditorDialog() {
                   if (e.key === "Enter") void submitEditor();
                 }}
               />
-              <button
+              <Button
                 type="button"
+                variant="quiet"
+                size="xs"
+                icon={ImagePlus}
                 onClick={() => void chooseImage()}
-                className="flex items-center gap-1.5 self-start rounded-sm px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="self-start"
               >
-                <ImagePlus className="h-3.5 w-3.5" />
                 {hasImage
                   ? t("environments.imageReplace")
                   : t("environments.imageUpload")}
-              </button>
+              </Button>
             </div>
           </div>
 

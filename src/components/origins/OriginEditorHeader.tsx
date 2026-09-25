@@ -98,9 +98,15 @@ export function OriginEditorHeader({
           <div className="mt-1 flex items-center gap-2 text-2xs text-destructive">
             <AlertTriangle className="h-3 w-3 shrink-0" />
             <span>{t("originEditor.stale")}</span>
-            <button className="underline" onClick={onReload}>
+            <Button
+              type="button"
+              variant="link"
+              size="xs"
+              className="h-auto p-0 text-2xs"
+              onClick={onReload}
+            >
               {t("originEditor.reload")}
-            </button>
+            </Button>
           </div>
         )}
       </div>

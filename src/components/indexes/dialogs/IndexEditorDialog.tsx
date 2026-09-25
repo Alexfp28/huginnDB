@@ -191,9 +191,11 @@ export function IndexEditorDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>{t("indexes.editor.keys")}</Label>
-              <button
+              <Button
                 type="button"
-                className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                variant="link"
+                size="xs"
+                className="px-0"
                 onClick={() => {
                   // Switching into raw seeds it from the rows so the text
                   // starts as what the form was already describing.
@@ -204,7 +206,7 @@ export function IndexEditorDialog({
                 {raw
                   ? t("indexes.editor.keysForm")
                   : t("indexes.editor.keysRaw")}
-              </button>
+              </Button>
             </div>
 
             {raw ? (
@@ -304,18 +306,16 @@ export function IndexEditorDialog({
           </div>
 
           {/* Advanced --------------------------------------------------- */}
-          <button
+          <Button
             type="button"
-            className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+            variant="quiet"
+            size="xs"
+            icon={advanced ? ChevronDown : ChevronRight}
+            aria-expanded={advanced}
             onClick={() => setAdvanced((v) => !v)}
           >
-            {advanced ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
-            )}
             {t("indexes.editor.advanced")}
-          </button>
+          </Button>
 
           {advanced && (
             <div className="space-y-3 border-l border-border pl-3">

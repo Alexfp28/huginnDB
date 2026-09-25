@@ -25,6 +25,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -181,13 +182,15 @@ export function DatabaseVisibilityDialog({
                 : t("schema.selectDatabases.scopeProfileHint")}
           </p>
           {hasOverride && (
-            <button
+            <Button
+              variant="link"
+              size="xs"
+              className="h-auto p-0 text-2xs"
               onClick={clearOverride}
               disabled={submitting}
-              className="text-2xs text-brand underline-offset-2 hover:underline disabled:opacity-50"
             >
               {t("schema.selectDatabases.useProfileDefault")}
-            </button>
+            </Button>
           )}
         </div>
         <div className="flex items-center justify-between pb-1">
@@ -197,14 +200,16 @@ export function DatabaseVisibilityDialog({
               total: databases.length,
             })}
           </span>
-          <button
+          <Button
+            variant="link"
+            size="xs"
+            className="h-auto p-0"
             onClick={toggleAll}
-            className="text-xs text-brand underline-offset-2 hover:underline"
           >
             {allSelected
               ? t("schema.selectDatabases.deselectAll")
               : t("schema.selectDatabases.selectAll")}
-          </button>
+          </Button>
         </div>
         <div className="max-h-64 divide-y divide-border overflow-y-auto rounded-md border border-border">
           {databases.map((name) => (

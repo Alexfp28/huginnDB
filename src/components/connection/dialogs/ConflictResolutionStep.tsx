@@ -10,6 +10,7 @@
 
 import { useTranslation } from "react-i18next";
 
+import { Segmented } from "@/components/ui/segmented";
 import { ConflictBulkActions } from "./ConflictBulkActions";
 import type { ConflictAction, ImportConflict } from "@/types";
 
@@ -50,22 +51,20 @@ export function ConflictResolutionStep({
                 </span>
               )}
             </div>
-            <div className="flex gap-1.5">
-              {ACTIONS.map((action) => (
-                <button
-                  key={action}
-                  onClick={() => onResolve(c.id, action)}
-                  className={
-                    "rounded-sm px-2 py-0.5 text-3xs font-medium uppercase transition-colors " +
-                    (resolutions[c.id] === action
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80")
-                  }
-                >
-                  {t(`transfer.import.action.${action}`)}
-                </button>
-              ))}
-            </div>
+            {/* A single choice per conflict, so a radiogroup rather than
+                three independent buttons. Every conflict is seeded with the
+                wizard's default action, so one segment is always checked and
+                the group is always reachable by Tab. */}
+            <Segmented
+              size="sm"
+              value={resolutions[c.id]}
+              onValueChange={(action) => onResolve(c.id, action)}
+              options={ACTIONS.map((action) => ({
+                value: action,
+                label: t(`transfer.import.action.${action}`),
+              }))}
+              aria-label={c.incoming_name}
+            />
           </div>
         ))}
       </div>

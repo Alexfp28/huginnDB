@@ -161,21 +161,17 @@ export function StageCard({
           <GripVertical className="h-3.5 w-3.5" />
         </span>
 
-        <button
-          onClick={onToggleCollapsed}
-          className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
-          title={
+        <IconButton
+          size="xs"
+          icon={collapsed ? ChevronRight : ChevronDown}
+          label={
             collapsed
               ? t("aggregation.stage.expand")
               : t("aggregation.stage.collapse")
           }
-        >
-          {collapsed ? (
-            <ChevronRight className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" />
-          )}
-        </button>
+          aria-expanded={!collapsed}
+          onClick={onToggleCollapsed}
+        />
 
         <span className="text-2xs uppercase tracking-wider text-muted-foreground">
           {t("aggregation.stage.label", { index: index + 1 })}

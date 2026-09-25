@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { NOTIFICATION_KIND_VISUALS } from "@/components/shell/notificationVisuals";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
@@ -100,22 +101,21 @@ export function NotificationCenter() {
         side="bottom"
       >
         <DropdownMenuTrigger asChild>
-          <button
+          {/* `Button`, not `IconButton`: the unread pill is a child, and
+              the tooltip above has to swap its label with the count. */}
+          <Button
             type="button"
+            flat
+            variant="quiet"
+            size="icon-sm"
+            icon={Bell}
             aria-label={t("notifications.center.open")}
             // Same on/off language as the panel toggles it sits next to
-            // (`LayoutToggles`): 28px square, `rounded-md`, muted until hovered.
+            // (`LayoutToggles`): 28px square, flat, muted until hovered.
             // Open counts as active, so the header shows where the panel came
             // from while it is on screen.
-            className={cn(
-              "relative flex h-7 w-7 items-center justify-center rounded-md transition-colors",
-              "hover:bg-foreground/[0.06] hover:text-foreground",
-              open
-                ? "bg-foreground/[0.08] text-foreground"
-                : "text-muted-foreground",
-            )}
+            className={cn("relative", open && "bg-accent text-foreground")}
           >
-            <Bell className="h-4 w-4" />
             {unread > 0 && (
               // Reads against the header, not the status bar it used to sit in:
               // a 15px brand pill with an 11px numeral and a background-coloured
@@ -124,7 +124,7 @@ export function NotificationCenter() {
                 {unread > 9 ? "9+" : unread}
               </span>
             )}
-          </button>
+          </Button>
         </DropdownMenuTrigger>
       </SimpleTooltip>
 
@@ -140,14 +140,16 @@ export function NotificationCenter() {
           )}
           <div className="flex-1" />
           {entries.length > 0 && (
-            <button
+            <Button
               type="button"
+              flat
+              variant="quiet"
+              size="xs"
+              icon={Trash2}
               onClick={() => useNotifications.getState().clear()}
-              className="inline-flex h-6 items-center gap-1.5 rounded-md px-2 text-3xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              <Trash2 className="h-3 w-3" />
               {t("notifications.center.clear")}
-            </button>
+            </Button>
           )}
         </div>
 

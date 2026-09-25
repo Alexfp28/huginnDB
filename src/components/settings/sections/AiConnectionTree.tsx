@@ -25,11 +25,12 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Folder, FolderSync } from "lucide-react";
+import { Folder, FolderSync } from "lucide-react";
 
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FoldRow } from "@/components/ui/fold-row";
 import { Switch } from "@/components/ui/switch";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { isFromOrigin } from "@/lib/connection/origin";
@@ -144,23 +145,14 @@ export function AiConnectionTree({
                   section: section.label,
                 })}
               />
-              <button
-                type="button"
+              <FoldRow
+                open={!collapsed}
+                label={section.label}
+                count={section.ids.length}
                 onClick={() =>
                   setFoldedSections((prev) => ({ ...prev, [key]: !prev[key] }))
                 }
-                className="flex min-w-0 flex-1 items-center gap-1 text-left text-2xs text-muted-foreground hover:text-foreground"
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-3 w-3 shrink-0" />
-                ) : (
-                  <ChevronDown className="h-3 w-3 shrink-0" />
-                )}
-                <span className="truncate">{section.label}</span>
-                <span className="text-muted-foreground/60">
-                  ({section.ids.length})
-                </span>
-              </button>
+              />
             </div>
             {!collapsed && (
               <>
@@ -185,25 +177,14 @@ export function AiConnectionTree({
                             section: name,
                           })}
                         />
-                        <button
-                          type="button"
+                        <FoldRow
+                          level="group"
+                          open={!groupCollapsed}
+                          icon={Folder}
+                          label={name}
+                          count={items.length}
                           onClick={() => groupCollapse.toggle(name)}
-                          className={cn(
-                            MICRO_HEADING,
-                            "flex min-w-0 flex-1 items-center gap-1 text-left text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {groupCollapsed ? (
-                            <ChevronRight className="h-3 w-3 shrink-0" />
-                          ) : (
-                            <ChevronDown className="h-3 w-3 shrink-0" />
-                          )}
-                          <Folder className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{name}</span>
-                          <span className="text-muted-foreground/60">
-                            ({items.length})
-                          </span>
-                        </button>
+                        />
                       </div>
                       {!groupCollapsed && items.map(row)}
                     </div>
