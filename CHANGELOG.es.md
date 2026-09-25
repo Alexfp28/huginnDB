@@ -191,6 +191,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Un control segmentado sin nada seleccionado vuelve a alcanzarse con Tab.**
+  Los controles segmentados dejan en el orden de tabulación solo el segmento
+  seleccionado, así que cuando el valor actual no coincidía con ninguno —una
+  duración personalizada escrita junto a los valores predefinidos de las
+  notificaciones, por ejemplo— se saltaban todos los segmentos y el control
+  entero quedaba fuera del alcance del teclado. Ahora, si no hay nada
+  seleccionado, el primer segmento recibe la parada de Tab, como corresponde a
+  un grupo de opciones, y las flechas avanzan desde el segmento que tiene el
+  foco y lo arrastran con la selección en lugar de dejarlo atrás. Los valores
+  predefinidos de duración de Ajustes → Notificaciones usan ahora este control
+  en lugar de botones propios, así que también se alcanzan y se recorren con
+  las flechas; adoptan su estilo neutro en relieve en lugar del relleno de
+  marca.
+
 - **«Editar en el origen» en el gestor de conexiones ya no apila encima el
   editor de orígenes.** El enlace que recibe quien publica un origen en una de
   sus conexiones abría el editor de orígenes, a pantalla completa, con el

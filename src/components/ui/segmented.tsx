@@ -47,16 +47,30 @@ export function Segmented<T extends string>({
   variant?: "pill" | "underline";
   "aria-label"?: string;
 }) {
-  // Left/Right arrows move the selection, matching a radiogroup/tablist.
-  function onKeyDown(e: React.KeyboardEvent) {
+  // No option matches `value` when the caller holds something the presets
+  // don't name (a custom number typed next to them, say). The strip still has
+  // to be reachable, so the first segment takes the tab stop — the WAI-ARIA
+  // radiogroup rule for a group with nothing checked.
+  const selected = options.findIndex((o) => o.value === value);
+  const tabStop = selected < 0 ? 0 : selected;
+
+  // Left/Right arrows move focus *and* the selection, matching a
+  // radiogroup/tablist. The step starts from the focused segment rather than
+  // from `value`, which is what lets it work when nothing is selected yet.
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const radios = Array.from(
+      e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]'),
+    );
+    const focused = radios.indexOf(e.target as HTMLButtonElement);
+    const i = focused >= 0 ? focused : tabStop;
+    if (i >= options.length) return;
     e.preventDefault();
-    const i = options.findIndex((o) => o.value === value);
-    if (i < 0) return;
     const next =
       e.key === "ArrowRight"
         ? (i + 1) % options.length
         : (i - 1 + options.length) % options.length;
+    radios[next]?.focus();
     onValueChange(options[next].value);
   }
 
@@ -72,7 +86,7 @@ export function Segmented<T extends string>({
         className,
       )}
     >
-      {options.map((o) => {
+      {options.map((o, idx) => {
         const active = o.value === value;
         return (
           <button
@@ -80,9 +94,10 @@ export function Segmented<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
-            // Only the active segment stays in the tab order; arrows move
-            // between the others (roving tabindex).
-            tabIndex={active ? 0 : -1}
+            // Exactly one segment is in the tab order — the active one, or the
+            // first when none is — and arrows move between them (roving
+            // tabindex).
+            tabIndex={idx === tabStop ? 0 : -1}
             title={o.title}
             onClick={() => onValueChange(o.value)}
             className={cn(
