@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Claude Desktop extension now updates with the app.** The `.mcpb`
+  carried its own copy of the connector, and Claude Desktop kept running that
+  copy whatever version of HuginnDB was installed next to it — so new tools
+  never reached the assistant, and an extension older than 1.29 did not apply
+  a managed policy the app itself enforced. On Windows the extension now hands
+  every session to the connector installed with the app, so it is installed
+  once and each HuginnDB update is also a connector update. Without an
+  installed app it serves the session itself, as before; `HUGINNDB_MCP_PATH`
+  points it elsewhere, or, set but empty, turns the hand-over off. Installing
+  this version of the extension is the last time it has to be done by hand.
+
 ## [1.29.0] — 2026-09-28
 
 ### Added
