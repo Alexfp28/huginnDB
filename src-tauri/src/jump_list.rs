@@ -75,13 +75,19 @@ pub struct RecentEntry {
 }
 
 impl RecentEntry {
+    // Read by the Windows shell writer (and the tests); elsewhere the plan is
+    // built and then dropped by the no-op `commit`. `allow`, not `expect`: the
+    // Linux *test* build does use it, and an unmet `expect` is its own error.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn arguments(&self) -> String {
         format!("--connect-profile-id {}", self.profile_id)
     }
 }
 
 /// Everything a rebuild writes, resolved up front so the COM side only copies.
+/// Its fields are only read by the Windows writer — see `RecentEntry::arguments`.
 #[derive(Debug, Clone)]
+#[cfg_attr(not(windows), allow(dead_code))]
 pub struct Plan {
     pub category: String,
     pub recent: Vec<RecentEntry>,
