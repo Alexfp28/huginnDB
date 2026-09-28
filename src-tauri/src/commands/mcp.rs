@@ -61,29 +61,7 @@ pub fn get_mcp_connector_info() -> AppResult<McpConnectorInfo> {
 /// check, only warned when the sidecar is positively detected.
 #[tauri::command]
 pub fn is_mcp_sidecar_running() -> bool {
-    let name = if cfg!(windows) {
-        "huginndb-mcp.exe"
-    } else {
-        "huginndb-mcp"
-    };
-    if cfg!(windows) {
-        let filter = format!("IMAGENAME eq {name}");
-        std::process::Command::new("tasklist")
-            .args(["/FI", filter.as_str(), "/NH"])
-            .output()
-            .map(|out| {
-                String::from_utf8_lossy(&out.stdout)
-                    .to_lowercase()
-                    .contains(name.to_lowercase().as_str())
-            })
-            .unwrap_or(false)
-    } else {
-        std::process::Command::new("pgrep")
-            .args(["-x", name])
-            .output()
-            .map(|out| out.status.success())
-            .unwrap_or(false)
-    }
+    crate::updater::process::is_running("huginndb-mcp", None)
 }
 
 /// How [`register_with_claude_code`] ended.

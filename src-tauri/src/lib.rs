@@ -54,6 +54,7 @@ mod tab_state;
 mod testkit;
 mod themes;
 mod transfer;
+mod updater;
 
 use state::{AppState, StartupArgs};
 
@@ -234,6 +235,15 @@ fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
 /// (used for SQLite file pickers), and wires up every command handler.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `huginndb.exe --update` & co. run with no window and never reach the
+    // Builder below — see `updater::headless` for why it has to be this early.
+    #[cfg(windows)]
+    {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if let Some(request) = updater::request_from(&args) {
+            std::process::exit(updater::headless::run(request, context));
+        }
+    }
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     // The single-instance plugin MUST be registered before any other so its
@@ -283,6 +293,17 @@ pub fn run() {
                         let _ = handle.emit(policy::CHANGED_EVENT, ());
                     })),
                 );
+            }
+            // The silent updater's schedule follows the preference; this only
+            // fills in what is missing (an installer hook that failed, a task
+            // someone deleted). `schtasks` blocks, so off the async runtime.
+            {
+                use tauri::Manager;
+                let product = app.config().product_name.clone().unwrap_or_default();
+                let enabled = app.state::<AppState>().prefs.read().updates.auto_install;
+                tauri::async_runtime::spawn_blocking(move || {
+                    updater::reconcile_for_app(&product, enabled, false);
+                });
             }
             pool_reaper::spawn(app.handle().clone());
             // Off in effect (a no-op tick) unless some profile has
@@ -495,9 +516,17 @@ pub fn run() {
             commands::mcp::register_with_claude_code,
             commands::mcp::is_mcp_sidecar_running,
             commands::app::get_app_flavor,
+            commands::updater::get_auto_update_status,
+            commands::updater::note_update_check,
         ])
-        .run(tauri::generate_context!())
+        .run(context())
         .expect("error while running HuginnDB");
+}
+
+/// The bundle's generated context, shared by the interface and the headless
+/// updater so the embedded assets are expanded once.
+fn context() -> tauri::Context<tauri::Wry> {
+    tauri::generate_context!()
 }
 
 #[cfg(test)]

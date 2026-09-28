@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **HuginnDB now keeps itself up to date, even if nobody opens it.** Built for
+  people who only use the MCP connector through their AI tool and never open
+  the app, who until now never received an update. On Windows a scheduled task
+  checks at sign-in and another once a day, and installs new versions quietly,
+  through the same signed feed the in-app updater uses — and since the Claude
+  Desktop extension hands its sessions to the installed connector, the
+  connector updates with it. It never installs while HuginnDB is open, and the
+  daily check also waits while an AI tool has the connector running; the
+  sign-in check installs regardless, so a machine whose AI tool never closes
+  still updates. It is on by default, needs no managed policy, and can be
+  turned off in Settings → About → Background updates, which also shows which
+  mechanism is in force: where a domain administrator forbids scheduled tasks
+  it falls back to a startup entry, and where that is forbidden too it says so
+  instead of pretending. If an update has still been waiting after a day, the
+  MCP connector tells the AI tool, which passes it on — the connector reads
+  that from what the app recorded and never contacts the update feed itself.
+  Uninstalling HuginnDB removes the tasks.
+
 ### Fixed
 
 - **The Claude Desktop extension now updates with the app.** The `.mcpb`

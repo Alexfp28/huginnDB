@@ -16,3 +16,23 @@
 !macro NSIS_HOOK_PREINSTALL
   ExecWait 'taskkill /F /IM huginndb-mcp.exe /T'
 !macroend
+
+; NSIS_HOOK_POSTINSTALL runs after every install, fresh or update. It hands
+; the silent updater's schedule to the app itself (`--ensure-schedule`, see
+; `src/updater/schedule.rs`) rather than calling `schtasks` from here, so
+; there is one implementation with tests instead of one in NSIS and one in
+; Rust: the app registers the logon and daily tasks for the current user,
+; falls back to a HKCU Run value when the domain refuses the logon task, and
+; records what it managed to do for Settings -> About. It honours the user's
+; "Install updates in the background" preference, and it never fails the
+; install: a refused schedule is an outcome, not an error.
+!macro NSIS_HOOK_POSTINSTALL
+  ExecWait '"$INSTDIR\huginndb.exe" --ensure-schedule'
+!macroend
+
+; NSIS_HOOK_PREUNINSTALL runs while the executable is still there to ask:
+; removing HuginnDB removes the tasks and the Run value with it, instead of
+; leaving Task Scheduler pointing at a file that no longer exists.
+!macro NSIS_HOOK_PREUNINSTALL
+  ExecWait '"$INSTDIR\huginndb.exe" --remove-schedule'
+!macroend

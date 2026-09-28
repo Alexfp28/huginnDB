@@ -76,6 +76,9 @@ pub struct Preferences {
     /// Whether the theme browser may reach an extension registry, and which
     /// one. See [`ThemePrefs`].
     pub themes: ThemePrefs,
+    /// Whether HuginnDB installs updates in the background. See
+    /// [`UpdatePrefs`].
+    pub updates: UpdatePrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
     /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
@@ -630,6 +633,28 @@ impl Default for PulsePrefs {
     }
 }
 
+/// The silent updater (`crate::updater`).
+///
+/// **On** by default, and so on for every existing `prefs.json` too, against
+/// the usual "a new flag starts off" rule: the point is that someone who only
+/// uses the MCP connector, and never opens the app, is kept up to date without
+/// doing anything — an opt-in would reach exactly nobody of them. A managed
+/// policy is not required for any of it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct UpdatePrefs {
+    /// Install new versions in the background, through the scheduled tasks
+    /// `updater::schedule` registers. Off removes them; the interface's own
+    /// updater keeps offering updates with a button either way.
+    pub auto_install: bool,
+}
+
+impl Default for UpdatePrefs {
+    fn default() -> Self {
+        Self { auto_install: true }
+    }
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -642,6 +667,7 @@ impl Default for Preferences {
             pulse: PulsePrefs::default(),
             ai: AiPrefs::default(),
             themes: ThemePrefs::default(),
+            updates: UpdatePrefs::default(),
             keybindings: HashMap::new(),
         }
     }
@@ -777,6 +803,16 @@ mod tests {
             original.ui.schema_table_metric
         );
         assert!(parsed.keybindings.is_empty());
+    }
+
+    /// Every existing `prefs.json` predates `updates`, so this is the upgrade
+    /// path for every install, and the default is load-bearing: an MCP-only
+    /// user is kept up to date without ever opening Settings.
+    #[test]
+    fn a_blob_without_the_updates_group_installs_in_the_background() {
+        let before = r#"{ "version": 1, "editor": { "fontSize": 13 } }"#;
+        let parsed: Preferences = serde_json::from_str(before).unwrap();
+        assert!(parsed.updates.auto_install);
     }
 
     #[test]

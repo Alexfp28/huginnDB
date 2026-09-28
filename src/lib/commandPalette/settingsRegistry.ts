@@ -46,6 +46,7 @@ export interface PrefsWriters {
   updateConnections: (patch: Partial<Preferences["connections"]>) => void;
   updatePulse: (patch: Partial<Preferences["pulse"]>) => void;
   updateAi: (patch: Partial<Preferences["ai"]>) => void;
+  updateUpdates: (patch: Partial<Preferences["updates"]>) => void;
 }
 
 export interface SettingEntry {
@@ -621,6 +622,18 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: onOff((p) => p.pulse.sampleWhenMinimized),
     toggle: (p, w) =>
       w.updatePulse({ sampleWhenMinimized: !p.pulse.sampleWhenMinimized }),
+  },
+
+  // ── Updates ───────────────────────────────────────────────────────────────
+  {
+    prefId: "updates.autoInstall",
+    section: "about",
+    labelKey: "update.autoInstall.label",
+    descKey: "update.autoInstall.desc",
+    keywords:
+      "update automatic background silent scheduled task actualización automática segundo plano tarea programada",
+    value: onOff((p) => p.updates.autoInstall),
+    toggle: (p, w) => w.updateUpdates({ autoInstall: !p.updates.autoInstall }),
   },
 
   // ── AI ────────────────────────────────────────────────────────────────────

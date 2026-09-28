@@ -132,6 +132,9 @@ async function runCheck(
       getCurrentVersion(),
       checkForUpdate(),
     ]);
+    // Best effort, never awaited: the record is for the MCP connector's
+    // "an update has been waiting" note, not for this window.
+    void api.noteUpdateCheck(update?.version ?? null).catch(() => {});
     if (!update) {
       set({
         status: "idle",

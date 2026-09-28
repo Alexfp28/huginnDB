@@ -100,6 +100,22 @@ Claude Code / Claude Desktop / other clients. The rest of this doc is the
 reference for what that panel gives you, plus clients it doesn't generate a
 snippet for (Codex).
 
+**Staying up to date without opening the app.** On Windows, HuginnDB installs
+new versions in the background: a scheduled task checks at sign-in and another
+once a day, and installs quietly with the same signed feed the app uses. The
+connector updates with it — including the one inside the Claude Desktop
+extension, which hands its sessions to this copy. It waits while HuginnDB is
+open, and the daily check also waits while an AI client has the connector
+running; the sign-in check installs regardless, so if a client loses the
+connector afterwards, restart the client. Settings → About → **Background
+updates** turns it off and shows which mechanism is in force on the machine;
+where a domain administrator forbids scheduled tasks it falls back to a
+startup entry, and where that is forbidden too it says so and leaves updates
+to the in-app button. If an update has been waiting for more than a day, the
+connector's instructions say so and the AI tool passes it on; the connector
+learns that from what the app recorded, and never contacts the update feed
+itself. `huginndb.exe --update` runs the same check by hand.
+
 **Building from source (development only):** the connector lives in its own
 workspace crate (`src-tauri/mcp-server/`), kept out of the desktop app's own
 `Cargo.toml` so a normal `pnpm tauri:build` never compiles or bundles it on

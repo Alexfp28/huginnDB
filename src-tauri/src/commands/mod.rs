@@ -28,6 +28,7 @@ pub mod query;
 pub mod schema;
 pub mod structure;
 pub mod themes;
+pub mod updater;
 pub mod view;
 
 use crate::log_bus::TauriSink;
