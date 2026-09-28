@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePreferences, selectUiPrefs } from "@/stores/preferences/preferences";
+import { isWindows } from "@/lib/platform";
 import type {
   AppLanguage,
   CellEditorMode,
@@ -135,6 +136,21 @@ export function GeneralSection() {
             onCheckedChange={(v) => updateUi({ reconnectOnLaunch: v })}
           />
         </PrefRow>
+
+        {/* Windows only: the Jump List is a Windows shell feature, and the
+            backend never builds one elsewhere. */}
+        {isWindows() && (
+          <PrefRow
+            label={t("settings.general.jumpListRecent.label")}
+            prefId="ui.jumpListRecent"
+            description={t("settings.general.jumpListRecent.desc")}
+          >
+            <Switch
+              checked={ui.jumpListRecent}
+              onCheckedChange={(v) => updateUi({ jumpListRecent: v })}
+            />
+          </PrefRow>
+        )}
       </PrefGroup>
 
       <PrefGroup title={t("settings.rowGroups.workspace")}>

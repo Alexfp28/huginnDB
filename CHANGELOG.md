@@ -25,8 +25,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   MCP connector tells the AI tool, which passes it on — the connector reads
   that from what the app recorded and never contacts the update feed itself.
   Uninstalling HuginnDB removes the tasks.
+- **Recent connections on the Windows taskbar.** Right-clicking HuginnDB's
+  taskbar button (or its Start menu entry) now lists the connections you used
+  last, and picking one opens it: with the app running it asks, as any
+  command-line launch does, whether to open it in the current window or a new
+  one; with the app closed it starts and connects. A **New window** task opens
+  another window. Recent means the connections opened since launch first, then
+  the rest by when their tabs were last touched; command-line ad-hoc
+  connections, which are never saved, and connections opened by an AI through
+  the MCP connector are left out. Windows keeps the list under your user
+  profile, so only the connection's name and its engine are written to it —
+  never a host, a database or a password — and Settings → General → Recent
+  connections on the taskbar turns the category off (New window stays).
 
 ### Fixed
+
+- **The "open incoming connection" prompt named a connection by its id.** A
+  launch with `--connect-profile-id` — which every taskbar entry uses — asked
+  whether to open "62a5d650-23a7-…" rather than the connection's name. It now
+  shows the name, and falls back to the id only when no connection has it.
 
 - **The Claude Desktop extension now updates with the app.** The `.mcpb`
   carried its own copy of the connector, and Claude Desktop kept running that

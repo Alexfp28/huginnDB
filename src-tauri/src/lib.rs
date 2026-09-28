@@ -28,6 +28,7 @@ mod credentials;
 mod db;
 mod error;
 pub mod json_schemas;
+mod jump_list;
 mod keepalive;
 mod keychain;
 mod log_bus;
@@ -218,6 +219,21 @@ fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
         let _ = window.set_focus();
     }
 
+    // The Jump List's "New window" task. On its own flag rather than a field of
+    // `StartupArgs`, which is the frontend's DTO and has nothing to say about
+    // it; a cold start never gets here and just opens the main window.
+    if argv.iter().skip(1).any(|a| a == jump_list::NEW_WINDOW_FLAG) {
+        let app = app.clone();
+        // `open_new_window` is async on purpose (gotcha #19: building a
+        // `WebviewWindow` from a synchronous context deadlocks WebView2).
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = commands::connection::open_new_window(app, None).await {
+                eprintln!("[jump-list] could not open a new window: {e}");
+            }
+        });
+        return;
+    }
+
     let args = parse_cli_args(&argv);
     if !has_connection_intent(&args) {
         return;
@@ -305,6 +321,9 @@ pub fn run() {
                     updater::reconcile_for_app(&product, enabled, false);
                 });
             }
+            // Rebuilt from what is already on disk, then kept current by the
+            // events it listens to (see `jump_list`).
+            jump_list::install(app.handle());
             pool_reaper::spawn(app.handle().clone());
             // Off in effect (a no-op tick) unless some profile has
             // `pulse_enabled` set, so this costs nothing on a fresh install.

@@ -26,6 +26,7 @@
 import type { SettingsSection } from "@/components/settings/useSettingsDialog";
 import { POSITION_LABEL_KEYS } from "@/lib/notificationPosition";
 import type { PrefId } from "@/lib/prefId";
+import { isWindows } from "@/lib/platform";
 import type { Preferences, SchemaTableMetric } from "@/types";
 
 /** Label key per schema-tree metric. Total by construction, so adding a value
@@ -129,6 +130,22 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: onOff((p) => p.ui.reconnectOnLaunch),
     toggle: (p, w) => w.updateUi({ reconnectOnLaunch: !p.ui.reconnectOnLaunch }),
   },
+  // Windows only, like its row in `GeneralSection`: elsewhere the palette would
+  // offer a jump to a setting that is not on the page.
+  ...(isWindows()
+    ? [
+        {
+          prefId: "ui.jumpListRecent",
+          section: "general",
+          labelKey: "settings.general.jumpListRecent.label",
+          descKey: "settings.general.jumpListRecent.desc",
+          keywords:
+            "jump list taskbar recent connections right click lista de saltos barra de tareas recientes clic derecho",
+          value: onOff((p) => p.ui.jumpListRecent),
+          toggle: (p, w) => w.updateUi({ jumpListRecent: !p.ui.jumpListRecent }),
+        } satisfies SettingEntry,
+      ]
+    : []),
   {
     prefId: "ui.cellEditorMode",
     section: "general",

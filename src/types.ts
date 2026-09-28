@@ -1640,6 +1640,10 @@ export interface UiPrefs {
    *  "collapsed" force it. Either way each surface then keeps its own
    *  session-local overrides — see `useConnectionGroupCollapse`. */
   connectionGroupExpandMode: ConnectionGroupExpandMode;
+  /** Whether the Windows taskbar Jump List lists recent connections
+   *  (`src-tauri/src/jump_list.rs`). Ignored on other platforms, where the
+   *  Settings row is not shown. */
+  jumpListRecent: boolean;
 }
 
 /** Corner or edge the notification stack grows from. */

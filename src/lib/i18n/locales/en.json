@@ -1391,6 +1391,10 @@
         "label": "Reconnect on launch",
         "desc": "When the app starts, automatically reconnect to the connections that were open when you last closed it. Uses the credentials saved in your OS keychain; connections whose password isn't stored are skipped."
       },
+      "jumpListRecent": {
+        "label": "Recent connections on the taskbar",
+        "desc": "Right-clicking HuginnDB's taskbar button lists the connections you used last, to open one straight away. Windows stores their names (never a host or a password) under your user profile; turn this off to keep them out of it. \"New window\" stays either way."
+      },
       "queryHistoryLimit": {
         "label": "Query history size",
         "desc": "Maximum number of recent queries kept in the history panel."

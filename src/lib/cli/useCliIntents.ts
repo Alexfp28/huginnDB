@@ -87,10 +87,24 @@ interface PendingAdhoc {
 }
 
 /** Best-effort display name for a connection intent — used in the
- *  second-launch routing dialog's prompt copy. */
-export function intentDisplayName(args: StartupArgs): string {
+ *  second-launch routing dialog's prompt copy.
+ *
+ *  `--connect-profile-id` carries a UUID, which is what the taskbar Jump List
+ *  launches with, so the id is resolved to the profile's name through
+ *  `profiles`. It only falls back to the raw value when no profile has it
+ *  (a stale id), where the id is at least something to search for. */
+export function intentDisplayName(
+  args: StartupArgs,
+  profiles: readonly ConnectionProfile[] = [],
+): string {
   if (args.adhoc_name) return args.adhoc_name;
-  if (args.connect_profile) return args.connect_profile;
+  if (args.connect_profile) {
+    if (!args.connect_by_id) return args.connect_profile;
+    return (
+      profiles.find((p) => p.id === args.connect_profile)?.name ??
+      args.connect_profile
+    );
+  }
   if (args.adhoc_host)
     return `${args.adhoc_host}/${args.adhoc_database ?? ""}`;
   if (args.adhoc_connection_string) return "MongoDB";

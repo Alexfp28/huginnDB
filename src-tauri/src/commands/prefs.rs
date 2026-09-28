@@ -46,9 +46,12 @@ pub async fn update_preferences(
     state: State<'_, AppState>,
     prefs: Preferences,
 ) -> AppResult<()> {
-    let auto_install_was = {
+    let (auto_install_was, jump_list_was) = {
         let mut guard = state.prefs.write();
-        let was = guard.updates.auto_install;
+        let was = (
+            guard.updates.auto_install,
+            (guard.ui.jump_list_recent, guard.ui.language.clone()),
+        );
         *guard = prefs.clone();
         was
     };
@@ -62,6 +65,12 @@ pub async fn update_preferences(
         tauri::async_runtime::spawn_blocking(move || {
             crate::updater::reconcile_for_app(&product, enabled, true);
         });
+    }
+    // The taskbar Jump List is written by the shell, not rendered from these
+    // preferences, so it has to be rebuilt when either input it reads moves:
+    // the recent-connections switch, or the language its labels are in.
+    if jump_list_was != (prefs.ui.jump_list_recent, prefs.ui.language.clone()) {
+        crate::jump_list::refresh(&app);
     }
     let _ = app.emit(PREFS_CHANGED_EVENT, prefs);
     // Most preferences take effect just by being readable, but the MCP bridge

@@ -256,6 +256,20 @@ pub struct UiPrefs {
     /// the initial state (per-surface session toggles still apply on top).
     /// Stringly-typed; the frontend owns the enum.
     pub connection_group_expand_mode: String,
+    /// Whether the taskbar Jump List shows the recent-connections category
+    /// (`crate::jump_list`). Windows only; ignored elsewhere.
+    ///
+    /// On by default, against the house rule that a new flag starts off
+    /// (gotchas #58, #83), and the exception is argued rather than assumed:
+    /// that rule is about flags that *grant* something — an AI reaching a
+    /// database, a machine writing to a share — where "off" is the safe state.
+    /// This one grants nothing. It writes connection names and ids (never a
+    /// host, a database or a secret; see `jump_list::driver_label`) to a list
+    /// Windows keeps under the user's own profile, the same place it already
+    /// records every app's recent files, and it is what a user expects a
+    /// right-click on the taskbar button to show. Off, the feature would be
+    /// invisible to anyone who has not gone looking for it in Settings.
+    pub jump_list_recent: bool,
 }
 
 /// How notifications behave: where they appear, how long they stay, how many
@@ -744,6 +758,7 @@ impl Default for UiPrefs {
             collapsed_connection_groups: Vec::new(),
             tab_accent_style: "cap".into(),
             connection_group_expand_mode: "remember".into(),
+            jump_list_recent: true,
         }
     }
 }

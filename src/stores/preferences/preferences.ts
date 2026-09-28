@@ -96,6 +96,8 @@ export const DEFAULT_PREFS: Preferences = {
     collapsedConnectionGroups: [],
     tabAccentStyle: "cap",
     connectionGroupExpandMode: "remember",
+    // Mirrors `UiPrefs::default` — on, for the reason argued there.
+    jumpListRecent: true,
   },
   // Mirrors `NotificationPrefs::default()` in `src-tauri/src/prefs.rs`. The
   // 6000 ms is deliberate: the toast library's own default is 4000, which is

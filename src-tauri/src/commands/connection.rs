@@ -898,7 +898,11 @@ pub async fn connect(
         ssh_secret,
         PoolOrigin::User,
     )
-    .await
+    .await?;
+    // Here in the wrapper, not in `connect_inner`: the MCP bridge shares the
+    // inner body, and an AI opening a pool is not the person's recent history.
+    crate::jump_list::note_connected(&app, &id);
+    Ok(())
 }
 
 /// The body of [`connect`], reusable from a context with no window.
