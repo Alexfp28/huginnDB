@@ -31,7 +31,8 @@ type PrefGroup =
   | "notifications"
   | "connections"
   | "pulse"
-  | "ai";
+  | "ai"
+  | "updates";
 
 /** `"editor.wordWrap" | "grid.rowHeight" | …` — every real preference path. */
 type PrefPath = {

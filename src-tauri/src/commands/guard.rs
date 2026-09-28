@@ -411,6 +411,7 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("themes::read_vsix", "none"),
     ("themes::save_installed_theme", "none"),
     ("themes::search_registry_themes", "none"),
+    ("updater::get_auto_update_status", "none"),
 ];
 
 #[cfg(test)]

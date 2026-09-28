@@ -26,6 +26,7 @@ import type {
   AiTaskInput,
   AiTurnResult,
   AppTab,
+  AutoUpdateStatus,
   BulkUpdatePreview,
   CellValue,
   CollectionScan,
@@ -1664,6 +1665,11 @@ export const api = {
    * force-kills the sidecar to overwrite its binary — see `stores/update.ts`.
    */
   isMcpSidecarRunning: () => invoke<boolean>("is_mcp_sidecar_running"),
+
+  // Silent updater ---------------------------------------------------------
+
+  getAutoUpdateStatus: () =>
+    invoke<AutoUpdateStatus>("get_auto_update_status"),
 
   // App flavor -------------------------------------------------------------
 

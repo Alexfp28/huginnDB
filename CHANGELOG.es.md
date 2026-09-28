@@ -8,6 +8,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **HuginnDB se mantiene al día solo, aunque nadie lo abra.** Pensado para
+  quien solo usa el conector MCP desde su herramienta de IA y nunca abre la
+  app, que hasta ahora no recibía ninguna actualización. En Windows, una tarea
+  programada comprueba al iniciar sesión y otra una vez al día, e instala las
+  versiones nuevas sin avisar, con el mismo feed firmado que usa el
+  actualizador de la app; y como la extensión de Claude Desktop cede sus
+  sesiones al conector instalado, el conector se actualiza con ella. Nunca
+  instala mientras HuginnDB está abierto, y la comprobación diaria también
+  espera mientras una herramienta de IA tiene el conector en marcha; la de
+  inicio de sesión instala igualmente, así que un equipo cuya herramienta de IA
+  no se cierra nunca también se actualiza. Viene activado, no necesita política
+  gestionada y se puede desactivar en Ajustes → Acerca de → Actualizaciones en
+  segundo plano, que además muestra qué mecanismo está funcionando: si el
+  administrador del dominio prohíbe las tareas programadas, recurre a una
+  entrada de inicio, y si también la prohíbe, lo dice en vez de disimularlo.
+  Desinstalar HuginnDB elimina las tareas.
+
 ## [1.29.0] — 2026-09-28
 
 ### Añadido

@@ -2440,7 +2440,37 @@
     "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})",
     "mcpSidecarWarning": "Una herramienta de IA (Claude Code, Cursor, …) tiene ahora mismo el conector MCP en ejecución. Si continúas, se cerrará para instalar la actualización — la herramienta lo volverá a abrir sola la próxima vez que lo necesite.\n\n¿Continuar con la actualización?",
     "errorPermission": "Fallo al actualizar: Windows no concedió permiso para instalarla. Vuelve a intentarlo y acepta el aviso de administrador, o instala la actualización manualmente desde la página de releases de GitHub.",
-    "checkPrompt": "HuginnDB busca actualizaciones en segundo plano. «Buscar ahora» mira en el momento."
+    "checkPrompt": "HuginnDB busca actualizaciones en segundo plano. «Buscar ahora» mira en el momento.",
+    "autoInstall": {
+      "label": "Instalar actualizaciones en segundo plano",
+      "desc": "Comprueba al iniciar sesión y una vez al día, aunque no se abra HuginnDB, e instala sin avisar, así que el conector MCP que usa tu herramienta de IA también se mantiene al día. Espera mientras HuginnDB está abierto, y la comprobación diaria también espera mientras una herramienta de IA tiene el conector en marcha."
+    },
+    "background": {
+      "title": "Actualizaciones en segundo plano",
+      "unsupported": "Las actualizaciones en segundo plano solo funcionan en la app instalada en Windows.",
+      "pending": "Preparando la programación…",
+      "windowsSaid": "Windows dijo: {{detail}}",
+      "mechanism": {
+        "tasks": "Activas: una tarea programada al iniciar sesión y otra una vez al día.",
+        "logonTaskOnly": "Activas solo al iniciar sesión: Windows rechazó la tarea diaria.",
+        "runValueAndDaily": "Activas: Windows rechazó la tarea de inicio de sesión, así que una entrada de inicio hace la comprobación al iniciar sesión, además de la tarea diaria.",
+        "runValueOnly": "Activas solo al iniciar sesión, mediante una entrada de inicio: Windows rechazó las tareas programadas.",
+        "dailyTaskOnly": "Activas solo una vez al día: Windows rechazó la tarea de inicio de sesión y la entrada de inicio.",
+        "manual": "Inactivas: el administrador de este equipo no permite tareas programadas ni entradas de inicio. Las actualizaciones se ofrecen aquí cuando HuginnDB está abierto.",
+        "disabled": "Desactivadas. Las actualizaciones solo se ofrecen aquí, con un botón, mientras HuginnDB está abierto."
+      },
+      "run": {
+        "upToDate": "Última comprobación {{at}}: al día.",
+        "installing": "Última comprobación {{at}}: instalando {{version}}.",
+        "deferred": {
+          "appOpen": "Última comprobación {{at}}: la {{version}} está disponible y se dejó para después porque HuginnDB estaba abierto.",
+          "connectorInUse": "Última comprobación {{at}}: la {{version}} está disponible y se instalará al próximo inicio de sesión, porque una herramienta de IA tenía el conector en marcha."
+        },
+        "disabled": "Última comprobación {{at}}: omitida, las actualizaciones en segundo plano están desactivadas.",
+        "busy": "Última comprobación {{at}}: omitida, ya había otra comprobación en curso.",
+        "failed": "La última comprobación ({{at}}) falló: {{message}}"
+      }
+    }
   },
   "docs": {
     "menuEntry": "Documentación",

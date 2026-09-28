@@ -2440,7 +2440,37 @@
     "tooltipUpdateAvailable": "An update is available ({{version}})",
     "mcpSidecarWarning": "An AI tool (Claude Code, Cursor, …) currently has the MCP connector running. Continuing will close it to install the update — the tool will reopen it automatically the next time it's needed.\n\nContinue with the update?",
     "errorPermission": "Update failed: Windows didn't grant permission to install it. Try again and accept the admin prompt, or install the update manually from the GitHub releases page.",
-    "checkPrompt": "HuginnDB checks for updates in the background. Check now looks straight away."
+    "checkPrompt": "HuginnDB checks for updates in the background. Check now looks straight away.",
+    "autoInstall": {
+      "label": "Install updates in the background",
+      "desc": "Checks at sign-in and once a day, even if HuginnDB is never opened, and installs quietly — so the MCP connector your AI tool uses stays up to date too. It waits while HuginnDB is open, and the daily check also waits while an AI tool has the connector running."
+    },
+    "background": {
+      "title": "Background updates",
+      "unsupported": "Background updates only run in the installed Windows app.",
+      "pending": "Setting up the schedule…",
+      "windowsSaid": "Windows said: {{detail}}",
+      "mechanism": {
+        "tasks": "Active: a scheduled task at sign-in and another once a day.",
+        "logonTaskOnly": "Active at sign-in only: Windows refused the daily task.",
+        "runValueAndDaily": "Active: Windows refused the sign-in task, so a startup entry runs the check at sign-in, plus the daily task.",
+        "runValueOnly": "Active at sign-in only, through a startup entry: Windows refused the scheduled tasks.",
+        "dailyTaskOnly": "Active once a day only: Windows refused the sign-in task and the startup entry.",
+        "manual": "Not active: this computer's administrator does not allow scheduled tasks or startup entries. Updates are offered here when HuginnDB is open.",
+        "disabled": "Off. Updates are only offered here, with a button, while HuginnDB is open."
+      },
+      "run": {
+        "upToDate": "Last check {{at}}: up to date.",
+        "installing": "Last check {{at}}: installing {{version}}.",
+        "deferred": {
+          "appOpen": "Last check {{at}}: {{version}} is available and was left for later because HuginnDB was open.",
+          "connectorInUse": "Last check {{at}}: {{version}} is available and will install at the next sign-in, because an AI tool had the connector running."
+        },
+        "disabled": "Last check {{at}}: skipped, background updates are off.",
+        "busy": "Last check {{at}}: skipped, another check was already running.",
+        "failed": "Last check {{at}} failed: {{message}}"
+      }
+    }
   },
   "docs": {
     "menuEntry": "Documentation",

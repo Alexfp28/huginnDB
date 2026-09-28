@@ -1001,6 +1001,8 @@ export interface Preferences {
   /** Whether the theme browser may reach an extension registry, and which.
    *  See {@link ThemePrefs}. */
   themes: ThemePrefs;
+  /** Whether updates install in the background. See {@link UpdatePrefs}. */
+  updates: UpdatePrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
    * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
@@ -1172,6 +1174,16 @@ export type AiReasoningEffort =
 export interface ThemePrefs {
   registryEnabled: boolean;
   registryUrl: string;
+}
+
+/**
+ * The silent updater (`src-tauri/src/updater/`). On by default, and on for
+ * every existing install too: someone who only uses the MCP connector never
+ * opens Settings, so an opt-in would reach none of them. Off removes the
+ * scheduled tasks; the in-app updater keeps offering updates with a button.
+ */
+export interface UpdatePrefs {
+  autoInstall: boolean;
 }
 
 export interface AiPrefs {
@@ -2425,6 +2437,43 @@ export interface Diagnostics {
 export interface McpConnectorInfo {
   binary_path: string;
   available: boolean;
+}
+
+/** Which layer launches the silent updater, from `updater::schedule`. */
+export type UpdateMechanism =
+  | "tasks"
+  | "logonTaskOnly"
+  | "runValueAndDaily"
+  | "runValueOnly"
+  | "dailyTaskOnly"
+  | "manual"
+  | "disabled";
+
+export type UpdateDeferReason = "appOpen" | "connectorInUse";
+
+export type UpdateRunOutcome =
+  | { kind: "upToDate" }
+  | { kind: "installing"; version: string }
+  | { kind: "deferred"; version: string; reason: UpdateDeferReason }
+  | { kind: "disabled" }
+  | { kind: "busy" }
+  | { kind: "failed"; message: string };
+
+/** What the silent updater last did, from `get_auto_update_status`. */
+export interface AutoUpdateStatus {
+  /** Windows and a packaged build — a dev build never registers itself. */
+  supported: boolean;
+  schedule: {
+    mechanism: UpdateMechanism;
+    /** What Windows said when a layer was refused, verbatim. */
+    detail: string | null;
+    atMs: number;
+  } | null;
+  lastRun: {
+    atMs: number;
+    trigger: "logon" | "daily" | "manual";
+    outcome: UpdateRunOutcome;
+  } | null;
 }
 
 /** Build flavor of the running app, from `get_app_flavor`. The React bundle is

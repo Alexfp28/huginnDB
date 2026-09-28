@@ -46,11 +46,23 @@ pub async fn update_preferences(
     state: State<'_, AppState>,
     prefs: Preferences,
 ) -> AppResult<()> {
-    {
+    let auto_install_was = {
         let mut guard = state.prefs.write();
+        let was = guard.updates.auto_install;
         *guard = prefs.clone();
-    }
+        was
+    };
     prefs::save_preferences(&prefs)?;
+    // The one preference with a footprint outside the app: turning background
+    // updates on or off registers or removes the scheduled tasks. Only on a
+    // change — every other save would otherwise shell out to `schtasks`.
+    if auto_install_was != prefs.updates.auto_install {
+        let product = app.config().product_name.clone().unwrap_or_default();
+        let enabled = prefs.updates.auto_install;
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::updater::reconcile_for_app(&product, enabled, true);
+        });
+    }
     let _ = app.emit(PREFS_CHANGED_EVENT, prefs);
     // Most preferences take effect just by being readable, but the MCP bridge
     // owns a socket: toggling it has to actually start or stop the listener.

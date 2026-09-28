@@ -38,6 +38,7 @@ import type {
   PulsePrefs,
   SchemaTableMetric,
   ThemePrefs,
+  UpdatePrefs,
   UiPrefs,
 } from "@/types";
 
@@ -161,6 +162,11 @@ export const DEFAULT_PREFS: Preferences = {
     registryEnabled: true,
     registryUrl: "https://open-vsx.org",
   },
+  updates: {
+    // On by default, like `ThemePrefs.registryEnabled` and for a stronger
+    // reason: see `UpdatePrefs`.
+    autoInstall: true,
+  },
   keybindings: {},
 };
 
@@ -176,6 +182,7 @@ interface PreferencesState {
   updatePulse: (patch: Partial<PulsePrefs>) => void;
   updateAi: (patch: Partial<AiPrefs>) => void;
   updateThemes: (patch: Partial<ThemePrefs>) => void;
+  updateUpdates: (patch: Partial<UpdatePrefs>) => void;
   /**
    * Merge shortcut overrides. A key mapped to `undefined` is **deleted**,
    * which is how "reset this row to its default" is expressed — writing the
@@ -388,6 +395,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
       const next: Preferences = {
         ...s.prefs,
         themes: { ...s.prefs.themes, ...patch },
+      };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
+  updateUpdates(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        updates: { ...s.prefs.updates, ...patch },
       };
       save.schedule(next);
       return { prefs: next };
