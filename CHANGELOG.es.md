@@ -81,6 +81,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   pero vacía, desactiva el traspaso. Instalar esta versión de la extensión es
   la última vez que hay que hacerlo a mano.
 
+- **El fichero de estado de ventanas ya no crece con cada ventana que abres.**
+  HuginnDB recordaba la posición y el tamaño de todas las ventanas que había
+  mostrado alguna vez, pero las pestañas flotantes, las ventanas de Pulse y
+  **Nueva ventana** reciben un nombre interno nuevo cada vez, así que ninguna
+  de esas entradas se podía volver a usar y ninguna se borraba nunca. Ahora
+  solo se recuerda la ventana principal, y los restos se eliminan de
+  `.window-state.json` en el primer arranque de esta versión. La ventana
+  principal conserva su posición y tamaño guardados; las secundarias se abren
+  donde siempre.
+
 ## [1.29.0] — 2026-09-28
 
 ### Añadido

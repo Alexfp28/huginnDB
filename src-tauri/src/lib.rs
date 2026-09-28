@@ -274,14 +274,20 @@ pub fn run() {
     }
     builder
         .plugin(tauri_plugin_dialog::init())
-        // Remembers window position, size, and maximised state across
-        // launches. The plugin writes its own JSON blob alongside our
+        // Remembers the main window's position, size, and maximised state
+        // across launches. The plugin writes its own JSON blob alongside our
         // `prefs.json` / `tab_state.json` in the app config dir. Everything
         // but decorations: those are `window_chrome`'s to decide, not a
-        // remembered state (see that module).
+        // remembered state. Only the main window: the secondary ones are
+        // labelled with a fresh uuid each time, so an entry for one could
+        // never be restored. The prune plugin must come first — it clears
+        // what older builds saved before this one loads the file (see
+        // `window_chrome`).
+        .plugin(window_chrome::forget_unremembered_windows())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(window_chrome::window_state_flags())
+                .with_filter(window_chrome::remembers)
                 .build(),
         )
         // Auto-update infrastructure. The frontend calls `check()` on
