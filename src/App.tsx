@@ -625,7 +625,9 @@ export default function App() {
       />
       <CliConnectChoiceDialog
         open={cli.cliChoice !== null}
-        connectionName={cli.cliChoice ? intentDisplayName(cli.cliChoice) : ""}
+        connectionName={
+          cli.cliChoice ? intentDisplayName(cli.cliChoice, profiles) : ""
+        }
         dontAskAgain={cli.cliDontAskAgain}
         onDontAskAgainChange={cli.setCliDontAskAgain}
         onCurrentWindow={() => {

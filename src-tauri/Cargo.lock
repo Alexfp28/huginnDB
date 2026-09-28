@@ -2697,6 +2697,7 @@ dependencies = [
  "url",
  "uuid",
  "whoami",
+ "windows 0.61.3",
  "windows-registry",
  "zip",
 ]

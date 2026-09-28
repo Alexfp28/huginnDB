@@ -29,6 +29,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   lo dice a la herramienta de IA, que lo transmite; el conector lo lee de lo
   que registró la app y nunca consulta el feed de actualizaciones por su
   cuenta. Desinstalar HuginnDB elimina las tareas.
+- **Conexiones recientes en la barra de tareas de Windows.** Al hacer clic
+  derecho en el botón de HuginnDB de la barra de tareas (o en su entrada del
+  menú Inicio) aparecen las últimas conexiones que usaste, y al elegir una se
+  abre: con la app en marcha pregunta, como cualquier lanzamiento desde la
+  línea de comandos, si abrirla en la ventana actual o en una nueva; con la app
+  cerrada, la arranca y conecta. La tarea **Nueva ventana** abre otra ventana.
+  Recientes significa primero las conexiones abiertas desde el arranque y
+  después el resto según cuándo se tocaron sus pestañas por última vez; quedan
+  fuera las conexiones *ad hoc* de la línea de comandos, que nunca se guardan,
+  y las que abre una IA a través del conector MCP. Windows guarda la lista en tu
+  perfil de usuario, así que solo se escribe el nombre de la conexión y su
+  motor —nunca el host, la base de datos ni la contraseña—, y Ajustes → General
+  → Conexiones recientes en la barra de tareas desactiva la categoría (Nueva
+  ventana se queda).
 
 ### Cambiado
 
@@ -48,6 +62,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   esquina de la ventana. macOS conserva su marco nativo.
 
 ### Corregido
+
+- **El aviso de «Abrir conexión entrante» nombraba la conexión por su id.** Un
+  lanzamiento con `--connect-profile-id` —el que usa cada entrada de la barra de
+  tareas— preguntaba si abrir «62a5d650-23a7-…» en vez del nombre de la
+  conexión. Ahora muestra el nombre, y solo recurre al id cuando ninguna
+  conexión lo tiene.
 
 - **La extensión de Claude Desktop se actualiza ahora con la app.** El `.mcpb`
   llevaba su propia copia del conector, y Claude Desktop seguía ejecutando esa
