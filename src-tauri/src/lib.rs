@@ -55,6 +55,7 @@ mod testkit;
 mod themes;
 mod transfer;
 mod updater;
+mod window_chrome;
 
 use state::{AppState, StartupArgs};
 
@@ -259,8 +260,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Remembers window position, size, and maximised state across
         // launches. The plugin writes its own JSON blob alongside our
-        // `prefs.json` / `tab_state.json` in the app config dir.
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // `prefs.json` / `tab_state.json` in the app config dir. Everything
+        // but decorations: those are `window_chrome`'s to decide, not a
+        // remembered state (see that module).
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(window_chrome::window_state_flags())
+                .build(),
+        )
         // Auto-update infrastructure. The frontend calls `check()` on
         // launch (see `src/stores/update.ts`); endpoints and the public
         // verification key live in `tauri.conf.json`.
@@ -279,6 +286,9 @@ pub fn run() {
         // than lazily on first connect so the sweep also covers pools left
         // behind by a connection that was opened and closed again.
         .setup(|app| {
+            // The config declares the main window undecorated; macOS takes its
+            // native frame back before the window is ever painted.
+            window_chrome::adapt_main_window(app);
             // Before anything can reach a database for an AI: an inline
             // policy is in force from here, one on a share blocks until its
             // first read (`policy::install`).

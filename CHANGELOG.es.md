@@ -30,6 +30,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   que registró la app y nunca consulta el feed de actualizaciones por su
   cuenta. Desinstalar HuginnDB elimina las tareas.
 
+### Cambiado
+
+- **Una sola barra de título en vez de dos.** En Windows y Linux desaparece la
+  barra de título nativa, y la barra propia de HuginnDB —los menús, la ruta de
+  la conexión, la campana de notificaciones y los botones de los paneles— lleva
+  ahora también los botones de minimizar, maximizar y cerrar, como hacen Claude
+  Desktop y VS Code. Así se recuperan los 32 px que ocupaba la barra nativa en
+  cada ventana, también en las pestañas flotantes y en Pulse, cuya barra muestra
+  el título de la ventana. La ventana se sigue arrastrando desde cualquier hueco
+  de la barra, un doble clic la maximiza y el ajuste de Windows (Win+Z,
+  Win+flechas, arrastrar a un borde de la pantalla) funciona como antes; lo
+  único que falta es el selector de diseños que Windows 11 muestra al dejar el
+  puntero sobre maximizar, que Windows solo ofrece en un botón dibujado por él
+  mismo. Las cintas de canary, de política y de color de ventana pasan a ir
+  debajo de la barra en vez de encima, para que el botón de cerrar siga en la
+  esquina de la ventana. macOS conserva su marco nativo.
+
 ### Corregido
 
 - **La extensión de Claude Desktop se actualiza ahora con la app.** El `.mcpb`

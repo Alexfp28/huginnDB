@@ -47,6 +47,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
 import { SandboxRibbon } from "@/components/shell/SandboxRibbon";
 import { WindowColorBadge } from "@/components/shell/WindowColorBadge";
+import { TitleBar, WindowCaption } from "@/components/shell/TitleBar";
 import { NotificationHosts } from "@/components/shell/NotificationHosts";
 import { ConfirmHost } from "@/components/common/ConfirmHost";
 import { useBridge } from "@/lib/bridges/useBridge";
@@ -954,6 +955,9 @@ export function PulseWindow() {
   return (
     <TooltipProvider>
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        <TitleBar>
+          <WindowCaption />
+        </TitleBar>
         <SandboxRibbon />
         <WindowColorBadge />
         <div className="min-h-0 flex-1">

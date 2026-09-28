@@ -26,6 +26,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   that from what the app recorded and never contacts the update feed itself.
   Uninstalling HuginnDB removes the tasks.
 
+### Changed
+
+- **One title bar instead of two.** On Windows and Linux the native title bar
+  is gone, and HuginnDB's own bar — the menus, the connection breadcrumb, the
+  notification bell and the panel toggles — now carries the minimise, maximise
+  and close buttons too, the way Claude Desktop and VS Code do. That gives back
+  the 32px row the native caption took on every window, including floating tabs
+  and Pulse, whose bar shows the window's title. The window still drags from
+  any empty stretch of the bar, a double-click maximises it, and Windows' snap
+  (Win+Z, Win+arrows, dragging to a screen edge) works as before; the one thing
+  missing is the layout picker that Windows 11 shows when the pointer rests on
+  maximise, which Windows only offers on a button it drew itself. The canary,
+  policy and window-colour ribbons now sit under the bar rather than above it,
+  so the close button stays in the window's corner. macOS keeps its native
+  frame.
+
 ### Fixed
 
 - **The Claude Desktop extension now updates with the app.** The `.mcpb`

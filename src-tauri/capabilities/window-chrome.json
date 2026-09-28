@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "window-chrome",
+  "description": "What the in-app title bar (TitleBar.tsx) needs now that windows are undecorated: drag, the three caption buttons, and the resize events that keep the maximise glyph honest. Its own file because it covers every window kind, including the floating-tab and Pulse windows, which `default` does not list and which should not inherit its dialog, updater and process grants just to get a close button.",
+  "windows": ["main", "win-*", "tabwin-*", "pulsewin-*"],
+  "permissions": [
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

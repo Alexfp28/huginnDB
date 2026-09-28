@@ -1205,6 +1205,12 @@
       "secondary": "New window",
       "tabWindow": "Floating tab",
       "pulseWindow": "Pulse panel"
+    },
+    "windowControls": {
+      "minimize": "Minimize",
+      "maximize": "Maximize",
+      "restore": "Restore down",
+      "close": "Close"
     }
   },
   "commandPalette": {
