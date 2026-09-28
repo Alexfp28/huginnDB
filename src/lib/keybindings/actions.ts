@@ -59,6 +59,7 @@ export type ActionId =
   // schema
   | "refreshSchema"
   | "focusTreeFilter"
+  | "focusFilter"
   | "clearTreeFilter"
   | "scopeFilterToConnection"
   | "disconnectAll"
@@ -163,6 +164,21 @@ export const ACTIONS: ActionSpec[] = [
     defaults: ["Mod+Shift+F"],
     labelKey: "settings.shortcuts.focusTreeFilter",
     descKey: "settings.shortcuts.focusTreeFilterHint",
+  },
+  // The one "find" key, answered by whatever the user is looking at: the
+  // active table tab's filter, else the schema tree's (so it is a superset of
+  // `focusTreeFilter` when no table is open, and Mod+Shift+F stays as the way
+  // to reach the tree *from* a table). `global` for the same reason as the
+  // tree's: it exists to take the focus somewhere it is not yet. Inside Monaco
+  // its handler declines (see `ActionHandlers`), so the editor's own find
+  // widget keeps Ctrl+F — which is the only answer anyone expects there.
+  {
+    id: "focusFilter",
+    category: "general",
+    scope: "global",
+    defaults: ["Mod+F"],
+    labelKey: "settings.shortcuts.focusFilter",
+    descKey: "settings.shortcuts.focusFilterHint",
   },
   // Escape is a legal chord and `isTypeableChord("Escape")` is false, so it
   // fires with the cursor inside the filter input — the same reasoning that

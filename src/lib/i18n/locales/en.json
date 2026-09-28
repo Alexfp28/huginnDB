@@ -1644,6 +1644,8 @@
       "recordAgainHint": "Click to record a different key",
       "focusTreeFilter": "Search the schema tree",
       "focusTreeFilterHint": "Opens the Schema panel if it is collapsed, then focuses the filter box and selects what is in it.",
+      "focusFilter": "Find: filter this table or the tree",
+      "focusFilterHint": "Focuses the active table's filter box, or the schema tree's filter when no table tab is active. In Preferences it focuses the settings search; inside an editor the editor's own find opens instead.",
       "clearTreeFilter": "Clear the schema search",
       "clearTreeFilterHint": "In layers: first the text, then the scope one level at a time, then focus moves to the tree.",
       "scopeFilterToConnection": "Search only the selected connection"

@@ -96,6 +96,7 @@ import { LEGACY_DOCKVIEW_LAYOUT_KEY } from "@/lib/constants";
 import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshTable } from "@/lib/grid/tableRefresh";
+import { focusTableSearch } from "@/lib/grid/tableSearch";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
 import { useBridge } from "@/lib/bridges/useBridge";
 import { startPolicyBridge } from "@/lib/bridges/policy-bridge";
@@ -377,6 +378,15 @@ export default function App() {
     if (selected) void useSchema.getState().refreshTree(selected);
   }, [refreshTable, selected]);
 
+  // Shared by `focusTreeFilter` and the find key's fallback. Module-level
+  // stores only, so it needs no dependencies and the memo below stays put.
+  const focusTreeFilter = useCallback(() => {
+    // A shortcut that focuses something invisible would do nothing at all,
+    // so open the panel first.
+    useSessionPanelLayout.getState().openSchema();
+    useTreeSearch.getState().requestFocus();
+  }, []);
+
   const shortcutHandlers = useMemo(
     () => ({
       openSettings: () => openSettings(),
@@ -394,11 +404,26 @@ export default function App() {
       // The schema tree's search. Each reads `useTreeSearch` imperatively, so
       // none of them widens this memo's dependency list — the same discipline
       // the block below already follows.
-      focusTreeFilter: () => {
-        // A shortcut that focuses something invisible would do nothing at all,
-        // so open the panel first.
-        useSessionPanelLayout.getState().openSchema();
-        useTreeSearch.getState().requestFocus();
+      focusTreeFilter: focusTreeFilter,
+      // The find key, answered by what the user is looking at. Order matters:
+      // the checks that *decline* come first, because a decline is what hands
+      // Ctrl+F back to the widget that owns it there.
+      focusFilter: () => {
+        const focused = document.activeElement;
+        // Monaco's own find widget is the only sensible answer inside an
+        // editor — including the JSON Schema body editor inside Settings.
+        if (focused?.closest(".monaco-editor")) return false;
+        if (useSettingsDialog.getState().open) {
+          useSettingsDialog.getState().requestSearchFocus();
+          return;
+        }
+        // Any other modal holds a focus trap: the filter behind it could not
+        // take the focus, so moving it there would silently do nothing.
+        if (focused?.closest('[role="dialog"], [role="alertdialog"]')) return false;
+        const tabs = useTabs.getState();
+        const active = tabs.tabs.find((t) => t.id === tabs.activeId);
+        if (active?.kind === "table" && focusTableSearch(active.id)) return;
+        focusTreeFilter();
       },
       clearTreeFilter: () => {
         // Layered: text, then the scope one level at a time. When there is
@@ -473,6 +498,7 @@ export default function App() {
       openPaletteWith,
       toggleSwitcher,
       refreshActiveData,
+      focusTreeFilter,
       selected,
     ],
   );

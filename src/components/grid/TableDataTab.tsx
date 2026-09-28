@@ -1794,7 +1794,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-table-tab={tabId}>
       {error && (
         <div className="border-b border-border bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
           {error}

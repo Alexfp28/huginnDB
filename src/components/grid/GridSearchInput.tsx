@@ -42,6 +42,10 @@ export function GridSearchInput({
         <Search className="h-3.5 w-3.5" />
       </span>
       <input
+        // The find key's target (`focusTableSearch`): found under the active
+        // table tab's `data-table-tab`, so no ref has to be threaded through
+        // DataGrid and GridToolbar to reach it.
+        data-grid-search
         className="w-full min-w-0 flex-1 bg-transparent px-2 text-xs focus:outline-none"
         placeholder={t("dataGrid.filterRows")}
         value={value}

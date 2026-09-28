@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Ctrl+F finds in whatever you are looking at.** With a table tab active it
+  puts the cursor in that table's filter box, selecting what is there so you
+  can type straight over it; with no table tab active it goes to the schema
+  tree's filter, opening the panel if it is collapsed; with Preferences open
+  it goes to the settings search. Inside a query or JSON editor it does
+  nothing of its own, so the editor's find keeps working exactly as before,
+  and inside any other dialog it leaves the key alone rather than aiming at a
+  box the dialog is covering. Ctrl+Shift+F still goes to the tree from
+  anywhere, and both can be rebound in Settings → Shortcuts.
+
 - **Managed policy: an administrator decides, once, what the AI may reach on
   every installation.** Built for organizations deploying HuginnDB to many
   workstations, where configuring each one by hand was the objection. A

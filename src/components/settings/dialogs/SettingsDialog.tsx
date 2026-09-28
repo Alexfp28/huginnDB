@@ -32,7 +32,7 @@
  * codebase migrates to `useSettingsDialog.openAt(...)`.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Activity,
@@ -196,6 +196,8 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
   );
   const [query, setQuery] = useState("");
   const [confirmReset, setConfirmReset] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const searchFocusRequest = useSettingsDialog((s) => s.searchFocusRequest);
   const { t } = useTranslation();
 
   // Keep the controlled prop (from App.tsx's existing button) in sync with
@@ -211,6 +213,14 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (!isOpen) setQuery("");
   }, [isOpen]);
+
+  // The find key while Settings is open. Select what is there so typing
+  // replaces the last search instead of appending to it.
+  useEffect(() => {
+    if (searchFocusRequest === 0) return;
+    searchRef.current?.focus();
+    searchRef.current?.select();
+  }, [searchFocusRequest]);
 
   const handleOpenChange = (next: boolean) => {
     setStoreOpen(next);
@@ -341,6 +351,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
           <aside className="flex min-h-0 flex-col border-r border-border bg-card/40">
             <div className="shrink-0 p-2 pb-1">
               <SearchField
+                ref={searchRef}
                 value={query}
                 onValueChange={setQuery}
                 onClear={() => setQuery("")}
