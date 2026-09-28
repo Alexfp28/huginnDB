@@ -208,6 +208,15 @@ viven los perfiles de conexión y sus entradas del llavero. Qué conexiones pued
 alcanzar sigue siendo Ajustes → MCP en la app, y se sigue releyendo en cada
 llamada — la extensión no tiene ajustes propios, que es justo la gracia.
 
+**La extensión se instala una vez; las actualizaciones llegan con la app.** En
+Windows, la copia del bundle cede la sesión al conector instalado junto a
+`huginndb.exe` (lo localiza por la clave de desinstalación del instalador y, si
+no, en `%LOCALAPPDATA%\HuginnDB\`), así que actualizar HuginnDB actualiza lo que
+ejecuta Claude Desktop, incluida la política gestionada que ese conector aplica.
+La copia propia del bundle solo sirve la sesión cuando no encuentra una
+instalada. `HUGINNDB_MCP_PATH` apunta a otra copia instalada o, definida pero
+vacía, desactiva el traspaso.
+
 Usa la vía manual de abajo si quieres fijar un cliente a un subconjunto con
 `--connections`, que el bundle no pasa.
 

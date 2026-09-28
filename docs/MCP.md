@@ -196,6 +196,14 @@ connection profiles and their keychain entries live. Which connections it may
 reach is still Settings → MCP in the app, and still re-read per call — the
 extension has no settings of its own, which is the point.
 
+**Install the extension once; updates arrive with the app.** On Windows the
+bundle's copy hands the session to the connector installed next to
+`huginndb.exe` (found through the installer's uninstall key, then
+`%LOCALAPPDATA%\HuginnDB\`), so updating HuginnDB updates what Claude Desktop
+runs, down to the managed policy that connector enforces. The bundle's own copy
+serves the session only when no installed one is found. `HUGINNDB_MCP_PATH`
+names a different installed copy, or, set but empty, turns the hand-over off.
+
 Prefer the manual route below if you want one client pinned to a subset of
 connections with `--connections`, which the bundle does not pass.
 

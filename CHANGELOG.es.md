@@ -27,6 +27,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   entrada de inicio, y si también la prohíbe, lo dice en vez de disimularlo.
   Desinstalar HuginnDB elimina las tareas.
 
+### Corregido
+
+- **La extensión de Claude Desktop se actualiza ahora con la app.** El `.mcpb`
+  llevaba su propia copia del conector, y Claude Desktop seguía ejecutando esa
+  copia fuera cual fuera la versión de HuginnDB instalada al lado: las
+  herramientas nuevas no llegaban nunca al asistente, y una extensión anterior
+  a la 1.29 no aplicaba la política gestionada que la propia app sí aplicaba.
+  En Windows, la extensión cede ahora cada sesión al conector instalado con la
+  app, así que se instala una vez y cada actualización de HuginnDB es también
+  una actualización del conector. Sin la app instalada, sirve la sesión ella
+  misma, como antes; `HUGINNDB_MCP_PATH` la apunta a otro sitio o, definida
+  pero vacía, desactiva el traspaso. Instalar esta versión de la extensión es
+  la última vez que hay que hacerlo a mano.
+
 ## [1.29.0] — 2026-09-28
 
 ### Añadido

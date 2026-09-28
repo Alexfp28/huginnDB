@@ -11,6 +11,10 @@ The HuginnDB desktop app must be installed on the same machine. This extension
 reads its saved connection profiles and the matching passwords from the OS
 keychain; it has no connection settings of its own.
 
+You install this extension once. On Windows it hands every session to the
+connector installed with the app, so updating HuginnDB is what updates the
+connector — there is no newer extension to download.
+
 ## Setup
 
 1. Install this extension.

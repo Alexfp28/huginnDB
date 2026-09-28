@@ -41,6 +41,8 @@
 //!   rows a single `run_query` / `browse_table` call can return, so a tool
 //!   call can't dump a whole table into the model's context.
 
+pub mod delegate;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
