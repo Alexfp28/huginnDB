@@ -45,7 +45,10 @@ function harness(overrides: Keybindings = {}, handlers: ActionHandlers = {}) {
   const fired: string[] = [];
   const wired: ActionHandlers = { ...handlers };
   for (const spec of FIXTURE) {
-    if (wired[spec.id] === undefined) wired[spec.id] = () => fired.push(spec.id);
+    if (wired[spec.id] === undefined)
+      wired[spec.id] = () => {
+        fired.push(spec.id);
+      };
   }
   const pending: string[][] = [];
   const dispatcher = createKeyDispatcher({
@@ -102,6 +105,26 @@ describe("scopesAt", () => {
 });
 
 describe("createKeyDispatcher", () => {
+  it("lets a handler decline, so the key falls through unconsumed", () => {
+    let calls = 0;
+    const { dispatcher, fired } = harness(
+      {},
+      {
+        refreshData: () => {
+          calls += 1;
+          return false;
+        },
+      },
+    );
+    expect(dispatcher.handleKey(key({ key: "F5" }), ["global"])).toBe(false);
+    // It did run — declining is a decision made by the handler, not a skip.
+    expect(calls).toBe(1);
+    expect(fired).toEqual([]);
+    // Only a literal `false` declines; returning nothing still consumes.
+    const plain = harness();
+    expect(plain.dispatcher.handleKey(key({ key: "F5" }), ["global"])).toBe(true);
+  });
+
   it("runs a global action from anywhere", () => {
     const { dispatcher, fired } = harness();
     const consumed = dispatcher.handleKey(key({ key: "F5" }), ["global"]);

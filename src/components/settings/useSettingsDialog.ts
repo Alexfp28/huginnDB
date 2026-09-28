@@ -51,6 +51,13 @@ interface SettingsDialogState {
    * once per request rather than every time that section is revisited.
    */
   highlightPrefId: PrefId | null;
+  /**
+   * Bumped to ask the rail's search box to take the focus — the find key
+   * (`focusFilter`) pressed while Settings is open. A counter rather than a
+   * boolean, the same shape as the schema tree's `focusRequest`: a second
+   * press must refocus even if nothing reset a flag in between.
+   */
+  searchFocusRequest: number;
   /** The section to return to while a full-screen editor opened from Settings
    *  has it put aside (`suspend`); `null` otherwise. */
   suspendedAt: SettingsSection | null;
@@ -66,12 +73,14 @@ interface SettingsDialogState {
   resume: () => void;
   setSection: (section: SettingsSection) => void;
   clearHighlight: () => void;
+  requestSearchFocus: () => void;
 }
 
 export const useSettingsDialog = create<SettingsDialogState>()((set, get) => ({
   open: false,
   section: "general",
   highlightPrefId: null,
+  searchFocusRequest: 0,
   suspendedAt: null,
   // Any explicit open or close supersedes a pending return.
   openAt: (section) =>
@@ -100,4 +109,6 @@ export const useSettingsDialog = create<SettingsDialogState>()((set, get) => ({
   // navigating somewhere else, and a stale flash on return would be noise.
   setSection: (section) => set({ section, highlightPrefId: null }),
   clearHighlight: () => set({ highlightPrefId: null }),
+  requestSearchFocus: () =>
+    set((s) => ({ searchFocusRequest: s.searchFocusRequest + 1 })),
 }));

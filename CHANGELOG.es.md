@@ -10,6 +10,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Ctrl+F busca en lo que tengas delante.** Con una pestaña de tabla activa
+  pone el cursor en el filtro de esa tabla, seleccionando lo que haya para que
+  escribas encima; sin pestaña de tabla activa va al filtro del árbol de
+  esquemas, abriendo el panel si está plegado; con Preferencias abierto va al
+  buscador de ajustes. Dentro de un editor de consultas o de JSON no hace nada
+  propio, así que la búsqueda del editor sigue funcionando como siempre, y
+  dentro de cualquier otro diálogo deja la tecla tranquila en vez de apuntar a
+  un cuadro que el diálogo tapa. Ctrl+Mayús+F sigue llevando al árbol desde
+  cualquier sitio, y los dos se pueden reasignar en Preferencias → Atajos.
+
 - **Política gestionada: un administrador decide, una sola vez, a qué puede
   acceder la IA en todas las instalaciones.** Pensada para organizaciones que
   despliegan HuginnDB en muchos puestos, donde configurar cada uno a mano era

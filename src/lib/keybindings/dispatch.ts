@@ -19,8 +19,15 @@ import type { ActionId, Scope } from "./actions";
 import type { Binding, ResolvedBindings } from "./resolve";
 
 /** What to run when an action fires. An action with no handler is inert — the
- *  keystroke falls through as if nothing were bound. */
-export type ActionHandlers = Partial<Record<ActionId, () => void>>;
+ *  keystroke falls through as if nothing were bound.
+ *
+ *  A handler may also return `false` to **decline** at run time: the keystroke
+ *  then falls through exactly as if it were unbound, so the browser (or the
+ *  focused widget) gets it. That is for an action whose right answer depends on
+ *  where the focus is in a way a static `scope` cannot say — `focusFilter`
+ *  owns `Mod+F` app-wide but must leave it to Monaco's own find inside an
+ *  editor. Anything else (`undefined`, `true`) counts as handled. */
+export type ActionHandlers = Partial<Record<ActionId, () => void | boolean>>;
 
 /** How long a half-typed sequence waits for its next chord. Matches VS Code. */
 export const CHORD_TIMEOUT_MS = 2000;
@@ -125,8 +132,7 @@ export function createKeyDispatcher(options: DispatchOptions): KeyDispatcher {
   function run(binding: Binding): boolean {
     const handler = getHandlers()[binding.actionId];
     if (!handler) return false;
-    handler();
-    return true;
+    return handler() !== false;
   }
 
   return {

@@ -1644,6 +1644,8 @@
       "recordAgainHint": "Haz clic para grabar otra tecla",
       "focusTreeFilter": "Buscar en el árbol de esquema",
       "focusTreeFilterHint": "Abre el panel Esquema si está plegado, enfoca la caja de filtro y selecciona lo que haya en ella.",
+      "focusFilter": "Buscar: filtrar esta tabla o el árbol",
+      "focusFilterHint": "Pone el foco en el filtro de la tabla activa, o en el del árbol de esquemas si no hay ninguna pestaña de tabla activa. En Preferencias va al buscador de ajustes; dentro de un editor se abre la búsqueda del propio editor.",
       "clearTreeFilter": "Limpiar la búsqueda del esquema",
       "clearTreeFilterHint": "Por capas: primero el texto, luego el ámbito nivel a nivel y por último el foco pasa al árbol.",
       "scopeFilterToConnection": "Buscar solo en la conexión seleccionada"
