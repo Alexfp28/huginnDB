@@ -21,8 +21,19 @@
 //! No arguments: which connections are reachable is picked in the app under
 //! Settings → MCP and re-read per call. `--connections <id>,<id>` still pins an
 //! explicit set for one client when that is wanted.
+//!
+//! A copy that is not the one installed with the app (the `.mcpb` bundle's)
+//! hands the session to the installed one first, so updating HuginnDB updates
+//! every client's connector — see [`huginndb_lib::mcp::delegate`].
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    huginndb_lib::mcp::serve().await
+fn main() -> anyhow::Result<()> {
+    // Before the runtime, the state, the policy or a single byte on stdout:
+    // the installed copy does all of that itself.
+    if let Some(code) = huginndb_lib::mcp::delegate::run_installed_if_any() {
+        std::process::exit(code);
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(huginndb_lib::mcp::serve())
 }

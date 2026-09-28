@@ -11,9 +11,12 @@
 # is used only to name the output file — one bundle per platform, because the
 # payload is a precompiled binary. The result lands in `mcpb/build/`.
 #
-# The bundle carries the *real* sidecar, not a launcher: it still reads the
-# desktop app's `profiles.json` and the OS keychain, so HuginnDB must be
-# installed, but nothing has to resolve where its copy of the binary ended up.
+# The bundle carries the real sidecar, which on Windows hands the session to
+# the copy installed with the app (`mcp::delegate`) and serves it itself only
+# when there is none — so the bundle is installed once and updates arrive with
+# the app, instead of Claude Desktop running whatever version it was installed
+# with. Either way it reads the desktop app's `profiles.json` and the OS
+# keychain, so HuginnDB must be installed.
 # Which connections are reachable is picked in the app (Settings -> MCP) and
 # re-read per call, which is why this bundle needs no `user_config` at all.
 set -euo pipefail
