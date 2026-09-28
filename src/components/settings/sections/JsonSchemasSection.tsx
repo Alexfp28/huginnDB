@@ -45,7 +45,9 @@ import { notify } from "@/lib/notify";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
+import { PrefGroup } from "@/components/settings/sections/PrefGroup";
 import { PrefRow } from "@/components/settings/sections/PrefRow";
+import { CONTROL_FOCUS_TIGHT } from "@/components/ui/styles";
 import { Switch } from "@/components/ui/switch";
 import { BindingsTable } from "@/components/jsonSchema/BindingsTable";
 import { BindingScopeFields } from "@/components/jsonSchema/BindingScopeFields";
@@ -279,256 +281,267 @@ export function JsonSchemasSection() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* The title comes from the dialog's section header; this keeps only
           the explanation, which says more than the rail's one-liner. */}
       <p className="text-xs text-muted-foreground">
         {t("jsonSchemas.description")}
       </p>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() =>
-            void createFrom(
-              t("jsonSchemas.library.defaultName"),
-              SCHEMA_TEMPLATES[0].body,
-            )
-          }
-        >
-          <Plus className="mr-1 h-3.5 w-3.5" />
-          {t("jsonSchemas.library.new")}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void importFromFile()}
-        >
-          <FileJson className="mr-1 h-3.5 w-3.5" />
-          {t("jsonSchemas.library.addFromFile")}
-        </Button>
-        <div className="ml-auto flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={schemas.length === 0}
-            onClick={() => openExport()}
-          >
-            <Download className="mr-1 h-3.5 w-3.5" />
-            {t("transfer.exportJsonSchemas.title")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setImportOpen(true)}>
-            <Upload className="mr-1 h-3.5 w-3.5" />
-            {t("transfer.importJsonSchemas.title")}
-          </Button>
-        </div>
-      </div>
-
-      {schemas.length === 0 ? (
-        <EmptyLibrary
-          onPick={(name, tplBody) => void createFrom(name, tplBody)}
-        />
-      ) : (
-        <div className="grid min-h-0 grid-cols-[190px_1fr] gap-3">
-          <aside className="space-y-1">
-            {schemas.length > 6 && (
-              <Input
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder={t("jsonSchemas.library.filterPlaceholder")}
-                className="h-7 text-xs"
-              />
-            )}
-            <div className="space-y-0.5">
-              {visible.map((s) => {
-                const count = bindingCounts.get(s.id) ?? 0;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedId(s.id)}
-                    className={cn(
-                      "flex w-full flex-col items-start rounded-sm px-2 py-1 text-left leading-tight hover:bg-accent",
-                      s.id === selectedId && "bg-accent/60",
-                    )}
-                  >
-                    <span className="flex w-full items-center gap-1 text-xs">
-                      <span className="truncate">{s.name}</span>
-                      {parseErrors[s.id] && (
-                        <span
-                          className="shrink-0 text-warning"
-                          title={t("jsonSchemas.library.invalidBody")}
-                        >
-                          ⚠
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-3xs text-muted-foreground">
-                      {count > 0
-                        ? t("jsonSchemas.library.bindingCount", { count })
-                        : t("jsonSchemas.library.unbound")}
-                    </span>
-                  </button>
-                );
-              })}
-              {visible.length === 0 && (
-                <p className="px-2 py-1 text-2xs text-muted-foreground">
-                  {t("jsonSchemas.library.noMatches")}
-                </p>
-              )}
-            </div>
-          </aside>
-
-          <div className="min-w-0 space-y-2">
-            {!selected ? (
-              <p className="text-xs text-muted-foreground">
-                {t("jsonSchemas.detail.selectPrompt")}
-              </p>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="h-7 text-xs"
-                    placeholder={t("jsonSchemas.detail.namePlaceholder")}
-                  />
-                  <IconButton
-                    icon={Copy}
-                    label={t("jsonSchemas.detail.duplicate")}
-                    className="shrink-0"
-                    onClick={() =>
-                      void createFrom(`${selected.name} (copy)`, selected.body)
-                    }
-                  />
-                  <IconButton
-                    icon={Trash2}
-                    tone="destructive"
-                    label={t("jsonSchemas.detail.delete")}
-                    className="shrink-0"
-                    onClick={() => void removeSelected()}
-                  />
-                </div>
+      <PrefGroup
+        title={t("jsonSchemas.library.title")}
+        action={
+          <>
+            <Button
+              size="xs"
+              variant="outline"
+              icon={Plus}
+              onClick={() =>
+                void createFrom(
+                  t("jsonSchemas.library.defaultName"),
+                  SCHEMA_TEMPLATES[0].body,
+                )
+              }
+            >
+              {t("jsonSchemas.library.new")}
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              icon={FileJson}
+              onClick={() => void importFromFile()}
+            >
+              {t("jsonSchemas.library.addFromFile")}
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              icon={Download}
+              disabled={schemas.length === 0}
+              onClick={() => openExport()}
+            >
+              {t("transfer.exportJsonSchemas.title")}
+            </Button>
+            <Button
+              size="xs"
+              variant="ghost"
+              icon={Upload}
+              onClick={() => setImportOpen(true)}
+            >
+              {t("transfer.importJsonSchemas.title")}
+            </Button>
+          </>
+        }
+        padded={schemas.length === 0}
+        bodyClassName={
+          schemas.length === 0 ? undefined : "grid min-h-0 grid-cols-[200px_1fr]"
+        }
+      >
+        {schemas.length === 0 ? (
+          <EmptyLibrary
+            onPick={(name, tplBody) => void createFrom(name, tplBody)}
+          />
+        ) : (
+          <>
+            <aside className="space-y-1 border-r border-border/60 p-2">
+              {schemas.length > 6 && (
                 <Input
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder={t("jsonSchemas.library.filterPlaceholder")}
                   className="h-7 text-xs"
-                  placeholder={t("jsonSchemas.detail.descriptionPlaceholder")}
                 />
-
-                <div
-                  className={cn(
-                    "space-y-1",
-                    fullscreen &&
-                      "fixed inset-0 z-50 flex flex-col bg-background p-4",
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xs font-medium text-muted-foreground">
-                      {t("jsonSchemas.detail.body")}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setBody(tryFormat(body, "json"));
-                        setBodyDirty(true);
-                      }}
-                    >
-                      {t("jsonSchemas.detail.format")}
-                    </Button>
-                    <IconButton
-                      icon={Maximize2}
-                      label={
-                        fullscreen
-                          ? t("jsonSchemas.detail.exitFullscreen")
-                          : t("jsonSchemas.detail.fullscreen")
-                      }
-                      onClick={() => setFullscreen((v) => !v)}
-                    />
-                    <div className="ml-auto flex items-center gap-2">
-                      {bodyDirty && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setBody(selected.body);
-                            setBodyDirty(false);
-                          }}
-                        >
-                          {t("jsonSchemas.detail.revert")}
-                        </Button>
+              )}
+              <div className="space-y-0.5">
+                {visible.map((s) => {
+                  const count = bindingCounts.get(s.id) ?? 0;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setSelectedId(s.id)}
+                      aria-current={s.id === selectedId ? "true" : undefined}
+                      className={cn(
+                        // The rail's pill, so "selected" reads the same here as
+                        // in the dialog's own navigation.
+                        "flex w-full flex-col items-start rounded-md px-2.5 py-1.5 text-left leading-tight transition-colors",
+                        CONTROL_FOCUS_TIGHT,
+                        s.id === selectedId
+                          ? "bg-brand/10 font-medium"
+                          : "hover:bg-accent",
                       )}
-                      <Button
-                        size="sm"
-                        disabled={!bodyDirty}
-                        onClick={() => void commitBody()}
-                      >
-                        {t("jsonSchemas.detail.saveBody")}
-                      </Button>
-                    </div>
+                    >
+                      <span className="flex w-full items-center gap-1 text-xs">
+                        <span className="truncate">{s.name}</span>
+                        {parseErrors[s.id] && (
+                          <span
+                            className="shrink-0 text-warning"
+                            title={t("jsonSchemas.library.invalidBody")}
+                          >
+                            ⚠
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-3xs text-muted-foreground">
+                        {count > 0
+                          ? t("jsonSchemas.library.bindingCount", { count })
+                          : t("jsonSchemas.library.unbound")}
+                      </span>
+                    </button>
+                  );
+                })}
+                {visible.length === 0 && (
+                  <p className="px-2 py-1 text-2xs text-muted-foreground">
+                    {t("jsonSchemas.library.noMatches")}
+                  </p>
+                )}
+              </div>
+            </aside>
+
+            <div className="min-w-0 space-y-2 p-4">
+              {!selected ? (
+                <p className="text-xs text-muted-foreground">
+                  {t("jsonSchemas.detail.selectPrompt")}
+                </p>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="h-7 text-xs"
+                      placeholder={t("jsonSchemas.detail.namePlaceholder")}
+                    />
+                    <IconButton
+                      icon={Copy}
+                      label={t("jsonSchemas.detail.duplicate")}
+                      className="shrink-0"
+                      onClick={() =>
+                        void createFrom(`${selected.name} (copy)`, selected.body)
+                      }
+                    />
+                    <IconButton
+                      icon={Trash2}
+                      tone="destructive"
+                      label={t("jsonSchemas.detail.delete")}
+                      className="shrink-0"
+                      onClick={() => void removeSelected()}
+                    />
                   </div>
+                  <Input
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="h-7 text-xs"
+                    placeholder={t("jsonSchemas.detail.descriptionPlaceholder")}
+                  />
 
                   <div
                     className={cn(
-                      "overflow-hidden rounded-md border border-border",
-                      fullscreen ? "min-h-0 flex-1" : "h-[180px]",
+                      "space-y-1",
+                      fullscreen &&
+                        "fixed inset-0 z-50 flex flex-col bg-background p-4",
                     )}
                   >
-                    <Editor
-                      height="100%"
-                      // A stable, suffixed path is what lets the bundled
-                      // draft-07 meta-schema attach by `fileMatch`.
-                      path={schemaModelPath(selected.id)}
-                      language="json"
-                      theme={monacoTheme}
-                      value={body}
-                      onChange={handleBodyChange}
-                      options={bodyEditorOptions}
-                    />
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xs font-medium text-muted-foreground">
+                        {t("jsonSchemas.detail.body")}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setBody(tryFormat(body, "json"));
+                          setBodyDirty(true);
+                        }}
+                      >
+                        {t("jsonSchemas.detail.format")}
+                      </Button>
+                      <IconButton
+                        icon={Maximize2}
+                        label={
+                          fullscreen
+                            ? t("jsonSchemas.detail.exitFullscreen")
+                            : t("jsonSchemas.detail.fullscreen")
+                        }
+                        onClick={() => setFullscreen((v) => !v)}
+                      />
+                      <div className="ml-auto flex items-center gap-2">
+                        {bodyDirty && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setBody(selected.body);
+                              setBodyDirty(false);
+                            }}
+                          >
+                            {t("jsonSchemas.detail.revert")}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          disabled={!bodyDirty}
+                          onClick={() => void commitBody()}
+                        >
+                          {t("jsonSchemas.detail.saveBody")}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div
+                      className={cn(
+                        "overflow-hidden rounded-md border border-border",
+                        fullscreen ? "min-h-0 flex-1" : "h-[180px]",
+                      )}
+                    >
+                      <Editor
+                        height="100%"
+                        // A stable, suffixed path is what lets the bundled
+                        // draft-07 meta-schema attach by `fileMatch`.
+                        path={schemaModelPath(selected.id)}
+                        language="json"
+                        theme={monacoTheme}
+                        value={body}
+                        onChange={handleBodyChange}
+                        options={bodyEditorOptions}
+                      />
+                    </div>
+
+                    {bodyError && (
+                      <p className="text-2xs text-destructive">
+                        {t("jsonSchemas.detail.bodyInvalid", {
+                          message: bodyError,
+                        })}
+                      </p>
+                    )}
+                    {externalRefs.length > 0 && (
+                      <p className="text-2xs text-warning">
+                        {t("jsonSchemas.detail.externalRefs", {
+                          refs: externalRefs.join(", "),
+                        })}
+                      </p>
+                    )}
+                    {!body.includes("$schema") && body.trim() && (
+                      <p className="text-2xs text-muted-foreground">
+                        {t("jsonSchemas.detail.noDraftDeclared")}
+                      </p>
+                    )}
                   </div>
+                </>
+              )}
+            </div>
+          </>
+        )}
+      </PrefGroup>
 
-                  {bodyError && (
-                    <p className="text-2xs text-destructive">
-                      {t("jsonSchemas.detail.bodyInvalid", {
-                        message: bodyError,
-                      })}
-                    </p>
-                  )}
-                  {externalRefs.length > 0 && (
-                    <p className="text-2xs text-warning">
-                      {t("jsonSchemas.detail.externalRefs", {
-                        refs: externalRefs.join(", "),
-                      })}
-                    </p>
-                  )}
-                  {!body.includes("$schema") && body.trim() && (
-                    <p className="text-2xs text-muted-foreground">
-                      {t("jsonSchemas.detail.noDraftDeclared")}
-                    </p>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <section className="space-y-2">
-        <div className="space-y-1">
-          <h4 className="text-xs font-semibold">
-            {t("jsonSchemas.bindings.title")}
-          </h4>
-          <p className="text-2xs text-muted-foreground">
-            {t("jsonSchemas.bindings.cascadeHint")}
-          </p>
-        </div>
-        <BindingsTable onEdit={setEditingBinding} />
-        <div className="flex items-center gap-2">
+      <PrefGroup
+        title={t("jsonSchemas.bindings.title")}
+        description={t("jsonSchemas.bindings.cascadeHint")}
+        action={
           <Button
-            size="sm"
+            size="xs"
             variant="outline"
+            icon={Plus}
             disabled={schemas.length === 0}
             onClick={() =>
               setEditingBinding({
@@ -544,17 +557,18 @@ export function JsonSchemasSection() {
               })
             }
           >
-            <Plus className="mr-1 h-3.5 w-3.5" />
             {t("jsonSchemas.bindings.new")}
           </Button>
-        </div>
+        }
+      >
+        <BindingsTable onEdit={setEditingBinding} />
         {editingBinding && (
           <BindingScopeFields
             binding={editingBinding}
             onClose={() => setEditingBinding(null)}
           />
         )}
-      </section>
+      </PrefGroup>
 
       <TestColumnBox />
 
@@ -572,7 +586,7 @@ function EmptyLibrary({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-3 rounded-md border border-dashed border-border px-4 py-5">
+    <div className="space-y-3">
       <div className="space-y-1">
         <p className="text-sm font-medium">{t("jsonSchemas.empty.title")}</p>
         <p className="text-xs text-muted-foreground">
@@ -585,7 +599,7 @@ function EmptyLibrary({
             key={tpl.id}
             type="button"
             onClick={() => onPick(t(tpl.nameKey), tpl.body)}
-            className="rounded-md border border-border px-2 py-2 text-left hover:bg-accent"
+            className="rounded-md border border-border bg-background/60 px-2.5 py-2 text-left transition-colors hover:bg-accent"
           >
             <span className="flex items-center gap-1 text-xs font-medium">
               <Braces className="h-3 w-3 shrink-0" />
@@ -640,13 +654,11 @@ function TestColumnBox() {
   }
 
   return (
-    <section className="space-y-2">
-      <div className="space-y-1">
-        <h4 className="text-xs font-semibold">{t("jsonSchemas.test.title")}</h4>
-        <p className="text-2xs text-muted-foreground">
-          {t("jsonSchemas.test.hint")}
-        </p>
-      </div>
+    <PrefGroup
+      title={t("jsonSchemas.test.title")}
+      description={t("jsonSchemas.test.hint")}
+      padded
+    >
       <div className="flex items-center gap-2">
         <Input
           value={probe}
@@ -677,7 +689,7 @@ function TestColumnBox() {
           )}
         </p>
       )}
-    </section>
+    </PrefGroup>
   );
 }
 
@@ -695,8 +707,7 @@ function BehaviourPrefs() {
   const prefs = usePreferences((s) => s.prefs);
   const updateEditor = usePreferences((s) => s.updateEditor);
   return (
-    <section className="space-y-2">
-      <h4 className="text-xs font-semibold">{t("jsonSchemas.prefs.title")}</h4>
+    <PrefGroup title={t("jsonSchemas.prefs.title")}>
       <PrefRow
         prefId="editor.jsonSchemaValidation"
         label={t("jsonSchemas.prefs.validation.label")}
@@ -727,6 +738,6 @@ function BehaviourPrefs() {
           onCheckedChange={(v) => updateEditor({ jsonSchemaHover: v })}
         />
       </PrefRow>
-    </section>
+    </PrefGroup>
   );
 }

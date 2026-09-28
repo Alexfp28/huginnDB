@@ -158,7 +158,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   language are deliberately left out of that: they describe your setup, not
   a tweak, and "reset" would point the panel at another server or switch you
   to English. The rails of the shared-origin and policy editors adopt the
-  same entry style, since all three share one component.
+  same entry style, since all three share one component. Every section now
+  follows the same anatomy, the composite ones included: Appearance's theme
+  list and editor are one card instead of two boxes side by side, JSON
+  Schemas' library, bindings and test are titled cards with their actions in
+  the header, Origins lists its registrations and inline forms the same way,
+  and Policy and About drop their hand-drawn boxes. The per-connection lists
+  of MCP, Pulse and the AI panel — which had each drawn their own copy of the
+  same scope switch, filter and bulk toggle — now share one card with that
+  toolbar inside it. Hard-coded greens and ambers in those sections now use
+  the theme's success and warning colours, so custom themes recolour them.
 
 - **Every button now has a visible edge.** Toolbar icon buttons and `ghost`
   buttons used to be invisible until the pointer found them, so an action

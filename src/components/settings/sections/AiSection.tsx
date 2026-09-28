@@ -25,7 +25,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SearchField } from "@/components/ui/search-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +52,7 @@ import {
 } from "@/stores/preferences/preferences";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import type { AiProbeReport, ConnectionProfile } from "@/types";
+import { ConnectionTreeCard } from "./ConnectionTreeCard";
 import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 import { AiConnectionTree } from "./AiConnectionTree";
@@ -227,8 +227,8 @@ export function AiSection() {
     };
 
   return (
-    <div className="space-y-4 text-sm">
-      <p className="text-[12px] text-muted-foreground">
+    <div className="space-y-5 text-sm">
+      <p className="text-xs text-muted-foreground">
         {t("settings.ai.intro")}
       </p>
 
@@ -405,20 +405,18 @@ export function AiSection() {
         </PrefRow>
       </PrefGroup>
 
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.ai.keyLabel")}
-          </span>
-          {hasKey && (
+      <PrefGroup
+        title={t("settings.ai.keyLabel")}
+        description={t("settings.ai.keyHint")}
+        action={
+          hasKey ? (
             <Badge tone="success" size="xs">
               {t("settings.ai.keyStored")}
             </Badge>
-          )}
-        </div>
-        <p className="text-[12px] text-muted-foreground">
-          {t("settings.ai.keyHint")}
-        </p>
+          ) : undefined
+        }
+        padded
+      >
         <div className="flex items-center gap-1.5">
           <PasswordInput
             value={keyDraft}
@@ -435,7 +433,7 @@ export function AiSection() {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 shrink-0"
+            className="shrink-0"
             disabled={keyDraft.trim().length === 0}
             onClick={() => {
               void api
@@ -453,7 +451,7 @@ export function AiSection() {
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 shrink-0"
+            className="shrink-0"
             disabled={!hasKey}
             onClick={() => {
               void api
@@ -465,27 +463,26 @@ export function AiSection() {
             {t("settings.ai.keyClear")}
           </Button>
         </div>
-      </div>
+      </PrefGroup>
 
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.ai.probeLabel")}
-          </span>
+      <PrefGroup
+        title={t("settings.ai.probeLabel")}
+        action={
           <Button
             type="button"
             variant="outline"
-            size="sm"
-            className="h-7 px-2 text-2xs"
+            size="xs"
             disabled={probing || !ai.enabled}
             onClick={() => void runProbe()}
           >
             {probing ? <Spinner className="h-3 w-3" /> : null}
             {t("settings.ai.probeRun")}
           </Button>
-        </div>
+        }
+        padded
+      >
         {probe ? (
-          <div className="space-y-1 rounded-md border border-border px-3 py-2">
+          <div className="space-y-1.5">
             <Badge
               tone={
                 capability === "toolCapable"
@@ -500,183 +497,122 @@ export function AiSection() {
             </Badge>
             {/* Verbatim: a paraphrase loses the one detail that identifies the
                 misconfiguration. */}
-            <p className="text-[12px] text-muted-foreground">{probe.note}</p>
+            <p className="text-xs text-muted-foreground">{probe.note}</p>
           </div>
         ) : (
-          <p className="text-[12px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {ai.enabled
               ? t("settings.ai.probeUntested")
               : t("settings.ai.probeDisabled")}
           </p>
         )}
-      </div>
+      </PrefGroup>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.ai.connectionsLabel")}
-          </span>
-          {profiles.length > 0 && (
-            <span className="text-2xs text-muted-foreground">
-              {t("settings.ai.enabledCount", {
-                enabled: profiles.filter((p) => p.ai_enabled).length,
-                total: profiles.length,
-              })}
-            </span>
-          )}
-        </div>
-        <p className="mb-1.5 text-[12px] text-muted-foreground">
-          {t("settings.ai.connectionsHint")}
-        </p>
+      <ConnectionTreeCard
+        title={t("settings.ai.connectionsLabel")}
+        description={t("settings.ai.connectionsHint")}
+        count={t("settings.ai.enabledCount", {
+          enabled: profiles.filter((p) => p.ai_enabled).length,
+          total: profiles.length,
+        })}
+        total={profiles.length}
+        sharedCount={shared.length}
+        scope={scope}
+        onScopeChange={setScope}
+        filter={filter}
+        onFilterChange={setFilter}
+        bulkLabel={
+          filteredProfiles.every((p) => p.ai_enabled)
+            ? t("settings.ai.disableAll")
+            : t("settings.ai.enableAll")
+        }
+        onBulk={() =>
+          void writeFlag(
+            filteredProfiles.map((p) => p.id),
+            "ai_enabled",
+            !filteredProfiles.every((p) => p.ai_enabled),
+          )
+        }
+        noMatches={filteredProfiles.length === 0}
+        emptyText={t("settings.ai.noConnections")}
+      >
+        <AiConnectionTree
+          sections={sections}
+          trust={ai.endpointTrust}
+          onToggleEnabled={(p) =>
+            void writeFlag([p.id], "ai_enabled", !p.ai_enabled)
+          }
+          onToggleEnabledAll={(ids, enabled) =>
+            void writeFlag(ids, "ai_enabled", enabled)
+          }
+          onToggleRows={(p) =>
+            void writeFlag([p.id], "ai_rows_allowed", !p.ai_rows_allowed)
+          }
+          sharedTooltip={sharedTooltip}
+          searching={filter.trim().length > 0}
+        />
+      </ConnectionTreeCard>
 
-        {profiles.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground">
-            {t("settings.ai.noConnections")}
-          </p>
-        ) : (
-          <>
-            {hasShared && (
-              <Segmented
-                size="sm"
-                variant="underline"
-                className="mb-1.5"
-                value={scope}
-                onValueChange={setScope}
-                options={[
-                  {
-                    value: "all",
-                    label: `${t("settings.mcp.scopeAll")} ${profiles.length}`,
-                  },
-                  {
-                    value: "local",
-                    label: `${t("connections.scope.local")} ${
-                      profiles.length - shared.length
-                    }`,
-                  },
-                  {
-                    value: "shared",
-                    label: `${t("connections.scope.shared")} ${shared.length}`,
-                  },
-                ]}
-                aria-label={t("connections.scopeLabel")}
-              />
-            )}
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <SearchField
+      {/* The one piece of context no tool can discover. A model can read
+          every table and still not know which of two similar ones is live —
+          see `ConnectionProfile::ai_notes`. */}
+      {profiles.length > 0 && (
+        <PrefGroup
+          title={t("settings.ai.notesTitle")}
+          description={t("settings.ai.notesHint")}
+          padded
+        >
+          {notable.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {t("settings.ai.notesNone")}
+            </p>
+          ) : (
+            <>
+              <NativeSelect
                 size="xs"
-                value={filter}
-                onValueChange={setFilter}
-                placeholder={t("settings.mcp.filterPlaceholder")}
-                onClear={() => setFilter("")}
-                clearLabel={t("common.clear")}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 px-2 text-2xs"
-                disabled={filteredProfiles.length === 0}
-                onClick={() =>
-                  void writeFlag(
-                    filteredProfiles.map((p) => p.id),
-                    "ai_enabled",
-                    !filteredProfiles.every((p) => p.ai_enabled),
-                  )
-                }
+                aria-label={t("settings.ai.notesConnection")}
+                value={notesFor}
+                onChange={(e) => {
+                  // Save what is on screen before moving: switching the
+                  // selector is the same gesture as leaving the field.
+                  void saveNotes();
+                  const next = e.target.value;
+                  setNotesFor(next);
+                  setNotesDraft(
+                    profiles.find((p) => p.id === next)?.ai_notes ?? "",
+                  );
+                }}
               >
-                {filteredProfiles.every((p) => p.ai_enabled)
-                  ? t("settings.ai.disableAll")
-                  : t("settings.ai.enableAll")}
-              </Button>
-            </div>
+                {notable.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </NativeSelect>
+              <Textarea
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                onBlur={() => void saveNotes()}
+                maxLength={MAX_AI_NOTES_CHARS}
+                rows={5}
+                spellCheck={false}
+                className="font-mono text-2xs"
+                placeholder={t("settings.ai.notesPlaceholder")}
+              />
+            </>
+          )}
+        </PrefGroup>
+      )}
 
-            <div className="max-h-72 overflow-y-auto rounded-md border border-border">
-              {filteredProfiles.length === 0 ? (
-                <p className="px-3 py-2 text-[12px] text-muted-foreground">
-                  {t("settings.mcp.noMatches", { query: filter })}
-                </p>
-              ) : (
-                <AiConnectionTree
-                  sections={sections}
-                  trust={ai.endpointTrust}
-                  onToggleEnabled={(p) =>
-                    void writeFlag([p.id], "ai_enabled", !p.ai_enabled)
-                  }
-                  onToggleEnabledAll={(ids, enabled) =>
-                    void writeFlag(ids, "ai_enabled", enabled)
-                  }
-                  onToggleRows={(p) =>
-                    void writeFlag([p.id], "ai_rows_allowed", !p.ai_rows_allowed)
-                  }
-                  sharedTooltip={sharedTooltip}
-                  searching={filter.trim().length > 0}
-                />
-              )}
-            </div>
-            {/* The one piece of context no tool can discover. A model can read
-                every table and still not know which of two similar ones is
-                live — see `ConnectionProfile::ai_notes`. */}
-            <div className="mt-3 space-y-1.5 border-t border-border pt-3">
-              <p className="text-[12px] font-medium">
-                {t("settings.ai.notesTitle")}
-              </p>
-              <p className="text-2xs text-muted-foreground">
-                {t("settings.ai.notesHint")}
-              </p>
-              {notable.length === 0 ? (
-                <p className="text-2xs text-muted-foreground">
-                  {t("settings.ai.notesNone")}
-                </p>
-              ) : (
-                <>
-                  <NativeSelect
-                    size="xs"
-                    aria-label={t("settings.ai.notesConnection")}
-                    value={notesFor}
-                    onChange={(e) => {
-                      // Save what is on screen before moving: switching the
-                      // selector is the same gesture as leaving the field.
-                      void saveNotes();
-                      const next = e.target.value;
-                      setNotesFor(next);
-                      setNotesDraft(
-                        profiles.find((p) => p.id === next)?.ai_notes ?? "",
-                      );
-                    }}
-                  >
-                    {notable.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                  <Textarea
-                    value={notesDraft}
-                    onChange={(e) => setNotesDraft(e.target.value)}
-                    onBlur={() => void saveNotes()}
-                    maxLength={MAX_AI_NOTES_CHARS}
-                    rows={5}
-                    spellCheck={false}
-                    className="font-mono text-2xs"
-                    placeholder={t("settings.ai.notesPlaceholder")}
-                  />
-                </>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="space-y-1 rounded-md border border-dashed border-border px-3 py-2">
-        <p className="text-[12px] text-muted-foreground">
+      <div className="space-y-1 rounded-lg border border-dashed border-border px-4 py-3">
+        <p className="text-xs text-muted-foreground">
           {t("settings.ai.mcpAlternative")}
         </p>
         <Button
           type="button"
           variant="link"
           size="sm"
-          className="h-auto p-0 text-[12px]"
+          className="h-auto p-0 text-xs"
           onClick={() => setSection("mcp")}
         >
           {t("settings.ai.mcpAlternativeLink")}

@@ -31,6 +31,20 @@ import { api } from "@/lib/tauri";
 import { usePolicyEditor } from "@/stores/dialogs/policyEditor";
 import { cn } from "@/lib/utils";
 import type { ConnectionPolicy, PolicyStatus, RulePolicy } from "@/types";
+import { Badge } from "@/components/ui/badge";
+import { GroupCount, PrefGroup } from "./PrefGroup";
+
+/** Total over the union, so a new state is a compile error here rather than a
+ *  badge that silently renders in the neutral tone. */
+const STATE_TONE: Record<
+  PolicyStatus["state"],
+  "brand" | "destructive" | "warning" | "neutral"
+> = {
+  active: "brand",
+  broken: "destructive",
+  pending: "warning",
+  unmanaged: "neutral",
+};
 
 export function PolicySection() {
   const { t } = useTranslation();
@@ -52,9 +66,9 @@ export function PolicySection() {
   useEffect(load, [load]);
 
   return (
-    <div className="space-y-4 text-sm">
+    <div className="space-y-5 text-sm">
       <div className="flex items-start justify-between gap-3">
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           {t("settings.policy.intro")}
         </p>
         <div className="flex shrink-0 gap-2">
@@ -120,49 +134,43 @@ function Summary({ status }: { status: PolicyStatus }) {
 
   return (
     <div className="space-y-2">
-      <div className="divide-y divide-border/60 rounded-md border border-border">
-        <Field label={t("settings.policy.stateLabel")}>
-          <span
-            className={cn(
-              "rounded-sm px-1.5 py-0.5 text-2xs font-medium",
-              status.state === "active" && "bg-brand/15 text-brand",
-              status.state === "broken" && "bg-destructive/15 text-destructive",
-              status.state === "pending" && "bg-warning/15 text-warning",
-              status.state === "unmanaged" && "bg-muted text-muted-foreground",
-            )}
-          >
-            {t(`settings.policy.state.${status.state}`)}
-          </span>
-        </Field>
-        {status.source && (
-          <Field label={t("settings.policy.source")}>
-            <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
-              {status.source}
+      <PrefGroup title={t("settings.policy.summaryTitle")}>
+        <div className="divide-y divide-border/60">
+          <Field label={t("settings.policy.stateLabel")}>
+            <Badge tone={STATE_TONE[status.state]}>
+              {t(`settings.policy.state.${status.state}`)}
+            </Badge>
+          </Field>
+          {status.source && (
+            <Field label={t("settings.policy.source")}>
+              <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
+                {status.source}
+              </code>
+            </Field>
+          )}
+          <Field label={t("settings.policy.user")}>
+            <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
+              {status.user || "?"}
             </code>
           </Field>
-        )}
-        <Field label={t("settings.policy.user")}>
-          <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
-            {status.user || "?"}
-          </code>
-        </Field>
-        {status.role && (
-          <Field label={t("settings.policy.role")}>
-            <span className="font-medium">{status.role}</span>
-          </Field>
-        )}
-        {status.unmanagedConnections && (
-          <Field label={t("settings.policy.unmanagedConnections")}>
-            <span className="text-xs">
-              {t(
-                status.unmanagedConnections === "allow"
-                  ? "settings.policy.unmanagedAllow"
-                  : "settings.policy.unmanagedDeny",
-              )}
-            </span>
-          </Field>
-        )}
-      </div>
+          {status.role && (
+            <Field label={t("settings.policy.role")}>
+              <span className="font-medium">{status.role}</span>
+            </Field>
+          )}
+          {status.unmanagedConnections && (
+            <Field label={t("settings.policy.unmanagedConnections")}>
+              <span className="text-xs">
+                {t(
+                  status.unmanagedConnections === "allow"
+                    ? "settings.policy.unmanagedAllow"
+                    : "settings.policy.unmanagedDeny",
+                )}
+              </span>
+            </Field>
+          )}
+        </div>
+      </PrefGroup>
 
       {hint && (
         <p
@@ -205,7 +213,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-3 py-2">
+    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
       <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
       <span className="min-w-0 text-right">{children}</span>
     </div>
@@ -244,77 +252,77 @@ function ConnectionList({ status }: { status: PolicyStatus }) {
   }, [status.connections, filter, query]);
 
   return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between gap-3">
-        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
-          {t("settings.policy.connections")}
-        </div>
-        <div className="text-2xs text-muted-foreground">
-          {t("settings.policy.connectionCounts", {
-            total: status.connections.length,
-            managed: managedCount,
-            unmatched: unmatchedCount,
-          })}
-        </div>
-      </div>
-
-      {status.connections.length === 0 ? (
-        <p className="text-2xs text-muted-foreground">
-          {t("settings.policy.noConnections")}
-        </p>
-      ) : (
-        <>
-          <div className="mb-2 flex items-center gap-2">
-            <SearchField
-              size="sm"
-              className="flex-1"
-              value={query}
-              onValueChange={setQuery}
-              onClear={() => setQuery("")}
-              clearLabel={t("settings.policy.clearSearch")}
-              placeholder={t("settings.policy.searchPlaceholder")}
-              aria-label={t("settings.policy.searchPlaceholder")}
-            />
-            <Segmented<Filter>
-              size="sm"
-              value={filter}
-              onValueChange={setFilter}
-              aria-label={t("settings.policy.filterLabel")}
-              options={[
-                {
-                  value: "managed",
-                  label: t("settings.policy.filterManaged", {
-                    count: managedCount,
-                  }),
-                },
-                {
-                  value: "unmatched",
-                  label: t("settings.policy.filterUnmatched", {
-                    count: unmatchedCount,
-                  }),
-                },
-                { value: "all", label: t("settings.policy.filterAll") },
-              ]}
-            />
-          </div>
-          {visible.length === 0 ? (
-            <p className="text-2xs text-muted-foreground">
-              {t("settings.policy.noMatches")}
-            </p>
-          ) : (
-            <div className="divide-y divide-border/60 rounded-md border border-border">
-              {visible.map((c) => (
-                <ConnectionRow
-                  key={c.id}
-                  connection={c}
-                  unmanaged={status.unmanagedConnections}
-                />
-              ))}
+    <div className="space-y-2">
+      <PrefGroup
+        title={t("settings.policy.connections")}
+        action={
+          <GroupCount>
+            {t("settings.policy.connectionCounts", {
+              total: status.connections.length,
+              managed: managedCount,
+              unmatched: unmatchedCount,
+            })}
+          </GroupCount>
+        }
+      >
+        {status.connections.length === 0 ? (
+          <p className="px-4 py-3 text-xs text-muted-foreground">
+            {t("settings.policy.noConnections")}
+          </p>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+              <SearchField
+                size="xs"
+                className="flex-1"
+                value={query}
+                onValueChange={setQuery}
+                onClear={() => setQuery("")}
+                clearLabel={t("settings.policy.clearSearch")}
+                placeholder={t("settings.policy.searchPlaceholder")}
+                aria-label={t("settings.policy.searchPlaceholder")}
+              />
+              <Segmented<Filter>
+                size="sm"
+                value={filter}
+                onValueChange={setFilter}
+                aria-label={t("settings.policy.filterLabel")}
+                options={[
+                  {
+                    value: "managed",
+                    label: t("settings.policy.filterManaged", {
+                      count: managedCount,
+                    }),
+                  },
+                  {
+                    value: "unmatched",
+                    label: t("settings.policy.filterUnmatched", {
+                      count: unmatchedCount,
+                    }),
+                  },
+                  { value: "all", label: t("settings.policy.filterAll") },
+                ]}
+              />
             </div>
-          )}
-        </>
-      )}
-      <p className="mt-1 text-2xs text-muted-foreground">
+            {visible.length === 0 ? (
+              <p className="px-4 py-3 text-xs text-muted-foreground">
+                {t("settings.policy.noMatches")}
+              </p>
+            ) : (
+              <div className="divide-y divide-border/60">
+                {visible.map((c) => (
+                  <ConnectionRow
+                    key={c.id}
+                    connection={c}
+                    unmanaged={status.unmanagedConnections}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </PrefGroup>
+      <p className="px-0.5 text-2xs text-muted-foreground">
         {t("settings.policy.humanGuardrail")}
       </p>
     </div>
@@ -361,7 +369,7 @@ function ConnectionRow({
   return (
     <div>
       <TreeRow
-        className="gap-2 px-3"
+        className="gap-2 px-4 py-2"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
@@ -388,7 +396,7 @@ function ConnectionRow({
         </span>
       </TreeRow>
       {open && (
-        <div className="space-y-1.5 px-3 pb-2">
+        <div className="space-y-1.5 px-4 pb-3">
           {connection.dbUser && (
             <p className="text-2xs text-muted-foreground">
               {t("settings.policy.dbUser")}{" "}

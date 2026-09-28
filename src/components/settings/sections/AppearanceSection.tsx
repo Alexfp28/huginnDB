@@ -22,6 +22,7 @@ import {
   open as openFileDialog,
 } from "@tauri-apps/plugin-dialog";
 import { cn } from "@/lib/utils";
+import { CONTROL_FOCUS_TIGHT, MICRO_HEADING } from "@/components/ui/styles";
 import { IconButton } from "@/components/ui/icon-button";
 import { notify } from "@/lib/notify";
 import { Copy, Download, Trash2, Upload } from "lucide-react";
@@ -65,6 +66,7 @@ import {
 } from "@/lib/vscodeTheme";
 import { api } from "@/lib/tauri";
 import type { GridPrefs } from "@/types";
+import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 import { ImportVsCodeThemeDialog } from "../dialogs/ImportVsCodeThemeDialog";
 
@@ -197,35 +199,44 @@ export function AppearanceSection() {
 
   return (
     // The section SCROLLS rather than dividing a fixed height between its
-    // parts. It used to be `flex-1` colour editor plus one `shrink-0` group,
-    // which fits; adding a second group squeezed the editor to roughly the
-    // height of its own header, so the thing this page exists for became the
-    // smallest thing on it. The editor now states a floor tall enough to show
-    // a colour group without scrolling twice, and anything past the viewport
-    // is reached by scrolling the page.
-    <div className="flex h-full flex-col gap-3 overflow-y-auto">
-      <div className="grid min-h-[24rem] shrink-0 grid-cols-[180px_1fr] gap-3">
-        <aside className="overflow-y-auto rounded-md border border-border bg-card/40">
-          <div className="sticky top-0 flex items-center justify-between gap-1 bg-card/60 px-3 py-2 text-3xs uppercase tracking-wider text-muted-foreground backdrop-blur">
-            {t("settings.appearance.themes")}
-            <IconButton
-              size="xs"
-              icon={Upload}
-              label={t("settings.appearance.importTitle")}
-              className="normal-case"
-              type="button"
-              onClick={() => void handleImportTheme()}
-            />
-          </div>
+    // parts: the dialog's pane is the scroller, and the theme editor states a
+    // floor tall enough to show a colour group without scrolling twice.
+    // Dividing a fixed height is what once squeezed the editor to roughly the
+    // height of its own header, making the thing this page exists for the
+    // smallest thing on it.
+    <div className="space-y-5">
+      {/* One card, list and editor side by side with a divider, rather than
+          two bordered boxes next to each other: they are one tool. */}
+      <PrefGroup
+        title={t("settings.appearance.themes")}
+        action={
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            icon={Upload}
+            onClick={() => void handleImportTheme()}
+          >
+            {t("settings.appearance.importTitle")}
+          </Button>
+        }
+        bodyClassName="grid min-h-[24rem] grid-cols-[200px_1fr]"
+      >
+        <aside className="space-y-0.5 overflow-y-auto border-r border-border/60 p-2">
           {themes.map((theme) => (
             <button
               key={theme.id}
+              type="button"
+              aria-current={theme.id === active.id ? "true" : undefined}
               onClick={() => setThemeId(theme.id)}
               className={cn(
-                "flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left text-sm",
+                // The rail's pill (`NavRailItem`), with a swatch where the rail
+                // has an icon — the same "you are here" in both lists.
+                "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+                CONTROL_FOCUS_TIGHT,
                 theme.id === active.id
-                  ? "border-primary bg-accent/40"
-                  : "border-transparent hover:bg-accent",
+                  ? "bg-brand/10 font-medium text-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               <ThemeSwatch colors={theme[mode]} />
@@ -239,8 +250,8 @@ export function AppearanceSection() {
           ))}
         </aside>
 
-        <main className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border">
-          <div className="flex items-center gap-2 border-b border-border bg-card/30 px-4 py-2">
+        <div className="flex min-w-0 flex-col">
+          <div className="flex items-center gap-2 border-b border-border/60 px-4 py-2.5">
             <div className="flex-1">
               <div className="text-sm font-medium">{active.name}</div>
               <div className="text-2xs text-muted-foreground">
@@ -276,7 +287,7 @@ export function AppearanceSection() {
             )}
           </div>
 
-          <div className="flex items-end gap-2 border-b border-border px-4 py-2">
+          <div className="flex items-end gap-2 border-b border-border/60 px-4 py-2.5">
             <div className="flex-1">
               <Label className="mb-1">
                 {t("settings.appearance.duplicateLabel")}
@@ -297,7 +308,7 @@ export function AppearanceSection() {
             </Button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 p-4">
             <div className="mb-3 flex items-center gap-2">
               <Label className="text-xs text-muted-foreground">
                 {t("settings.appearance.editingVariant")}
@@ -323,7 +334,7 @@ export function AppearanceSection() {
             <div className="mt-5 flex flex-col gap-5">
               {COLOR_GROUPS.map((group) => (
                 <section key={group.id}>
-                  <div className="mb-2 border-b border-border/60 pb-1 text-3xs uppercase tracking-wider text-muted-foreground">
+                  <div className={cn(MICRO_HEADING, "mb-2 border-b border-border/60 pb-1")}>
                     {t(group.titleKey)}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2">
@@ -340,8 +351,8 @@ export function AppearanceSection() {
               ))}
             </div>
           </div>
-        </main>
-      </div>
+        </div>
+      </PrefGroup>
 
       <DataViewGroup />
       <ThemeRegistryGroup />
@@ -378,10 +389,7 @@ function ThemeRegistryGroup() {
   const updateThemes = usePreferences((s) => s.updateThemes);
   const { t } = useTranslation();
   return (
-    <section className="shrink-0 rounded-md border border-border px-4 pb-1">
-      <div className="border-b border-border/60 py-2 text-3xs uppercase tracking-wider text-muted-foreground">
-        {t("settings.appearance.registry.title")}
-      </div>
+    <PrefGroup title={t("settings.appearance.registry.title")}>
       <PrefRow
         label={t("settings.appearance.registry.enabled.label")}
         description={t("settings.appearance.registry.enabled.desc")}
@@ -404,7 +412,7 @@ function ThemeRegistryGroup() {
           className="h-8 w-72 text-xs"
         />
       </PrefRow>
-    </section>
+    </PrefGroup>
   );
 }
 
@@ -425,10 +433,7 @@ function DataViewGroup() {
   const { t } = useTranslation();
   const listActive = grid.documentViewMode === "list";
   return (
-    <section className="shrink-0 rounded-md border border-border px-4 pb-1">
-      <div className="border-b border-border/60 py-2 text-3xs uppercase tracking-wider text-muted-foreground">
-        {t("settings.appearance.dataView.title")}
-      </div>
+    <PrefGroup title={t("settings.appearance.dataView.title")}>
       <PrefRow
         label={t("settings.appearance.dataView.mode.label")}
         prefId="grid.documentViewMode"
@@ -486,7 +491,7 @@ function DataViewGroup() {
           onCheckedChange={(v) => updateGrid({ listLineNumbers: v })}
         />
       </PrefRow>
-    </section>
+    </PrefGroup>
   );
 }
 
@@ -532,7 +537,7 @@ function ThemePreview({ colors }: { colors: ThemeColors }) {
   ];
   return (
     <div>
-      <div className="mb-1.5 text-3xs uppercase tracking-wider text-muted-foreground">
+      <div className={cn(MICRO_HEADING, "mb-1.5")}>
         {t("settings.appearance.preview")}
       </div>
       <div
