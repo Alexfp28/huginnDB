@@ -40,14 +40,16 @@ import { useEnvironments } from "@/stores/session/environments";
 import { VanishedOriginNotice } from "@/components/common/VanishedOriginNotice";
 import { VanishedEnvironmentNotice } from "@/components/common/VanishedEnvironmentNotice";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MICRO_HEADING } from "@/components/ui/styles";
+import { PrefGroup } from "./PrefGroup";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import type { Origin, OriginRole } from "@/types";
 import { FULL_SCOPE, isFullScope, originScope } from "@/lib/origins/scope";
 import { OriginScopeFields } from "@/components/origins/OriginScopeFields";
 import { formatDateTime } from "@/lib/utils";
-import { cn } from "@/lib/utils";
 
 export function OriginsSection() {
   const { t } = useTranslation();
@@ -251,137 +253,139 @@ export function OriginsSection() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* The title comes from the dialog's section header; this keeps only
           the explanation, which says more than the rail's one-liner. */}
       <p className="text-xs text-muted-foreground">
         {t("origins.description")}
       </p>
 
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void syncAll()}
-          // Not gated on `origins.length`: `syncAll` also runs the orphan
-          // reconciliation sweep (`reconcileOrphans`), which is useful even
-          // with zero origins left — e.g. right after removing the last one,
-          // before its connections' vanished notice has had a chance to run.
-          icon={RefreshCw}
-          loading={syncing}
-        >
-          {t("origins.syncNow")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" />
-          {t("origins.add")}
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
-          <FilePlus2 className="mr-1.5 h-3.5 w-3.5" />
-          {t("origins.newDocument")}
-        </Button>
-      </div>
-
-      {origins.length === 0 && !adding && (
-        <div className="rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-          {t("origins.empty")}
-        </div>
-      )}
-
-      {origins.length > 0 && (
-        <div className="divide-y divide-border/60 rounded-md border border-border">
-          {origins.map((o) => (
-            <div key={o.id} className="flex items-start gap-3 p-3">
-              <FolderSync className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm">{o.name}</span>
-                  {/* Intention, not authority: the editor probes the path
-                      itself and opens read-only if the OS refuses a write, no
-                      matter what this says. */}
-                  <span
-                    className={cn(
-                      "inline-flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-3xs",
-                      (o.role ?? "consumer") === "publisher"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground",
+      <PrefGroup
+        title={t("origins.listTitle")}
+        action={
+          <>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => void syncAll()}
+              // Not gated on `origins.length`: `syncAll` also runs the orphan
+              // reconciliation sweep (`reconcileOrphans`), which is useful even
+              // with zero origins left — e.g. right after removing the last one,
+              // before its connections' vanished notice has had a chance to run.
+              icon={RefreshCw}
+              loading={syncing}
+            >
+              {t("origins.syncNow")}
+            </Button>
+            <Button size="xs" variant="outline" icon={Plus} onClick={() => setAdding(true)}>
+              {t("origins.add")}
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              icon={FilePlus2}
+              onClick={() => setCreating(true)}
+            >
+              {t("origins.newDocument")}
+            </Button>
+          </>
+        }
+      >
+        {origins.length === 0 ? (
+          <p className="px-4 py-5 text-center text-xs text-muted-foreground">
+            {t("origins.empty")}
+          </p>
+        ) : (
+          <div className="divide-y divide-border/60">
+            {origins.map((o) => (
+              <div key={o.id} className="flex items-start gap-3 px-4 py-3">
+                <FolderSync className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm">{o.name}</span>
+                    {/* Intention, not authority: the editor probes the path
+                        itself and opens read-only if the OS refuses a write, no
+                        matter what this says. */}
+                    <Badge
+                      size="xs"
+                      tone={(o.role ?? "consumer") === "publisher" ? "brand" : "neutral"}
+                    >
+                      {(o.role ?? "consumer") === "publisher" ? (
+                        <PencilLine className="h-3 w-3" />
+                      ) : (
+                        <Eye className="h-3 w-3" />
+                      )}
+                      {t(`origins.role.${o.role ?? "consumer"}`)}
+                    </Badge>
+                    {/* Only when it is not the default. A badge on every row
+                        would be noise for the majority who pull everything, and
+                        the point of this one is that a narrowed origin looks
+                        different from a broken one when a slice turns up
+                        missing. */}
+                    {!isFullScope(originScope(o)) && (
+                      <SimpleTooltip label={t("origins.scope.badgeTitle")}>
+                        <Badge size="xs" tone="neutral">
+                          {originScope(o).connections && (
+                            <Database className="h-3 w-3" />
+                          )}
+                          {originScope(o).environments && (
+                            <Layers className="h-3 w-3" />
+                          )}
+                          {originScope(o).schemas && (
+                            <FileJson className="h-3 w-3" />
+                          )}
+                          {t("origins.scope.badge")}
+                        </Badge>
+                      </SimpleTooltip>
                     )}
-                  >
-                    {(o.role ?? "consumer") === "publisher" ? (
-                      <PencilLine className="h-3 w-3" />
-                    ) : (
-                      <Eye className="h-3 w-3" />
-                    )}
-                    {t(`origins.role.${o.role ?? "consumer"}`)}
-                  </span>
-                  {/* Only when it is not the default. A badge on every row
-                      would be noise for the majority who pull everything, and
-                      the point of this one is that a narrowed origin looks
-                      different from a broken one when a slice turns up
-                      missing. */}
-                  {!isFullScope(originScope(o)) && (
-                    <SimpleTooltip label={t("origins.scope.badgeTitle")}>
-                      <span className="inline-flex shrink-0 items-center gap-1 rounded-sm bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
-                        {originScope(o).connections && (
-                          <Database className="h-3 w-3" />
-                        )}
-                        {originScope(o).environments && (
-                          <Layers className="h-3 w-3" />
-                        )}
-                        {originScope(o).schemas && (
-                          <FileJson className="h-3 w-3" />
-                        )}
-                        {t("origins.scope.badge")}
+                    {o.maintainer && (
+                      <span className="shrink-0 truncate text-3xs text-muted-foreground">
+                        {t("origins.curatedBy", { who: o.maintainer })}
                       </span>
-                    </SimpleTooltip>
-                  )}
-                  {o.maintainer && (
-                    <span className="shrink-0 truncate text-3xs text-muted-foreground">
-                      {t("origins.curatedBy", { who: o.maintainer })}
-                    </span>
-                  )}
-                </div>
-                {/* The path is the identifying detail when two origins share a
-                    name, and it's what the user checks when a sync fails, so it
-                    stays visible rather than living in a tooltip. */}
-                <div className="truncate font-mono text-2xs text-muted-foreground">
-                  {o.path}
-                </div>
-                <div className="mt-0.5 text-2xs text-muted-foreground">
-                  {o.lastSyncedAt
-                    ? t("origins.lastSynced", {
-                        when: formatDateTime(o.lastSyncedAt),
-                      })
-                    : t("origins.neverSynced")}
-                </div>
-                {errors[o.id] && (
-                  <div className="mt-1 break-words text-2xs text-destructive">
-                    {errors[o.id]}
+                    )}
                   </div>
-                )}
+                  {/* The path is the identifying detail when two origins share a
+                      name, and it's what the user checks when a sync fails, so it
+                      stays visible rather than living in a tooltip. */}
+                  <div className="truncate font-mono text-2xs text-muted-foreground">
+                    {o.path}
+                  </div>
+                  <div className="mt-0.5 text-2xs text-muted-foreground">
+                    {o.lastSyncedAt
+                      ? t("origins.lastSynced", {
+                          when: formatDateTime(o.lastSyncedAt),
+                        })
+                      : t("origins.neverSynced")}
+                  </div>
+                  {errors[o.id] && (
+                    <div className="mt-1 break-words text-2xs text-destructive">
+                      {errors[o.id]}
+                    </div>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <IconButton
+                    icon={SquarePen}
+                    label={t("origins.editContent")}
+                    onClick={() => openEditor(o.id)}
+                  />
+                  <IconButton
+                    icon={PencilLine}
+                    label={t("origins.editRegistration")}
+                    onClick={() => beginEdit(o)}
+                  />
+                  <IconButton
+                    icon={Trash2}
+                    tone="destructive"
+                    label={t("origins.remove")}
+                    onClick={() => setPendingRemove(o)}
+                  />
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <IconButton
-                  icon={SquarePen}
-                  label={t("origins.editContent")}
-                  onClick={() => openEditor(o.id)}
-                />
-                <IconButton
-                  icon={PencilLine}
-                  label={t("origins.editRegistration")}
-                  onClick={() => beginEdit(o)}
-                />
-                <IconButton
-                  icon={Trash2}
-                  tone="destructive"
-                  label={t("origins.remove")}
-                  onClick={() => setPendingRemove(o)}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </PrefGroup>
 
       {/* The reliable surface for a notice: a vanished connection that isn't
           open never renders a schema tree, so the tree banner alone would leave
@@ -389,12 +393,10 @@ export function OriginsSection() {
       {vanishedIds.length > 0 && (
         <div>
           <div className="flex items-center justify-between gap-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {t("origins.vanished.pending")}
-            </h4>
+            <h3 className={MICRO_HEADING}>{t("origins.vanished.pending")}</h3>
             <div className="flex items-center gap-1.5">
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
                 icon={Check}
                 loading={bulkAdopting}
@@ -404,13 +406,13 @@ export function OriginsSection() {
                 {t("origins.vanished.keepAll")}
               </Button>
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
+                icon={Trash2}
                 className="text-destructive hover:text-destructive"
                 disabled={bulkAdopting || bulkRetiring}
                 onClick={() => setBulkRetireOpen(true)}
               >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                 {t("origins.vanished.retireAll")}
               </Button>
             </div>
@@ -428,9 +430,9 @@ export function OriginsSection() {
 
       {vanishedEnvironmentIds.length > 0 && (
         <div>
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className={MICRO_HEADING}>
             {t("origins.vanishedEnvironments.pending")}
-          </h4>
+          </h3>
           {vanishedEnvironmentIds.map((id) => (
             <VanishedEnvironmentNotice
               key={id}
@@ -442,7 +444,7 @@ export function OriginsSection() {
       )}
 
       {adding && (
-        <div className="space-y-2 rounded-md border border-border p-3">
+        <PrefGroup title={t("origins.addTitle")} padded>
           <div className="flex items-center gap-2">
             <Input
               autoFocus
@@ -503,14 +505,14 @@ export function OriginsSection() {
               {busy ? t("origins.adding") : t("common.save")}
             </Button>
           </div>
-        </div>
+        </PrefGroup>
       )}
 
       {editing && (
-        <div className="space-y-2 rounded-md border border-border p-3">
-          <div className="text-xs font-semibold">
-            {t("origins.editRegistrationTitle", { name: editing.name })}
-          </div>
+        <PrefGroup
+          title={t("origins.editRegistrationTitle", { name: editing.name })}
+          padded
+        >
           <div className="flex items-center gap-2">
             <Input
               autoFocus
@@ -592,17 +594,15 @@ export function OriginsSection() {
               {t("common.save")}
             </Button>
           </div>
-        </div>
+        </PrefGroup>
       )}
 
       {creating && (
-        <div className="space-y-2 rounded-md border border-border p-3">
-          <div className="text-xs font-semibold">
-            {t("origins.newDocumentTitle")}
-          </div>
-          <p className="text-2xs text-muted-foreground">
-            {t("origins.newDocumentHint")}
-          </p>
+        <PrefGroup
+          title={t("origins.newDocumentTitle")}
+          description={t("origins.newDocumentHint")}
+          padded
+        >
           <div className="flex items-center gap-2">
             <Input
               autoFocus
@@ -657,7 +657,7 @@ export function OriginsSection() {
               {t("origins.newDocumentCreate")}
             </Button>
           </div>
-        </div>
+        </PrefGroup>
       )}
 
       <ConfirmDialog

@@ -55,7 +55,8 @@ export function BindingScopeFields({ binding, onClose }: Props) {
   const anyLabel = t("jsonSchemas.scope.dbSchemaAny");
 
   return (
-    <div className="space-y-2 rounded-md border border-border bg-muted/20 p-3">
+    // A footer strip of the Bindings card it opens in, not a box of its own.
+    <div className="space-y-2 border-t border-border/60 bg-muted/20 p-4">
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="space-y-1">
           <Label className="text-2xs">

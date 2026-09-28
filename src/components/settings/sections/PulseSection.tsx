@@ -17,11 +17,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { SearchField } from "@/components/ui/search-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Segmented } from "@/components/ui/segmented";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import {
@@ -39,6 +37,7 @@ import {
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import type { ConnectionProfile } from "@/types";
+import { ConnectionTreeCard } from "./ConnectionTreeCard";
 import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 import { PulseConnectionTree } from "./PulseConnectionTree";
@@ -127,8 +126,8 @@ export function PulseSection() {
     };
 
   return (
-    <div className="space-y-4 text-sm">
-      <p className="text-[12px] text-muted-foreground">
+    <div className="space-y-5 text-sm">
+      <p className="text-xs text-muted-foreground">
         {t("settings.pulse.intro")}
       </p>
 
@@ -215,106 +214,46 @@ export function PulseSection() {
         </PrefRow>
       </PrefGroup>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.pulse.connectionsLabel")}
-          </span>
-          {profiles.length > 0 && (
-            <span className="text-2xs text-muted-foreground">
-              {t("settings.pulse.enabledCount", {
-                enabled: profiles.filter((p) => p.pulse_enabled).length,
-                total: profiles.length,
-              })}
-            </span>
-          )}
-        </div>
-
-        {profiles.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground">
-            {t("settings.pulse.noConnections")}
-          </p>
-        ) : (
-          <>
-            {hasShared && (
-              <Segmented
-                size="sm"
-                variant="underline"
-                className="mb-1.5"
-                value={scope}
-                onValueChange={setScope}
-                options={[
-                  {
-                    value: "all",
-                    label: `${t("settings.mcp.scopeAll")} ${profiles.length}`,
-                  },
-                  {
-                    value: "local",
-                    label: `${t("connections.scope.local")} ${
-                      profiles.length - shared.length
-                    }`,
-                  },
-                  {
-                    value: "shared",
-                    label: `${t("connections.scope.shared")} ${shared.length}`,
-                  },
-                ]}
-                aria-label={t("connections.scopeLabel")}
-              />
-            )}
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <SearchField
-                size="xs"
-                value={filter}
-                onValueChange={setFilter}
-                placeholder={t("settings.mcp.filterPlaceholder")}
-                onClear={() => setFilter("")}
-                clearLabel={t("common.clear")}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 px-2 text-2xs"
-                disabled={filteredProfiles.length === 0}
-                onClick={() =>
-                  void setEnabled(
-                    filteredProfiles.map((p) => p.id),
-                    !filteredProfiles.every((p) => p.pulse_enabled),
-                  )
-                }
-              >
-                {filteredProfiles.every((p) => p.pulse_enabled)
-                  ? t("settings.pulse.disableAll")
-                  : t("settings.pulse.enableAll")}
-              </Button>
-            </div>
-
-            <div className="max-h-72 overflow-y-auto rounded-md border border-border">
-              {filteredProfiles.length === 0 ? (
-                <p className="px-3 py-2 text-[12px] text-muted-foreground">
-                  {t("settings.mcp.noMatches", { query: filter })}
-                </p>
-              ) : (
-                <PulseConnectionTree
-                  sections={sections}
-                  onToggle={(p) => void setEnabled([p.id], !p.pulse_enabled)}
-                  onToggleAll={(ids, enabled) => void setEnabled(ids, enabled)}
-                  sharedTooltip={sharedTooltip}
-                  searching={filter.trim().length > 0}
-                />
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      <ConnectionTreeCard
+        title={t("settings.pulse.connectionsLabel")}
+        count={t("settings.pulse.enabledCount", {
+          enabled: profiles.filter((p) => p.pulse_enabled).length,
+          total: profiles.length,
+        })}
+        total={profiles.length}
+        sharedCount={shared.length}
+        scope={scope}
+        onScopeChange={setScope}
+        filter={filter}
+        onFilterChange={setFilter}
+        bulkLabel={
+          filteredProfiles.every((p) => p.pulse_enabled)
+            ? t("settings.pulse.disableAll")
+            : t("settings.pulse.enableAll")
+        }
+        onBulk={() =>
+          void setEnabled(
+            filteredProfiles.map((p) => p.id),
+            !filteredProfiles.every((p) => p.pulse_enabled),
+          )
+        }
+        noMatches={filteredProfiles.length === 0}
+        emptyText={t("settings.pulse.noConnections")}
+      >
+        <PulseConnectionTree
+          sections={sections}
+          onToggle={(p) => void setEnabled([p.id], !p.pulse_enabled)}
+          onToggleAll={(ids, enabled) => void setEnabled(ids, enabled)}
+          sharedTooltip={sharedTooltip}
+          searching={filter.trim().length > 0}
+        />
+      </ConnectionTreeCard>
 
       <Button
         type="button"
         variant="link"
         size="sm"
-        className="h-auto p-0 text-[12px]"
+        className="h-auto p-0 text-xs"
         onClick={() => {
           useSettingsDialog.getState().setOpen(false);
           useDocsDialog.getState().openTo("pulse");

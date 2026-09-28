@@ -28,6 +28,7 @@ import { Download, RefreshCw } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { useUpdateStore } from "@/stores/update";
+import { PrefGroup } from "./PrefGroup";
 
 interface Props {
   /** Resolved current version. Passed in so the parent owns the fallback path. */
@@ -77,19 +78,16 @@ export function UpdatesCard({ currentVersion }: Props) {
       : null;
 
   return (
-    <div className="rounded-md border border-border bg-card/40 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
-          {t("update.sectionTitle")}
-        </div>
+    <PrefGroup
+      title={t("update.sectionTitle")}
+      action={
         <Button
-          size="sm"
+          size="xs"
           variant="ghost"
           onClick={() => {
             void checkManually();
           }}
           disabled={isChecking || isDownloading || isInstalling}
-          className="h-7 gap-1.5 text-xs"
         >
           {isChecking ? (
             <Spinner size="xs" />
@@ -98,11 +96,18 @@ export function UpdatesCard({ currentVersion }: Props) {
           )}
           {t("update.checkNow")}
         </Button>
-      </div>
+      }
+      padded
+    >
+      {!hasUpdate && !showUpToDate && !hasError && (
+        <div className="text-xs text-muted-foreground">
+          {t("update.checkPrompt")}
+        </div>
+      )}
 
       {hasUpdate && (
-        <div className="mt-3 space-y-2">
-          <div className="text-[12px]">
+        <div className="space-y-2">
+          <div className="text-xs">
             {t("update.availableLine", {
               current: currentVersion,
               next: availableVersion,
@@ -125,7 +130,6 @@ export function UpdatesCard({ currentVersion }: Props) {
                 void installAndRelaunch();
               }}
               disabled={isDownloading || isInstalling}
-              className="h-7 gap-1.5 text-xs"
             >
               {isDownloading || isInstalling ? (
                 <Spinner size="xs" />
@@ -153,7 +157,7 @@ export function UpdatesCard({ currentVersion }: Props) {
             <div className="mt-1 space-y-1">
               <div className="h-1 w-full overflow-hidden rounded-sm bg-muted">
                 <div
-                  className="h-full bg-primary transition-[width]"
+                  className="h-full bg-brand transition-[width]"
                   style={{ width: `${progressPct ?? 0}%` }}
                 />
               </div>
@@ -169,16 +173,16 @@ export function UpdatesCard({ currentVersion }: Props) {
       )}
 
       {showUpToDate && (
-        <div className="mt-2 text-[12px] text-muted-foreground">
+        <div className="text-xs text-muted-foreground">
           {t("update.upToDate", { version: currentVersion })}
         </div>
       )}
 
       {hasError && (
-        <div className="mt-2 text-xs text-destructive">
+        <div className="text-xs text-destructive">
           {t("update.errorPrefix")} {error}
         </div>
       )}
-    </div>
+    </PrefGroup>
   );
 }

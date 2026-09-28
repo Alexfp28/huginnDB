@@ -73,7 +73,7 @@ export function BindingsTable({ onEdit }: Props) {
 
   if (bindings.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
+      <div className="px-4 py-6 text-center text-xs text-muted-foreground">
         {t("jsonSchemas.bindings.empty")}
       </div>
     );
@@ -83,7 +83,8 @@ export function BindingsTable({ onEdit }: Props) {
   const wildcard = "text-muted-foreground/60";
 
   return (
-    <div className="overflow-hidden rounded-md border border-border">
+    // Flush: the Settings card around it supplies the border and radius.
+    <div className="overflow-x-auto">
       <table className="w-full border-collapse text-xs">
         <thead>
           <tr className="bg-muted/40 text-left text-2xs uppercase tracking-wide text-muted-foreground">

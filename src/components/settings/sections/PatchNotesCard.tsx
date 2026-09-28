@@ -12,6 +12,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MICRO_HEADING } from "@/components/ui/styles";
+import { PrefGroup } from "./PrefGroup";
 import { cn } from "@/lib/utils";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { getReleases } from "@/lib/appInfo/changelog";
@@ -64,11 +65,9 @@ export function PatchNotesCard({ currentVersion }: Props) {
   if (releases.length === 0) return null;
 
   return (
-    <div className="rounded-md border border-border bg-card/40 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
-          {t("settings.about.patchNotes")}
-        </div>
+    <PrefGroup
+      title={t("settings.about.patchNotes")}
+      action={
         <Select value={activeVersion} onValueChange={(v) => setSelected(v)}>
           <SelectTrigger className="h-7 w-40 text-xs">
             <SelectValue aria-label={activeVersion}>
@@ -90,9 +89,10 @@ export function PatchNotesCard({ currentVersion }: Props) {
             ))}
           </SelectContent>
         </Select>
-      </div>
-
-      <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1 text-[12px] leading-relaxed">
+      }
+      padded
+    >
+      <div className="max-h-72 space-y-3 overflow-y-auto pr-1 text-xs leading-relaxed">
         {!release || (release.sections.length === 0 && !release.intro) ? (
           <div className="text-muted-foreground">
             {t("settings.about.patchNotesNone")}
@@ -128,7 +128,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
         )}
       </div>
 
-      <div className="mt-2 text-2xs">
+      <div className="text-2xs">
         <a
           href="https://github.com/Alexfp28/huginnDB/blob/main/CHANGELOG.md"
           target="_blank"
@@ -138,6 +138,6 @@ export function PatchNotesCard({ currentVersion }: Props) {
           {t("settings.about.patchNotesViewOnGitHub")}
         </a>
       </div>
-    </div>
+    </PrefGroup>
   );
 }

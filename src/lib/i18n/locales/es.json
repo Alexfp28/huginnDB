@@ -1977,7 +1977,8 @@
         "copy": "Copiar"
       },
       "freeSqlShortOn": "sí",
-      "freeSqlShortOff": "no"
+      "freeSqlShortOff": "no",
+      "summaryTitle": "Estado"
     }
   },
   "notifications": {
@@ -2106,7 +2107,8 @@
       "unbound": "sin vincular",
       "invalidBody": "Este esquema no es JSON válido: se ignora hasta que se corrija.",
       "defaultName": "Esquema nuevo",
-      "fileNotJson": "Ese archivo no es JSON válido: {{message}}"
+      "fileNotJson": "Ese archivo no es JSON válido: {{message}}",
+      "title": "Biblioteca"
     },
     "empty": {
       "title": "Aún no hay esquemas JSON",
@@ -2435,7 +2437,8 @@
     "later": "Más tarde",
     "tooltipUpdateAvailable": "Hay una actualización disponible ({{version}})",
     "mcpSidecarWarning": "Una herramienta de IA (Claude Code, Cursor, …) tiene ahora mismo el conector MCP en ejecución. Si continúas, se cerrará para instalar la actualización — la herramienta lo volverá a abrir sola la próxima vez que lo necesite.\n\n¿Continuar con la actualización?",
-    "errorPermission": "Fallo al actualizar: Windows no concedió permiso para instalarla. Vuelve a intentarlo y acepta el aviso de administrador, o instala la actualización manualmente desde la página de releases de GitHub."
+    "errorPermission": "Fallo al actualizar: Windows no concedió permiso para instalarla. Vuelve a intentarlo y acepta el aviso de administrador, o instala la actualización manualmente desde la página de releases de GitHub.",
+    "checkPrompt": "HuginnDB busca actualizaciones en segundo plano. «Buscar ahora» mira en el momento."
   },
   "docs": {
     "menuEntry": "Documentación",
@@ -3182,7 +3185,9 @@
     "saveFailed": "No se pudo guardar el origen",
     "createDocumentFailed": "No se pudo crear el documento de origen",
     "addFailed": "No se pudo registrar el origen",
-    "secretOverridesSuperseded": "Tu contraseña propia de {{count}} conexión(es) compartida(s) se ha sustituido por la publicada"
+    "secretOverridesSuperseded": "Tu contraseña propia de {{count}} conexión(es) compartida(s) se ha sustituido por la publicada",
+    "listTitle": "Registrados en este equipo",
+    "addTitle": "Registrar un origen"
   },
   "originEditor": {
     "filter": "Filtrar…",

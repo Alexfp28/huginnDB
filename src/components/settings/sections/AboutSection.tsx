@@ -15,6 +15,7 @@ import { useAppFlavor } from "@/stores/preferences/appFlavor";
 import { getCurrentVersion } from "@/lib/appInfo/updater";
 import { UpdatesCard } from "./UpdatesCard";
 import { PatchNotesCard } from "./PatchNotesCard";
+import { PrefGroup } from "./PrefGroup";
 
 /** Build the per-OS prefs paths for a given state dir. The canary build lives
  *  under "HuginnDB-Canary", so hardcoding "HuginnDB" here would have shown the
@@ -67,13 +68,13 @@ export function AboutSection() {
   const prefsLocations = prefsPaths(stateDir);
 
   return (
-    <div className="space-y-4 text-sm">
+    <div className="space-y-5 text-sm">
       {/* About is one of the four surfaces the visual brief lets the brand
           speak fully (with launch, empty states and loading), so the identity
           card leads with the mark over a halftone wash instead of a text
           label. `productName` still renders underneath because the canary
           build shares this panel and must stay tellable apart. */}
-      <div className="relative overflow-hidden rounded-md border border-border bg-card/40 p-3">
+      <div className="relative overflow-hidden rounded-lg border border-border bg-card/40 p-4">
         <span
           aria-hidden
           className="halftone pointer-events-none absolute inset-0 opacity-60"
@@ -92,10 +93,10 @@ export function AboutSection() {
               {productName}
             </div>
             <div className="mt-1 font-mono text-base">{currentVersion}</div>
-            <div className="mt-2 text-[12px] text-muted-foreground">
+            <div className="mt-2 text-xs text-muted-foreground">
               {t("settings.about.tagline")}
             </div>
-            <div className="mt-2 text-[12px]">
+            <div className="mt-2 text-xs">
               <a
                 href="https://github.com/Alexfp28/huginnDB"
                 target="_blank"
@@ -113,15 +114,15 @@ export function AboutSection() {
 
       <PatchNotesCard currentVersion={currentVersion} />
 
-      <div>
-        <div className="mb-1 text-2xs uppercase tracking-wider text-muted-foreground">
-          {t("settings.about.prefsLocation")}
-        </div>
-        <div className="divide-y divide-border/60 rounded-md border border-border">
+      <PrefGroup
+        title={t("settings.about.prefsLocation")}
+        description={t("settings.about.tabStateHint", { file: "tab_state.json" })}
+      >
+        <div className="divide-y divide-border/60">
           {prefsLocations.map((p) => (
             <div
               key={p.os}
-              className="flex items-center justify-between gap-4 px-3 py-2"
+              className="flex items-center justify-between gap-4 px-4 py-2.5"
             >
               <span className="text-xs">{p.os}</span>
               <code className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
@@ -130,10 +131,7 @@ export function AboutSection() {
             </div>
           ))}
         </div>
-        <div className="mt-1 text-2xs text-muted-foreground">
-          {t("settings.about.tabStateHint", { file: "tab_state.json" })}
-        </div>
-      </div>
+      </PrefGroup>
     </div>
   );
 }

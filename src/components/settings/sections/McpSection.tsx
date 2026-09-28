@@ -20,10 +20,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/lib/notify";
 import { Copy, Terminal } from "lucide-react";
-import { SearchField } from "@/components/ui/search-field";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Segmented } from "@/components/ui/segmented";
 import { api } from "@/lib/tauri";
 import {
   filterByScope,
@@ -42,6 +40,9 @@ import type {
   McpWritePolicy,
 } from "@/types";
 
+import { Badge } from "@/components/ui/badge";
+import { ConnectionTreeCard } from "./ConnectionTreeCard";
+import { PrefGroup } from "./PrefGroup";
 import { McpConnectionTree } from "./McpConnectionTree";
 import { WRITE_LEVELS } from "./McpWritePolicySelect";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -52,8 +53,8 @@ function CopyButton({ text }: { text: string }) {
     <Button
       type="button"
       variant="outline"
-      size="sm"
-      className="h-6 gap-1 px-2 text-2xs"
+      size="xs"
+      icon={Copy}
       onClick={() => {
         // Awaited, unlike the fire-and-forget version this replaced: now that
         // the write is a real IPC round trip to the OS clipboard, a failure is
@@ -63,7 +64,6 @@ function CopyButton({ text }: { text: string }) {
         );
       }}
     >
-      <Copy className="h-3 w-3" />
       {t("common.copy")}
     </Button>
   );
@@ -325,131 +325,60 @@ export function McpSection() {
     : "";
 
   return (
-    <div className="space-y-4 text-sm">
-      <p className="text-[12px] text-muted-foreground">
-        {t("settings.mcp.intro")}
-      </p>
+    <div className="space-y-5 text-sm">
+      <p className="text-xs text-muted-foreground">{t("settings.mcp.intro")}</p>
 
-      <div className="rounded-md border border-border bg-card/40 p-3">
-        <div className="text-2xs uppercase tracking-wider text-muted-foreground">
-          {t("settings.mcp.binaryLabel")}
-        </div>
-        <div className="mt-1 flex items-center justify-between gap-2">
+      <PrefGroup
+        title={t("settings.mcp.binaryLabel")}
+        action={
+          info?.available ? (
+            <Badge tone="success" size="xs">
+              {t("settings.mcp.available")}
+            </Badge>
+          ) : (
+            <Badge tone="warning" size="xs">
+              {t("settings.mcp.unavailable")}
+            </Badge>
+          )
+        }
+        padded
+      >
+        <div className="flex items-center justify-between gap-2">
           <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
             {path || "—"}
           </code>
           {path && <CopyButton text={path} />}
         </div>
-        <div className="mt-2 text-2xs">
-          {info?.available ? (
-            <span className="text-emerald-600 dark:text-emerald-400">
-              {t("settings.mcp.available")}
-            </span>
-          ) : (
-            <span className="text-amber-600 dark:text-amber-400">
-              {t("settings.mcp.unavailable")}
-            </span>
-          )}
-        </div>
-      </div>
+      </PrefGroup>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.mcp.connectionsLabel")}
-          </span>
-          {profiles.length > 0 && (
-            <span className="text-2xs text-muted-foreground">
-              {t("settings.mcp.selectedCount", {
-                selected: selected.size,
-                total: profiles.length,
-              })}
-            </span>
-          )}
-        </div>
-
-        {profiles.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground">
-            {t("settings.mcp.noConnections")}
-          </p>
-        ) : (
+      <ConnectionTreeCard
+        title={t("settings.mcp.connectionsLabel")}
+        count={t("settings.mcp.selectedCount", {
+          selected: selected.size,
+          total: profiles.length,
+        })}
+        total={profiles.length}
+        sharedCount={shared.length}
+        scope={scope}
+        onScopeChange={setScope}
+        filter={filter}
+        onFilterChange={setFilter}
+        bulkLabel={
+          allFilteredSelected
+            ? t("settings.mcp.deselectAll")
+            : t("settings.mcp.selectAll")
+        }
+        onBulk={() => void toggleAll(filteredProfiles.map((p) => p.id))}
+        noMatches={filteredProfiles.length === 0}
+        emptyText={t("settings.mcp.noConnections")}
+        footer={
           <>
-            {hasShared && (
-              <Segmented
-                size="sm"
-                variant="underline"
-                className="mb-1.5"
-                value={scope}
-                onValueChange={setScope}
-                options={[
-                  {
-                    value: "all",
-                    label: `${t("settings.mcp.scopeAll")} ${profiles.length}`,
-                  },
-                  {
-                    value: "local",
-                    label: `${t("connections.scope.local")} ${
-                      profiles.length - shared.length
-                    }`,
-                  },
-                  {
-                    value: "shared",
-                    label: `${t("connections.scope.shared")} ${shared.length}`,
-                  },
-                ]}
-                aria-label={t("connections.scopeLabel")}
-              />
-            )}
-            <div className="mb-1.5 flex items-center gap-1.5">
-              <SearchField
-                size="xs"
-                value={filter}
-                onValueChange={setFilter}
-                placeholder={t("settings.mcp.filterPlaceholder")}
-                onClear={() => setFilter("")}
-                clearLabel={t("common.clear")}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 px-2 text-2xs"
-                disabled={filteredProfiles.length === 0}
-                onClick={() =>
-                  void toggleAll(filteredProfiles.map((p) => p.id))
-                }
-              >
-                {allFilteredSelected
-                  ? t("settings.mcp.deselectAll")
-                  : t("settings.mcp.selectAll")}
-              </Button>
-            </div>
-
-            <div className="max-h-72 overflow-y-auto rounded-md border border-border">
-              {filteredProfiles.length === 0 ? (
-                <p className="px-3 py-2 text-[12px] text-muted-foreground">
-                  {t("settings.mcp.noMatches", { query: filter })}
-                </p>
-              ) : (
-                <McpConnectionTree
-                  sections={sections}
-                  selected={selected}
-                  onToggle={(id) => void toggle(id)}
-                  onToggleAll={(ids) => void toggleAll(ids)}
-                  onSetPolicy={(id, level) => void setWritePolicy(id, level)}
-                  sharedTooltip={sharedTooltip}
-                  searching={filter.trim().length > 0}
-                />
-              )}
-            </div>
-
             {/* Bulk policy. Acts on what is listed, not on what is checked —
                 the checkboxes answer "expose this over MCP", which is a
                 different question. `full` is the only level that can change
                 schema, so it is the only one that asks first. */}
             {filteredProfiles.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-2xs text-muted-foreground">
                   {t("settings.mcp.bulkPolicyLabel")}
                 </span>
@@ -458,9 +387,8 @@ export function McpSection() {
                     key={lvl}
                     type="button"
                     variant="outline"
-                    size="sm"
+                    size="xs"
                     disabled={applying}
-                    className="h-6 px-2 text-2xs"
                     onClick={() =>
                       lvl === "full"
                         ? setPendingFull(true)
@@ -475,54 +403,63 @@ export function McpSection() {
                 </span>
               </div>
             )}
-            <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.writePolicyHint")}
             </p>
-            <p className="mt-1 text-2xs leading-relaxed text-muted-foreground">
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.sharedIdsHint")}
             </p>
             {/* The snippet below is valid whether or not anything is ticked, so
                 nothing else would tell the user their connector will come up
                 unable to reach a single database. */}
             {selected.size === 0 && (
-              <p className="mt-1 text-2xs leading-relaxed text-amber-600 dark:text-amber-500">
+              <p className="text-2xs leading-relaxed text-warning">
                 {t("settings.mcp.nothingExposedHint")}
               </p>
             )}
           </>
-        )}
-      </div>
+        }
+      >
+        <McpConnectionTree
+          sections={sections}
+          selected={selected}
+          onToggle={(id) => void toggle(id)}
+          onToggleAll={(ids) => void toggleAll(ids)}
+          onSetPolicy={(id, level) => void setWritePolicy(id, level)}
+          sharedTooltip={sharedTooltip}
+          searching={filter.trim().length > 0}
+        />
+      </ConnectionTreeCard>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.mcp.claudeCodeLabel")}
-          </span>
-          <div className="flex items-center gap-1.5">
+      <PrefGroup
+        title={t("settings.mcp.claudeCodeLabel")}
+        action={
+          <>
             {path && (
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
+                size="xs"
+                icon={Terminal}
                 disabled={registering}
-                className="h-6 gap-1 px-2 text-2xs"
                 onClick={() => void addToClaudeCode()}
               >
-                <Terminal className="h-3 w-3" />
                 {registering
                   ? t("settings.mcp.addingToClaudeCode")
                   : t("settings.mcp.addToClaudeCode")}
               </Button>
             )}
             {cliCommand && <CopyButton text={cliCommand} />}
-          </div>
-        </div>
+          </>
+        }
+        padded
+      >
         {registration && (
           <p
             className={
               registration.outcome === "failed"
-                ? "mb-1 text-2xs leading-relaxed text-destructive"
-                : "mb-1 text-2xs leading-relaxed text-muted-foreground"
+                ? "text-2xs leading-relaxed text-destructive"
+                : "text-2xs leading-relaxed text-muted-foreground"
             }
           >
             {t(`settings.mcp.register.${registration.outcome}`)}
@@ -534,25 +471,23 @@ export function McpSection() {
         <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-2xs">
           {cliCommand || t("settings.mcp.noBinaryHint")}
         </pre>
-      </div>
+      </PrefGroup>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between">
-          <span className="text-2xs uppercase tracking-wider text-muted-foreground">
-            {t("settings.mcp.jsonLabel")}
-          </span>
-          {jsonSnippet && <CopyButton text={jsonSnippet} />}
-        </div>
+      <PrefGroup
+        title={t("settings.mcp.jsonLabel")}
+        action={jsonSnippet ? <CopyButton text={jsonSnippet} /> : undefined}
+        padded
+      >
         <pre className="overflow-x-auto rounded-md border border-border bg-muted/60 p-2 font-mono text-2xs">
           {jsonSnippet || t("settings.mcp.noBinaryHint")}
         </pre>
-      </div>
+      </PrefGroup>
 
       <Button
         type="button"
         variant="link"
         size="sm"
-        className="h-auto p-0 text-[12px]"
+        className="h-auto p-0 text-xs"
         onClick={() => {
           useSettingsDialog.getState().setOpen(false);
           useDocsDialog.getState().openTo("mcp");

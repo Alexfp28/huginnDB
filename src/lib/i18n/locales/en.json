@@ -1977,7 +1977,8 @@
         "copy": "Copy"
       },
       "freeSqlShortOn": "yes",
-      "freeSqlShortOff": "no"
+      "freeSqlShortOff": "no",
+      "summaryTitle": "Status"
     }
   },
   "notifications": {
@@ -2106,7 +2107,8 @@
       "unbound": "not linked",
       "invalidBody": "This schema is not valid JSON — it is ignored until fixed.",
       "defaultName": "New schema",
-      "fileNotJson": "That file is not valid JSON: {{message}}"
+      "fileNotJson": "That file is not valid JSON: {{message}}",
+      "title": "Library"
     },
     "empty": {
       "title": "No JSON Schemas yet",
@@ -2435,7 +2437,8 @@
     "later": "Later",
     "tooltipUpdateAvailable": "An update is available ({{version}})",
     "mcpSidecarWarning": "An AI tool (Claude Code, Cursor, …) currently has the MCP connector running. Continuing will close it to install the update — the tool will reopen it automatically the next time it's needed.\n\nContinue with the update?",
-    "errorPermission": "Update failed: Windows didn't grant permission to install it. Try again and accept the admin prompt, or install the update manually from the GitHub releases page."
+    "errorPermission": "Update failed: Windows didn't grant permission to install it. Try again and accept the admin prompt, or install the update manually from the GitHub releases page.",
+    "checkPrompt": "HuginnDB checks for updates in the background. Check now looks straight away."
   },
   "docs": {
     "menuEntry": "Documentation",
@@ -3182,7 +3185,9 @@
     "saveFailed": "Could not save the origin",
     "createDocumentFailed": "Could not create the origin document",
     "addFailed": "Could not register the origin",
-    "secretOverridesSuperseded": "Your own password for {{count}} shared connection(s) was replaced by the published one"
+    "secretOverridesSuperseded": "Your own password for {{count}} shared connection(s) was replaced by the published one",
+    "listTitle": "Registered on this machine",
+    "addTitle": "Register an origin"
   },
   "originEditor": {
     "filter": "Filter…",

@@ -175,7 +175,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   describen tu instalación, no un retoque, y «restablecer» apuntaría el panel
   a otro servidor o te pasaría al inglés. Los rails de los editores de
   orígenes compartidos y de política adoptan el mismo estilo de entrada, ya
-  que los tres comparten componente.
+  que los tres comparten componente. Todas las secciones siguen ahora la
+  misma estructura, también las compuestas: en Apariencia, la lista y el
+  editor de temas son una sola tarjeta en lugar de dos cajas juntas; en JSON
+  Schemas, la biblioteca, los bindings y la prueba de columna son tarjetas con
+  título y sus acciones en la cabecera; Orígenes presenta así sus registros y
+  sus formularios; y Política y Acerca de dejan sus cajas dibujadas a mano.
+  Las listas de conexiones de MCP, Pulse y el panel de IA, que dibujaban cada
+  una su propia copia del mismo selector de ámbito, filtro y botón masivo,
+  comparten ahora una tarjeta con esa barra dentro. Los verdes y ámbar fijos
+  de esas secciones usan ahora los colores de éxito y aviso del tema, así que
+  un tema personalizado también los cambia.
 
 - **Ahora todos los botones tienen un borde visible.** Los botones de icono de
   las barras y los botones `ghost` no se veían hasta pasar el ratón por
