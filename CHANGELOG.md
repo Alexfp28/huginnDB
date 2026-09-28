@@ -213,6 +213,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The side cell editor's full-screen button now goes full screen.** It
+  swapped its icon and did nothing else: the side split is wrapped in layout
+  containment for performance, which traps a `position: fixed` element inside
+  it, so the "full screen" editor covered exactly the panel it was already in.
+  It now moves to the top of the window while maximised and comes back to the
+  split with the same text when you leave (the button, F11 or Escape), and
+  saving or discarding the cell leaves full screen too, so the next cell does
+  not open maximised.
+
 - **Inserting or duplicating a MongoDB document from the grid keeps each
   field's type.** A row added through the grid's insert draft, or duplicated
   from an existing one, was written with every field as a string: a `Long`

@@ -32,6 +32,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -327,6 +328,12 @@ export function SideEditorPanel() {
   const [fullscreen, setFullscreen] = useFullscreenToggle(
     () => !!loadedTargetRef.current,
   );
+  // Leaving the cell (Save, Discard, the split closing) also leaves full
+  // screen, or the next cell opened would start maximised with no gesture of
+  // the user's asking for it.
+  useEffect(() => {
+    if (!target) setFullscreen(false);
+  }, [target, setFullscreen]);
 
   if (!target) {
     return (
@@ -363,7 +370,7 @@ export function SideEditorPanel() {
     }
   }
 
-  return (
+  const panel = (
     <div
       className={cn(
         "flex h-full min-h-0 flex-col gap-2 p-2",
@@ -467,4 +474,14 @@ export function SideEditorPanel() {
       </Dialog>
     </div>
   );
+
+  // Full screen has to leave the side split's DOM, not just restyle in place:
+  // `CollapsiblePanel` wraps this in `contain: layout style`, and layout
+  // containment makes that wrapper the containing block of every `fixed`
+  // descendant — so `fixed inset-0` covered exactly the panel it was already
+  // in, and the button changed its icon while nothing on screen moved. A portal
+  // to `body` is the one ancestor with no containment. The editing session
+  // survives the move: its state lives in this component, which stays mounted;
+  // only the subtree below is re-created in its new place.
+  return fullscreen ? createPortal(panel, document.body) : panel;
 }

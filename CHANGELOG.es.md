@@ -234,6 +234,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **El botón de pantalla completa del editor lateral de celdas ya pone la
+  pantalla completa.** Cambiaba el icono y nada más: el panel lateral va
+  envuelto en contención de layout por rendimiento, y eso atrapa dentro de él
+  cualquier elemento con `position: fixed`, así que el editor «a pantalla
+  completa» ocupaba justo el mismo panel en el que ya estaba. Ahora se coloca
+  por encima de toda la ventana mientras está maximizado y vuelve al panel con
+  el mismo texto al salir (con el botón, F11 o Escape), y guardar o descartar
+  la celda también sale de pantalla completa, para que la siguiente celda no
+  se abra maximizada.
+
 - **Insertar o duplicar un documento de MongoDB desde la rejilla respeta el
   tipo de cada campo.** Una fila añadida con el borrador de inserción de la
   rejilla, o duplicada a partir de otra, se escribía con todos los campos como
