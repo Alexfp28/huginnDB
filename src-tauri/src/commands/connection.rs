@@ -2100,7 +2100,7 @@ pub async fn open_new_window(app: AppHandle, intent: Option<StartupArgs>) -> App
             .write()
             .insert(label.clone(), args);
     }
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+    crate::window_chrome::builder(&app, &label)
         .title("HuginnDB")
         .inner_size(1400.0, 900.0)
         .min_inner_size(900.0, 600.0)
@@ -2154,7 +2154,7 @@ pub async fn open_tab_window(
         .detached_tab_intents
         .write()
         .insert(label.clone(), tab);
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+    crate::window_chrome::builder(&app, &label)
         .title(title)
         .inner_size(1000.0, 700.0)
         .min_inner_size(480.0, 320.0)
@@ -2199,7 +2199,7 @@ pub async fn open_pulse_window(
         .pulse_window_intents
         .write()
         .insert(label.clone(), connection_id);
-    tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+    crate::window_chrome::builder(&app, &label)
         .title(title)
         // Wider than the detached-tab window: the expanded Pulse is a rail plus
         // tables of digests and sessions, and at 1000px those wrap into

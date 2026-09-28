@@ -55,6 +55,7 @@ import { ViewMenu } from "@/components/menus/ViewMenu";
 import { HelpMenu } from "@/components/menus/HelpMenu";
 import { AppShell } from "@/components/shell/AppShell";
 import { LayoutToggles } from "@/components/shell/LayoutToggles";
+import { TitleBar } from "@/components/shell/TitleBar";
 import { NotificationCenter } from "@/components/shell/NotificationCenter";
 import { NotificationHosts } from "@/components/shell/NotificationHosts";
 import { StatusBar } from "@/components/shell/StatusBar";
@@ -533,10 +534,10 @@ export default function App() {
           session-restore sequence. */}
       <SplashScreen />
       <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-        <SandboxRibbon />
-        <PolicyRibbon />
-        <WindowColorBadge />
-        <header className="relative flex h-9 items-center border-b border-border px-2">
+        {/* The title bar comes first and the ribbons under it: with the native
+            frame gone this row is where the window is dragged from and where
+            its close button lives, and both belong at the very top edge. */}
+        <TitleBar>
           {/* Left — File + Window + View + Help menus */}
           <FileMenu selectedConnectionId={selected} onSelect={setSelected} />
           <WindowMenu />
@@ -585,7 +586,10 @@ export default function App() {
             <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
             <LayoutToggles />
           </div>
-        </header>
+        </TitleBar>
+        <SandboxRibbon />
+        <PolicyRibbon />
+        <WindowColorBadge />
         <SettingsDialog />
         {/* Siblings of Settings, not children: both editors are full-screen
             surfaces. Opening one puts Settings aside (`suspend`) so focus is

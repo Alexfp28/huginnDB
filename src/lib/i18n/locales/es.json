@@ -1205,6 +1205,12 @@
       "secondary": "Ventana nueva",
       "tabWindow": "Pestaña flotante",
       "pulseWindow": "Panel Pulse"
+    },
+    "windowControls": {
+      "minimize": "Minimizar",
+      "maximize": "Maximizar",
+      "restore": "Restaurar",
+      "close": "Cerrar"
     }
   },
   "commandPalette": {
