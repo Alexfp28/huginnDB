@@ -72,6 +72,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   points it elsewhere, or, set but empty, turns the hand-over off. Installing
   this version of the extension is the last time it has to be done by hand.
 
+- **The window-state file no longer grows with every window you open.**
+  HuginnDB remembered the position and size of every window it had ever
+  shown, but floating tabs, Pulse windows and **New window** get a fresh
+  internal name each time, so none of those entries could ever be used again
+  and none was ever removed. Only the main window is remembered now, and the
+  leftovers are cleared from `.window-state.json` on the first launch of this
+  version. The main window keeps its saved position and size; secondary
+  windows open where they always did.
+
 ## [1.29.0] — 2026-09-28
 
 ### Added
