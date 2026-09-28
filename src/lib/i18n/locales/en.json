@@ -2502,6 +2502,39 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_29_0": {
+        "tagline": "HuginnDB for organizations: one managed policy decides what each person and their AI may reach, the database enforces it, and it is edited in the app. Plus a Preferences dialog you can search.",
+        "items": {
+          "managedPolicy": {
+            "title": "A managed policy for people and their AI",
+            "body": "An administrator gives each OS account a role, and each role rules per server what is visible and whether it may select, insert, update, delete, change schema or monitor. The AI is held to it strictly and never learns the names of what it cannot reach; in the app every command checks it, and what a role does not allow is shown locked, with the reason."
+          },
+          "personalDbUser": {
+            "title": "Each person signs in as their own database user",
+            "body": "A rule can pin the user a person connects as (\"erp_{user}\"), or a person picks their own on a shared connection, kept on this machine only. Settings → Policy → Generate grants writes the GRANT script (or MongoDB role) each role needs, so the database itself enforces the policy."
+          },
+          "policyEditor": {
+            "title": "Edit the policy in HuginnDB, not by hand",
+            "body": "Settings → Policy → Edit policy opens it as a form with the JSON one pane away. Every change is checked by the parser that applies it, View as shows what any account would get, and a save keeps a .bak and never overwrites someone else's change."
+          },
+          "readOnlyEnforced": {
+            "title": "Read-only means read-only",
+            "body": "A WITH carrying a DELETE, EXPLAIN ANALYZE and a MongoDB $out / $merge were classified as reads; now they get the tier of what they do. And a read the AI sends runs inside a read-only transaction on PostgreSQL, MySQL and SQLite, so anything the classifier misses fails on the server."
+          },
+          "preferences": {
+            "title": "Preferences, regrouped and searchable",
+            "body": "The rail is grouped, a search box finds any of the ~65 settings in either language, and every setting moved off its default carries a dot and a one-click reset. Across the app, every button now has a visible edge, on imported themes too."
+          },
+          "findEverywhere": {
+            "title": "Ctrl+F finds in whatever you are looking at",
+            "body": "In a table tab it goes to that table's filter, otherwise to the schema tree's, and in Preferences to the settings search. Inside a query editor the editor's own find still wins."
+          },
+          "mongoInsertTypes": {
+            "title": "MongoDB inserts keep their types",
+            "body": "A document inserted or duplicated from the grid was written with every field as a string — a Long 5 became \"5\". Each field now keeps its type, and an empty collection finally offers Insert for its first document."
+          }
+        }
+      },
       "1_28_0": {
         "tagline": "The advanced filter grows into a query panel under the toolbar — choose the fields, write the filter by hand, sort, force an index and read the plan, all with the rows still in view.",
         "items": {

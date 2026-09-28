@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.29.0] — 2026-09-28
+
 ### Added
 
 - **Ctrl+F finds in whatever you are looking at.** With a table tab active it

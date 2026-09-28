@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.29.0] — 2026-09-28
+
 ### Añadido
 
 - **Ctrl+F busca en lo que tengas delante.** Con una pestaña de tabla activa

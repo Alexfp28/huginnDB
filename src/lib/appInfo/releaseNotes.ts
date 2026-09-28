@@ -29,17 +29,20 @@ import {
   Braces,
   Bug,
   BookOpen,
+  Building2,
   Columns3,
   Copy,
   Database,
   Download,
   ExternalLink,
   Eye,
+  FilePen,
   FolderTree,
   ImagePlus,
   Gauge,
   HardDrive,
   Keyboard,
+  KeyRound,
   Layers,
   LayoutList,
   ListFilter,
@@ -51,7 +54,9 @@ import {
   Plug,
   Power,
   RefreshCw,
+  Search,
   Server,
+  Settings2,
   Share2,
   ShieldCheck,
   SlidersHorizontal,
@@ -91,6 +96,48 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.29.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_29_0.tagline",
+    highlights: [
+      {
+        icon: Building2,
+        titleKey: "whatsNew.releases.1_29_0.items.managedPolicy.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.managedPolicy.body",
+      },
+      {
+        icon: KeyRound,
+        titleKey: "whatsNew.releases.1_29_0.items.personalDbUser.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.personalDbUser.body",
+      },
+      {
+        icon: FilePen,
+        titleKey: "whatsNew.releases.1_29_0.items.policyEditor.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.policyEditor.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_29_0.items.readOnlyEnforced.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.readOnlyEnforced.body",
+      },
+      {
+        icon: Settings2,
+        titleKey: "whatsNew.releases.1_29_0.items.preferences.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.preferences.body",
+      },
+      {
+        icon: Search,
+        titleKey: "whatsNew.releases.1_29_0.items.findEverywhere.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.findEverywhere.body",
+      },
+      {
+        icon: Database,
+        titleKey: "whatsNew.releases.1_29_0.items.mongoInsertTypes.title",
+        bodyKey: "whatsNew.releases.1_29_0.items.mongoInsertTypes.body",
+      },
+    ],
+  },
   {
     version: "1.28.0",
     major: true,

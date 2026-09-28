@@ -2502,6 +2502,39 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_29_0": {
+        "tagline": "HuginnDB para organizaciones: una política gestionada decide qué puede tocar cada persona y su IA, la base de datos lo hace cumplir y se edita desde la app. Y unas Preferencias con buscador.",
+        "items": {
+          "managedPolicy": {
+            "title": "Una política gestionada para las personas y su IA",
+            "body": "Un administrador asigna un rol a cada cuenta del sistema, y cada rol decide por servidor qué se ve y si se puede consultar, insertar, actualizar, borrar, cambiar el esquema o monitorizar. A la IA se le aplica de forma estricta y ni siquiera conoce los nombres de lo que no puede tocar; en la app cada comando la comprueba, y lo que un rol no permite aparece bloqueado, con el motivo."
+          },
+          "personalDbUser": {
+            "title": "Cada persona entra con su propio usuario de base de datos",
+            "body": "Una regla puede fijar el usuario con el que se conecta cada persona (\"erp_{user}\"), o cada uno elige el suyo en una conexión compartida, guardado solo en su equipo. Ajustes → Política → Generar permisos escribe el script de GRANT (o el rol de MongoDB) que necesita cada rol, para que sea la propia base de datos la que haga cumplir la política."
+          },
+          "policyEditor": {
+            "title": "Edita la política en HuginnDB, no a mano",
+            "body": "Ajustes → Política → Editar política la abre como formulario, con el JSON a un panel de distancia. Cada cambio pasa por el mismo parser que la aplica, Ver como muestra lo que obtendría cualquier cuenta, y al guardar se deja un .bak y nunca se pisa el cambio de otra persona."
+          },
+          "readOnlyEnforced": {
+            "title": "Solo lectura quiere decir solo lectura",
+            "body": "Un WITH que lleva un DELETE, EXPLAIN ANALYZE y un $out / $merge de MongoDB se clasificaban como lecturas; ahora reciben el nivel de lo que hacen. Y una lectura que envía la IA se ejecuta dentro de una transacción de solo lectura en PostgreSQL, MySQL y SQLite, así que lo que se le escape al clasificador falla en el servidor."
+          },
+          "preferences": {
+            "title": "Preferencias, reagrupadas y con buscador",
+            "body": "El menú lateral va por grupos, un buscador encuentra cualquiera de los ~65 ajustes en los dos idiomas, y cada ajuste que has cambiado lleva un punto y un botón para restablecerlo. En toda la app, además, los botones tienen ahora un borde visible, también con temas importados."
+          },
+          "findEverywhere": {
+            "title": "Ctrl+F busca en lo que estés mirando",
+            "body": "En una pestaña de tabla va al filtro de esa tabla; si no, al del árbol de esquema, y en Preferencias al buscador de ajustes. Dentro de un editor de consultas sigue mandando la búsqueda del propio editor."
+          },
+          "mongoInsertTypes": {
+            "title": "Las inserciones en MongoDB conservan sus tipos",
+            "body": "Un documento insertado o duplicado desde la tabla se escribía con todos los campos como texto: un Long 5 acababa siendo \"5\". Ahora cada campo conserva su tipo, y una colección vacía por fin ofrece Insertar para su primer documento."
+          }
+        }
+      },
       "1_28_0": {
         "tagline": "El filtro avanzado se convierte en un panel de consulta bajo la barra: elige los campos, escribe el filtro a mano, ordena, fuerza un índice y lee el plan, todo sin perder de vista las filas.",
         "items": {
