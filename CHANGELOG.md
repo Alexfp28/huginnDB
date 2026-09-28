@@ -21,7 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   turned off in Settings → About → Background updates, which also shows which
   mechanism is in force: where a domain administrator forbids scheduled tasks
   it falls back to a startup entry, and where that is forbidden too it says so
-  instead of pretending. Uninstalling HuginnDB removes the tasks.
+  instead of pretending. If an update has still been waiting after a day, the
+  MCP connector tells the AI tool, which passes it on — the connector reads
+  that from what the app recorded and never contacts the update feed itself.
+  Uninstalling HuginnDB removes the tasks.
 
 ### Fixed
 

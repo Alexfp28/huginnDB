@@ -118,8 +118,11 @@ si un cliente pierde el conector después, reinícialo. En Ajustes → Acerca de
 **Actualizaciones en segundo plano** se desactiva y se ve qué mecanismo está
 funcionando en el equipo; si el administrador del dominio prohíbe las tareas
 programadas, recurre a una entrada de inicio, y si también la prohíbe, lo dice
-y deja las actualizaciones al botón de la app. `huginndb.exe --update` hace la
-misma comprobación a mano.
+y deja las actualizaciones al botón de la app. Si una actualización lleva más
+de un día esperando, las instrucciones del conector lo dicen y la herramienta de
+IA lo transmite; el conector lo sabe por lo que registró la app y nunca
+consulta el feed de actualizaciones por su cuenta. `huginndb.exe --update` hace
+la misma comprobación a mano.
 
 **Compilar desde el código fuente (solo desarrollo):** el conector vive en su
 propio crate del workspace (`src-tauri/mcp-server/`), fuera del `Cargo.toml`

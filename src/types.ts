@@ -2474,6 +2474,8 @@ export interface AutoUpdateStatus {
     trigger: "logon" | "daily" | "manual";
     outcome: UpdateRunOutcome;
   } | null;
+  /** The newest version seen and not yet installed, and since when. */
+  available: { version: string; firstSeenMs: number } | null;
 }
 
 /** Build flavor of the running app, from `get_app_flavor`. The React bundle is

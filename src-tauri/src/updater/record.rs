@@ -26,6 +26,20 @@ pub const LOG_LINES: usize = 200;
 pub struct UpdaterRecord {
     pub schedule: Option<ScheduleRecord>,
     pub last_run: Option<RunRecord>,
+    /// The newest version a check has seen and not yet seen installed, and
+    /// since when. Written by the headless updater and by the interface's
+    /// own check; read by the MCP connector, which makes no request of its
+    /// own ([`super::pending_notice`]).
+    pub available: Option<Available>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Available {
+    pub version: String,
+    /// When this version was first seen. A newer one resets it: the clock is
+    /// "how long has *this* update been waiting".
+    pub first_seen_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,6 +121,33 @@ pub fn save_run(trigger: Trigger, outcome: RunOutcome) {
     save(&record);
 }
 
+/// What a check found: `Some(version)` when the feed has something newer,
+/// `None` when it has nothing. Keeps `first_seen_ms` while the version stays
+/// the same.
+pub fn note_available(version: Option<&str>) {
+    let mut record = load();
+    let next = next_available(record.available.as_ref(), version, now_ms());
+    if next != record.available {
+        record.available = next;
+        save(&record);
+    }
+}
+
+fn next_available(
+    previous: Option<&Available>,
+    found: Option<&str>,
+    now: i64,
+) -> Option<Available> {
+    let version = found?;
+    Some(match previous {
+        Some(p) if p.version == version => p.clone(),
+        _ => Available {
+            version: version.to_string(),
+            first_seen_ms: now,
+        },
+    })
+}
+
 /// Append one timestamped line to `updater.log`, keeping the last
 /// [`LOG_LINES`].
 pub fn log(line: &str) {
@@ -143,6 +184,31 @@ mod tests {
         assert_eq!(lines.len(), LOG_LINES);
         assert_eq!(lines.first(), Some(&"line 1"));
         assert_eq!(lines.last(), Some(&"newest"));
+    }
+
+    #[test]
+    fn the_same_version_keeps_its_first_sighting() {
+        let seen = Available {
+            version: "1.30.0".into(),
+            first_seen_ms: 100,
+        };
+        assert_eq!(next_available(Some(&seen), Some("1.30.0"), 999), Some(seen));
+    }
+
+    #[test]
+    fn a_newer_version_restarts_the_clock_and_nothing_clears_it() {
+        let seen = Available {
+            version: "1.30.0".into(),
+            first_seen_ms: 100,
+        };
+        assert_eq!(
+            next_available(Some(&seen), Some("1.31.0"), 999),
+            Some(Available {
+                version: "1.31.0".into(),
+                first_seen_ms: 999
+            })
+        );
+        assert_eq!(next_available(Some(&seen), None, 999), None);
     }
 
     #[test]

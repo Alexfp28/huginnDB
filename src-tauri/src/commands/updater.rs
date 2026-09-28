@@ -1,8 +1,11 @@
 //! What the silent updater is doing, for Settings → About.
 //!
-//! Read-only: the schedule follows the `updates.autoInstall` preference, which
-//! `prefs::update_preferences` reconciles when it changes, and the app's
-//! startup reconciles on its own. There is nothing to command from here.
+//! [`note_update_check`] is the one write: the interface's own check reports
+//! what it found, so the MCP connector can mention an update that has been
+//! waiting (`updater::pending_notice`) on a machine where the schedule never
+//! runs. Otherwise read-only: the schedule follows the `updates.autoInstall`
+//! preference, which `prefs::update_preferences` reconciles when it changes,
+//! and the app's startup reconciles on its own.
 
 use serde::Serialize;
 
@@ -24,4 +27,10 @@ pub fn get_auto_update_status() -> AutoUpdateStatus {
         supported: cfg!(windows) && !cfg!(debug_assertions),
         record: record::load(),
     }
+}
+
+/// The interface's updater check found `version` (or nothing newer, `None`).
+#[tauri::command]
+pub fn note_update_check(version: Option<String>) {
+    record::note_available(version.as_deref());
 }

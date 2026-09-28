@@ -517,6 +517,7 @@ pub fn run() {
             commands::mcp::is_mcp_sidecar_running,
             commands::app::get_app_flavor,
             commands::updater::get_auto_update_status,
+            commands::updater::note_update_check,
         ])
         .run(context())
         .expect("error while running HuginnDB");

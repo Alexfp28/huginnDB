@@ -111,7 +111,10 @@ connector afterwards, restart the client. Settings → About → **Background
 updates** turns it off and shows which mechanism is in force on the machine;
 where a domain administrator forbids scheduled tasks it falls back to a
 startup entry, and where that is forbidden too it says so and leaves updates
-to the in-app button. `huginndb.exe --update` runs the same check by hand.
+to the in-app button. If an update has been waiting for more than a day, the
+connector's instructions say so and the AI tool passes it on; the connector
+learns that from what the app recorded, and never contacts the update feed
+itself. `huginndb.exe --update` runs the same check by hand.
 
 **Building from source (development only):** the connector lives in its own
 workspace crate (`src-tauri/mcp-server/`), kept out of the desktop app's own

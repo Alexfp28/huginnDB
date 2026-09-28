@@ -2279,17 +2279,33 @@ impl ServerHandler for Huginn {
                 "huginndb-mcp",
                 env!("CARGO_PKG_VERSION"),
             ))
-            .with_instructions(
-                "Access to the databases configured in HuginnDB. Call \
-                 list_connections first to see which connection ids are available \
-                 (each shows its write policy), then pass a connection_id to the \
-                 other tools. Reads always work; writes (run_query DML/DDL, \
-                 insert_row, update_cell, delete_rows) only succeed when the \
-                 connection's policy permits them — 'data' for row changes, \
-                 'full' for schema changes — and every write is recorded in the \
-                 app's MCP audit log.",
-            )
+            .with_instructions(instructions())
     }
+}
+
+/// The server's instructions, plus a line about a waiting update when the app
+/// has recorded one for more than a day (`updater::pending_notice`). Read at
+/// `initialize`, from the file the app writes — the connector never contacts
+/// the update feed itself.
+fn instructions() -> String {
+    let mut text = String::from(
+        "Access to the databases configured in HuginnDB. Call \
+         list_connections first to see which connection ids are available \
+         (each shows its write policy), then pass a connection_id to the \
+         other tools. Reads always work; writes (run_query DML/DDL, \
+         insert_row, update_cell, delete_rows) only succeed when the \
+         connection's policy permits them — 'data' for row changes, \
+         'full' for schema changes — and every write is recorded in the \
+         app's MCP audit log.",
+    );
+    let record = crate::updater::record::load();
+    if let Some(note) =
+        crate::updater::pending_notice(&record, env!("CARGO_PKG_VERSION"), crate::updater::now_ms())
+    {
+        text.push_str("\n\n");
+        text.push_str(&note);
+    }
+    text
 }
 
 /// Run the MCP server over stdio until the client disconnects.

@@ -25,7 +25,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   segundo plano, que además muestra qué mecanismo está funcionando: si el
   administrador del dominio prohíbe las tareas programadas, recurre a una
   entrada de inicio, y si también la prohíbe, lo dice en vez de disimularlo.
-  Desinstalar HuginnDB elimina las tareas.
+  Si una actualización sigue esperando al cabo de un día, el conector MCP se
+  lo dice a la herramienta de IA, que lo transmite; el conector lo lee de lo
+  que registró la app y nunca consulta el feed de actualizaciones por su
+  cuenta. Desinstalar HuginnDB elimina las tareas.
 
 ### Corregido
 

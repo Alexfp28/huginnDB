@@ -98,9 +98,11 @@ fn check_and_install(
 
     tauri::async_runtime::block_on(async move {
         let Some(update) = updater.check().await.map_err(|e| e.to_string())? else {
+            record::note_available(None);
             return Ok(RunOutcome::UpToDate);
         };
         let version = update.version.clone();
+        record::note_available(Some(&version));
 
         let own_image = exe
             .file_stem()

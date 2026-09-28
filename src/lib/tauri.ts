@@ -1670,6 +1670,10 @@ export const api = {
 
   getAutoUpdateStatus: () =>
     invoke<AutoUpdateStatus>("get_auto_update_status"),
+  /** Report what this window's updater check found, so the MCP connector can
+   *  mention an update that has waited a day (it never checks the feed). */
+  noteUpdateCheck: (version: string | null) =>
+    invoke<void>("note_update_check", { version }),
 
   // App flavor -------------------------------------------------------------
 
