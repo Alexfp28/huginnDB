@@ -2542,6 +2542,27 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_30_0": {
+        "tagline": "HuginnDB keeps itself up to date, and so does the MCP connector your AI tool uses — installed once, with nothing to do per computer after that. Plus one title bar instead of two.",
+        "items": {
+          "silentUpdates": {
+            "title": "Updates install themselves",
+            "body": "On Windows a scheduled task checks at sign-in and once a day and installs quietly, even if HuginnDB is never opened. It waits while the app is open, and Settings → About → Background updates shows what is in force or turns it off."
+          },
+          "extensionUpdates": {
+            "title": "The Claude Desktop extension updates with the app",
+            "body": "The extension now hands every session to the connector installed with HuginnDB, so new tools reach your AI tool with each update. Install it once more with this version and never again."
+          },
+          "unifiedTitleBar": {
+            "title": "One title bar instead of two",
+            "body": "The native caption is gone on Windows and Linux: HuginnDB's own bar carries minimise, maximise and close, and gives the row back. It still drags, double-clicks to maximise and snaps."
+          },
+          "jumpList": {
+            "title": "Recent connections on the taskbar",
+            "body": "Right-click HuginnDB on the taskbar to open a recent connection or a new window. Only names and engines are listed, never hosts or passwords."
+          }
+        }
+      },
       "1_29_0": {
         "tagline": "HuginnDB for organizations: one managed policy decides what each person and their AI may reach, the database enforces it, and it is edited in the app. Plus a Preferences dialog you can search.",
         "items": {

@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.30.0] — 2026-09-28
+
 ### Añadido
 
 - **HuginnDB se mantiene al día solo, aunque nadie lo abra.** Pensado para

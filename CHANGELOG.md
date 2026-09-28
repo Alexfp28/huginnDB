@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.30.0] — 2026-09-28
+
 ### Added
 
 - **HuginnDB now keeps itself up to date, even if nobody opens it.** Built for

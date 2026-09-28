@@ -2542,6 +2542,27 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_30_0": {
+        "tagline": "HuginnDB se mantiene al día solo, y con él el conector MCP que usa tu herramienta de IA: se instala una vez y después no hay nada que hacer en cada equipo. Además, una sola barra de título en vez de dos.",
+        "items": {
+          "silentUpdates": {
+            "title": "Las actualizaciones se instalan solas",
+            "body": "En Windows, una tarea programada comprueba al iniciar sesión y una vez al día e instala sin avisar, aunque nunca se abra HuginnDB. Espera mientras la app está abierta, y Ajustes → Acerca de → Actualizaciones en segundo plano muestra qué está funcionando o lo desactiva."
+          },
+          "extensionUpdates": {
+            "title": "La extensión de Claude Desktop se actualiza con la app",
+            "body": "La extensión cede ahora cada sesión al conector instalado con HuginnDB, así que las herramientas nuevas llegan a tu IA con cada actualización. Instálala una vez más con esta versión y ya nunca más."
+          },
+          "unifiedTitleBar": {
+            "title": "Una sola barra de título",
+            "body": "En Windows y Linux desaparece la barra nativa: la de HuginnDB lleva minimizar, maximizar y cerrar, y devuelve esa fila. Se sigue arrastrando, maximiza con doble clic y se ajusta a los bordes."
+          },
+          "jumpList": {
+            "title": "Conexiones recientes en la barra de tareas",
+            "body": "Clic derecho en HuginnDB en la barra de tareas para abrir una conexión reciente o una ventana nueva. Solo aparecen nombres y motores, nunca hosts ni contraseñas."
+          }
+        }
+      },
       "1_29_0": {
         "tagline": "HuginnDB para organizaciones: una política gestionada decide qué puede tocar cada persona y su IA, la base de datos lo hace cumplir y se edita desde la app. Y unas Preferencias con buscador.",
         "items": {
