@@ -280,7 +280,7 @@ export function OriginEditorOverlay() {
             />
 
             <div className="grid min-h-0 flex-1 grid-cols-[220px_1fr] overflow-hidden">
-              <aside className="overflow-y-auto border-r border-border bg-card/40 py-1">
+              <aside className="space-y-0.5 overflow-y-auto border-r border-border bg-card/40 p-2">
                 {PANES.map((p) => (
                   <NavRailItem
                     key={p.id}

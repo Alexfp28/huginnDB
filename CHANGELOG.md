@@ -139,6 +139,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Preferences is regrouped, searchable, and shows what you changed.** The
+  dialog had grown to fourteen sections in one flat rail, each section laid
+  out its own way. The rail is now grouped — Workspace, Data & sharing,
+  Integrations, Organization, with About pinned at the foot — one line per
+  entry, and it says what you would otherwise open a section to learn: how
+  many connections the MCP connector exposes and Pulse samples, and whether
+  the AI panel is on. A search box at the top finds any of the ~65 settings
+  by name, description or keyword (in either language, accents ignored);
+  Enter opens the first match on its row, and Escape clears the search
+  before it closes the dialog. Every section now opens with the same header,
+  and the long lists are split into titled cards (Editor into *Theme & type*,
+  *Display*, *Formatting*; Connections into *Pool limits*, *Liveness &
+  timeouts*, *MCP connector*; and so on). A setting you have moved off its
+  default carries a dot and a one-click reset, the section header counts
+  them with a *Reset section* that asks first, and the rail marks the
+  sections that hold any. The AI endpoint settings and the interface
+  language are deliberately left out of that: they describe your setup, not
+  a tweak, and "reset" would point the panel at another server or switch you
+  to English. The rails of the shared-origin and policy editors adopt the
+  same entry style, since all three share one component.
+
 - **Every button now has a visible edge.** Toolbar icon buttons and `ghost`
   buttons used to be invisible until the pointer found them, so an action
   such as Refresh or Export read as a loose glyph beside the grid. Every

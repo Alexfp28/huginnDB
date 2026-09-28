@@ -1269,6 +1269,52 @@
   "settings": {
     "title": "Preferences",
     "description": "Changes apply live. The preferences file lives in your platform's config directory; the dialog is also available with",
+    "groups": {
+      "workspace": "Workspace",
+      "data": "Data & sharing",
+      "integrations": "Integrations",
+      "organization": "Organization"
+    },
+    "search": {
+      "label": "Search settings",
+      "placeholder": "Search {{count}} settings",
+      "clear": "Clear search",
+      "title": "Results for “{{query}}”",
+      "count_one": "{{count}} match — Enter opens the first one",
+      "count_other": "{{count}} matches — Enter opens the first one",
+      "empty": "No setting matches that. The command palette also searches shortcuts, themes and commands.",
+      "sections": "Sections"
+    },
+    "changed": "(changed from default)",
+    "changedCount_one": "{{count}} changed",
+    "changedCount_other": "{{count}} changed",
+    "resetSection": "Reset section",
+    "resetSectionTitle": "Reset {{section}}?",
+    "resetSectionConfirm_one": "The {{count}} setting you changed here goes back to its default. Everything else stays as it is.",
+    "resetSectionConfirm_other": "The {{count}} settings you changed here go back to their defaults. Everything else stays as it is.",
+    "resetToDefault": "Reset to default",
+    "resetToDefaultValue": "Reset to default ({{value}})",
+    "rowGroups": {
+      "languageDefaults": "Language & defaults",
+      "safetySessions": "Safety & sessions",
+      "workspace": "Workspace",
+      "themeType": "Theme & type",
+      "display": "Display",
+      "formatting": "Formatting",
+      "pagingLayout": "Paging & layout",
+      "values": "Values",
+      "sidebarTabs": "Sidebar & tabs",
+      "placement": "Placement",
+      "timing": "Timing",
+      "stackHistory": "Stack & history",
+      "rightNow": "Right now",
+      "poolLimits": "Pool limits",
+      "liveness": "Liveness & timeouts",
+      "mcpBridge": "MCP connector",
+      "sampling": "Sampling",
+      "endpoint": "Endpoint",
+      "behaviour": "Behaviour"
+    },
     "sections": {
       "general": {
         "label": "General",

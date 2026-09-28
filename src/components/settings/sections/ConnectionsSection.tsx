@@ -25,6 +25,7 @@ import {
 } from "@/stores/preferences/preferences";
 import { api } from "@/lib/tauri";
 import type { PoolStats } from "@/types";
+import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 
 /** How often the live counters refresh while the dialog is open. */
@@ -76,249 +77,257 @@ export function ConnectionsSection() {
     };
 
   return (
-    <div className="space-y-1">
-      <PrefRow
-        label={t("settings.connections.live.label")}
-        description={t("settings.connections.live.desc")}
-      >
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-              {stats
-                ? t("settings.connections.live.value", {
-                    connections: stats.connections,
-                    views: stats.databaseViews,
-                  })
-                : "—"}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              disabled={releasing || !stats || stats.databaseViews === 0}
-              onClick={() => void release()}
-            >
-              {t("schema.releaseIdlePools")}
-            </Button>
+    <div className="space-y-5">
+      <PrefGroup title={t("settings.rowGroups.rightNow")}>
+        <PrefRow
+          label={t("settings.connections.live.label")}
+          description={t("settings.connections.live.desc")}
+        >
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {stats
+                  ? t("settings.connections.live.value", {
+                      connections: stats.connections,
+                      views: stats.databaseViews,
+                    })
+                  : "—"}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs"
+                disabled={releasing || !stats || stats.databaseViews === 0}
+                onClick={() => void release()}
+              >
+                {t("schema.releaseIdlePools")}
+              </Button>
+            </div>
+            {/* Per-server rows. The two counts above are per *pool*, and one
+                server can back several of them — this is the breakdown that
+                matches what the server's own `max_connections` is counting. */}
+            {stats && stats.endpoints.length > 0 && (
+              <ul className="space-y-0.5 text-right">
+                {stats.endpoints.map((e) => (
+                  <li
+                    key={e.label}
+                    className="font-mono text-2xs tabular-nums text-muted-foreground"
+                  >
+                    {e.label}
+                    {" · "}
+                    {t("settings.connections.live.endpoint", {
+                      inUse: e.inUse,
+                      budget: connections.maxConnections,
+                    })}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {/* Per-server rows. The two counts above are per *pool*, and one
-              server can back several of them — this is the breakdown that
-              matches what the server's own `max_connections` is counting. */}
-          {stats && stats.endpoints.length > 0 && (
-            <ul className="space-y-0.5 text-right">
-              {stats.endpoints.map((e) => (
-                <li
-                  key={e.label}
-                  className="font-mono text-2xs tabular-nums text-muted-foreground"
-                >
-                  {e.label}
-                  {" · "}
-                  {t("settings.connections.live.endpoint", {
-                    inUse: e.inUse,
-                    budget: connections.maxConnections,
-                  })}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </PrefRow>
+        </PrefRow>
+      </PrefGroup>
 
-      <PrefRow
-        label={t("settings.connections.maxConnections.label")}
-        prefId="connections.maxConnections"
-        description={t("settings.connections.maxConnections.desc")}
-        htmlFor="prefs-conn-max"
-      >
-        <Input
-          id="prefs-conn-max"
-          type="number"
-          min={2}
-          max={64}
-          value={connections.maxConnections}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ maxConnections: n }),
-              2,
-              64,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.connections.childMaxConnections.label")}
-        prefId="connections.childMaxConnections"
-        description={t("settings.connections.childMaxConnections.desc")}
-        htmlFor="prefs-conn-child-max"
-      >
-        <Input
-          id="prefs-conn-child-max"
-          type="number"
-          min={2}
-          max={64}
-          value={connections.childMaxConnections}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ childMaxConnections: n }),
-              2,
-              64,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.connections.maxChildPools.label")}
-        prefId="connections.maxChildPools"
-        description={t("settings.connections.maxChildPools.desc")}
-        htmlFor="prefs-conn-max-children"
-      >
-        <Input
-          id="prefs-conn-max-children"
-          type="number"
-          min={0}
-          max={100}
-          value={connections.maxChildPools}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ maxChildPools: n }),
-              0,
-              100,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.connections.childIdleTtl.label")}
-        prefId="connections.childIdleTtlSecs"
-        description={t("settings.connections.childIdleTtl.desc")}
-        htmlFor="prefs-conn-child-ttl"
-      >
-        <Input
-          id="prefs-conn-child-ttl"
-          type="number"
-          min={0}
-          max={86400}
-          step={30}
-          value={connections.childIdleTtlSecs}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ childIdleTtlSecs: n }),
-              0,
-              86400,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.connections.keepalive.label")}
-        prefId="connections.keepaliveSecs"
-        description={t("settings.connections.keepalive.desc")}
-        htmlFor="prefs-conn-keepalive"
-      >
-        <Input
-          id="prefs-conn-keepalive"
-          type="number"
-          min={0}
-          max={3600}
-          step={30}
-          value={connections.keepaliveSecs}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ keepaliveSecs: n }),
-              0,
-              3600,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.connections.operationTimeout.label")}
-        prefId="connections.operationTimeoutSecs"
-        description={t("settings.connections.operationTimeout.desc")}
-        htmlFor="prefs-conn-op-timeout"
-      >
-        <Input
-          id="prefs-conn-op-timeout"
-          type="number"
-          min={5}
-          max={600}
-          step={5}
-          value={connections.operationTimeoutSecs}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ operationTimeoutSecs: n }),
-              5,
-              600,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
-
-      <PrefRow
-        label={t("settings.connections.mcpBridge.label")}
-        prefId="connections.mcpBridge"
-        description={t("settings.connections.mcpBridge.desc")}
-      >
-        <div className="flex items-center gap-3">
-          {/* The bound port, not just the toggle: a user chasing a firewall
-              prompt or an MCP client that won't attach needs the actual state,
-              which can differ from the checkbox if the listener failed to
-              start. */}
-          {stats?.mcpBridgePort != null && (
-            <span className="font-mono text-2xs tabular-nums text-muted-foreground">
-              127.0.0.1:{stats.mcpBridgePort}
-            </span>
-          )}
-          {/* No window lists a connection the connector opened, so this
-              count is the only place it is visible at all. */}
-          {stats != null && stats.mcpConnections > 0 && (
-            <span className="text-2xs tabular-nums text-muted-foreground">
-              {t("settings.connections.mcpBridge.open", {
-                n: stats.mcpConnections,
-              })}
-            </span>
-          )}
-          <Switch
-            checked={connections.mcpBridge}
-            onCheckedChange={(v) => updateConnections({ mcpBridge: v })}
+      <PrefGroup title={t("settings.rowGroups.poolLimits")}>
+        <PrefRow
+          label={t("settings.connections.maxConnections.label")}
+          prefId="connections.maxConnections"
+          description={t("settings.connections.maxConnections.desc")}
+          htmlFor="prefs-conn-max"
+        >
+          <Input
+            id="prefs-conn-max"
+            type="number"
+            min={2}
+            max={64}
+            value={connections.maxConnections}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ maxConnections: n }),
+                2,
+                64,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
           />
-        </div>
-      </PrefRow>
+        </PrefRow>
 
-      <PrefRow
-        label={t("settings.connections.bridgeIdleTtl.label")}
-        prefId="connections.bridgeIdleTtlSecs"
-        description={t("settings.connections.bridgeIdleTtl.desc")}
-        htmlFor="prefs-conn-bridge-ttl"
-      >
-        <Input
-          id="prefs-conn-bridge-ttl"
-          type="number"
-          min={0}
-          max={86400}
-          step={30}
-          value={connections.bridgeIdleTtlSecs}
-          onChange={(e) =>
-            numeric(
-              (n) => updateConnections({ bridgeIdleTtlSecs: n }),
-              0,
-              86400,
-            )(e.target.value)
-          }
-          className="h-8 w-24 text-right font-mono text-xs"
-        />
-      </PrefRow>
+        <PrefRow
+          label={t("settings.connections.childMaxConnections.label")}
+          prefId="connections.childMaxConnections"
+          description={t("settings.connections.childMaxConnections.desc")}
+          htmlFor="prefs-conn-child-max"
+        >
+          <Input
+            id="prefs-conn-child-max"
+            type="number"
+            min={2}
+            max={64}
+            value={connections.childMaxConnections}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ childMaxConnections: n }),
+                2,
+                64,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.connections.maxChildPools.label")}
+          prefId="connections.maxChildPools"
+          description={t("settings.connections.maxChildPools.desc")}
+          htmlFor="prefs-conn-max-children"
+        >
+          <Input
+            id="prefs-conn-max-children"
+            type="number"
+            min={0}
+            max={100}
+            value={connections.maxChildPools}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ maxChildPools: n }),
+                0,
+                100,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.connections.childIdleTtl.label")}
+          prefId="connections.childIdleTtlSecs"
+          description={t("settings.connections.childIdleTtl.desc")}
+          htmlFor="prefs-conn-child-ttl"
+        >
+          <Input
+            id="prefs-conn-child-ttl"
+            type="number"
+            min={0}
+            max={86400}
+            step={30}
+            value={connections.childIdleTtlSecs}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ childIdleTtlSecs: n }),
+                0,
+                86400,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+      </PrefGroup>
+
+      <PrefGroup title={t("settings.rowGroups.liveness")}>
+        <PrefRow
+          label={t("settings.connections.keepalive.label")}
+          prefId="connections.keepaliveSecs"
+          description={t("settings.connections.keepalive.desc")}
+          htmlFor="prefs-conn-keepalive"
+        >
+          <Input
+            id="prefs-conn-keepalive"
+            type="number"
+            min={0}
+            max={3600}
+            step={30}
+            value={connections.keepaliveSecs}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ keepaliveSecs: n }),
+                0,
+                3600,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.connections.operationTimeout.label")}
+          prefId="connections.operationTimeoutSecs"
+          description={t("settings.connections.operationTimeout.desc")}
+          htmlFor="prefs-conn-op-timeout"
+        >
+          <Input
+            id="prefs-conn-op-timeout"
+            type="number"
+            min={5}
+            max={600}
+            step={5}
+            value={connections.operationTimeoutSecs}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ operationTimeoutSecs: n }),
+                5,
+                600,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+      </PrefGroup>
+
+      <PrefGroup title={t("settings.rowGroups.mcpBridge")}>
+        <PrefRow
+          label={t("settings.connections.mcpBridge.label")}
+          prefId="connections.mcpBridge"
+          description={t("settings.connections.mcpBridge.desc")}
+        >
+          <div className="flex items-center gap-3">
+            {/* The bound port, not just the toggle: a user chasing a firewall
+                prompt or an MCP client that won't attach needs the actual state,
+                which can differ from the checkbox if the listener failed to
+                start. */}
+            {stats?.mcpBridgePort != null && (
+              <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                127.0.0.1:{stats.mcpBridgePort}
+              </span>
+            )}
+            {/* No window lists a connection the connector opened, so this
+                count is the only place it is visible at all. */}
+            {stats != null && stats.mcpConnections > 0 && (
+              <span className="text-2xs tabular-nums text-muted-foreground">
+                {t("settings.connections.mcpBridge.open", {
+                  n: stats.mcpConnections,
+                })}
+              </span>
+            )}
+            <Switch
+              checked={connections.mcpBridge}
+              onCheckedChange={(v) => updateConnections({ mcpBridge: v })}
+            />
+          </div>
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.connections.bridgeIdleTtl.label")}
+          prefId="connections.bridgeIdleTtlSecs"
+          description={t("settings.connections.bridgeIdleTtl.desc")}
+          htmlFor="prefs-conn-bridge-ttl"
+        >
+          <Input
+            id="prefs-conn-bridge-ttl"
+            type="number"
+            min={0}
+            max={86400}
+            step={30}
+            value={connections.bridgeIdleTtlSecs}
+            onChange={(e) =>
+              numeric(
+                (n) => updateConnections({ bridgeIdleTtlSecs: n }),
+                0,
+                86400,
+              )(e.target.value)
+            }
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+      </PrefGroup>
 
       <p className="pt-3 text-2xs leading-relaxed text-muted-foreground">
         {t("settings.connections.footnote")}

@@ -26,6 +26,8 @@ import i18n from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { debounce } from "@/lib/schedule";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { withDefaults } from "@/lib/prefDefaults";
+import type { PrefId } from "@/lib/prefId";
 import type {
   AiPrefs,
   ConnectionPrefs,
@@ -39,7 +41,7 @@ import type {
   UiPrefs,
 } from "@/types";
 
-const DEFAULT_PREFS: Preferences = {
+export const DEFAULT_PREFS: Preferences = {
   version: 1,
   editor: {
     fontFamily: "JetBrains Mono",
@@ -184,6 +186,13 @@ interface PreferencesState {
   updateKeybindings: (patch: Record<string, string[] | undefined>) => void;
   /** Drop every override at once, so all actions fall back to `ACTIONS`. */
   resetKeybindings: () => void;
+  /**
+   * Put the listed settings back to their defaults — the Preferences dialog's
+   * per-row and per-section reset. Ids that have no reset (`lib/prefDefaults.ts`
+   * decides which) or are already at their default are skipped, and nothing is
+   * written when that leaves nothing to do.
+   */
+  resetPrefs: (ids: readonly PrefId[]) => void;
   resetAll: () => void;
   /**
    * Adopt a snapshot that's already persisted elsewhere — the cross-window
@@ -401,6 +410,15 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
   resetKeybindings() {
     set((s) => {
       const next: Preferences = { ...s.prefs, keybindings: {} };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
+  resetPrefs(ids) {
+    set((s) => {
+      const next = withDefaults(s.prefs, DEFAULT_PREFS, ids);
+      if (next === s.prefs) return {};
       save.schedule(next);
       return { prefs: next };
     });

@@ -154,6 +154,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Preferencias se reagrupa, se puede buscar y enseña lo que has cambiado.**
+  El diálogo había crecido hasta catorce secciones en un rail plano, cada
+  una maquetada a su manera. El rail ahora va agrupado —Espacio de trabajo,
+  Datos y compartición, Integraciones, Organización, con Acerca de fijo
+  abajo—, una línea por entrada, y dice lo que antes había que abrir una
+  sección para saber: cuántas conexiones expone el conector MCP y muestrea
+  Pulse, y si el panel de IA está activo. Un buscador arriba encuentra
+  cualquiera de los ~65 ajustes por nombre, descripción o palabra clave (en
+  los dos idiomas, sin importar las tildes); Intro abre la primera
+  coincidencia en su fila, y Escape borra la búsqueda antes de cerrar el
+  diálogo. Todas las secciones abren ahora con la misma cabecera, y las
+  listas largas se dividen en tarjetas con título (Editor en *Tema y
+  tipografía*, *Visualización*, *Formato*; Conexiones en *Límites de pools*,
+  *Actividad y tiempos de espera*, *Conector MCP*; etcétera). Un ajuste que
+  has movido de su valor por defecto lleva un punto y un reset de un clic, la
+  cabecera de la sección los cuenta con un *Restablecer sección* que pide
+  confirmación, y el rail marca las secciones que tienen alguno. Los ajustes
+  del endpoint de IA y el idioma de la interfaz quedan fuera a propósito:
+  describen tu instalación, no un retoque, y «restablecer» apuntaría el panel
+  a otro servidor o te pasaría al inglés. Los rails de los editores de
+  orígenes compartidos y de política adoptan el mismo estilo de entrada, ya
+  que los tres comparten componente.
+
 - **Ahora todos los botones tienen un borde visible.** Los botones de icono de
   las barras y los botones `ghost` no se veían hasta pasar el ratón por
   encima, así que una acción como Refrescar o Exportar parecía un icono suelto

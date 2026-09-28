@@ -39,6 +39,7 @@ import {
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import type { ConnectionProfile } from "@/types";
+import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 import { PulseConnectionTree } from "./PulseConnectionTree";
 
@@ -131,7 +132,7 @@ export function PulseSection() {
         {t("settings.pulse.intro")}
       </p>
 
-      <div className="space-y-1">
+      <PrefGroup title={t("settings.rowGroups.sampling")}>
         <PrefRow
           label={t("settings.pulse.historyIntervalSecs.label")}
           prefId="pulse.historyIntervalSecs"
@@ -212,7 +213,7 @@ export function PulseSection() {
             onCheckedChange={(v) => updatePulse({ sampleWhenMinimized: v })}
           />
         </PrefRow>
-      </div>
+      </PrefGroup>
 
       <div>
         <div className="mb-1 flex items-center justify-between gap-2">
