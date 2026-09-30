@@ -86,6 +86,15 @@ db.orders.find({ status: "open", total: { $gt: 100 } }).sort({ createdAt: -1 }).
 - **BSON constructors**: `ObjectId(…)`, `ISODate(…)` / `new Date(…)`,
   `NumberLong/Int/Double/Decimal(…)`.
 
+**Several statements in one script.** As in `mongosh`, the `;` is optional: end a
+statement with one, or just start the next call on a new line. Each statement
+gets its own result tab (`#1`, `#2`, …), including calls that return a single
+value such as three `countDocuments`. A `.sort(…)` / `.limit(…)` that starts a
+line continues the statement above it, and a line break inside an open `(`, `[`
+or `{` does not end anything. Outside the editor's batch run — MCP `run_query`,
+the AI panel — a call takes exactly one statement and refuses trailing text
+instead of silently running only the first.
+
 It is deliberately **not** a JavaScript engine. There are no variables, no
 expressions, no `for` loops. Anything outside the grammar — an unknown method, a
 JS expression — is refused with a clear error rather than half-parsed into

@@ -263,9 +263,8 @@ pub fn parse_relaxed_value(input: &str) -> AppResult<Bson> {
 /// stopping it from running. Hand-written notes are the general case, and
 /// `Ctrl+/` in that tab inserts exactly this.
 ///
-/// Trailing trivia needs no equivalent: [`finish`] stops at the first thing
-/// that is not a chained `.modifier(`, so anything after the statement is
-/// already ignored.
+/// Trailing trivia needs no equivalent: [`finish`] skips comments and a `;`
+/// after the statement, and refuses anything else rather than ignoring it.
 fn strip_leading_trivia(sql: &str) -> &str {
     let mut rest = sql.trim_start();
     loop {
@@ -391,6 +390,25 @@ fn finish(collection: String, method: &str, args_and_tail: &str) -> AppResult<Pa
                 )))
             }
         }
+    }
+
+    // Nothing may follow the statement but trivia and a `;`. The loop above
+    // stops at the first thing that is not a `.modifier(`, and what used to
+    // come next was simply never read: `db.a.count({})` followed by
+    // `db.b.count({})` ran the first and reported success, with no sign that
+    // the second had been dropped. Callers that run several statements split
+    // them first (`execute_batch`), so a leftover here is one that was meant to
+    // run and would not have.
+    p.skip_ws();
+    p.eat(';');
+    p.skip_ws();
+    if p.peek().is_some() {
+        let tail: String = p.chars[p.pos..].chars().take(40).collect();
+        return Err(AppError::InvalidInput(format!(
+            "unexpected text after the statement: `{}` — separate statements with `;` or a \
+             line break and run them as a batch",
+            tail.trim_end()
+        )));
     }
 
     let op = build_op(method, args, mods)?;
@@ -1492,6 +1510,36 @@ db.users.find({});
             // here so a future trailing-trim never has to be re-derived.
             assert_eq!(collection_of("db.users.find({}) // and this"), "users");
             assert_eq!(collection_of("db.users.find({}); // and this"), "users");
+        }
+
+        #[test]
+        fn a_second_statement_is_refused_rather_than_silently_dropped() {
+            // Only the first used to run, and the result looked like success.
+            for src in [
+                "db.a.countDocuments({})\ndb.b.countDocuments({})",
+                "db.a.countDocuments({}); db.b.countDocuments({})",
+                "db.a.find({}).limit(1)\ndb.b.find({})",
+            ] {
+                let err = parse(src).expect_err(src).to_string();
+                assert!(err.contains("unexpected text after the statement"), "{err}");
+                assert!(err.contains("db.b"), "{err}");
+            }
+        }
+
+        #[test]
+        fn trivia_and_a_terminator_after_the_statement_are_still_fine() {
+            assert_eq!(collection_of("db.users.find({});"), "users");
+            assert_eq!(collection_of("db.users.find({});\n"), "users");
+            assert_eq!(collection_of("db.users.find({}) /* done */"), "users");
+            assert_eq!(
+                collection_of("db.users.find({}); // and this\n// more"),
+                "users"
+            );
+            // A chained modifier on the next line is still the same statement.
+            assert_eq!(
+                collection_of("db.users.find({})\n  .sort({ a: 1 })\n  .limit(2)"),
+                "users"
+            );
         }
 
         #[test]
