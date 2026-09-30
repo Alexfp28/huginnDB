@@ -184,8 +184,17 @@ your stable install (see `docs/CANARY.md` in the repository).
 
 Environments belong to the main window. **Window → New window** opens a
 deliberately ephemeral instance: it never writes session state, so closing it
-loses its tabs by design, and the environment switcher doesn't appear there.
-Switching in the main window doesn't disturb an open secondary one.
+loses its tabs by design. Switching in the main window doesn't disturb an open
+secondary one.
+
+To keep working in your current environment and open another beside it,
+right-click that environment in the rail and choose **Open environment in new
+window**. The new window shows that environment's connections and database
+filters and reconnects the connections it had open (reusing a pool the main
+window already has, so nothing is opened twice). Tabs and pane layout are not
+carried over — they belong to the main window — and nothing the new window does
+changes which environment the main window is in or what gets reopened at
+launch.
 
 ## Practical notes
 

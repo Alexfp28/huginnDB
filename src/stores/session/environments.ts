@@ -168,6 +168,24 @@ interface EnvironmentsState {
 
   load: () => Promise<void>;
   switchTo: (id: string) => Promise<void>;
+  /**
+   * Start this (secondary) window inside environment `id`, ready to use: point
+   * its view filters at that environment and open the connections it had open.
+   *
+   * What "Open environment in new window" hands a fresh window. `switchTo`
+   * alone would leave a tree filtered to the right connections and none of them
+   * connected, because a window shows as active only what *it* opened — pools
+   * are shared per process, but each window's `active` set is its own. The
+   * connect step reuses an existing pool where the main window already has one
+   * open, so it costs no second endpoint reservation.
+   *
+   * Main-window no-op: the main window enters an environment through
+   * `switchTo`, which owns the tab/layout hand-over. An unknown id (the
+   * environment was deleted between the click and the window's boot) leaves the
+   * window as a plain blank one. Nothing is written — every persistence path
+   * stays behind `isMainWindow()` (gotcha #8).
+   */
+  enterInThisWindow: (id: string) => Promise<void>;
   create: (env: {
     name: string;
     color?: string | null;
@@ -441,6 +459,34 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     ) {
       useTabs.getState().setActive(launch.activeTabId);
     }
+  },
+
+  enterInThisWindow: async (id) => {
+    if (isMainWindow()) return;
+    await get().switchTo(id);
+    const env = get().environments.find((e) => e.id === id);
+    if (!env || get().activeId !== id) return;
+    const wanted = env.launch?.activeConnections ?? [];
+    if (wanted.length === 0) return;
+    // Same filter as `reconnectIncomingEnvironment`: only ids that still have a
+    // profile, and nothing already live in this window.
+    await useConnections.getState().refresh();
+    const { profiles, active } = useConnections.getState();
+    const toConnect = wanted.filter(
+      (cid) => profiles.some((p) => p.id === cid) && !active.has(cid),
+    );
+    // Failures are per connection and never block the rest; `connect` already
+    // surfaces a missing password or a refused login on its own.
+    await Promise.allSettled(
+      toConnect.map((cid) =>
+        useConnections
+          .getState()
+          .connect(cid)
+          .catch((e) => {
+            console.warn(`[environments] connect failed for ${cid}`, e);
+          }),
+      ),
+    );
   },
 
   switchTo: async (id) => {

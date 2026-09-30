@@ -228,7 +228,7 @@ fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
         // `open_new_window` is async on purpose (gotcha #19: building a
         // `WebviewWindow` from a synchronous context deadlocks WebView2).
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = commands::connection::open_new_window(app, None).await {
+            if let Err(e) = commands::connection::open_new_window(app, None, None).await {
                 eprintln!("[jump-list] could not open a new window: {e}");
             }
         });
@@ -411,6 +411,7 @@ pub fn run() {
             commands::connection::get_startup_args,
             commands::connection::take_pending_cli_connect,
             commands::connection::open_new_window,
+            commands::connection::take_window_environment_intent,
             commands::connection::take_window_startup_intent,
             commands::connection::open_tab_window,
             commands::connection::take_detached_tab_intent,

@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Open an environment in a new window (#219).** Right-click an environment in
+  the rail and choose *Open environment in new window* to work in it beside your
+  current one instead of switching away from a layout you have just arranged.
+  The new window shows that environment's connections and database filters and
+  reconnects the connections it had open, reusing a pool the main window already
+  has. It stays ephemeral like any other secondary window: tabs and layout are
+  not carried over, nothing is written, and the main window's environment and
+  what it reopens at launch are untouched.
+
 ## [1.30.0] — 2026-09-28
 
 ### Added

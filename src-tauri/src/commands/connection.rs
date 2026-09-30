@@ -2081,7 +2081,14 @@ pub fn take_pending_cli_connect(state: State<'_, AppState>) -> AppResult<Option<
 /// Open a new, blank HuginnDB window ("New window"). Optionally carries a
 /// connection `intent` (e.g. from the CLI second-launch dialog choosing
 /// "new window") for the new window's frontend to pick up on boot via
-/// [`take_window_startup_intent`].
+/// [`take_window_startup_intent`], and an `environment_id` ("Open environment
+/// in new window") for it to pick up via [`take_window_environment_intent`].
+///
+/// The environment id is stored, not validated: the window resolves it against
+/// `list_environments` and ignores one that no longer exists, so an environment
+/// deleted between the click and the window's boot degrades to a plain blank
+/// window rather than an error. Nothing about it is persisted — the window
+/// holds the environment purely in memory (gotcha #8).
 ///
 /// Secondary windows are intentionally ephemeral: they never touch
 /// `tab_state.json` (see `commands::prefs::get_tab_state`), so nothing about
@@ -2096,13 +2103,23 @@ pub fn take_pending_cli_connect(state: State<'_, AppState>) -> AppResult<Option<
 /// window blank — `async fn` is the actual fix). See
 /// <https://github.com/tauri-apps/tauri/issues/13963>.
 #[tauri::command]
-pub async fn open_new_window(app: AppHandle, intent: Option<StartupArgs>) -> AppResult<String> {
+pub async fn open_new_window(
+    app: AppHandle,
+    intent: Option<StartupArgs>,
+    environment_id: Option<String>,
+) -> AppResult<String> {
     let label = format!("win-{}", Uuid::new_v4());
     if let Some(args) = intent {
         app.state::<AppState>()
             .window_startup_intents
             .write()
             .insert(label.clone(), args);
+    }
+    if let Some(id) = environment_id {
+        app.state::<AppState>()
+            .window_environment_intents
+            .write()
+            .insert(label.clone(), id);
     }
     crate::window_chrome::builder(&app, &label)
         .title("HuginnDB")
@@ -2130,6 +2147,17 @@ pub fn take_window_startup_intent(
     label: String,
 ) -> AppResult<Option<StartupArgs>> {
     Ok(state.window_startup_intents.write().remove(&label))
+}
+
+/// Drain the environment id stashed for `label` by [`open_new_window`]. Called
+/// once by a secondary window's frontend on boot, after the environment store
+/// has loaded.
+#[tauri::command]
+pub fn take_window_environment_intent(
+    state: State<'_, AppState>,
+    label: String,
+) -> AppResult<Option<String>> {
+    Ok(state.window_environment_intents.write().remove(&label))
 }
 
 /// Pop a single workspace tab out into its own bare OS window (the "sacar

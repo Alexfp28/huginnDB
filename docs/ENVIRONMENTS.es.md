@@ -193,9 +193,17 @@ en el repositorio).
 
 Los entornos pertenecen a la ventana principal. **Ventana → Nueva ventana** abre
 una instancia deliberadamente efímera: nunca escribe estado de sesión, así que al
-cerrarla pierde sus pestañas por diseño, y el selector de entornos no aparece
-ahí. Cambiar de entorno en la ventana principal no molesta a una secundaria
-abierta.
+cerrarla pierde sus pestañas por diseño. Cambiar de entorno en la ventana
+principal no molesta a una secundaria abierta.
+
+Para seguir trabajando en tu entorno actual y abrir otro al lado, haz clic
+derecho en ese entorno del rail y elige **Abrir entorno en una ventana nueva**.
+La ventana nueva muestra las conexiones y los filtros de base de datos de ese
+entorno y reconecta las conexiones que tenía abiertas (reutilizando un pool que
+la ventana principal ya tenga, así que nada se abre dos veces). Las pestañas y la
+disposición de paneles no se trasladan — pertenecen a la ventana principal — y
+nada de lo que haga la ventana nueva cambia en qué entorno está la principal ni
+qué se reabre al arrancar.
 
 ## Notas prácticas
 
