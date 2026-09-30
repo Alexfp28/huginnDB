@@ -81,17 +81,10 @@ import {
 } from "@/components/grid/QueryPanel";
 import { GoToRowInput } from "@/components/grid/GoToRowInput";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
+import { DeleteRowsDialog } from "@/components/grid/dialogs/DeleteRowsDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -950,7 +943,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     if (usePreferences.getState().prefs.ui.confirmDestructive) {
       setPendingDelete({ pkValueRows });
     } else {
-      void runDelete(pkValueRows);
+      void runDelete(pkValueRows).catch((e: unknown) =>
+        notify.error(t("tableData.deleteFailedTitle"), {
+          description: String(e),
+        }),
+      );
     }
   }
 
@@ -972,27 +969,20 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
   }
 
-  /** Actually perform the bulk delete and refresh the page. */
+  /** Actually perform the bulk delete and refresh the page. Rejects when the
+   *  server refuses: the confirmation dialog says why in place, and with
+   *  `ui.confirmDestructive` off (no dialog) `requestDelete` raises a toast. */
   async function runDelete(pkValueRows: CellValue[][]) {
     if (pkColumns.length === 0) return;
-    try {
-      await api.deleteRows({
-        connectionId,
-        schema,
-        table,
-        pkColumns: pkColumns.map((c) => c.name),
-        pkValueRows,
-      });
-      setPendingDelete(null);
-      await reloadAll();
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  function confirmDelete() {
-    if (!pendingDelete) return;
-    void runDelete(pendingDelete.pkValueRows);
+    await api.deleteRows({
+      connectionId,
+      schema,
+      table,
+      pkColumns: pkColumns.map((c) => c.name),
+      pkValueRows,
+    });
+    setPendingDelete(null);
+    await reloadAll();
   }
 
   /**
@@ -1934,65 +1924,17 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         )}
       </div>
 
-      {/* Confirm-delete dialog */}
-      <Dialog
-        open={!!pendingDelete}
-        onOpenChange={(open) => !open && setPendingDelete(null)}
-      >
-        <DialogContent tier="prompt">
-          <DialogHeader>
-            <DialogTitle className="text-sm">
-              {(pendingDelete?.pkValueRows.length ?? 0) > 1
-                ? t("tableData.deleteRowsTitle", {
-                    count: pendingDelete?.pkValueRows.length,
-                  })
-                : t("tableData.deleteRowTitle")}
-            </DialogTitle>
-          </DialogHeader>
-          <DialogBody>
-            {(pendingDelete?.pkValueRows.length ?? 0) > 1 ? (
-              <p className="text-xs text-muted-foreground">
-                {t("tableData.deleteRowsBodyLead", {
-                  count: pendingDelete?.pkValueRows.length,
-                })}{" "}
-                <span className="font-mono">
-                  {schema ? `${schema}.` : ""}
-                  {table}
-                </span>
-                {t("tableData.deleteBodyTrail")}
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {t("tableData.deleteRowBodyLead")}{" "}
-                <span className="font-mono">
-                  {schema ? `${schema}.` : ""}
-                  {table}
-                </span>{" "}
-                {t("tableData.deleteBodyWhere")}{" "}
-                <span className="font-mono">
-                  {pkColumns
-                    .map(
-                      (c, i) =>
-                        `${c.name} = ${String(
-                          pendingDelete?.pkValueRows[0]?.[i] ?? "",
-                        )}`,
-                    )
-                    .join(" AND ")}
-                </span>
-                {t("tableData.deleteBodyTrail")}
-              </p>
-            )}
-          </DialogBody>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              {t("common.cancel")}
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              {t("tableData.delete")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {pendingDelete && (
+        <DeleteRowsDialog
+          connectionId={connectionId}
+          schema={schema}
+          table={table}
+          pkColumns={pkColumns.map((c) => c.name)}
+          pkValueRows={pendingDelete.pkValueRows}
+          onDelete={() => runDelete(pendingDelete.pkValueRows)}
+          onClose={() => setPendingDelete(null)}
+        />
+      )}
 
       {bulkUpdateOpen && (
         <BulkUpdateDialog

@@ -8,6 +8,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Eliminar una fila que otras tablas siguen referenciando ahora lo dice en el
+  propio diálogo que la pidió (#218).** El rechazo caía en la franja sobre la
+  cuadrícula, oculto tras el velo de la confirmación, así que el clic parecía no
+  hacer nada. Ahora el diálogo sigue abierto con el motivo y —cuando la causa es
+  una clave foránea— nombra las tablas que aún apuntan a la fila, y el botón
+  vuelve a poder usarse. Con «confirmar acciones destructivas» desactivado, el
+  fallo sale como aviso en vez de en esa franja, que queda solo para errores de
+  carga.
+
 ## [1.30.0] — 2026-09-28
 
 ### Añadido

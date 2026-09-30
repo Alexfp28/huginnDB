@@ -353,3 +353,24 @@ const EXPORT_CANCELLED_TAG = "export cancelled";
 export function isExportCancelled(error: unknown): boolean {
   return String(error).toLowerCase().includes(EXPORT_CANCELLED_TAG);
 }
+
+/**
+ * Whether `error` is a server refusing a change because another table's
+ * foreign key still points at the row.
+ *
+ * Unlike the markers above this one is not a tag the backend prefixes: it is
+ * the drivers' own wording, which `AppError` passes through untouched — MySQL's
+ * "a foreign key constraint fails", Postgres's "violates foreign key
+ * constraint", SQLite's "FOREIGN KEY constraint failed" and SQL Server's
+ * "conflicted with the REFERENCE constraint". Matching on text keeps the
+ * backend error type (and what the MCP tools return) unchanged; the price is
+ * that a driver rewording it would silently fall back to the generic message,
+ * which still carries the server's full text.
+ */
+export function isForeignKeyViolation(error: unknown): boolean {
+  const text = String(error).toLowerCase();
+  return (
+    text.includes("foreign key constraint") ||
+    text.includes("reference constraint")
+  );
+}
