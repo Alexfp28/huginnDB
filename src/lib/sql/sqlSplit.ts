@@ -33,6 +33,12 @@
  * bookkeeping, the empty-statement filter — is shared, because it is the same
  * problem.
  *
+ * One rule is added rather than swapped: mongosh makes the semicolon optional,
+ * so `"mongo"` also ends a statement at a line break, when no bracket is open,
+ * the line does not end in `.` or `,`, and the next thing is not a leading-dot
+ * `.modifier(`. Without it a script of one call per line was one statement, the
+ * tab took the single-statement path and only the first call ever ran (#220).
+ *
  * This stays a **lexer**, not a parser (gotcha #33): it recognises the spans
  * a `;` may not be read inside, and nothing about what the statements mean.
  */
@@ -65,6 +71,12 @@ interface DialectRules {
   doubledQuoteEscape: boolean;
   /** `\` escapes the next character inside a string. */
   backslashEscape: boolean;
+  /**
+   * A statement may end at a line break instead of a `;`. mongosh makes the
+   * semicolon optional, so a script of one call per line is a script of
+   * several statements — see the newline rule in `splitSql`.
+   */
+  implicitBoundaries: boolean;
 }
 
 const DIALECTS: Record<SqlDialect, DialectRules> = {
@@ -74,6 +86,7 @@ const DIALECTS: Record<SqlDialect, DialectRules> = {
     dollarQuoting: true,
     doubledQuoteEscape: true,
     backslashEscape: false,
+    implicitBoundaries: false,
   },
   mongo: {
     lineComment: "//",
@@ -81,6 +94,7 @@ const DIALECTS: Record<SqlDialect, DialectRules> = {
     dollarQuoting: false,
     doubledQuoteEscape: false,
     backslashEscape: true,
+    implicitBoundaries: true,
   },
 };
 
@@ -114,6 +128,33 @@ function readDollarTag(source: string, pos: number): string | null {
   return null;
 }
 
+/**
+ * Index of the first character at or after `from` that is neither whitespace
+ * nor a comment, or `-1` when only trivia is left.
+ */
+function nextSignificant(
+  source: string,
+  from: number,
+  lineComment: string,
+): number {
+  let i = from;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === " " || ch === "\t" || ch === "\r" || ch === "\n") {
+      i++;
+    } else if (source.startsWith(lineComment, i)) {
+      while (i < source.length && source[i] !== "\n") i++;
+    } else if (source.startsWith("/*", i)) {
+      const close = source.indexOf("*/", i + 2);
+      if (close < 0) return -1;
+      i = close + 2;
+    } else {
+      return i;
+    }
+  }
+  return -1;
+}
+
 export function splitSql(
   source: string,
   dialect: SqlDialect = "sql",
@@ -135,6 +176,35 @@ export function splitSql(
   let stmtStart = -1;
   let stmtStartLine = 1;
   let stmtStartColumn = 1;
+
+  /** Open `(` `[` `{` of the current statement (`implicitBoundaries` only). */
+  let depth = 0;
+  /** Last significant character seen in default mode, for the same rule. */
+  let lastSignificant = "";
+
+  /**
+   * The line break at `i` ends the statement when nothing is left open, the
+   * line does not end mid-expression, and the next thing is not a chained
+   * `.modifier(`. `db.users.find({})` and `.sort({a: 1})` on the next line stay
+   * one statement; `db.a.count()` and `db.b.count()` do not.
+   *
+   * Called from two places because a line break is read in two modes: in
+   * default mode, and as the end of a `// …` comment — `db.a.count() // note`
+   * is the common shape, and its break never reaches the default branch.
+   */
+  function endStatementAtLineBreak(i: number) {
+    if (
+      !rules.implicitBoundaries ||
+      stmtStart < 0 ||
+      depth !== 0 ||
+      lastSignificant === "." ||
+      lastSignificant === ","
+    ) {
+      return;
+    }
+    const nx = nextSignificant(source, i + 1, rules.lineComment);
+    if (nx >= 0 && source[nx] !== ".") commit(i, line, column);
+  }
 
   function commit(endIdx: number, endLineV: number, endColumnV: number) {
     if (stmtStart < 0) return;
@@ -208,6 +278,7 @@ export function splitSql(
       }
     } else if (mode === "line-comment") {
       if (ch === "\n") {
+        endStatementAtLineBreak(i);
         mode = "default";
         line++;
         column = 1;
@@ -255,7 +326,18 @@ export function splitSql(
         stmtStartColumn = column;
       }
 
+      if (rules.implicitBoundaries) {
+        if (ch === "(" || ch === "[" || ch === "{") depth++;
+        else if (ch === ")" || ch === "]" || ch === "}")
+          depth = Math.max(0, depth - 1);
+        if (!isWs && !isLineCommentOpen && !isBlockCommentOpen) {
+          lastSignificant = ch;
+        }
+        if (ch === "\n") endStatementAtLineBreak(i);
+      }
+
       if (ch === ";") {
+        depth = 0;
         // `i + 1` is one past the `;`; column has not yet advanced for
         // the semicolon, so the end column is `column + 1`.
         commit(i + 1, line, column + 1);

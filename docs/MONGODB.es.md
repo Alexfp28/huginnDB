@@ -94,6 +94,16 @@ db.orders.find({ status: "open", total: { $gt: 100 } }).sort({ createdAt: -1 }).
 - **Constructores BSON**: `ObjectId(…)`, `ISODate(…)` / `new Date(…)`,
   `NumberLong/Int/Double/Decimal(…)`.
 
+**Varias sentencias en un script.** Igual que en `mongosh`, el `;` es opcional:
+termina una sentencia con uno, o empieza la siguiente llamada en una línea
+nueva. Cada sentencia tiene su propia pestaña de resultado (`#1`, `#2`, …),
+también las llamadas que devuelven un solo valor, como tres `countDocuments`.
+Un `.sort(…)` / `.limit(…)` que empieza una línea continúa la sentencia de
+arriba, y un salto de línea dentro de un `(`, `[` o `{` abierto no termina
+nada. Fuera de la ejecución por lotes del editor — `run_query` por MCP, el
+panel de IA — una llamada admite exactamente una sentencia y rechaza el texto
+sobrante en vez de ejecutar en silencio solo la primera.
+
 Deliberadamente **no** es un motor de JavaScript. No hay variables, ni
 expresiones, ni bucles `for`. Todo lo que quede fuera de la gramática — un método
 desconocido, una expresión JS — se rechaza con un error claro en vez de

@@ -226,6 +226,75 @@ describe("splitSql mongo dialect", () => {
     expect(mongoTexts("/* a; b */ db.c.find({});")).toEqual(["db.c.find({});"]);
   });
 
+  describe("statements separated by a line break alone (#220)", () => {
+    it("splits one call per line, as mongosh runs them", () => {
+      // Three counts with no `;` used to be one statement, so the tab took the
+      // single-statement path and only the first ever ran.
+      expect(
+        mongoTexts(
+          "db.a.countDocuments({})\ndb.b.countDocuments({})\ndb.c.count({})",
+        ),
+      ).toEqual([
+        "db.a.countDocuments({})",
+        "db.b.countDocuments({})",
+        "db.c.count({})",
+      ]);
+    });
+
+    it("keeps a leading-dot modifier on the next line with its statement", () => {
+      expect(
+        mongoTexts("db.users.find({})\n  .sort({ a: 1 })\n  .limit(5)\ndb.b.count({})"),
+      ).toEqual(["db.users.find({})\n  .sort({ a: 1 })\n  .limit(5)", "db.b.count({})"]);
+    });
+
+    it("does not split inside an open bracket", () => {
+      const multiline = "db.users.find({\n  a: 1,\n  b: { $gt: 2 },\n})";
+      expect(mongoTexts(`${multiline}\ndb.b.count({})`)).toEqual([
+        multiline,
+        "db.b.count({})",
+      ]);
+    });
+
+    it("does not split after a line that ends mid-expression", () => {
+      expect(mongoTexts("db.users.\nfind({})")).toEqual(["db.users.\nfind({})"]);
+    });
+
+    it("treats comments between statements as trivia, not statements", () => {
+      expect(
+        mongoTexts("db.a.count({}) // first\n// note\n/* block */\ndb.b.count({})"),
+      ).toEqual(["db.a.count({}) // first", "db.b.count({})"]);
+    });
+
+    it("keeps a trailing comment-only tail with its statement", () => {
+      expect(mongoTexts("db.a.count({})\n// nothing follows")).toEqual([
+        "db.a.count({})\n// nothing follows",
+      ]);
+    });
+
+    it("still splits on `;` and mixes with line breaks", () => {
+      expect(
+        mongoTexts("db.a.count({}); db.b.count({})\ndb.c.count({});\n"),
+      ).toEqual(["db.a.count({});", "db.b.count({})", "db.c.count({});"]);
+    });
+
+    it("ignores brackets and line breaks inside strings", () => {
+      const src = 'db.c.find({ a: "x)\\ny" })\ndb.d.count({})';
+      expect(mongoTexts(src)).toEqual(['db.c.find({ a: "x)\\ny" })', "db.d.count({})"]);
+    });
+
+    it("gives each statement its own position for the per-statement lens", () => {
+      const parts = splitSql("db.a.count({})\ndb.b.count({})", "mongo");
+      expect(parts.map((p) => [p.startLine, p.endLine])).toEqual([
+        [1, 1],
+        [2, 2],
+      ]);
+    });
+
+    it("leaves SQL alone: a line break is not a boundary there", () => {
+      expect(texts("SELECT 1\nSELECT 2;")).toEqual(["SELECT 1\nSELECT 2;"]);
+    });
+  });
+
   it("leaves the SQL dialect untouched", () => {
     // The same `//` is not a comment in SQL, and `--` still is.
     expect(texts("SELECT 1 // 2;")).toEqual(["SELECT 1 // 2;"]);
