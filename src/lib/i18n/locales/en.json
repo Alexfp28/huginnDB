@@ -2549,6 +2549,27 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_31_0": {
+        "tagline": "Work in two environments at once, deleting a row tells you why it was refused, and a MongoDB script with one call per line finally runs every call.",
+        "items": {
+          "environmentNewWindow": {
+            "title": "Open an environment in a new window",
+            "body": "Right-click an environment in the rail and choose Open environment in new window to work in it beside your current one, without leaving the layout you just arranged. It reconnects that environment's connections and writes nothing."
+          },
+          "deleteRowReason": {
+            "title": "Deleting a row explains a refusal",
+            "body": "When other tables still reference the row, the confirmation stays open with the reason and names the tables that point at it, instead of the click seeming to do nothing."
+          },
+          "mongoLinePerStatement": {
+            "title": "One MongoDB call per line, each with its own result",
+            "body": "As in mongosh, the semicolon is optional: a line break ends a statement when nothing is left open. Three countDocuments on three lines now give three result tabs and three Run lenses instead of one."
+          },
+          "mongoTrailingRefused": {
+            "title": "Extra statements are refused, not dropped",
+            "body": "Through MCP run_query and the AI panel, a statement followed by another used to run the first and report success. It now fails with an error, so nothing is silently skipped."
+          }
+        }
+      },
       "1_30_0": {
         "tagline": "HuginnDB keeps itself up to date, and so does the MCP connector your AI tool uses — installed once, with nothing to do per computer after that. Plus one title bar instead of two.",
         "items": {

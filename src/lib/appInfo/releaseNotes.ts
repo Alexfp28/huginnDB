@@ -23,6 +23,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  AppWindow,
   ArrowUpDown,
   Bell,
   Bot,
@@ -45,6 +46,7 @@ import {
   KeyRound,
   Layers,
   LayoutList,
+  ListChecks,
   ListFilter,
   ListTree,
   Package,
@@ -58,6 +60,7 @@ import {
   Server,
   Settings2,
   Share2,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   SquareTerminal,
@@ -65,6 +68,7 @@ import {
   Tags,
   Target,
   Timer,
+  Trash2,
   Wand2,
 } from "lucide-react";
 
@@ -96,6 +100,33 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.31.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_31_0.tagline",
+    highlights: [
+      {
+        icon: AppWindow,
+        titleKey: "whatsNew.releases.1_31_0.items.environmentNewWindow.title",
+        bodyKey: "whatsNew.releases.1_31_0.items.environmentNewWindow.body",
+      },
+      {
+        icon: Trash2,
+        titleKey: "whatsNew.releases.1_31_0.items.deleteRowReason.title",
+        bodyKey: "whatsNew.releases.1_31_0.items.deleteRowReason.body",
+      },
+      {
+        icon: ListChecks,
+        titleKey: "whatsNew.releases.1_31_0.items.mongoLinePerStatement.title",
+        bodyKey: "whatsNew.releases.1_31_0.items.mongoLinePerStatement.body",
+      },
+      {
+        icon: ShieldAlert,
+        titleKey: "whatsNew.releases.1_31_0.items.mongoTrailingRefused.title",
+        bodyKey: "whatsNew.releases.1_31_0.items.mongoTrailingRefused.body",
+      },
+    ],
+  },
   {
     version: "1.30.0",
     major: true,

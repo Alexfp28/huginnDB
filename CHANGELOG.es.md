@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.31.0] — 2026-10-01
+
 ### Añadido
 
 - **Abrir un entorno en una ventana nueva (#219).** Haz clic derecho en un

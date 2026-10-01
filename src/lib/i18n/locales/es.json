@@ -2549,6 +2549,27 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_31_0": {
+        "tagline": "Trabaja en dos entornos a la vez, eliminar una fila te dice por qué se rechazó, y un script de MongoDB con una llamada por línea ejecuta por fin todas las llamadas.",
+        "items": {
+          "environmentNewWindow": {
+            "title": "Abre un entorno en una ventana nueva",
+            "body": "Clic derecho en un entorno del rail y elige Abrir entorno en una ventana nueva para trabajar en él junto al actual, sin salir de la disposición que acabas de preparar. Reconecta las conexiones de ese entorno y no escribe nada."
+          },
+          "deleteRowReason": {
+            "title": "Eliminar una fila explica el rechazo",
+            "body": "Cuando otras tablas siguen referenciando la fila, la confirmación se queda abierta con el motivo y nombra las tablas que apuntan a ella, en vez de que el clic parezca no hacer nada."
+          },
+          "mongoLinePerStatement": {
+            "title": "Una llamada de MongoDB por línea, cada una con su resultado",
+            "body": "Igual que en mongosh, el punto y coma es opcional: un salto de línea termina la sentencia cuando no queda nada abierto. Tres countDocuments en tres líneas dan ahora tres pestañas de resultado y tres Run, en vez de una."
+          },
+          "mongoTrailingRefused": {
+            "title": "Las sentencias sobrantes se rechazan, no se descartan",
+            "body": "Por MCP run_query y en el panel de IA, una sentencia seguida de otra ejecutaba la primera y daba el resultado por bueno. Ahora falla con un error, así que nada se salta en silencio."
+          }
+        }
+      },
       "1_30_0": {
         "tagline": "HuginnDB se mantiene al día solo, y con él el conector MCP que usa tu herramienta de IA: se instala una vez y después no hay nada que hacer en cada equipo. Además, una sola barra de título en vez de dos.",
         "items": {
