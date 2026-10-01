@@ -753,6 +753,12 @@
     "deleteBodyWhere": "donde",
     "deleteBodyTrail": ". Esto no se puede deshacer.",
     "delete": "Eliminar",
+    "deleting": "Eliminando…",
+    "deleteFailed": "No se pudo eliminar: {{message}}",
+    "deleteFailedTitle": "No se pudieron eliminar las filas",
+    "deleteBlockedByReference": "Esta fila sigue referenciada desde otras tablas, así que la base de datos no la elimina. Elimina o cambia antes las filas que la referencian. ({{message}})",
+    "referencedBy_one": "Referenciada por 1 clave foránea:",
+    "referencedBy_other": "Referenciada por {{count}} claves foráneas:",
     "query": {
       "title": "Consulta",
       "open": "Mostrar la consulta",
