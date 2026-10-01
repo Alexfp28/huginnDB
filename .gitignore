@@ -51,5 +51,7 @@ sample-data
 .env
 .env.local
 
-# Claude Code local settings
-.claude/
+# Claude Code local settings. Everything under .claude/ stays local except
+# the project skills, which are shared tooling (e.g. skills/release).
+.claude/*
+!.claude/skills/
