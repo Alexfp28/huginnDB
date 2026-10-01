@@ -310,6 +310,7 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("connection::import_profiles", "none"),
     ("connection::list_profiles", "none"),
     ("connection::open_new_window", "none"),
+    ("connection::take_window_environment_intent", "none"),
     ("connection::open_pulse_window", "none"),
     ("connection::open_tab_window", "none"),
     ("connection::release_idle_pools", "none"),

@@ -42,6 +42,7 @@
     "create": "Nuevo entorno…",
     "createTitle": "Nuevo entorno",
     "rename": "Renombrar",
+    "openInNewWindow": "Abrir entorno en una ventana nueva",
     "renameTitle": "Renombrar entorno",
     "imageUpload": "Subir una imagen…",
     "imageReplace": "Cambiar la imagen…",

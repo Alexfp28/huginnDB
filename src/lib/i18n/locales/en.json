@@ -42,6 +42,7 @@
     "create": "New environment…",
     "createTitle": "New environment",
     "rename": "Rename",
+    "openInNewWindow": "Open environment in new window",
     "renameTitle": "Rename environment",
     "imageUpload": "Upload an image…",
     "imageReplace": "Change the image…",

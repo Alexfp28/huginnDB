@@ -8,6 +8,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Abrir un entorno en una ventana nueva (#219).** Haz clic derecho en un
+  entorno del rail y elige *Abrir entorno en una ventana nueva* para trabajar en
+  él junto al actual, en vez de salirte de una disposición que acabas de
+  preparar. La ventana nueva muestra las conexiones y los filtros de base de
+  datos de ese entorno y reconecta las conexiones que tenía abiertas,
+  reutilizando un pool que la ventana principal ya tenga. Sigue siendo efímera
+  como cualquier ventana secundaria: no se trasladan pestañas ni disposición, no
+  se escribe nada, y el entorno de la ventana principal y lo que reabre al
+  arrancar quedan intactos.
+
 ### Corregido
 
 - **Eliminar una fila que otras tablas siguen referenciando ahora lo dice en el

@@ -173,7 +173,21 @@ export default function App() {
     launchRestoreDone.current = true;
     void (async () => {
       await useEnvironments.getState().load();
-      if (!isMainWindow()) return;
+      if (!isMainWindow()) {
+        // "Open environment in new window": the label's stashed environment id,
+        // if any. After `load()` so the environment list is in the store, and
+        // here rather than in the CLI-intent effect, which starts concurrently
+        // and would race it.
+        try {
+          const envId = await api.takeWindowEnvironmentIntent(
+            getCurrentWindow().label,
+          );
+          if (envId) await useEnvironments.getState().enterInThisWindow(envId);
+        } catch (e) {
+          console.warn("[environments] could not enter the requested environment", e);
+        }
+        return;
+      }
       await useEnvironments.getState().restoreSession();
       // Shared origins: first sweep now, then every few hours. After the session
       // is up so a slow or unreachable share can never delay the workspace.

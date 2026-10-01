@@ -53,6 +53,8 @@ import {
 } from "@/components/ui/context-menu";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/tauri";
+import { notify } from "@/lib/notify";
 import { useEnvironmentEditor } from "@/stores/dialogs/environmentEditor";
 import { useEnvironmentDeleteConfirm } from "@/stores/dialogs/environmentDeleteConfirm";
 import {
@@ -80,7 +82,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { isMainWindow } from "@/lib/window";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { AppWindow, Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -181,6 +183,13 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                       originId: env.originId ?? null,
                     })
                   }
+                  onOpenInNewWindow={() => {
+                    void api.openNewWindow(null, env.id).catch((e) => {
+                      notify.error(t("menu.window.newWindowFailed"), {
+                        description: String(e),
+                      });
+                    });
+                  }}
                   onDelete={() =>
                     openDeleteConfirm(
                       env.id,
@@ -188,6 +197,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                     )
                   }
                   renameLabel={t("environments.rename")}
+                  openInNewWindowLabel={t("environments.openInNewWindow")}
                   deleteLabel={t("environments.delete")}
                 />
               ))}
@@ -331,8 +341,13 @@ interface SortableEnvironmentButtonProps {
   canDelete: boolean;
   onClick: () => void;
   onRename: () => void;
+  /** Open this environment in a new window without leaving the current one.
+   *  Available for every environment, mirrored ones included, and while a
+   *  switch is running: it never touches the session being rebuilt. */
+  onOpenInNewWindow: () => void;
   onDelete: () => void;
   renameLabel: string;
+  openInNewWindowLabel: string;
   deleteLabel: string;
 }
 
@@ -345,8 +360,10 @@ function SortableEnvironmentButton({
   canDelete,
   onClick,
   onRename,
+  onOpenInNewWindow,
   onDelete,
   renameLabel,
+  openInNewWindowLabel,
   deleteLabel,
 }: SortableEnvironmentButtonProps) {
   // See `EnvironmentButton`: disabled is "a switch is running", the spinner is
@@ -443,6 +460,10 @@ function SortableEnvironmentButton({
         <ContextMenuItem onSelect={onRename}>
           <Pencil className="mr-2 h-3.5 w-3.5" />
           {renameLabel}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={onOpenInNewWindow}>
+          <AppWindow className="mr-2 h-3.5 w-3.5" />
+          {openInNewWindowLabel}
         </ContextMenuItem>
         {canDelete && (
           <ContextMenuItem

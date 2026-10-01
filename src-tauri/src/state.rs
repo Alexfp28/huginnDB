@@ -1140,6 +1140,16 @@ pub struct AppState {
     /// `open_pulse_window` and drained exactly once by
     /// `take_pulse_window_intent` when that window's frontend boots.
     pub pulse_window_intents: Arc<RwLock<HashMap<String, String>>>,
+    /// Environment id a freshly-opened secondary window should start on, keyed
+    /// by its Tauri window label ("Open environment in new window"). A plain
+    /// `String` for the same reason as [`Self::pulse_window_intents`] — the
+    /// window only needs to be told *which* environment, and it reads that
+    /// environment's own state from `list_environments`. Kept apart from
+    /// `window_startup_intents` on purpose: that map carries the CLI's
+    /// connection payload, which is applied by a different effect that races
+    /// the environment store's `load()`. Populated by `open_new_window` and
+    /// drained exactly once by `take_window_environment_intent`.
+    pub window_environment_intents: Arc<RwLock<HashMap<String, String>>>,
     /// The `pulse.db` history — opened lazily on first use (a read or the
     /// first sampler tick), not at startup, so an install with Pulse never
     /// enabled never creates the file. See [`crate::pulse::store::PulseStore`].
@@ -1262,6 +1272,7 @@ impl AppState {
             window_startup_intents: Arc::new(RwLock::new(HashMap::new())),
             detached_tab_intents: Arc::new(RwLock::new(HashMap::new())),
             pulse_window_intents: Arc::new(RwLock::new(HashMap::new())),
+            window_environment_intents: Arc::new(RwLock::new(HashMap::new())),
             pulse_store: crate::pulse::store::PulseStore::new(),
             ai_probe: Arc::new(RwLock::new(None)),
             ai_turns: Arc::new(RwLock::new(HashMap::new())),

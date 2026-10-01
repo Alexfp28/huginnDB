@@ -1321,8 +1321,20 @@ export const api = {
   /** Open a new, blank window. Optionally carries a connection intent for
    *  the new window's frontend to pick up via `takeWindowStartupIntent`.
    *  Returns the new window's label. */
-  openNewWindow: (intent?: StartupArgs | null) =>
-    invoke<string>("open_new_window", { intent: intent ?? null }),
+  openNewWindow: (
+    intent?: StartupArgs | null,
+    environmentId?: string | null,
+  ) =>
+    invoke<string>("open_new_window", {
+      intent: intent ?? null,
+      environmentId: environmentId ?? null,
+    }),
+
+  /** Drain the environment id stashed for this window's label by
+   *  `openNewWindow(…, environmentId)`. Call once on boot, after the
+   *  environment store has loaded. */
+  takeWindowEnvironmentIntent: (label: string) =>
+    invoke<string | null>("take_window_environment_intent", { label }),
 
   /** Drain the connection intent stashed for this window's label by
    *  `openNewWindow`. Call once on boot alongside `getStartupArgs`. */
