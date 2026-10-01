@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Deleting a row that other tables still reference now says so, in the dialog
+  that asked for it (#218).** The refusal used to land in the strip above the
+  grid, hidden behind the confirmation's scrim, so the click looked like it did
+  nothing. The dialog now stays open with the reason and — when the cause is a
+  foreign key — names the tables that still point at the row, and the button is
+  usable again. With "confirm destructive actions" off, the failure is a toast
+  instead of that strip, which stays for fetch errors only.
 - **A MongoDB script with one call per line now runs every call (#220).** The
   `;` is optional in `mongosh`, but the query tab only split on it, so three
   `countDocuments` on three lines were one statement: the tab ran the first,
