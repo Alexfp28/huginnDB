@@ -17,6 +17,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   not carried over, nothing is written, and the main window's environment and
   what it reopens at launch are untouched.
 
+### Fixed
+
+- **Deleting a row that other tables still reference now says so, in the dialog
+  that asked for it (#218).** The refusal used to land in the strip above the
+  grid, hidden behind the confirmation's scrim, so the click looked like it did
+  nothing. The dialog now stays open with the reason and — when the cause is a
+  foreign key — names the tables that still point at the row, and the button is
+  usable again. With "confirm destructive actions" off, the failure is a toast
+  instead of that strip, which stays for fetch errors only.
+- **A MongoDB script with one call per line now runs every call (#220).** The
+  `;` is optional in `mongosh`, but the query tab only split on it, so three
+  `countDocuments` on three lines were one statement: the tab ran the first,
+  the parser dropped the other two without a word, and there was a single
+  result instead of three. A line break now ends a statement when nothing is
+  left open — a `.sort(…)` on the next line or a multi-line `{ … }` still
+  belongs to the statement above — so each call gets its own result tab and its
+  own ▶ Run lens. The backend also stopped dropping trailing text: a single
+  statement followed by another is now refused with an error (MCP `run_query`,
+  the AI panel), instead of running the first and reporting success.
+
 ## [1.30.0] — 2026-09-28
 
 ### Added

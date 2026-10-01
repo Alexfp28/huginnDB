@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   effectivePort,
+  isForeignKeyViolation,
   requiresInitialCollection,
   supportsCreateDatabase,
   supportsDropDatabase,
@@ -77,5 +78,26 @@ describe("effectivePort", () => {
 
   it("leaves SQLite at zero, having no server to default to", () => {
     expect(effectivePort("sqlite", 0)).toBe(0);
+  });
+});
+
+describe("isForeignKeyViolation", () => {
+  it("recognises each driver's wording for a still-referenced row", () => {
+    const messages = [
+      "database error: error returned from database: 1451 (23000): Cannot delete or update a parent row: a foreign key constraint fails (`db`.`child`, CONSTRAINT `fk` FOREIGN KEY (`pid`) REFERENCES `parent` (`id`))",
+      'database error: error returned from database: update or delete on table "parent" violates foreign key constraint "child_pid_fkey" on table "child"',
+      "database error: error returned from database: (code: 787) FOREIGN KEY constraint failed",
+      "sql server error: Token error: 'The DELETE statement conflicted with the REFERENCE constraint \"FK_x\".'",
+    ];
+    for (const message of messages) {
+      expect(isForeignKeyViolation(message)).toBe(true);
+    }
+  });
+
+  it("leaves unrelated failures alone", () => {
+    expect(isForeignKeyViolation("connection refused")).toBe(false);
+    expect(isForeignKeyViolation(new Error("syntax error near 'WHERE'"))).toBe(
+      false,
+    );
   });
 });

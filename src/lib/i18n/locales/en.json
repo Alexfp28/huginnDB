@@ -754,6 +754,12 @@
     "deleteBodyWhere": "where",
     "deleteBodyTrail": ". This cannot be undone.",
     "delete": "Delete",
+    "deleting": "Deleting…",
+    "deleteFailed": "Could not delete: {{message}}",
+    "deleteFailedTitle": "Could not delete the rows",
+    "deleteBlockedByReference": "This row is still referenced by other tables, so the database won't delete it. Remove or change the referencing rows first. ({{message}})",
+    "referencedBy_one": "Referenced by 1 foreign key:",
+    "referencedBy_other": "Referenced by {{count}} foreign keys:",
     "query": {
       "title": "Query",
       "open": "Show the query",

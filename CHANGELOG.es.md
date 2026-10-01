@@ -20,6 +20,28 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   se escribe nada, y el entorno de la ventana principal y lo que reabre al
   arrancar quedan intactos.
 
+### Corregido
+
+- **Eliminar una fila que otras tablas siguen referenciando ahora lo dice en el
+  propio diálogo que la pidió (#218).** El rechazo caía en la franja sobre la
+  cuadrícula, oculto tras el velo de la confirmación, así que el clic parecía no
+  hacer nada. Ahora el diálogo sigue abierto con el motivo y —cuando la causa es
+  una clave foránea— nombra las tablas que aún apuntan a la fila, y el botón
+  vuelve a poder usarse. Con «confirmar acciones destructivas» desactivado, el
+  fallo sale como aviso en vez de en esa franja, que queda solo para errores de
+  carga.
+- **Un script de MongoDB con una llamada por línea ahora ejecuta todas (#220).**
+  En `mongosh` el `;` es opcional, pero la pestaña de consulta solo dividía por
+  él, así que tres `countDocuments` en tres líneas eran una sola sentencia: la
+  pestaña ejecutaba la primera, el parser descartaba las otras dos sin avisar y
+  salía un único resultado en vez de tres. Ahora un salto de línea termina la
+  sentencia cuando no queda nada abierto — un `.sort(…)` en la línea siguiente
+  o un `{ … }` de varias líneas siguen perteneciendo a la sentencia de arriba —,
+  de modo que cada llamada tiene su propia pestaña de resultado y su propio ▶
+  Run. El backend además dejó de descartar texto sobrante: una sentencia seguida
+  de otra se rechaza ahora con un error (`run_query` por MCP, panel de IA), en
+  vez de ejecutar la primera y dar por bueno el resultado.
+
 ## [1.30.0] — 2026-09-28
 
 ### Añadido
